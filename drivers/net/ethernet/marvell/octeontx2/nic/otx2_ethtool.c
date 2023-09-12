@@ -15,6 +15,7 @@
 
 #include "otx2_common.h"
 #include "otx2_ptp.h"
+#include <cgx_fw_if.h>
 
 #define DRV_NAME	"rvu-nicpf"
 #define DRV_VF_NAME	"rvu-nicvf"
@@ -1180,17 +1181,9 @@ static void otx2_get_link_mode_info(u64 link_mode_bmap,
 				    *link_ksettings)
 {
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(otx2_link_modes) = { 0, };
-	const int otx2_sgmii_features[6] = {
-		ETHTOOL_LINK_MODE_10baseT_Half_BIT,
-		ETHTOOL_LINK_MODE_10baseT_Full_BIT,
-		ETHTOOL_LINK_MODE_100baseT_Half_BIT,
-		ETHTOOL_LINK_MODE_100baseT_Full_BIT,
-		ETHTOOL_LINK_MODE_1000baseT_Half_BIT,
-		ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
-	};
 	/* CGX link modes to Ethtool link mode mapping */
-	const int cgx_link_mode[51] = {
-		0, /* SGMII  Mode */
+	const int cgx_link_mode[CGX_MODE_MAX] = {
+		0, /* SGMII 1000base T */
 		ETHTOOL_LINK_MODE_1000baseX_Full_BIT,
 		ETHTOOL_LINK_MODE_10000baseT_Full_BIT,
 		ETHTOOL_LINK_MODE_10000baseSR_Full_BIT,
@@ -1230,8 +1223,8 @@ static void otx2_get_link_mode_info(u64 link_mode_bmap,
 		ETHTOOL_LINK_MODE_56000baseSR4_Full_BIT,
 		0,
 		0,
-		0,
-		0,
+		0, /* SGMII 10baseT */
+		0, /* SGMII 100baseT */
 		ETHTOOL_LINK_MODE_2500baseX_Full_BIT,
 		ETHTOOL_LINK_MODE_5000baseT_Full_BIT,
 		ETHTOOL_LINK_MODE_100baseT1_Full_BIT,
@@ -1246,13 +1239,18 @@ static void otx2_get_link_mode_info(u64 link_mode_bmap,
 
 	for_each_set_bit(bit, (unsigned long *)&link_mode_bmap,
 			 ARRAY_SIZE(cgx_link_mode)) {
-		/* SGMII mode is set */
-		if (bit == 0)
-			linkmode_set_bit_array(otx2_sgmii_features,
-					       ARRAY_SIZE(otx2_sgmii_features),
-					       otx2_link_modes);
-		else
+		if (bit == ETH_MODE_SGMII_10M_BIT) {
+			linkmode_set_bit(ETHTOOL_LINK_MODE_10baseT_Half_BIT, otx2_link_modes);
+			linkmode_set_bit(ETHTOOL_LINK_MODE_10baseT_Full_BIT, otx2_link_modes);
+		} else if (bit == ETH_MODE_SGMII_100M_BIT) {
+			linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Half_BIT, otx2_link_modes);
+			linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT, otx2_link_modes);
+		} else if (bit == CGX_MODE_SGMII) {
+			linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseT_Half_BIT, otx2_link_modes);
+			linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT, otx2_link_modes);
+		} else {
 			linkmode_set_bit(cgx_link_mode[bit], otx2_link_modes);
+		}
 	}
 
 	if (req_mode == OTX2_MODE_ADVERTISED)
