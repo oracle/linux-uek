@@ -2,7 +2,7 @@
 /*
  * uek_kabi.h - kABI abstraction header
  *
- * Copyright (c) 2021 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2021, 2023, Oracle and/or its affiliates.
  * Copyright (c) 2014 Don Zickus
  * Copyright (c) 2015-2018 Jiri Benc
  * Copyright (c) 2015 Sabrina Dubroca, Hannes Frederic Sowa
@@ -106,6 +106,10 @@
  *   macro add the ';' so it can be properly hidden from the kABI checker
  *   (mainly for UEK_KABI_EXTEND, but applied to all macros for uniformity).
  *
+ * UEK_KABI_DEPRECATE_ENUM
+ *   Mark the element in enum as deprecated and make it unusable by
+ *   modules while preserving kABI checksums.
+ *
  */
 #ifdef __GENKSYMS__
 
@@ -120,6 +124,7 @@
 # define _UEK_KABI_REPLACE(_orig, _new)		_orig
 # define _UEK_KABI_REPLACE_UNSAFE(_orig, _new)	_orig
 # define _UEK_KABI_EXCLUDE(_elem)
+# define _UEK_KABI_DEPRECATE_ENUM(_orig)	_orig
 
 #else
 
@@ -161,6 +166,8 @@
 
 # define _UEK_KABI_EXCLUDE(_elem)		_elem
 
+# define _UEK_KABI_DEPRECATE_ENUM(_orig) uek_reserved_##_orig
+
 #endif /* __GENKSYMS__ */
 
 /* semicolon added wrappers for the UEK_KABI_REPLACE macros */
@@ -194,6 +201,8 @@
 # define _UEK_KABI_RESERVE(n)		unsigned long uek_reserved##n
 
 #define UEK_KABI_EXCLUDE(_elem)		_UEK_KABI_EXCLUDE(_elem);
+
+#define UEK_KABI_DEPRECATE_ENUM(_orig) _UEK_KABI_DEPRECATE_ENUM(_orig),
 
 /*
  * Macros to extend structs.
