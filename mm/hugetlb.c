@@ -2998,11 +2998,56 @@ int __alloc_bootmem_huge_page(struct hstate *h)
 
 found:
 	BUG_ON(!IS_ALIGNED(virt_to_phys(m), huge_page_size(h)));
+
+	/*
+	 * Only initialize the head struct page in memmap_init_reserved_pages,
+	 * rest of the struct pages will be initialized by the HugeTLB
+	 * subsystem itself.
+	 * The head struct page is used to get folio information by the HugeTLB
+	 * subsystem like zone id and node id.
+	 */
+	memblock_reserved_mark_noinit(virt_to_phys((void *)m + PAGE_SIZE),
+		huge_page_size(h) - PAGE_SIZE);
 	/* Put them into a private list first because mem_map is not up yet */
 	INIT_LIST_HEAD(&m->list);
 	list_add(&m->list, &huge_boot_pages);
 	m->hstate = h;
 	return 1;
+}
+
+/* Initialize [start_page:end_page_number] tail struct pages of a hugepage */
+static void __init hugetlb_page_init_tail_vmemmap(struct page *head,
+	unsigned long start_page_number, unsigned long end_page_number)
+{
+	enum zone_type zone = zone_idx(page_zone(head));
+	int nid = page_to_nid(head);
+	unsigned long head_pfn = page_to_pfn(head);
+	unsigned long pfn, end_pfn = head_pfn + end_page_number;
+	int ret;
+
+	for (pfn = head_pfn + start_page_number; pfn < end_pfn; pfn++) {
+		struct page *page = pfn_to_page(pfn);
+
+		__init_single_page(page, pfn, zone, nid);
+		prep_compound_tail(head, pfn - head_pfn);
+		ret = page_ref_freeze(page, 1);
+		VM_BUG_ON(!ret);
+	}
+}
+
+static void __init hugetlb_page_init_vmemmap(struct page *page,
+	struct hstate *h, unsigned long nr_pages)
+{
+	int ret;
+
+	/* Prepare folio head */
+	__ClearPageReserved(page);
+	__SetPageHead(page);
+	ret = page_ref_freeze(page, 1);
+	VM_BUG_ON(!ret);
+	/* Initialize the necessary tail struct pages */
+	hugetlb_page_init_tail_vmemmap(page, 1, nr_pages);
+	prep_compound_head(page, huge_page_order(h));
 }
 
 /*
@@ -3019,14 +3064,14 @@ static void __init gather_bootmem_prealloc(void)
 
 		VM_BUG_ON(!hstate_is_gigantic(h));
 		WARN_ON(page_count(page) != 1);
-		if (prep_compound_gigantic_page(page, huge_page_order(h))) {
-			WARN_ON(PageReserved(page));
-			prep_new_huge_page(h, page, page_to_nid(page));
-			free_huge_page(page); /* add to the hugepage allocator */
-		} else {
-			/* VERY unlikely inflated ref count on a tail page */
-			free_gigantic_page(page, huge_page_order(h));
-		}
+
+		hugetlb_page_init_vmemmap(page, h, HUGETLB_VMEMMAP_RESERVE_PAGES);
+		prep_new_huge_page(h, page, page_to_nid(page));
+		/* If HVO fails, initialize all tail struct pages */
+		if (!HPageVmemmapOptimized(page))
+			hugetlb_page_init_tail_vmemmap(page, HUGETLB_VMEMMAP_RESERVE_PAGES,
+						pages_per_huge_page(h));
+		free_huge_page(page); /* add to the hugepage allocator */
 
 		/*
 		 * We need to restore the 'stolen' pages to totalram_pages

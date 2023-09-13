@@ -706,4 +706,7 @@ int numa_migrate_prep(struct page *page, struct vm_area_struct *vma,
 
 extern bool mirrored_kernelcore;
 
+void __meminit __init_single_page(struct page *page, unsigned long pfn,
+				unsigned long zone, int nid);
+
 #endif	/* __MM_INTERNAL_H */
