@@ -1282,16 +1282,6 @@ static void set_mod_args(struct cgx_set_link_mode_args *args,
 	int mode_baseidx;
 	u8 cgx_mode;
 
-	/* Fill default values incase of user did not pass
-	 * valid parameters
-	 */
-	if (args->duplex == DUPLEX_UNKNOWN)
-		args->duplex = duplex;
-	if (args->speed == SPEED_UNKNOWN)
-		args->speed = speed;
-	if (args->an == AUTONEG_UNKNOWN)
-		args->an = autoneg;
-
 	/* Derive mode_base_idx and mode fields based
 	 * on cgx_mode value
 	 */
@@ -1695,13 +1685,14 @@ int cgx_set_link_mode(void *cgxd, struct cgx_set_link_mode_args args,
 {
 	struct cgx *cgx = cgxd;
 	u64 req = 0, resp;
+	u8 bit;
 
 	if (!cgx)
 		return -ENODEV;
 
-	otx2_map_ethtool_link_modes(args.mode, &args);
-	if (!args.speed && args.duplex && !args.an)
-		return -EINVAL;
+	for_each_set_bit(bit, args.advertising,
+			 __ETHTOOL_LINK_MODE_MASK_NBITS)
+		otx2_map_ethtool_link_modes(bit, &args);
 
 	req = FIELD_SET(CMDREG_ID, CGX_CMD_MODE_CHANGE, req);
 	req = FIELD_SET(CMDMODECHANGE_SPEED,
