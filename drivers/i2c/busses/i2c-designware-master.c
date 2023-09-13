@@ -247,6 +247,14 @@ static void i2c_dw_xfer_init(struct dw_i2c_dev *dev)
 	/* Dummy read to avoid the register getting stuck on Bay Trail */
 	regmap_read(dev->map, DW_IC_ENABLE_STATUS, &dummy);
 
+	/*
+	 * To guarantee data written by the current core is visible to
+	 * all cores, a write barrier is required. This needs to be
+	 * before an interrupt causes execution on another core.
+	 * For ARM processors, this needs to be a DSB barrier.
+	 */
+	wmb();
+
 	/* Clear and enable interrupts */
 	regmap_read(dev->map, DW_IC_CLR_INTR, &dummy);
 	regmap_write(dev->map, DW_IC_INTR_MASK, DW_IC_INTR_MASTER_MASK);
