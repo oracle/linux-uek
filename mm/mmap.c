@@ -1830,6 +1830,29 @@ static int check_rsvd_range(struct mm_struct *mm, unsigned long addr,
 	return 0;
 }
 
+/*
+ * Process a list of VMAs that are being unmapped and install reserved va
+ * placeholders as needed.
+ */
+static inline void fixup_rsvd_va(struct mm_struct *mm,
+                struct vm_area_struct *vma)
+{
+#if VM_RSVD_VA
+	struct vm_area_struct *prev;
+	unsigned long addr, len;
+
+	for (; vma; vma = vma->vm_next) {
+		if (!(vma->vm_flags & VM_RSVD_VA))
+			continue;
+
+		addr = vma->vm_start;
+		len = vma->vm_end - addr;
+		find_vma_prev(mm, addr, &prev);
+		install_rsvd_mapping(mm, prev, addr, len);
+        }
+#endif
+}
+
 unsigned long mmap_region(struct file *file, unsigned long addr,
 		unsigned long len, vm_flags_t vm_flags, unsigned long pgoff,
 		struct list_head *uf)
@@ -1861,18 +1884,19 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 		return -EINVAL;
 
 	/*
-	 * Before clearing old maps, double check if this mapping is
-	 * part of a reserved VA range and should not be released,
+	 * Before clearing old mappings check if the first existing mapping
+	 * is part of a reserved VA range. If it is then set VM_RSVD_NORELINK
+	 * to indicate that the old mappings must not be replaced
+	 * with placeholder reserved VA mappings when they are unmapped since
+	 * new mappings are about to be created in their place.
+	 * The flag is only set for the first VMA since the check above
+	 * ensures that any other VMAs in the range are also in-use or
+	 * placeholder reserved VA VMAs.
 	 */
-	vma = find_vma(mm, addr);
-	while (vma) {
-		if (vma->vm_start > (addr + len))
-			break;
-		if (vma->vm_flags & VM_RSVD_VA) {
-			rsvd_va = 1;
-			vma->vm_flags |= VM_RSVD_NORELINK;
-		}
-		vma = vma->vm_next;
+	vma = find_vma_intersection(mm, addr, addr + len);
+	if (vma && (vma->vm_flags & VM_RSVD_VA)) {
+		rsvd_va = 1;
+		vma->vm_flags |= VM_RSVD_NORELINK;
 	}
 #endif
 	/* Clear old maps, set up prev, rb_link, rb_parent, and uf */
@@ -2967,8 +2991,9 @@ unlock_range(struct vm_area_struct *start, unsigned long limit)
 int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 		struct list_head *uf, bool downgrade)
 {
-	unsigned long end, rsvd_va, rsvd_start, rsvd_end;
+	unsigned long end;
 	struct vm_area_struct *vma, *prev, *last;
+	bool rsvd_va_norelink = false;
 
 	if ((offset_in_page(start)) || start > TASK_SIZE || len > TASK_SIZE-start)
 		return -EINVAL;
@@ -2992,14 +3017,16 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	prev = vma->vm_prev;
 
 	/*
-	 * Save the state of VM_RSVD_NORELINK flag and clear it so it
-	 * does not propagate to any split vma.
+	 * When unmapping a range that covers multiple VMAS only the first
+	 * VMA might have VM_RSVD_NORELINK set. If set it can safely be
+	 * assumed to apply to all VMAs in the range since it is only set
+	 * when creating a mapping that is bounded within a reserved range
+	 * or a set of contiguous reserved ranges.
+	 * Clear VM_RSVD_NORELINK now so that it does not propagate if vma
+	 * is split.
 	 */
-	if ((vma->vm_flags & VM_RSVD_VA) &&
-		!(vma->vm_flags & VM_RSVD_NORELINK)) {
-		rsvd_va = 1;
-	} else {
-		rsvd_va = 0;
+	if (vma->vm_flags & VM_RSVD_NORELINK) {
+		rsvd_va_norelink = true;
 		vma->vm_flags &= ~VM_RSVD_NORELINK;
 	}
 
@@ -3051,11 +3078,6 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 			return error;
 	}
 
-	if (rsvd_va) {
-		rsvd_start = vma->vm_start;
-		rsvd_end = vma->vm_end;
-	}
-
 	/*
 	 * unlock any mlock()ed ranges before detaching vmas
 	 */
@@ -3066,9 +3088,9 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	if (!detach_vmas_to_be_unmapped(mm, vma, prev, end))
 		downgrade = false;
 
-	if (rsvd_va)
-		install_rsvd_mapping(mm, prev, rsvd_start,
-					(rsvd_end - rsvd_start));
+	if (!rsvd_va_norelink)
+		fixup_rsvd_va(mm, vma);
+
 	if (downgrade)
 		mmap_write_downgrade(mm);
 
