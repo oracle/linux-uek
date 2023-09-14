@@ -124,8 +124,6 @@ include ../scripts/utilities.mak
 #
 # Define LIBPFM4 to enable libpfm4 events extension.
 #
-# Define NO_LIBDEBUGINFOD if you do not want support debuginfod
-#
 # Define BUILD_BPF_SKEL to enable BPF skeletons
 #
 # Define LIBTRACEEVENT_DYNAMIC to enable libtraceevent dynamic linking
