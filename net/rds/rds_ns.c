@@ -64,15 +64,6 @@ static __net_init int rds_init_net(struct net *net)
 	if (ret)
 		goto err_conn;
 
-	ret =  rds_cong_net_init(rns);
-	if (ret)
-		goto err_cong;
-
-	return 0;
-
-err_cong:
-	rds_conn_tbl_net_exit(rns);
-
 err_conn:
 	rds_bind_tbl_net_exit(rns);
 
@@ -86,7 +77,6 @@ static void rds_exit_net(struct net *net)
 	struct rds_net *rns = rds_ns(net);
 
 	rds_bind_tbl_net_exit(rns);
-	rds_cong_net_exit(rns);
 
 	mutex_destroy(&rns->rns_sock_lock);
 }
