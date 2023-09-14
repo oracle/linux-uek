@@ -236,20 +236,7 @@ static enum spectre_v2_mitigation spectre_v2_enabled = SPECTRE_V2_NONE;
 DEFINE_STATIC_KEY_FALSE(mmio_stale_data_clear);
 EXPORT_SYMBOL_GPL(mmio_stale_data_clear);
 
-void update_percpu_mitigations(void)
-{
-	/*
-	 * No need to check for availability of IBRS since the values updated
-	 * by update_cpu_ibrs_all() are based on @use_ibrs which incorporates
-	 * knowledge about IBRS status.
-	 */
-	mutex_lock(&spec_ctrl_mutex);
-	update_cpu_ibrs_all();
-	update_cpu_spec_ctrl_all();
-	mutex_unlock(&spec_ctrl_mutex);
-}
-
-void cpu_select_mitigations(void)
+void __init cpu_select_mitigations(void)
 {
 	/*
 	 * Print the status of SPEC_CTRL feature on this machine.
