@@ -44,6 +44,7 @@
 #include <linux/page_idle.h>
 #include <asm/pgalloc.h>
 #include <asm/tlbflush.h>
+#include <linux/khugepaged.h>
 #include "internal.h"
 
 #define CREATE_TRACE_POINTS
@@ -3026,6 +3027,13 @@ static inline bool check_vma_thp_eligible(struct vm_area_struct *vma,
 {
 	unsigned long hstart;
 
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+	/* check to make sure transparent_hugepage is enabled */
+        if (!khugepaged_enabled())
+		return false;
+#else
+	return false;
+#endif
 	/* check if current page is already THP */
 	if (page != NULL && PageTransCompound(page))
 		return false;
