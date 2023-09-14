@@ -497,13 +497,4 @@ struct rds_rdma_send_notify {
 #define RDS_RDMA_REMOTE_COMPLETE 0x0080 /* Notify when data is available */
 #define RDS_SEND_NOTIFY_ME      0x0100  /* Notify when operation completes */
 
-/* Value for the module family parameter. */
-enum {
-	RDS_MOD_UNSPEC,
-	RDS_MOD_RDS,	/* rds module */
-
-	/* Add new module before this. */
-	RDS_MOD_MAX,
-};
-
 #endif /* IB_RDS_H */
