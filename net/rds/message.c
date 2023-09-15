@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2023, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -31,8 +31,10 @@
  *
  */
 #include <linux/kernel.h>
+#include <linux/topology.h>
 
 #include "rds.h"
+#include "lfstack.h"
 
 static unsigned int	rds_exthdr_size[] = {
 [RDS_EXTHDR_NONE]	= 0,
@@ -47,6 +49,22 @@ static unsigned int	rds_exthdr_size[] = {
 [RDS_EXTHDR_CSUM]       = sizeof(struct rds_ext_header_rdma_csum),
 };
 
+struct rds_cfu_cache_entry {
+	struct page *pg;
+	struct lfstack_el list;
+};
+
+struct rds_cfu_gc_control {
+	int percent_cpus_to_clean;
+	int next_cpu;
+	struct delayed_work work;
+};
+
+static struct rds_cfu_gc_control gc_control;
+
+DEFINE_PER_CPU(union lfstack, rds_cfu_cache) ____cacheline_aligned;
+DEFINE_PER_CPU(atomic_t, rds_cfu_entries) ____cacheline_aligned;
+static bool rds_cfu_cache_tearing_down;
 
 void rds_message_addref(struct rds_message *rm)
 {
@@ -55,21 +73,108 @@ void rds_message_addref(struct rds_message *rm)
 }
 EXPORT_SYMBOL_GPL(rds_message_addref);
 
+static void rds_cfu_cache_do_gc(void)
+{
+	int cpus_to_check = num_possible_cpus() * gc_control.percent_cpus_to_clean / 100;
+	int i;
+
+	if (!cpus_to_check)
+		cpus_to_check = 1;
+
+	for (i = 0; i < cpus_to_check; ++i) {
+		atomic_t *nmbr_entries_ptr = per_cpu_ptr(&rds_cfu_entries, gc_control.next_cpu);
+		union lfstack *stack = per_cpu_ptr(&rds_cfu_cache, gc_control.next_cpu);
+		unsigned int nmbr_cleaned = 0;
+		struct lfstack_el *el;
+
+		while ((el = lfstack_pop(stack))) {
+			struct rds_cfu_cache_entry *entry =
+				container_of(el, struct rds_cfu_cache_entry, list);
+
+			++nmbr_cleaned;
+			rds_page_free(entry->pg);
+		}
+
+		atomic_sub(nmbr_cleaned, nmbr_entries_ptr);
+		rds_stats_add(s_copy_from_user_cache_get, nmbr_cleaned);
+		if (++gc_control.next_cpu >= num_possible_cpus())
+			gc_control.next_cpu = 0;
+	}
+}
+
+static void rds_cfu_cache_gc_worker(struct work_struct *work)
+{
+	rds_cfu_cache_do_gc();
+
+	/* To pair with smp_store_release() below */
+	if (!smp_load_acquire(&rds_cfu_cache_tearing_down))
+		rds_queue_delayed_work(NULL, rds_wq, &gc_control.work,
+				       msecs_to_jiffies(rds_cfu_cache_gc_interval * 1000),
+				       "CFU_Cache_gc");
+}
+
+void rds_cfu_init_cache(void)
+{
+	INIT_DELAYED_WORK(&gc_control.work, rds_cfu_cache_gc_worker);
+
+	gc_control.percent_cpus_to_clean = 10;
+	gc_control.next_cpu = 0;
+	rds_queue_delayed_work(NULL, rds_wq, &gc_control.work,
+			       msecs_to_jiffies(rds_cfu_cache_gc_interval * 1000),
+			       "CFU_Cache_gc");
+}
+
+void rds_cfu_fini_cache(void)
+{
+	/* To pair with the smp_load_acquire() above */
+	smp_store_release(&rds_cfu_cache_tearing_down, true);
+	cancel_delayed_work_sync(&gc_control.work);
+
+	gc_control.percent_cpus_to_clean = 100;
+	rds_cfu_cache_do_gc();
+}
+
 /*
  * This relies on dma_map_sg() not touching sg[].page during merging.
  */
 static void rds_message_purge(struct rds_message *rm)
 {
+	atomic_t *nmbr_entries_ptr = per_cpu_ptr(&rds_cfu_entries, rm->m_alloc_cpu);
+	union lfstack *stack = per_cpu_ptr(&rds_cfu_cache, rm->m_alloc_cpu);
+	struct lfstack_el *first = NULL;
+	unsigned int cache_puts = 0;
+	struct lfstack_el *last;
 	unsigned long i;
 
 	if (unlikely(test_bit(RDS_MSG_PAGEVEC, &rm->m_flags)))
 		return;
 
 	for (i = 0; i < rm->data.op_nents; i++) {
-		rdsdebug("putting data page %p\n", (void *)sg_page(&rm->data.op_sg[i]));
-		/* XXX will have to put_page for page refs */
-		rds_page_free(sg_page(&rm->data.op_sg[i]));
+		if (rm->m_alloc_cpu != NUMA_NO_NODE && rm->data.op_sg[i].length >= PAGE_SIZE &&
+		    atomic_read(nmbr_entries_ptr) < rds_sysctl_cfu_cache_cap) {
+			struct rds_cfu_cache_entry *entry =
+				page_address(sg_page(rm->data.op_sg + i));
+
+			++cache_puts;
+			if (!first) {
+				first = &entry->list;
+				last = first;
+			} else {
+				lfstack_link(last, &entry->list);
+				last = lfstack_next(last);
+			}
+			entry->pg = sg_page(rm->data.op_sg + i);
+			last->next = NULL;
+		} else {
+			rds_page_free(sg_page(&rm->data.op_sg[i]));
+		}
 	}
+	if (first) {
+		lfstack_push_many(stack, first, last);
+		atomic_add(cache_puts, nmbr_entries_ptr);
+		rds_stats_add(s_copy_from_user_cache_put, cache_puts);
+	}
+
 	rm->data.op_nents = 0;
 
 	if (rm->rdma.op_active)
@@ -272,6 +377,7 @@ struct rds_message *rds_message_alloc(unsigned int extra_len, gfp_t gfp)
 
 	rm->m_used_sgs = 0;
 	rm->m_total_sgs = extra_len / sizeof(struct scatterlist);
+	rm->m_alloc_cpu = NUMA_NO_NODE;
 
 	atomic_set(&rm->m_refcount, 1);
 	INIT_LIST_HEAD(&rm->m_sock_item);
@@ -319,12 +425,34 @@ int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from)
 
 	while (iov_iter_count(from)) {
 		if (!sg_page(sg)) {
-			ret = rds_page_remainder_alloc(sg, iov_iter_count(from),
-						       GFP_HIGHUSER, NUMA_NO_NODE);
-			if (ret)
-				return ret;
+			if (iov_iter_count(from) >= PAGE_SIZE) {
+				union lfstack *stack = per_cpu_ptr(&rds_cfu_cache,
+								    smp_processor_id());
+				struct lfstack_el *el = lfstack_pop(stack);
+
+				if (el) {
+					atomic_t *nmbr_entries_ptr =
+						per_cpu_ptr(&rds_cfu_entries, smp_processor_id());
+					struct rds_cfu_cache_entry *entry =
+						container_of(el, struct rds_cfu_cache_entry, list);
+
+					sg_set_page(sg, entry->pg, PAGE_SIZE, 0);
+					rds_stats_inc(s_copy_from_user_cache_get);
+					atomic_dec(nmbr_entries_ptr);
+				}
+			}
+
+			if (!sg_page(sg)) {
+				ret = rds_page_remainder_alloc(sg, iov_iter_count(from),
+							       GFP_HIGHUSER, NUMA_NO_NODE);
+				if (ret)
+					return ret;
+			}
+
 			rm->data.op_nents++;
 			sg_off = 0;
+			if (rm->m_alloc_cpu == NUMA_NO_NODE)
+				rm->m_alloc_cpu = smp_processor_id();
 		}
 
 		to_copy = min_t(unsigned long, iov_iter_count(from),
