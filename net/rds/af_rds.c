@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2021 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2023, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -1449,6 +1449,7 @@ static void __exit rds_exit(void)
 	rds_info_deregister_func(RDS6_INFO_RECV_MESSAGES, rds6_sock_inc_info);
 #endif
 	kmem_cache_destroy(rds_rs_buf_info_slab);
+	rds_cfu_fini_cache();
 }
 
 module_exit(rds_exit);
@@ -1503,6 +1504,7 @@ static int __init rds_init(void)
 #endif
 
 	rds_qos_threshold_init();
+	rds_cfu_init_cache();
 
 	goto out;
 
