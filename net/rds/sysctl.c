@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2023, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -87,6 +87,10 @@ static int rds_sysctl_pf_rds = PF_RDS;
 static int rds_sysctl_sol_rds = SOL_RDS;
 
 unsigned int rds_sysctl_enable_payload_csum;
+
+unsigned int rds_sysctl_cfu_cache_cap = 512;
+
+unsigned int rds_cfu_cache_gc_interval = 1;
 
 static struct ctl_table rds_sysctl_rds_table[] = {
 	{
@@ -201,6 +205,20 @@ static struct ctl_table rds_sysctl_rds_table[] = {
 		.procname       = "enable_payload_csum",
 		.data           = &rds_sysctl_enable_payload_csum,
 		.maxlen         = sizeof(rds_sysctl_enable_payload_csum),
+		.mode           = 0644,
+		.proc_handler   = proc_douintvec,
+	},
+	{
+		.procname       = "copy_from_user_per_cpu_cache_cap",
+		.data           = &rds_sysctl_cfu_cache_cap,
+		.maxlen         = sizeof(rds_sysctl_cfu_cache_cap),
+		.mode           = 0644,
+		.proc_handler   = proc_douintvec,
+	},
+	{
+		.procname       = "copy_from_user_gc_interval_secs",
+		.data           = &rds_cfu_cache_gc_interval,
+		.maxlen         = sizeof(rds_cfu_cache_gc_interval),
 		.mode           = 0644,
 		.proc_handler   = proc_douintvec,
 	},
