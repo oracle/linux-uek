@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006 Oracle.  All rights reserved.
+ * Copyright (c) 2006, 2023, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -87,6 +87,8 @@ static char *rds_stat_names[] = {
 	"page_remainder_miss",
 	"copy_to_user",
 	"copy_from_user",
+	"copy_from_user_cache_get",
+	"copy_from_user_cache_put",
 	"cong_update_queued",
 	"cong_update_received",
 	"cong_send_error",
