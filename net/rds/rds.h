@@ -725,6 +725,7 @@ struct rds_message {
 
 	struct rds_conn_path *m_conn_path;
 	struct rds_csum m_payload_csum;
+	int m_alloc_cpu;
 };
 
 /*
@@ -1036,6 +1037,8 @@ struct rds_statistics {
 	uint64_t	s_page_remainder_miss;
 	uint64_t	s_copy_to_user;
 	uint64_t	s_copy_from_user;
+	uint64_t	s_copy_from_user_cache_get;
+	uint64_t	s_copy_from_user_cache_put;
 	uint64_t	s_cong_update_queued;
 	uint64_t	s_cong_update_received;
 	uint64_t	s_cong_send_error;
@@ -1363,6 +1366,8 @@ void rds_message_addref(struct rds_message *rm);
 void rds_message_put(struct rds_message *rm);
 void rds_message_wait(struct rds_message *rm);
 void rds_message_unmapped(struct rds_message *rm);
+void rds_cfu_init_cache(void);
+void rds_cfu_fini_cache(void);
 
 static inline void rds_message_make_checksum(struct rds_header *hdr)
 {
@@ -1492,6 +1497,8 @@ extern unsigned int  rds_sysctl_conn_hb_timeout;
 extern unsigned int  rds_sysctl_conn_hb_interval;
 extern unsigned long rds_sysctl_dr_sock_cancel_jiffies;
 extern unsigned int  rds_sysctl_enable_payload_csum;
+extern unsigned int  rds_sysctl_cfu_cache_cap;
+extern unsigned int  rds_cfu_cache_gc_interval;
 
 /* threads.c */
 int rds_threads_init(void);
