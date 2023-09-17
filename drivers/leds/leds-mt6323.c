@@ -451,7 +451,7 @@ put_child_node:
 	return ret;
 }
 
-static int mt6323_led_remove(struct platform_device *pdev)
+static void mt6323_led_remove(struct platform_device *pdev)
 {
 	struct mt6323_leds *leds = platform_get_drvdata(pdev);
 	int i;
@@ -465,8 +465,6 @@ static int mt6323_led_remove(struct platform_device *pdev)
 			   MT6323_RG_DRV_32K_CK_PDN);
 
 	mutex_destroy(&leds->lock);
-
-	return 0;
 }
 
 static const struct of_device_id mt6323_led_dt_match[] = {
@@ -477,7 +475,7 @@ MODULE_DEVICE_TABLE(of, mt6323_led_dt_match);
 
 static struct platform_driver mt6323_led_driver = {
 	.probe		= mt6323_led_probe,
-	.remove		= mt6323_led_remove,
+	.remove_new	= mt6323_led_remove,
 	.driver		= {
 		.name	= "mt6323-led",
 		.of_match_table = mt6323_led_dt_match,
