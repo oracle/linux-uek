@@ -218,14 +218,28 @@ static int otx2_rfoe_ptp_enable(struct ptp_clock_info *ptp_info,
 
 int otx2_rfoe_ptp_reset_sw_phc(struct otx2_rfoe_ndev_priv *priv)
 {
-	struct timespec64 ts;
+	struct timecounter *tc = &priv->time_counter;
+	u64 nsec;
 
 	if (IS_ERR_OR_NULL(priv->ptp_clock))
 		return -EINVAL;
 
-	ts.tv_sec = 0;
-	ts.tv_nsec = 0;
-	__otx2_rfoe_ptp_settime(priv, &ts);
+	mutex_lock(&priv->ptp_lock);
+	timecounter_init(tc, &priv->cycle_counter, 0);
+	tc->cycle_last = 0;
+	/* We need to share an offset in ns from the PTP hardware counter
+	 * and the UTC time so that the host PHC driver using the Octeon
+	 * PTP counter can get the same real time as this PTP clock
+	 * represents.  This is a combination of the timecounter fields
+	 * nsec and cycle_last, and we can use timecounter_cyc2time() to
+	 * generate this offset.
+	 * We get the time in ns of the counter value of 0.  The host will
+	 * then read the cycle counter, and add this value to the counter
+	 * to obtain the real time as maintained by this timecounter.
+	 */
+	nsec = timecounter_cyc2time(tc, 0);
+	writeq(nsec, priv->ptp_reg_base + MIO_PTP_CKOUT_THRESH_HI);
+	mutex_unlock(&priv->ptp_lock);
 
 	return 0;
 }
