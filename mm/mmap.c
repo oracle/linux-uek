@@ -1717,16 +1717,7 @@ static const char *rsvd_va_mapping_name(struct vm_area_struct *vma)
 	return ((char *)"[rsvd]");
 }
 
-static void rsvd_va_mapping_open(struct vm_area_struct *vma)
-{
-	struct mm_struct *mm = vma->vm_mm;
-	unsigned long len = vma->vm_end - vma->vm_start;
-
-	mm->total_vm += len >> PAGE_SHIFT;
-}
-
 static const struct vm_operations_struct rsvd_va_mapping_vmops = {
-	.open = rsvd_va_mapping_open,
 	.name = rsvd_va_mapping_name,
 };
 
@@ -3527,6 +3518,10 @@ bool may_expand_vm(struct mm_struct *mm, vm_flags_t flags, unsigned long npages)
 
 void vm_stat_account(struct mm_struct *mm, vm_flags_t flags, long npages)
 {
+#if VA_RSVD_RETAIN
+	if (unlikely((flags & VA_RSVD_RETAIN) == VA_RSVD_RETAIN))
+		return;
+#endif
 	mm->total_vm += npages;
 
 	if (is_exec_mapping(flags))
