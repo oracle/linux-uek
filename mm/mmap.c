@@ -1779,7 +1779,7 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma, *prev;
 	int error;
-	int rsvd_va = 0;
+	bool rsvd_va = false;
 	struct rb_node **rb_link, *rb_parent;
 	unsigned long charged = 0;
 
@@ -1801,11 +1801,10 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	/* Clear old maps */
 	while (find_vma_links(mm, addr, addr + len, &prev, &rb_link,
 			      &rb_parent)) {
-#if VA_RSVD_RETAIN
+#if VM_RSVD_VA
 		vma = find_vma(mm, addr);
-		if (vma && ((vma->vm_flags & VA_RSVD_RETAIN) ==
-				VA_RSVD_RETAIN)) {
-			rsvd_va = 1;
+		if (vma && (vma->vm_flags & VM_RSVD_VA) ) {
+			rsvd_va = true;
 			vma->vm_flags |= VM_RSVD_NORELINK;
 		}
 #endif
