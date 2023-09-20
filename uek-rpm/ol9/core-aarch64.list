@@ -216,6 +216,7 @@ kernel/drivers/nvme/host/nvme-tcp.ko
 kernel/drivers/nvme/common/nvme-common.ko
 kernel/drivers/nvme/target/nvmet.ko
 kernel/drivers/nvme/target/nvmet-tcp.ko
+kernel/drivers/pci/controller/pci-hyperv-intf.ko
 kernel/drivers/perf/arm_dmc620_pmu.ko
 kernel/drivers/perf/arm_spe_pmu.ko
 kernel/drivers/scsi/be2iscsi/be2iscsi.ko
