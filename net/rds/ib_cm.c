@@ -585,6 +585,9 @@ static void rds_ib_cq_follow_affinity(struct rds_ib_connection *ic,
 	    preferred_cpu == smp_processor_id())
 		return;
 
+	if (system_state > SYSTEM_RUNNING)
+		return;
+
 	irqn = ib_get_vector_irqn(ic->rds_ibdev->dev, cq_vector);
 	if (irqn < 0)
 		return;
