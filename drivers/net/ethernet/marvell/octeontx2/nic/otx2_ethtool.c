@@ -1377,6 +1377,11 @@ static int otx2_set_link_ksettings(struct net_device *netdev,
 	linkmode_andnot(req->args.advertising,
 			req->args.advertising, mask);
 
+	/* inform AF that we need parse this differently */
+	if (bitmap_weight(req->args.advertising,
+			  __ETHTOOL_LINK_MODE_MASK_NBITS) >= 2)
+		req->args.multimode = true;
+
 	if (!otx2_sync_mbox_msg(&pf->mbox)) {
 		rsp = (struct cgx_set_link_mode_rsp *)
 		       otx2_mbox_get_rsp(&pf->mbox.mbox, 0, &req->hdr);
