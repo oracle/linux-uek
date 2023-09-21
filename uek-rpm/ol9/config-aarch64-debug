@@ -2859,7 +2859,7 @@ CONFIG_ISCSI_TARGET_CXGB4=m
 # IEEE 1394 (FireWire) support
 #
 # CONFIG_FIREWIRE is not set
-CONFIG_FIREWIRE_NOSY=m
+# CONFIG_FIREWIRE_NOSY is not set
 # end of IEEE 1394 (FireWire) support
 
 CONFIG_NETDEVICES=y
