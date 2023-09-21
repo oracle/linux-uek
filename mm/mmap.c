@@ -1770,6 +1770,8 @@ int install_rsvd_mapping(struct mm_struct *mm, struct vm_area_struct *prev,
 	vma->vm_ops = &rsvd_va_mapping_vmops;
 	vma->vm_private_data = NULL;
 
+	vma->vm_pgoff = addr >> PAGE_SHIFT;
+
 	ret = insert_vm_struct(mm, vma);
 	if (ret)
 		goto out;
