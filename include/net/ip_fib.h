@@ -22,6 +22,7 @@
 #include <linux/percpu.h>
 #include <linux/notifier.h>
 #include <linux/refcount.h>
+#include <linux/uek_kabi.h>
 
 struct fib_config {
 	u8			fc_dst_len;
@@ -152,6 +153,7 @@ struct fib_info {
 	int			fib_nhs;
 	bool			fib_nh_is_v6;
 	bool			nh_updated;
+	UEK_KABI_FILL_HOLE(bool	pfsrc_removed)
 	struct nexthop		*nh;
 	struct rcu_head		rcu;
 	struct fib_nh		fib_nh[];
