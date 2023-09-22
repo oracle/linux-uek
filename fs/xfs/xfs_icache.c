@@ -1878,6 +1878,20 @@ xfs_inodegc_worker(
 }
 
 /*
+ * Expedite all pending inodegc work to run immediately. This does not wait for
+ * completion of the work.
+ */
+void
+xfs_inodegc_push(
+	struct xfs_mount	*mp)
+{
+	if (!xfs_is_inodegc_enabled(mp))
+		return;
+	trace_xfs_inodegc_push(mp, __return_address);
+	xfs_inodegc_queue_all(mp);
+}
+
+/*
  * Force all currently queued inode inactivation work to run immediately and
  * wait for the work to finish.
  */
@@ -1885,12 +1899,8 @@ void
 xfs_inodegc_flush(
 	struct xfs_mount	*mp)
 {
-	if (!xfs_is_inodegc_enabled(mp))
-		return;
-
+	xfs_inodegc_push(mp);
 	trace_xfs_inodegc_flush(mp, __return_address);
-
-	xfs_inodegc_queue_all(mp);
 	flush_workqueue(mp->m_inodegc_wq);
 }
 
