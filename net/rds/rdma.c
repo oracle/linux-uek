@@ -94,11 +94,18 @@ static struct rds_mr *rds_mr_tree_walk(struct rb_root *root, u64 key,
 /*
  * Destroy the transport-specific part of a MR.
  */
+static unsigned int nmbr_uaf;
 static void rds_destroy_mr(struct rds_mr *mr)
 {
 	struct rds_sock *rs = mr->r_sock;
 	void *trans_private = NULL;
 	unsigned long flags;
+
+	if (READ_ONCE(rs->poison) != RED_ACTIVE) {
+		++nmbr_uaf;
+		pr_err_ratelimited("%s:%d: rs: %p poison: %llx number of UAF: %u\n",
+				   __func__, __LINE__, rs, READ_ONCE(rs->poison), nmbr_uaf);
+	}
 
 	trace_rds_mr_destroy(rs, rs->rs_conn, mr, kref_read(&mr->r_kref),
 			     NULL, 0);

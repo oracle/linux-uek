@@ -9,6 +9,7 @@
 #include <linux/mutex.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
+#include <linux/poison.h>
 #include <uapi/linux/rds.h>
 #include <linux/in6.h>
 #include <linux/sizes.h>
@@ -891,7 +892,7 @@ struct rds_sock {
 	/* Socket options - in case there will be more */
 	unsigned char		rs_recverr,
 				rs_cong_monitor;
-	int                     poison;
+	unsigned long long	poison;
 	int                     rs_netfilter_enabled;
 
 	u8                      rs_tos;
