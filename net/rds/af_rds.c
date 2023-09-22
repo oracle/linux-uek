@@ -37,6 +37,7 @@
 #include <linux/in.h>
 #include <linux/ipv6.h>
 #include <linux/mutex.h>
+#include <linux/poison.h>
 #include <linux/poll.h>
 #include <linux/version.h>
 #include <linux/random.h>
@@ -1074,7 +1075,7 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 	INIT_LIST_HEAD(&rs->rs_cong_list);
 	spin_lock_init(&rs->rs_rdma_lock);
 	rs->rs_rdma_keys = RB_ROOT;
-	rs->poison = 0xABABABAB;
+	WRITE_ONCE(rs->poison, RED_ACTIVE);
 	rs->rs_tos = 0;
 	rs->rs_conn = NULL;
 	rs->rs_conn_path = NULL;
@@ -1127,8 +1128,8 @@ void debug_sock_hold(struct sock *sk)
 		printk(KERN_CRIT "zero refcnt on sock hold\n");
 		WARN_ON(1);
 	}
-	if (rs->poison != 0xABABABAB) {
-		printk(KERN_CRIT "bad poison on hold %x\n", rs->poison);
+	if (READ_ONCE(rs->poison) != RED_ACTIVE) {
+		pr_err_ratelimited("bad poison on hold %llx\n", READ_ONCE(rs->poison));
 		WARN_ON(1);
 	}
 	sock_hold(sk);
@@ -1148,11 +1149,12 @@ void debug_sock_put(struct sock *sk)
 	}
 	if (refcount_dec_and_test(&sk->sk_refcnt)) {
 		struct rds_sock *rs = rds_sk_to_rs(sk);
-		if (rs->poison != 0xABABABAB) {
-			printk(KERN_CRIT "bad poison on put %x\n", rs->poison);
+
+		if (READ_ONCE(rs->poison) != RED_ACTIVE) {
+			pr_err_ratelimited("bad poison on put %llx\n", READ_ONCE(rs->poison));
 			WARN_ON(1);
 		}
-		rs->poison = 0xDEADBEEF;
+		WRITE_ONCE(rs->poison, RED_INACTIVE);
 		sk_free(sk);
 	}
 }
