@@ -383,6 +383,7 @@ int kpcimgr_module_register(struct module *mod,
 		}
 		kpci_memcpy(ks->code_base, mod->core_layout.base,
 			    mod->core_layout.size);
+		flush_icache_range((long)ks->code_base, (long)ks->code_base + mod->core_layout.size);
 		set_memory_x((unsigned long)ks->code_base,
 			     mod->core_layout.size >> PAGE_SHIFT);
 	} else {
@@ -538,6 +539,7 @@ static int map_resources(struct platform_device *pfdev)
 			}
 			kpci_memcpy(ks->code_base, ks->persistent_base,
 				    ks->code_size);
+			flush_icache_range((long)ks->code_base, (long)ks->code_base + KSTATE_CODE_SIZE);
 			set_memory_x((unsigned long)ks->code_base,
 				     ks->code_size >> PAGE_SHIFT);
 		}
