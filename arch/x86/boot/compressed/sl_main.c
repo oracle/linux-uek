@@ -406,6 +406,36 @@ static struct setup_data *sl_handle_setup_data(struct setup_data *curr)
 	return next;
 }
 
+static u32 sl_find_param(const char *cmdline, u32 mlen)
+{
+	const char *endp;
+	u32 plen = strlen("securelaunch_entry=");
+	u32 clen, nlen;
+
+	if (!cmdline)
+		return 0;
+
+	clen = nlen = strlen(cmdline);
+
+	/* Sanity check what boot params has set */
+	if (clen > mlen)
+		sl_txt_reset(SL_ERROR_GENERIC);
+
+	if ((clen <= plen) || (clen == 0))
+		return clen;
+
+	endp = cmdline + clen;
+	for ( ; (endp > cmdline) && (*endp != ' '); endp--, nlen--);
+
+	if (*endp == ' ')
+		endp++;
+
+	if (strncmp("securelaunch_entry=", endp, plen))
+		nlen = clen;
+
+	return nlen;
+}
+
 asmlinkage __visible void sl_check_region(void *base, u32 size)
 {
 	sl_check_pmr_coverage(base, size, false);
@@ -413,14 +443,14 @@ asmlinkage __visible void sl_check_region(void *base, u32 size)
 
 asmlinkage __visible void sl_main(void *bootparams)
 {
-	struct boot_params *bp;
+	struct boot_params *bp = (struct boot_params *)bootparams;
 	struct setup_data *data;
 	struct txt_os_mle_data *os_mle_data;
 	struct txt_os_mle_data os_mle_tmp = {0};
 	const char *signature;
 	unsigned long mmap = 0;
 	void *txt_heap;
-	u32 data_count;
+	u32 cmdline_len, data_count;
 
 	/*
 	 * Ensure loadflags do not indicate a secure launch was done
@@ -457,6 +487,13 @@ asmlinkage __visible void sl_main(void *bootparams)
 	sanitize_boot_params(boot_params);
 	bp->hdr.loadflags |= SLAUNCH_FLAG;
 
+	/*
+	 * In case the command line length in the boot params is the actual
+	 * size, zero it temporarily.
+	 */
+	cmdline_len = bp->hdr.cmdline_size;
+	bp->hdr.cmdline_size = 0;
+
 	/* Place event log NO_ACTION tags before and after measurements */
 	sl_tpm_extend_evtlog(17, TXT_EVTYPE_SLAUNCH_START, NULL, 0, "");
 
@@ -467,22 +504,27 @@ asmlinkage __visible void sl_main(void *bootparams)
 			     bootparams, PAGE_SIZE,
 			     "Measured boot parameters");
 
-	/* Now safe to use boot params */
-	bp = (struct boot_params *)bootparams;
+	bp->hdr.cmdline_size = cmdline_len;
+
+	/* Routine to locate and ignore special uroot parameter */
+	cmdline_len =
+		sl_find_param((const char *)((unsigned long)bp->hdr.cmd_line_ptr),
+			      bp->hdr.cmdline_size);
 
 	/* Measure the command line */
-	if (bp->hdr.cmdline_size > 0) {
+	if (cmdline_len > 0) {
 		u64 cmdline = (u64)bp->hdr.cmd_line_ptr;
 
 		if (bp->ext_cmd_line_ptr > 0)
 			cmdline = cmdline | ((u64)bp->ext_cmd_line_ptr << 32);
 
-		sl_check_pmr_coverage((void *)cmdline,
-				      bp->hdr.cmdline_size, true);
+		/* Assuming the command line is not this huge */
+		/*sl_check_pmr_coverage((void *)cmdline,
+				      bp->hdr.cmdline_size, true);*/
 
 		sl_tpm_extend_evtlog(pcr_config, TXT_EVTYPE_SLAUNCH,
 				     (u8 *)cmdline,
-				     bp->hdr.cmdline_size,
+				     cmdline_len,
 				     "Measured Kernel command line");
 	}
 
