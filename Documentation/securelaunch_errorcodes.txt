@@ -1,0 +1,388 @@
+Kernel Errors (Base 0xc0008000)
+-------------------------------------------------------------------------------
+
+Name: SL_ERROR_GENERIC
+Value: 0xc0008001
+Description:
+
+Generic catch all error. Currently unused.
+
+
+Name: SL_ERROR_TPM_INIT
+Value: 0xc0008002
+Description:
+
+The early Secure Launch code failed to initialize the TPM library. This error
+is unlikely to occur and may indicate there is an issue with the TPM hardware.
+
+
+Name: SL_ERROR_TPM_INVALID_LOG20
+Value: 0xc0008003
+Description:
+
+The early Secure Launch code failed to find a valid TPM 2.1 event log descriptor
+or the event log descriptor is malformed. Usually this indicates that
+incompatible versions of the prelaunch environment (GRUB) and the MLE kernel.
+GRUB and the kernel share a structure in the TXT heap and if this structure
+(the OS-MLE table) is mismatched, this error is often seen. In addition, this
+value is set by the prelaunch environment (GRUB) so the issue could originate
+there. It could be the sign of an attempted attack.
+
+
+Name: SL_ERROR_TPM_LOGGING_FAILED
+Value: 0xc0008004
+Description:
+
+There was a failed attempt to write a TPM event to the event log early in the
+secure launch process. This is likely the result of a malformed TPM event log
+buffer. Formatting of the event log buffer information is done by the prelaunch
+environment (GRUB) so the the issue originates there.
+
+
+Name: SL_ERROR_TPM_GET_LOC
+Value: 0xc0008005
+Description:
+
+The early Secure Launch code failed to set the TPM to locality 2. This error
+is unlikely to occur and may indicate there is an issue with the TPM hardware.
+
+
+Name: SL_ERROR_TPM_EXTEND
+Value: 0xc0008006
+Description:
+
+There was a failed attempt to extend a TPM PCR early in the secure launch
+process. This error is unlikely to occur and may indicate there is an issue with
+the TPM hardware.
+
+
+Name: SL_ERROR_MTRR_INV_VCNT
+Value: 0xc0008007
+Description:
+
+During early secure launch validation an invalid variable MTRR count was found.
+This value is set by the prelaunch environment (GRUB) so the issue originates
+there. It could be the sign of an attempted attack.
+
+
+Name: SL_ERROR_MTRR_INV_DEF_TYPE
+Value: 0xc0008008
+Description:
+
+During early secure launch validation an invalid default MTRR type was found.
+This value is set by the prelaunch environment (GRUB) so the issue originates
+there. It could be the sign of an attempted attack.
+
+
+Name: SL_ERROR_MTRR_INV_BASE
+Value: 0xc0008009
+Description:
+
+During early secure launch validation an invalid variable MTRR base value was
+found. This value is set by the prelaunch environment (GRUB) so the issue
+originates there. It could be the sign of an attempted attack.
+
+
+Name: SL_ERROR_MTRR_INV_MASK
+Value: 0xc000800a
+Description:
+
+During early secure launch validation an invalid variable MTRR mask value was
+found. This value is set by the prelaunch environment (GRUB) so the issue
+originates there. It could be the sign of an attempted attack.
+
+
+Name: SL_ERROR_MSR_INV_MISC_EN
+Value: 0xc000800b
+Description:
+
+During early secure launch validation an invalid miscellaneous enable MSR value
+was found. This value is set by the prelaunch environment (GRUB) so the issue
+originates there. It could be the sign of an attempted attack.
+
+
+Name: SL_ERROR_INV_AP_INTERRUPT
+Value: 0xc000800c
+Description:
+
+The application processors (APs) wait to be woken up by the SMP initialization
+code. The only interrupt that they expect is an NMI; all other interrupts
+should be masked. If an AP gets some other interrupt other than an NMI it will
+cause this error. This error is very unlikely to occur.
+
+
+Name: SL_ERROR_INTEGER_OVERFLOW
+Value: 0xc000800d
+Description:
+
+A buffer base and size passed to the MLE caused an integer overflow when
+added together. It could be the sign of an attempted attack.
+
+
+Name: SL_ERROR_HEAP_WALK
+Value: 0xc000800e
+Description:
+
+An error occurred in TXT heap walking code. The underlying issue is a failure to
+early_memremap() portions of the heap, most likely due to a resource shortage.
+
+
+Name: SL_ERROR_HEAP_MAP
+Value: 0xc000800f
+Description:
+
+This error is essentially the same as SL_ERROR_HEAP_WALK.
+
+
+Name: SL_ERROR_REGION_ABOVE_4GB
+Value: 0xc0008010
+Description:
+
+A memory reqion used by the MLE is above 4GB. This is not supported since
+the hi PMR values cannot be validated in the early Secure Launch stub.
+The placement is done by the prelaunch environment (GRUB) so the issue
+originates there. It could be the sign of an attempted attack or just a
+misconfiguration.
+
+
+Name: SL_ERROR_HEAP_INVALID_DMAR
+Value: 0xc0008011
+Description:
+
+The backup copy of the DMAR table in the TXT heap could not be found. This is
+due to a bug in the platform's ACM module.
+
+
+Name: SL_ERROR_HEAP_DMAR_SIZE
+Value: 0xc0008012
+Description:
+
+The backup copy of the DMAR table in the TXT heap is to large to be stored for
+later usage. This error is very unlikely to occur.
+
+
+Name: SL_ERROR_HEAP_DMAR_MAP
+Value: 0xc0008013
+Description:
+
+The backup copy of the DMAR table in the TXT heap could not be mapped. The
+underlying issue is a failure to early_memremap() the DMAR table, most likely
+due to a resource shortage.
+
+
+Name: SL_ERROR_HI_PMR_BASE
+Value: 0xc0008014
+Description:
+
+On a system with more than 4G of RAM, the high PMR base address should be set
+to 4G. This error is due to that not being the case. This PMR value is set by
+the prelaunch environment (GRUB) so the issue originates there. It could be the
+sign of an attempted attack.
+
+
+Name: SL_ERROR_HI_PMR_SIZE
+Value: 0xc0008015
+Description:
+
+On a system with more than 4G of RAM, the high PMR size should be set to cover
+all RAM > 4G. This error is due to that not being the case. This PMR value is
+set by the prelaunch environment (GRUB) so the issue originates there. It could
+be the sign of an attempted attack.
+
+
+Name: SL_ERROR_LO_PMR_BASE
+Value: 0xc0008016
+Description:
+
+The low PMR base should always be set to address zero. This error is due to
+that not being the case. This PMR value is set by the prelaunch environment
+(GRUB) so the issue originates there. It could be the sign of an attempted
+attack.
+
+
+Name: SL_ERROR_LO_PMR_MLE
+Value: 0xc0008017
+Description:
+
+This error indicates the MLE image is not covered by the low PMR range. The
+PMR values are set by the prelaunch environment (GRUB) so the issue originates
+there. It could be the sign of an attempted attack.
+
+
+Name: SL_ERROR_LO_PMR_INITRD
+Value: 0xc0008018
+Description:
+
+This error indicates the initrd image was loaded below 4G and is not covered
+by the low PMR range. The PMR values are set by the prelaunch environment
+(GRUB) so the issue originates there. It could be the sign of an attempted
+attack.
+
+
+Name: SL_ERROR_HEAP_ZERO_OFFSET
+Value: 0xc0008019
+Description:
+
+During a TXT heap walk an invalid/zero next table offset value was found. This
+indicates the TXT heap is malformed. The TXT heap is initialized by the
+prelaunch environment (GRUB) so the issue most likely originates there. It
+could be the sign of an attempted attack. The ACM is also responsible for
+manipulating parts of the TXT heap so the issue could be due to a bug in the
+platform's ACM module.
+
+
+Name: SL_ERROR_WAKE_BLOCK_TOO_SMALL
+Value: 0xc000801a
+Description:
+
+The AP wake block buffer passed to the MLE via the OS-MLE TXT heap table is not
+large enough. This value is set by the prelaunch environment (GRUB) so the
+issue originates there. It could be the sign of an attempted attack.
+
+
+Name: SL_ERROR_MLE_BUFFER_OVERLAP
+Value: 0xc000801b
+Description:
+
+One of the buffers passed to the MLE via the OS-MLE TXT heap table overlaps
+with the MLE image in memory. This value is set by the prelaunch environment
+(GRUB) so the issue originates there. It could be the sign of an attempted
+attack.
+
+
+Name: SL_ERROR_BUFFER_BEYOND_PMR
+Value: 0xc000801c
+Description:
+
+One of the buffers passed to the MLE via the OS-MLE TXT heap table is not
+protected by a PMR. This value is set by the prelaunch environment (GRUB) so
+the issue originates there. It could be the sign of an attempted attack.
+
+
+Name: SL_ERROR_OS_SINIT_BAD_VERSION
+Value: 0xc000801d
+Description:
+
+The version of the OS-SINIT TXT heap table is bad. It must be 6 or greater.
+This value is set by the prelaunch environment (GRUB) so the issue originates
+there. It could be the sign of an attempted attack.
+
+
+u-root Errors (Base 0xc0008800)
+-------------------------------------------------------------------------------
+
+Name: ErrSecureLaunch
+Value: 0xc0008800
+Description:
+
+Generic catch all error. Currently unused.
+
+
+Name: ErrInitFlags
+Value: 0xc0008801
+Description:
+
+SL kernel only.
+
+Indicates an error parsing the parameters passed to u-root, i.e. missing the
+"initrd" or "linux" parameters (only used for SL kernel).
+
+
+Name: ErrLogPCRs
+Value: 0xc0008802
+Description:
+
+SL and PL kernels:
+
+Indicates an error logging the PCR values to disk (e.g., mle-prov.dat). This
+could be due to an error mounting the BOOT partition, creating/opening the
+file, or reading the PCR value from the TPM.
+
+
+Name: ErrProvisioning
+Value: 0xc0008803
+Description:
+
+SL kernel:
+
+Indicates an error with provisioning. This could mean that the BOOT partition
+could not be found; at least one of the kernel, initrd, policy, public key, or
+signature files could not be read; or the public key hash or LUKS key could
+not be read from the TPM.
+
+PL kernel:
+
+Indicates an error with provisioning. This could mean that the BOOT partition
+could not be found; at least one of the policy, public key, or signature
+files could not be read; or the public key hash could not be read from the TPM.
+
+
+Name: ErrTPM
+Value: 0xc0008804
+Description:
+
+SL kernel:
+
+Indicates an error initializing the TPM
+
+PL kernel:
+
+Indicates an error initializing the TPM, forward sealing the LUKS key, or
+updating the policy file public key hash in the TPM.
+
+
+Name: ErrPolicy
+Value: 0xc0008805
+Description:
+
+SL and PL kernels:
+
+Indicates an error verifying or parsing the policy file; most likely this is
+an error due to verifying the policy, which could indicate an attempt to
+modify the contents of the file.
+
+
+Name: ErrMeasure
+Value: 0xc0008806
+Description:
+
+SL kernel:
+
+Indicates an error measuring either the kernel or initrd files. Note that this
+doesn't necessarily mean the files have been altered, just that the TPM PCRs
+could not be extended with the hash.
+
+PL kernel:
+
+Indicates an error either reading the secrets (LUKS key and owner auth) from
+the TPM or verifying the state of the kernel (i.e., incorrect PCR values for
+unsealing the secret data).
+
+
+Name: ErrEventLog
+Value: 0xc0008807
+Description:
+
+SL kernel only
+
+Indicates an error parsing the event log.
+
+
+Name: ErrClearPersistQueue
+Value: 0xc0008808
+Description:
+
+SL kernel only
+
+Indicates an error writing files to disk (e.g., the event log).
+
+
+Name: ErrKexec
+Value: 0xc0008809
+Description:
+
+SL kernel only
+
+Indicates an error booting into the target kernel. This includes not matching
+the initrd and kernel hashes in the policy file, injecting the LUKS key into
+the initrd, or performing the actual kexec call.
