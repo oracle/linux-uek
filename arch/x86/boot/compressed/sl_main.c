@@ -423,6 +423,12 @@ asmlinkage __visible void sl_main(void *bootparams)
 	u32 data_count;
 
 	/*
+	 * Ensure loadflags do not indicate a secure launch was done
+	 * unless it really was.
+	 */
+	bp->hdr.loadflags &= ~SLAUNCH_FLAG;
+
+	/*
 	 * Currently only Intel TXT is supported for Secure Launch. Testing
 	 * this value also indicates that the kernel was booted successfully
 	 * through the Secure Launch entry point and is in SMX mode.
@@ -443,9 +449,13 @@ asmlinkage __visible void sl_main(void *bootparams)
 	if (tpm_log_ver == SL_TPM20_LOG)
 		sl_find_event_log_algorithms();
 
-	/* Sanitize them before measuring */
+	/*
+ 	 * Sanitize them before measuring. Set the SLAUNCH_FLAG early since if
+ 	 * anything fails, the system will reset anyway.
+ 	 */
 	boot_params = (struct boot_params *)bootparams;
 	sanitize_boot_params(boot_params);
+	bp->hdr.loadflags |= SLAUNCH_FLAG;
 
 	/* Place event log NO_ACTION tags before and after measurements */
 	sl_tpm_extend_evtlog(17, TXT_EVTYPE_SLAUNCH_START, NULL, 0, "");
