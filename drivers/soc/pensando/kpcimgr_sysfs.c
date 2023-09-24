@@ -267,7 +267,7 @@ void kpcimgr_sysfs_setup(struct platform_device *pfdev)
 	}
 
 	if (sysfs_create_link(kernel_kobj, &pfdev->dev.kobj, "kpcimgr")) {
-		pr_err("KPCIMGR: failed top create sysfs link\n");
+		pr_err("KPCIMGR: failed to create sysfs link\n");
 		return;
 	}
 }

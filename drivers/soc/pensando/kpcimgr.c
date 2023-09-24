@@ -804,8 +804,8 @@ static int kpcimgr_probe(struct platform_device *pfdev)
 	}
 
 	ks->upcall = (void *)kpcimgr_upcall;
+	ks->mod = NULL;
 	if (ks->valid == KSTATE_MAGIC && ks->running) {
-		ks->mod = NULL;
 		kpcimgr_start_running();
 		kpcimgr_normal_poll();
 		pr_err("KPCIMGR: initialized and running.\n");
