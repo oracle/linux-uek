@@ -22,6 +22,7 @@
 #include <linux/smp.h>
 #include <linux/cpu.h>
 #include <linux/io.h>
+#include <linux/slaunch.h>
 #include <linux/syscore_ops.h>
 #include <linux/pgtable.h>
 #ifndef __GENKSYMS__
@@ -2340,6 +2341,7 @@ void cpu_init_secondary(void)
 	 * on this CPU in cpu_init_exception_handling().
 	 */
 	cpu_init_exception_handling();
+	slaunch_setup_skinit();
 	cpu_init();
 	fpu__init_cpu();
 }

@@ -818,6 +818,15 @@ wakeup_secondary_cpu_via_init(int phys_apicid, unsigned long start_eip)
 		apic_read(APIC_ESR);
 	}
 
+	/*
+	 * If this is an SKINIT secure launch, #INIT is already done on the APs
+	 * by issuing the SKINIT instruction. For security reasons #INIT
+	 * should not be done again.
+	 */
+	if ((slaunch_get_flags() & (SL_FLAG_ACTIVE|SL_FLAG_ARCH_SKINIT)) ==
+	    (SL_FLAG_ACTIVE|SL_FLAG_ARCH_SKINIT))
+		goto skip_init;
+
 	pr_debug("Asserting INIT\n");
 
 	/*
@@ -844,6 +853,8 @@ wakeup_secondary_cpu_via_init(int phys_apicid, unsigned long start_eip)
 	send_status = safe_apic_wait_icr_idle();
 
 	mb();
+
+skip_init:
 
 	/*
 	 * Should we send STARTUP IPIs ?

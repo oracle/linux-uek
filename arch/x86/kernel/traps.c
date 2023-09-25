@@ -39,6 +39,7 @@
 #include <linux/io.h>
 #include <linux/hardirq.h>
 #include <linux/atomic.h>
+#include <linux/slaunch.h>
 
 #include <asm/stacktrace.h>
 #include <asm/processor.h>
@@ -1233,5 +1234,9 @@ void __init trap_init(void)
 	cpu_init_exception_handling();
 	/* Setup traps as cpu_init() might #GP */
 	idt_setup_traps();
+
+	/* If SKINIT was done on the BSP, this is the spot to enable GIF */
+	slaunch_setup_skinit();
+
 	cpu_init();
 }

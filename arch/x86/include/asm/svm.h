@@ -521,6 +521,7 @@ struct vmcb {
 
 #define SVM_CPUID_FUNC 0x8000000a
 
+#define SVM_VM_CR_INIT_REDIRECTION 1
 #define SVM_VM_CR_SVM_DISABLE 4
 
 #define SVM_SELECTOR_S_SHIFT 4
