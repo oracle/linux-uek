@@ -144,6 +144,8 @@
 #define SL_ERROR_TPM_NUMBER_ALGS	0xc000801f
 #define SL_ERROR_TPM_UNKNOWN_DIGEST	0xc0008020
 #define SL_ERROR_TPM_INVALID_EVENT	0xc0008021
+#define SL_ERROR_MISSING_EVENT_LOG	0xc0008022
+#define SL_ERROR_MAP_SETUP_DATA		0xc0008023
 
 /*
  * Secure Launch Defined Limits
@@ -177,6 +179,7 @@
 
 #ifndef __ASSEMBLY__
 
+#include <asm/bootparam.h>
 #include <linux/io.h>
 #include <linux/tpm.h>
 #include <linux/tpm_eventlog.h>
@@ -336,9 +339,25 @@ struct smx_rlp_mle_join {
 	u32 rlp_entry_point; /* phys addr */
 } __packed;
 
+/* The TCG original Spec ID structure defined for TPM 1.2 */
+#define TCG_SPECID_SIG00 "Spec ID Event00"
+
+struct tpm12_tcg_specid_event_head {
+	char signature[16];
+	u32  platform_class;
+	u8   spec_ver_minor;
+	u8   spec_ver_major;
+	u8   errata;
+	u8   uintn_size;	/* reserved (must be 0) for 1.21 */
+	u8   vendor_info_size;
+	/* vendor_info[]; */
+} __packed;
+
 /*
- * TPM event log structures defined in both the TXT specification and
- * the TCG documentation.
+ * TPM event log structures defined by the TXT specification derived
+ * from the TCG documentation. For TXT this is setup as the conainter
+ * header. On AMD this header is embedded in to vendor information
+ * after the TCG spec ID header.
  */
 #define TPM12_EVTLOG_SIGNATURE "TXT Event Container"
 
@@ -353,6 +372,66 @@ struct tpm12_event_log_header {
 	u32 pcr_events_offset;
 	u32 next_event_offset;
 	/* PCREvents[] */
+} __packed;
+
+/* TPM Event Log Size Macros */
+#define TCG_PCClientSpecIDEventStruct_SIZE 			\
+		(sizeof(struct tpm12_tcg_specid_event_head))
+#define TCG_EfiSpecIdEvent_SIZE(n) \
+		((n) * sizeof(struct tcg_efi_specid_event_algs)	\
+		 + sizeof(struct tcg_efi_specid_event_head)	\
+		 + sizeof(u8) /* vendorInfoSize */)
+#define TPM20_HASH_COUNT(base) (*((u32 *)(base)			\
+		+ (offsetof(struct tcg_efi_specid_event_head, num_algs) >> 2)))
+
+/* AMD Specific Structures and Definitions */
+struct sl_header {
+	u16 skl_entry_point;
+	u8 reserved[64];
+	u16 bootloader_data_offset;
+	u16 skl_info_offset;
+} __packed;
+
+#define SKL_TAG_CLASS_MASK	0xF0
+
+/* Tags with no particular class */
+#define SKL_TAG_NO_CLAS		0x00
+#define SKL_TAG_END		0x00
+#define SKL_TAG_SETUP_INDIRECT	0x01
+#define SKL_TAG_TAGS_SIZE	0x0F	/* Always first */
+
+/* Tags specifying kernel type */
+#define SKL_TAG_BOOT_CLASS	0x10
+#define SKL_TAG_BOOT_LINUX	0x10
+#define SKL_TAG_BOOT_MB2	0x11
+
+/* Tags specific to TPM event log */
+#define SKL_TAG_EVENT_LOG_CLASS	0x20
+#define SKL_TAG_EVENT_LOG	0x20
+#define SKL_TAG_SKL_HASH	0x21
+
+struct skl_tag_hdr {
+	u8 type;
+	u8 len;
+} __packed;
+
+struct skl_tag_tags_size {
+	struct skl_tag_hdr hdr;
+	u16 size;
+} __packed;
+
+struct skl_tag_setup_indirect {
+	struct skl_tag_hdr hdr;
+	/* type = SETUP_INDIRECT */
+	struct setup_data data;
+	/* type = SETUP_INDIRECT | SETUP_SECURE_LAUNCH */
+	struct setup_indirect indirect;
+} __packed;
+
+struct skl_tag_evtlog {
+	struct skl_tag_hdr hdr;
+	u32 address;
+	u32 size;
 } __packed;
 
 /*
@@ -422,6 +501,32 @@ static inline void *txt_sinit_mle_data_start(void *heap)
 	return heap + txt_bios_data_size(heap) +
 		txt_os_mle_data_size(heap) +
 		txt_sinit_mle_data_size(heap) + sizeof(u64);
+}
+
+/*
+ * SKINIT specific event logging.
+ */
+static inline u64 skinit_find_event_log(void *skl_base, u32 *evtlog_size)
+{
+	struct sl_header *sl_hdr = skl_base;
+	struct skl_tag_tags_size *t = skl_base + sl_hdr->bootloader_data_offset;
+	struct skl_tag_evtlog *t_log = (struct skl_tag_evtlog *)t;
+	void *end = (void *)t + t->size;
+
+	*evtlog_size = 0;
+
+	while ((void *)t_log < end
+	       && t_log->hdr.type != SKL_TAG_EVENT_LOG
+	       && t_log->hdr.type != SKL_TAG_END) {
+		t_log = (void *)t_log + t_log->hdr.len;
+	}
+
+	if (t_log->hdr.type != SKL_TAG_EVENT_LOG)
+		return 0;
+
+	*evtlog_size = t_log->size;
+
+	 return (u64)t_log->address;
 }
 
 /*
@@ -510,11 +615,13 @@ extern u32 slaunch_get_cpu_type(void);
  * External functions avalailable in mainline kernel.
  */
 extern void slaunch_setup_txt(void);
+extern void slaunch_setup_skinit(void);
 extern u32 slaunch_get_flags(void);
 extern struct sl_ap_wake_info *slaunch_get_ap_wake_info(void);
 extern struct acpi_table_header *slaunch_get_dmar_table(struct acpi_table_header *dmar);
 extern void __noreturn slaunch_txt_reset(void __iomem *txt,
 					 const char *msg, u64 error);
+extern void __noreturn slaunch_skinit_reset(const char *msg, u64 error);
 extern void slaunch_finalize(int do_sexit);
 
 #endif /* !__ASSEMBLY */
@@ -523,6 +630,7 @@ extern void slaunch_finalize(int do_sexit);
 
 #define slaunch_get_cpu_type()		0
 #define slaunch_setup_txt()		do { } while (0)
+#define slaunch_setup_skinit()		do { } while (0)
 #define slaunch_get_flags()		0
 #define slaunch_get_dmar_table(d)	(d)
 #define slaunch_finalize(d)		do { } while (0)
