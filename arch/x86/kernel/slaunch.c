@@ -478,6 +478,16 @@ void slaunch_finalize(int do_sexit)
 	void __iomem *config;
 	u64 one = TXT_REGVALUE_ONE, val;
 
+	/* AMD CPUs */
+	if (boot_cpu_has(X86_FEATURE_SKINIT)) {
+		if ((slaunch_get_flags() & (SL_FLAG_ACTIVE |
+						SL_FLAG_ARCH_SKINIT)) ==
+			(SL_FLAG_ACTIVE | SL_FLAG_ARCH_SKINIT)) {
+			slaunch_psp_finalize();
+		}
+		return;
+	}
+
 	if ((slaunch_get_flags() & (SL_FLAG_ACTIVE|SL_FLAG_ARCH_TXT)) !=
 	    (SL_FLAG_ACTIVE|SL_FLAG_ARCH_TXT))
 		return;

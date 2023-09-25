@@ -22,6 +22,7 @@
 #include <linux/kmemleak.h>
 #include <linux/iopoll.h>
 #include <linux/cc_platform.h>
+#include <linux/slaunch.h>
 #include <asm/pci-direct.h>
 #include <asm/iommu.h>
 #include <asm/apic.h>
@@ -3220,6 +3221,10 @@ int __init amd_iommu_enable(void)
 	ret = iommu_go_to_state(IOMMU_ENABLED);
 	if (ret)
 		return ret;
+
+#if IS_ENABLED(CONFIG_SECURE_LAUNCH)
+	slaunch_psp_setup();
+#endif
 
 	irq_remapping_enabled = 1;
 	return amd_iommu_xt_mode;

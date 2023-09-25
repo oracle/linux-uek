@@ -624,6 +624,9 @@ extern void __noreturn slaunch_txt_reset(void __iomem *txt,
 extern void __noreturn slaunch_skinit_reset(const char *msg, u64 error);
 extern void slaunch_finalize(int do_sexit);
 
+extern void slaunch_psp_setup(void);
+extern void slaunch_psp_finalize(void);
+
 #endif /* !__ASSEMBLY */
 
 #else
