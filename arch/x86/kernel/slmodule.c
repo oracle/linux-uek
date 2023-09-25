@@ -24,8 +24,17 @@
 #include <linux/memblock.h>
 #include <asm/segment.h>
 #include <asm/sections.h>
+#include <asm/setup.h>
 #include <crypto/sha2.h>
 #include <linux/slaunch.h>
+
+#define slaunch_reset(t, m, e)					\
+	do {							\
+		if (t)						\
+			slaunch_txt_reset(t, m, e);		\
+		else						\
+			slaunch_skinit_reset(m, e);		\
+	} while (0);
 
 #define SL_FS_ENTRIES		10
 /* root directory node must be last */
@@ -88,6 +97,7 @@ struct memfile {
 
 static struct memfile sl_evtlog = {"eventlog", 0, 0};
 static void *txt_heap;
+static void *skinit_evtlog;
 static struct txt_heap_event_log_pointer2_1_element __iomem *evtlog20;
 static DEFINE_MUTEX(sl_evt_log_mutex);
 
@@ -244,10 +254,17 @@ static void slaunch_teardown_securityfs(void)
 			memunmap(txt_heap);
 			txt_heap = NULL;
 		}
+	} else if (slaunch_get_flags() & SL_FLAG_ARCH_SKINIT) {
+		if (skinit_evtlog) {
+			memunmap(skinit_evtlog);
+			skinit_evtlog = NULL;
+		}
+		sl_evtlog.addr = NULL;
+		sl_evtlog.size = 0;
 	}
 }
 
-static void slaunch_intel_evtlog(void __iomem *txt)
+static void slaunch_txt_evtlog(void __iomem *txt)
 {
 	struct txt_os_mle_data *params;
 	void *os_sinit_data;
@@ -293,6 +310,88 @@ static void slaunch_intel_evtlog(void __iomem *txt)
 			SL_ERROR_TPM_INVALID_LOG20);
 }
 
+static void slaunch_skinit_evtlog(void)
+{
+	u64 pa_data, pa_evtlog;
+	struct setup_data *data;
+	struct setup_indirect *ind = NULL;
+	void *lz_base;
+	u32 evtlog_size;
+
+	pa_data = (u64)boot_params.hdr.setup_data;
+
+	while (pa_data) {
+		data = (struct setup_data *)memremap(pa_data, sizeof(*data),
+						     MEMREMAP_WB);
+		if (!data)
+			slaunch_skinit_reset(
+				"Error failed to memremap setup data\n",
+				SL_ERROR_MAP_SETUP_DATA);
+
+		if (data->type == SETUP_INDIRECT) {
+			ind = (struct setup_indirect *)
+				memremap(pa_data + offsetof(struct setup_data, data),
+					 sizeof(*ind), MEMREMAP_WB);
+
+			if (!ind)
+				slaunch_skinit_reset(
+					"Error failed to memremap setup ind\n",
+					SL_ERROR_MAP_SETUP_DATA);
+			if (ind->type == (SETUP_INDIRECT|SETUP_SECURE_LAUNCH))
+				break;
+
+			memunmap(ind);
+			ind = NULL;
+		}
+
+		pa_data = data->next;
+		memunmap(data);
+	}
+
+	if (!ind)
+		slaunch_skinit_reset("Error failed to find TPM event log\n",
+			SL_ERROR_MISSING_EVENT_LOG);
+
+	lz_base = memremap(ind->addr, ind->len, MEMREMAP_WB);
+	if (!lz_base)
+		slaunch_skinit_reset("Error failed to memremap LZ base\n",
+			SL_ERROR_EVENTLOG_MAP);
+	memunmap(ind);
+
+	pa_evtlog = skinit_find_event_log(lz_base, &evtlog_size);
+	if (!pa_evtlog)
+		slaunch_skinit_reset("Error failed to find TPM event log tag\n",
+			SL_ERROR_MISSING_EVENT_LOG);
+	memunmap(lz_base);
+
+	/* Finally map the actual event log and find the proper offsets */
+	skinit_evtlog = memremap(pa_evtlog, evtlog_size, MEMREMAP_WB);
+	if (!skinit_evtlog)
+		slaunch_skinit_reset("Error failed to memremap TMP event log\n",
+			SL_ERROR_EVENTLOG_MAP);
+
+	sl_evtlog.size = evtlog_size;
+	sl_evtlog.addr = skinit_evtlog;
+
+	/*
+	 * See the comment for the following function concerning the
+	 * the logic used here:
+	 * arch/x86/boot/compressed/sl_main.c:sl_find_event_log()
+	 */
+	if (!memcmp(skinit_evtlog + sizeof(struct tcg_pcr_event),
+		    TCG_SPECID_SIG, sizeof(TCG_SPECID_SIG))) {
+		evtlog20 = skinit_evtlog + sizeof(struct tcg_pcr_event)
+			+ TCG_EfiSpecIdEvent_SIZE(
+			  TPM20_HASH_COUNT(skinit_evtlog
+				+ sizeof(struct tcg_pcr_event)));
+	} else {
+		sl_evtlog.addr += sizeof(struct tcg_pcr_event)
+			+ TCG_PCClientSpecIDEventStruct_SIZE;
+		sl_evtlog.size -= sizeof(struct tcg_pcr_event)
+			+ TCG_PCClientSpecIDEventStruct_SIZE;
+	}
+}
+
 static void slaunch_tpm20_extend_event(struct tpm_chip *tpm, void __iomem *txt,
 				       struct tcg_pcr_event2_head *event)
 {
@@ -306,7 +405,7 @@ static void slaunch_tpm20_extend_event(struct tpm_chip *tpm, void __iomem *txt,
 	digests = kcalloc(tpm->nr_allocated_banks, sizeof(*digests),
 			  GFP_KERNEL);
 	if (!digests)
-		slaunch_txt_reset(txt,
+		slaunch_reset(txt,
 			"Failed to allocate array of digests\n",
 			SL_ERROR_GENERIC);
 
@@ -343,7 +442,7 @@ static void slaunch_tpm20_extend_event(struct tpm_chip *tpm, void __iomem *txt,
 	ret = tpm_pcr_extend(tpm, event->pcr_idx, digests);
 	if (ret) {
 		pr_err("Error extending TPM20 PCR, result: %d\n", ret);
-		slaunch_txt_reset(txt,
+		slaunch_reset(txt,
 			"Failed to extend TPM20 PCR\n",
 			SL_ERROR_TPM_EXTEND);
 	}
@@ -366,7 +465,7 @@ static void slaunch_tpm20_extend(struct tpm_chip *tpm, void __iomem *txt)
 	while ((void  *)event < sl_evtlog.addr + evtlog20->next_record_offset) {
 		size = __calc_tpm2_event_size(event, event_header, false);
 		if (!size)
-			slaunch_txt_reset(txt,
+			slaunch_reset(txt,
 				"TPM20 invalid event in event log\n",
 				SL_ERROR_TPM_INVALID_EVENT);
 
@@ -390,7 +489,7 @@ next:
 	}
 
 	if (!start || !end)
-		slaunch_txt_reset(txt,
+		slaunch_reset(txt,
 			"Missing start or end events for extending TPM20 PCRs\n",
 			SL_ERROR_TPM_EXTEND);
 }
@@ -429,7 +528,7 @@ static void slaunch_tpm12_extend(struct tpm_chip *tpm, void __iomem *txt)
 			ret = tpm_pcr_extend(tpm, event->pcr_idx, &digest);
 			if (ret) {
 				pr_err("Error extending TPM12 PCR, result: %d\n", ret);
-				slaunch_txt_reset(txt,
+				slaunch_reset(txt,
 					"Failed to extend TPM12 PCR\n",
 					SL_ERROR_TPM_EXTEND);
 			}
@@ -440,7 +539,7 @@ next:
 	}
 
 	if (!start || !end)
-		slaunch_txt_reset(txt,
+		slaunch_reset(txt,
 			"Missing start or end events for extending TPM12 PCRs\n",
 			SL_ERROR_TPM_EXTEND);
 }
@@ -451,7 +550,7 @@ static void slaunch_pcr_extend(void __iomem *txt)
 
 	tpm = tpm_default_chip();
 	if (!tpm)
-		slaunch_txt_reset(txt,
+		slaunch_reset(txt,
 			"Could not get default TPM chip\n",
 			SL_ERROR_TPM_INIT);
 	if (evtlog20)
@@ -465,21 +564,31 @@ static int __init slaunch_module_init(void)
 	void __iomem *txt;
 
 	/* Check to see if Secure Launch happened */
-	if ((slaunch_get_flags() & (SL_FLAG_ACTIVE|SL_FLAG_ARCH_TXT)) !=
-	    (SL_FLAG_ACTIVE|SL_FLAG_ARCH_TXT))
+	if (!(slaunch_get_flags() & SL_FLAG_ACTIVE))
 		return 0;
 
-	txt = ioremap(TXT_PRIV_CONFIG_REGS_BASE, TXT_NR_CONFIG_PAGES *
-		      PAGE_SIZE);
-	if (!txt)
-		panic("Error ioremap of TXT priv registers\n");
+	if (slaunch_get_flags() & SL_FLAG_ARCH_TXT) {
+		txt = ioremap(TXT_PRIV_CONFIG_REGS_BASE, TXT_NR_CONFIG_PAGES *
+			      PAGE_SIZE);
+		if (!txt)
+			panic("Error ioremap of TXT priv registers\n");
 
-	/* Only Intel TXT is supported at this point */
-	slaunch_intel_evtlog(txt);
+		/* Only Intel TXT is supported at this point */
+		slaunch_txt_evtlog(txt);
 
-	slaunch_pcr_extend(txt);
+		slaunch_pcr_extend(txt);
 
-	iounmap(txt);
+		iounmap(txt);
+
+		pr_info("TXT Secure Launch module setup\n");
+	} else if (slaunch_get_flags() & SL_FLAG_ARCH_SKINIT) {
+		slaunch_skinit_evtlog();
+
+		slaunch_pcr_extend(NULL);
+
+		pr_info("SKINIT Secure Launch module setup\n");
+	} else
+		panic("Secure Launch unknown architecture\n");
 
 	return slaunch_expose_securityfs();
 }

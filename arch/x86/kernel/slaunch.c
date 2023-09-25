@@ -538,6 +538,15 @@ void slaunch_finalize(int do_sexit)
 	pr_emerg("TXT SEXIT complete.");
 }
 
+void __noreturn slaunch_skinit_reset(const char *msg, u64 error)
+{
+	pr_err("%s - error: 0x%llx", msg, error);
+
+	asm volatile ("ud2");
+
+	unreachable();
+}
+
 /*
  * AMD specific SKINIT CPU setup and initialization.
  */
