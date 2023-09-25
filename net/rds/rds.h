@@ -1454,6 +1454,7 @@ struct rds_message *rds_send_get_message(struct rds_connection *,
 					 struct rm_rdma_op *);
 int rds_send_internal(struct rds_connection *conn, struct rds_sock *rs,
 		      struct sk_buff *skb, gfp_t gfp);
+int rds_get_pending_sends(struct rds_sock *rs);
 
 extern unsigned int rds_async_send_enabled;
 
