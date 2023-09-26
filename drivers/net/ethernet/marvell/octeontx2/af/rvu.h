@@ -771,6 +771,16 @@ static inline bool is_cn10ka_a1(struct rvu *rvu)
 	return false;
 }
 
+static inline bool is_cn10ka_b0(struct rvu *rvu)
+{
+	struct pci_dev *pdev = rvu->pdev;
+
+	if (pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_A &&
+	    (pdev->revision & 0x0F) == 0x4)
+		return true;
+	return false;
+}
+
 static inline bool is_cn10kb_a0(struct rvu *rvu)
 {
 	struct pci_dev *pdev = rvu->pdev;

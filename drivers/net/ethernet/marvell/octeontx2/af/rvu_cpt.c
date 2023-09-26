@@ -483,6 +483,11 @@ int rvu_mbox_handler_cpt_lf_alloc(struct rvu *rvu,
 				val |= (CPT_CTX_ILEN << 17);
 		}
 
+		if (req->rxc_ena && slot == req->rxc_ena_lf_id) {
+			if (is_cn10ka_b0(rvu) || is_cn10kb(rvu))
+				val |= BIT_ULL(12) | BIT_ULL(11);
+		}
+
 		rvu_write64(rvu, blkaddr, CPT_AF_LFX_CTL(cptlf), val);
 
 		/* Set CPT LF NIX_PF_FUNC and SSO_PF_FUNC. EXE_LDWB is set
