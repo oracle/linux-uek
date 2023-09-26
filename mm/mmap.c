@@ -1802,7 +1802,7 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 			return -ENOMEM;
 	}
 
-#if VA_RSVD_RETAIN
+#if VM_RSVD_VA
 	/*
 	 * Before clearing old maps, double check if this mapping is
 	 * part of a reserved VA range and should not be released,
@@ -1811,7 +1811,7 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	while (vma) {
 		if (vma->vm_start > (addr + len))
 			break;
-		if ((vma->vm_flags & VA_RSVD_RETAIN) == VA_RSVD_RETAIN) {
+		if (vma->vm_flags & VM_RSVD_VA) {
 			rsvd_va = 1;
 			vma->vm_flags |= VM_RSVD_NORELINK;
 		}
