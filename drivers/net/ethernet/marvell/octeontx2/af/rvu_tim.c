@@ -382,6 +382,9 @@ int rvu_mbox_handler_tim_enable_ring(struct rvu *rvu,
 	if (regval & TIM_AF_RINGX_CTL1_ENA)
 		return TIM_AF_RING_STILL_RUNNING;
 
+	regval = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL0(lf));
+	intvl = regval & GENMASK_ULL(31, 0);
+
 	/* Enable, the ring. */
 	regval = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf));
 	/* Get the clock source. */
@@ -402,6 +405,7 @@ int rvu_mbox_handler_tim_enable_ring(struct rvu *rvu,
 		mb();
 		start_cyc = rvu_read64(rvu, blkaddr, clk_src);
 		rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf), regval);
+		regval = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf));
 		regval = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL0(lf));
 		end_cyc = rvu_read64(rvu, blkaddr, clk_src);
 		/* Make sure that above reads and writes complete. */
@@ -409,7 +413,8 @@ int rvu_mbox_handler_tim_enable_ring(struct rvu *rvu,
 		low = end_cyc & GENMASK_ULL(31, 0);
 		start_cyc >>= 32;
 		end_cyc >>= 32;
-		if (start_cyc - end_cyc) {
+		if (start_cyc - end_cyc || (low > (regval >> 32)) ||
+		    regval == intvl) {
 			regval = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf));
 			regval &= ~TIM_AF_RINGX_CTL1_ENA;
 			rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf), regval);
@@ -417,6 +422,7 @@ int rvu_mbox_handler_tim_enable_ring(struct rvu *rvu,
 			rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL0(lf),
 				    regval & GENMASK_ULL(31, 0));
 			regval = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf));
+			start_cyc += end_cyc;
 		}
 	} while ((start_cyc - end_cyc) && retries--);
 
@@ -426,8 +432,6 @@ int rvu_mbox_handler_tim_enable_ring(struct rvu *rvu,
 	expiry = regval >> 32;
 	intvl = regval & GENMASK_ULL(31, 0);
 	rsp->timestarted = (start_cyc << 32) | expiry;
-	if (low > expiry)
-		rsp->timestarted += BIT_ULL(32);
 	rsp->timestarted -= intvl;
 	rsp->currentbucket = 0;
 
