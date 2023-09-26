@@ -19122,6 +19122,14 @@ S:	Maintained
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/jikos/trivial.git
 K:	^Subject:.*(?i)trivial
 
+TRUSTED SECURITY MODULE (TSM) ATTESTATION REPORTS
+M:	Dan Williams <dan.j.williams@intel.com>
+L:	linux-coco@lists.linux.dev
+S:	Maintained
+F:	Documentation/ABI/testing/configfs-tsm
+F:	drivers/virt/coco/tsm.c
+F:	include/linux/tsm.h
+
 TTY LAYER
 M:	Greg Kroah-Hartman <gregkh@linuxfoundation.org>
 M:	Jiri Slaby <jirislaby@kernel.org>
