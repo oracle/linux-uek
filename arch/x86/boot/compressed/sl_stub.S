@@ -18,7 +18,7 @@
 #include <linux/slaunch.h>
 
 /* CPUID: leaf 1, ECX, SMX feature bit */
-#define X86_FEATURE_BIT_SMX	6
+#define X86_FEATURE_BIT_SMX	(1 << 6)
 
 /* Can't include apiddef.h in asm */
 #define XAPIC_ENABLE	(1 << 11)
