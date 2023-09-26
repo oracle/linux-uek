@@ -3009,6 +3009,9 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	if (!detach_vmas_to_be_unmapped(mm, vma, prev, end))
 		downgrade = false;
 
+	if (rsvd_va)
+		install_rsvd_mapping(mm, prev, rsvd_start,
+					(rsvd_end - rsvd_start));
 	if (downgrade)
 		mmap_write_downgrade(mm);
 
@@ -3016,9 +3019,6 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 
 	/* Fix up all other VM information */
 	remove_vma_list(mm, vma);
-	if (rsvd_va)
-		install_rsvd_mapping(mm, prev, rsvd_start,
-					(rsvd_end - rsvd_start));
 
 	return downgrade ? 1 : 0;
 }
