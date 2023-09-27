@@ -6608,7 +6608,7 @@ fail_alloc:
 	return err;
 }
 
-static int mlxplat_remove(struct platform_device *pdev)
+static void mlxplat_remove(struct platform_device *pdev)
 {
 	struct mlxplat_priv *priv = platform_get_drvdata(mlxplat_dev);
 
@@ -6618,7 +6618,6 @@ static int mlxplat_remove(struct platform_device *pdev)
 		unregister_reboot_notifier(mlxplat_reboot_nb);
 	mlxplat_i2c_main_exit(priv);
 	mlxplat_post_exit();
-	return 0;
 }
 
 static const struct acpi_device_id mlxplat_acpi_table[] = {
@@ -6634,7 +6633,7 @@ static struct platform_driver mlxplat_driver = {
 		.probe_type = PROBE_FORCE_SYNCHRONOUS,
 	},
 	.probe		= mlxplat_probe,
-	.remove		= mlxplat_remove,
+	.remove_new	= mlxplat_remove,
 };
 
 static int __init mlxplat_init(void)
