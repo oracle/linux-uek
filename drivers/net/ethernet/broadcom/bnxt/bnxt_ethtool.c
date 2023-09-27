@@ -2275,6 +2275,13 @@ int bnxt_flash_package_from_file(struct net_device *dev, const char *filename,
 	int rc = 0;
 	u16 index;
 
+	rc = request_firmware(&fw, filename, &dev->dev);
+	if (rc != 0) {
+		netdev_err(dev, "PKG error %d requesting file: %s\n",
+				rc, filename);
+		return rc;
+	}
+
 	bnxt_hwrm_fw_set_time(bp);
 
 	bnxt_hwrm_cmd_hdr_init(bp, &modify, HWRM_NVM_MODIFY, -1, -1);
@@ -2292,8 +2299,10 @@ int bnxt_flash_package_from_file(struct net_device *dev, const char *filename,
 		else
 			break;
 	}
-	if (!kmem)
+	if (!kmem){
+		release_firmware(fw);
 		return -ENOMEM;
+	}
 
 	modify.host_src_addr = cpu_to_le64(dma_handle);
 
@@ -2313,13 +2322,6 @@ int bnxt_flash_package_from_file(struct net_device *dev, const char *filename,
 			netdev_err(dev, "PKG update area not created in nvram\n");
 			break;
 		}
-
-		rc = request_firmware(&fw, filename, &dev->dev);
-                if (rc != 0) {
-                        netdev_err(dev, "PKG error %d requesting file: %s\n",
-                                   rc, filename);
-                        return rc;
-                }
 
 		if (fw->size > item_len) {
 			netdev_err(dev, "PKG insufficient update area in nvram: %lu\n",
@@ -2348,7 +2350,6 @@ int bnxt_flash_package_from_file(struct net_device *dev, const char *filename,
 				goto pkg_abort;
 			copied += len;
 		}
-		release_firmware(fw);
 		mutex_lock(&bp->hwrm_cmd_lock);
 		rc = _hwrm_send_message_silent(bp, &install, sizeof(install),
 					       INSTALL_PACKAGE_TIMEOUT);
@@ -2402,6 +2403,7 @@ pkg_abort:
 	}
 	if (rc == -EACCES)
 		bnxt_print_admin_err(bp);
+	release_firmware(fw);
 	return rc;
 }
 
