@@ -451,10 +451,12 @@ static void unmap_resources(void)
 	}
 }
 
+static struct resource kstate_res;
+
 static int map_resources(struct platform_device *pfdev)
 {
 	struct device_node *dn = pfdev->dev.of_node;
-	u32 shmem_idx, hwmem_idx;
+	u32 shmem_idx, hwmem_idx, kstate_idx;
 	struct resource res;
 	kstate_t *ks;
 	void *shmem;
@@ -479,6 +481,19 @@ static int map_resources(struct platform_device *pfdev)
 		return -ENOMEM;
 	}
 
+	/* if no kstate index, fall back to old scheme */
+	err = of_property_read_u32(dn, "kstate-index", &kstate_idx);
+	if (err) {
+		pr_err("KPCIMGR: using default kstate offset\n");
+		kstate_res.start = res.start + COMPAT_SHMEM_KSTATE_OFFSET;
+	} else {
+		err = of_address_to_resource(dn, kstate_idx, &kstate_res);
+		if (err) {
+			pr_err("KPCIMGR: no kstate resource\n");
+			return -ENOMEM;
+		}
+	}
+
 	if (res.start == 0) {
 		/* indicates no persistent memory */
 		pr_info("KPCIMGR: no persistent memory\n");
@@ -496,17 +511,13 @@ static int map_resources(struct platform_device *pfdev)
 		ks->shmembase = 0;
 		ks->shmem_size = resource_size(&res);
 	} else {
-		if (resource_size(&res) > SHMEM_KSTATE_OFFSET) {
-			pr_err("KPCIMGR: shmem size overlaps kstate\n");
-			return -ENODEV;
-		}
 		shmem = ioremap(res.start, resource_size(&res));
 		if (shmem == NULL) {
 			pr_err("KPCIMGR: failed to map shmem\n");
 			return -ENODEV;
 		}
 
-		ks = ioremap(res.start + SHMEM_KSTATE_OFFSET, sizeof(kstate_t));
+		ks = ioremap(kstate_res.start, sizeof(kstate_t));
 		if (ks == NULL) {
 			pr_err("KPCIMGR: failed to map kstate\n");
 			iounmap(shmem);
@@ -521,9 +532,9 @@ static int map_resources(struct platform_device *pfdev)
 		ks->shmembase = res.start;
 		ks->shmem_size = resource_size(&res);
 		pr_info("KPCIMGR: kstate mapped %llx at %lx\n",
-			res.start + SHMEM_KSTATE_OFFSET, (long)ks);
+			kstate_res.start, (long)ks);
 
-		ks->persistent_base = ioremap(res.start + KSTATE_CODE_OFFSET,
+		ks->persistent_base = ioremap(kstate_res.start + KSTATE_CODE_OFFSET,
 					      KSTATE_CODE_SIZE);
 		if (ks->persistent_base == NULL) {
 			pr_err("KPCIMGR: failed to map shmem code space\n");
@@ -559,7 +570,7 @@ static int map_resources(struct platform_device *pfdev)
 	for (i = 0; i < NUM_MEMRANGES; i++) {
 		struct mem_range_t *mr = &ks->mem_ranges[ks->nranges];
 
-		if (i == shmem_idx)
+		if (i == shmem_idx || i == kstate_idx)
 			continue;
 
 		err = of_address_to_resource(dn, i, &res);
@@ -855,11 +866,15 @@ builtin_platform_driver(kpcimgr_driver);
  * Called from arch/arm64/kernel/smp_spin_table.c
  * We choose the first cpu to arrive here. They will all try
  * concurrently, but only one will be hijacked and the rest
- * will go to their default holding pens.
+ * will go to their default holding pens. Since the physical
+ * address of kstate can no longer be derived from the physical
+ * address of shmem, we need to convey kstate_paddr directly
+ * to the holding pen function.
  */
 unsigned long kpcimgr_get_entry(unsigned long old_entry, unsigned int cpu)
 {
-	unsigned long (*entry_fn)(unsigned long entry, unsigned int cpu);
+	unsigned long (*entry_fn)(unsigned long entry, unsigned int cpu,
+				  unsigned long kstate_paddr);
 	static DEFINE_SPINLOCK(choose_cpu_lock);
 	kstate_t *ks = get_kstate();
 	unsigned long entry;
@@ -871,7 +886,7 @@ unsigned long kpcimgr_get_entry(unsigned long old_entry, unsigned int cpu)
 	entry_fn = ks->code_base + ks->code_offsets[K_ENTRY_HOLDING_PEN];
 
 	spin_lock(&choose_cpu_lock);
-	entry = entry_fn(old_entry, cpu);
+	entry = entry_fn(old_entry, cpu, kstate_res.start);
 	spin_unlock(&choose_cpu_lock);
 
 	return entry;
