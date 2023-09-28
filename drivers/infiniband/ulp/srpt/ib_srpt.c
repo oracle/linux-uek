@@ -3934,6 +3934,9 @@ static const struct target_core_fabric_ops srpt_template = {
 	.tfc_wwn_attrs			= srpt_wwn_attrs,
 	.tfc_tpg_base_attrs		= srpt_tpg_attrs,
 	.tfc_tpg_attrib_attrs		= srpt_tpg_attrib_attrs,
+
+	.default_submit_type		= TARGET_DIRECT_SUBMIT,
+	.direct_submit_supp		= 1,
 };
 
 /**
