@@ -278,9 +278,6 @@ EXPORT_SYMBOL(sysctl_optmem_max);
 
 int sysctl_tstamp_allow_data __read_mostly = 1;
 
-int sysctl_macsec_async __read_mostly = 1;
-EXPORT_SYMBOL(sysctl_macsec_async);
-
 DEFINE_STATIC_KEY_FALSE(memalloc_socks_key);
 EXPORT_SYMBOL_GPL(memalloc_socks_key);
 
