@@ -7,7 +7,7 @@
 %define _missing_doc_files_terminate_build      0
 %define _wrong_version_format_terminate_build   0
 
-Summary: Oracle Unbreakable Enterprise Kernel Release 7
+Summary: Oracle Unbreakable Enterprise Kernel Release 8
 
 # For a stable, released kernel, released_kernel should be 1. For rawhide
 # and/or a kernel built from an rc or git snapshot, released_kernel should
@@ -60,7 +60,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define stable_base %(echo $((%{stable_update} - 1)))
 %endif
 %endif
-%define rpmversion 5.15.%{base_sublevel}%{?stablerev}
+%define rpmversion 6.6.%{base_sublevel}%{?stablerev}
 
 ## The not-released-kernel case ##
 %else
@@ -71,7 +71,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 # The git snapshot level
 %define gitrev 0
 # Set rpm version accordingly
-%define rpmversion 5.15.%{upstream_sublevel}
+%define rpmversion 6.6.%{upstream_sublevel}
 %endif
 # Nb: The above rcrev and gitrev values automagically define Patch00 and Patch01 below.
 
@@ -177,7 +177,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %endif
 
 # The kernel tarball/base version
-%define kversion 5.15.%{base_sublevel}
+%define kversion 6.6.%{base_sublevel}
 
 %define make_target bzImage
 
@@ -404,6 +404,8 @@ BuildRequires: numactl-devel
 BuildRequires: dwarves >= 1.16
 BuildRequires: elfutils-libelf-devel
 BuildRequires: kernel-rpm-macros >= 185-11
+BuildRequires: libtraceevent
+BuildRequires: libtraceevent-devel
 %if %{with_sparse}
 BuildRequires: sparse >= 0.4.1
 %endif
@@ -630,6 +632,7 @@ Requires(pre): system-release\
 Requires(post): /usr/bin/kernel-install\
 Requires(preun): /usr/bin/kernel-install\
 Requires: numactl-libs\
+Requires: libtraceevent \
 Conflicts: %{kernel_dot_org_conflicts}\
 Conflicts: %{package_conflicts}\
 Conflicts: shim-x64 <= 15.3-1.0.5.el9\
@@ -845,18 +848,18 @@ ApplyPatch()
 
 # Update to latest upstream.
 %if 0%{?released_kernel}
-%define vanillaversion 5.15.%{base_sublevel}
+%define vanillaversion 6.6.%{base_sublevel}
 # non-released_kernel case
 %else
 %if 0%{?rcrev}
-%define vanillaversion 5.15.%{upstream_sublevel}-rc%{rcrev}
+%define vanillaversion 6.6.%{upstream_sublevel}-rc%{rcrev}
 %if 0%{?gitrev}
-%define vanillaversion 5.15.%{upstream_sublevel}-rc%{rcrev}-git%{gitrev}
+%define vanillaversion 6.6.%{upstream_sublevel}-rc%{rcrev}-git%{gitrev}
 %endif
 %else
 # pre-{base_sublevel+1}-rc1 case
 %if 0%{?gitrev}
-%define vanillaversion 5.15.%{base_sublevel}-git%{gitrev}
+%define vanillaversion 6.6.%{base_sublevel}-git%{gitrev}
 %endif
 %endif
 %endif
