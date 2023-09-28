@@ -1091,7 +1091,7 @@ static void vhost_scsi_target_queue_cmd(struct vhost_scsi_nexus *nexus,
 			       cmd->tvc_prot_sgl_count, GFP_KERNEL))
 		return;
 
-	target_queue_submission(se_cmd);
+	target_submit(se_cmd);
 }
 
 static void
