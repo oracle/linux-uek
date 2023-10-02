@@ -820,6 +820,8 @@ err_unmap:
 		mlx5e_page_release_fragmented(rq, frag_page);
 	}
 
+	bitmap_fill(wi->skip_release_bitmap, rq->mpwqe.pages_per_wqe);
+
 err:
 	rq->stats->buff_alloc_err++;
 
