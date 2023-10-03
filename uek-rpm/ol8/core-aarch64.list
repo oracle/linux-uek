@@ -295,6 +295,7 @@ kernel/fs/nfs/flexfilelayout/nfs_layout_flexfiles.ko
 kernel/fs/nfs/nfs.ko
 kernel/fs/nfs/nfsv3.ko
 kernel/fs/nfs/nfsv4.ko
+kernel/fs/nls/nls_ucs2_utils.ko
 kernel/fs/nls/nls_utf8.ko
 kernel/fs/ocfs2/cluster/ocfs2_nodemanager.ko
 kernel/fs/ocfs2/dlmfs/ocfs2_dlmfs.ko
