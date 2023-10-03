@@ -4,6 +4,7 @@
 /* SCTP tracking. */
 
 #include <uapi/linux/netfilter/nf_conntrack_sctp.h>
+#include <linux/uek_kabi.h>
 
 struct ip_ct_sctp {
 	enum sctp_conntrack state;
@@ -11,6 +12,7 @@ struct ip_ct_sctp {
 	__be32 vtag[IP_CT_DIR_MAX];
 	u8 last_dir;
 	u8 flags;
+	UEK_KABI_EXTEND(u8 init[IP_CT_DIR_MAX])
 };
 
 #endif /* _NF_CONNTRACK_SCTP_H */
