@@ -54,11 +54,11 @@ static inline void lfstack_push(union lfstack *stack, struct lfstack_el *el)
 	union lfstack old_v, new_v;
 
 	while (true) {
-		el->next = stack->first;
 		old_v.first = READ_ONCE(stack->first);
 		old_v.seq   = READ_ONCE(stack->seq);
+		el->next = old_v.first;
 		new_v.first = el;
-		new_v.seq   = stack->seq + 1;
+		new_v.seq   = old_v.seq + 1;
 		if (try_cmpxchg128(&stack->full, &old_v.full, new_v.full))
 			break;
 	}
@@ -73,11 +73,11 @@ static inline void lfstack_push_many(union lfstack *stack, struct lfstack_el *el
 	union lfstack old_v, new_v;
 
 	while (true) {
-		el_last->next = stack->first;
 		old_v.first = READ_ONCE(stack->first);
 		old_v.seq   = READ_ONCE(stack->seq);
+		el_last->next = old_v.first;
 		new_v.first = el_first;
-		new_v.seq = stack->seq + 1;
+		new_v.seq = old_v.seq + 1;
 		if (try_cmpxchg128(&stack->full, &old_v.full, new_v.full))
 			break;
 	}
@@ -90,20 +90,18 @@ static inline struct lfstack_el *lfstack_pop(union lfstack *stack)
 {
 #ifdef LFSTACK_LOCKFREE
 	union lfstack old_v, new_v;
-	struct lfstack_el *first;
 
 	while (true) {
-		first = READ_ONCE(stack->first);
-		if (!first)
+		old_v.first = READ_ONCE(stack->first);
+		if (!old_v.first)
 			break;
-		old_v.first = stack->first;
 		old_v.seq   = READ_ONCE(stack->seq);
-		new_v.first = first->next;
-		new_v.seq   = stack->seq + 1;
+		new_v.first = old_v.first->next;
+		new_v.seq   = old_v.seq + 1;
 		if (try_cmpxchg128(&stack->full, &old_v.full, new_v.full))
 			break;
 	}
-	return first;
+	return old_v.first;
 #else
 	struct lfstack_el *el;
 	unsigned long flags;
