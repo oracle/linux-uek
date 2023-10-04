@@ -191,7 +191,6 @@ kernel/drivers/net/macsec.ko
 kernel/drivers/net/macvlan.ko
 kernel/drivers/net/macvtap.ko
 kernel/drivers/net/mdio.ko
-kernel/drivers/net/mii.ko
 kernel/drivers/net/net_failover.ko
 kernel/drivers/net/tap.ko
 kernel/drivers/net/tun.ko
