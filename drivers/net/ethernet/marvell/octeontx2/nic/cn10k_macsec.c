@@ -1343,10 +1343,12 @@ static int cn10k_mdo_upd_txsa(struct macsec_context *ctx)
 
 	if (netif_running(secy->netdev)) {
 		/* Keys cannot be changed after creation */
-		err = cn10k_write_tx_sa_pn(pfvf, txsc, sa_num,
-					   sw_tx_sa->next_pn);
-		if (err)
-			return err;
+		if (ctx->sa.update_pn) {
+			err = cn10k_write_tx_sa_pn(pfvf, txsc, sa_num,
+						   sw_tx_sa->next_pn);
+			if (err)
+				return err;
+		}
 
 		err = cn10k_mcs_link_tx_sa2sc(pfvf, secy, txsc,
 					      sa_num, sw_tx_sa->active);
@@ -1514,6 +1516,9 @@ static int cn10k_mdo_upd_rxsa(struct macsec_context *ctx)
 		err = cn10k_mcs_write_rx_sa_plcy(pfvf, secy, rxsc, sa_num, sa_in_use);
 		if (err)
 			return err;
+
+		if (!ctx->sa.update_pn)
+			return 0;
 
 		err = cn10k_mcs_write_rx_sa_pn(pfvf, rxsc, sa_num,
 					       rx_sa->next_pn);
