@@ -1797,14 +1797,19 @@ static void __prep_account_new_huge_page(struct hstate *h, int nid)
 	h->nr_huge_pages_node[nid]++;
 }
 
-static void __prep_new_huge_page(struct hstate *h, struct page *page)
+static void init_new_huge_page(struct hstate *h, struct page *page)
 {
 	set_compound_page_dtor(page, HUGETLB_PAGE_DTOR);
-	hugetlb_vmemmap_optimize(h, page);
 	INIT_LIST_HEAD(&page->lru);
 	hugetlb_set_page_subpool(page, NULL);
 	set_hugetlb_cgroup(page, NULL);
 	set_hugetlb_cgroup_rsvd(page, NULL);
+}
+
+static void __prep_new_huge_page(struct hstate *h, struct page *page)
+{
+	init_new_huge_page(h, page);
+	hugetlb_vmemmap_optimize(h, page);
 }
 
 static void prep_new_huge_page(struct hstate *h, struct page *page, int nid)
@@ -2022,14 +2027,7 @@ retry:
 	return page;
 }
 
-/*
- * Common helper to allocate a fresh hugetlb page. All specific allocators
- * should use this function to get new hugetlb pages
- *
- * Note that returned page is 'frozen':  ref count of head page and all tail
- * pages is zero.
- */
-static struct page *alloc_fresh_huge_page(struct hstate *h,
+static struct page *__alloc_fresh_huge_page(struct hstate *h,
 		gfp_t gfp_mask, int nid, nodemask_t *nmask,
 		nodemask_t *node_alloc_noretry)
 {
@@ -2059,35 +2057,81 @@ retry:
 			return NULL;
 		}
 	}
-	prep_new_huge_page(h, page, page_to_nid(page));
 
 	return page;
 }
 
-/*
- * Allocates a fresh page to the hugetlb allocator pool in the node interleaved
- * manner.
- */
-static int alloc_pool_huge_page(struct hstate *h, nodemask_t *nodes_allowed,
-				nodemask_t *node_alloc_noretry)
+static struct page *only_alloc_fresh_huge_page(struct hstate *h,
+		gfp_t gfp_mask, int nid, nodemask_t *nmask,
+		nodemask_t *node_alloc_noretry)
 {
 	struct page *page;
-	int nr_nodes, node;
+
+	page = __alloc_fresh_huge_page(h, gfp_mask, nid, nmask,
+					node_alloc_noretry);
+	if (page)
+		init_new_huge_page(h, page);
+	return page;
+}
+
+/*
+ * Common helper to allocate a fresh hugetlb page. All specific allocators
+ * should use this function to get new hugetlb pages
+ *
+ * Note that returned page is 'frozen':  ref count of head page and all tail
+ * pages is zero.
+ */
+static struct page *alloc_fresh_huge_page(struct hstate *h,
+		gfp_t gfp_mask, int nid, nodemask_t *nmask,
+		nodemask_t *node_alloc_noretry)
+{
+	struct page *page;
+
+	page = __alloc_fresh_huge_page(h, gfp_mask, nid, nmask,
+					node_alloc_noretry);
+	if (!page)
+		return NULL;
+
+	prep_new_huge_page(h, page, page_to_nid(page));
+	return page;
+}
+
+static void prep_and_add_allocated_pages(struct hstate *h,
+					struct list_head *page_list)
+{
+	unsigned long flags;
+	struct page *page, *tmp_p;
+
+	/* Add all new pool pages to free lists in one lock cycle */
+	spin_lock_irqsave(&hugetlb_lock, flags);
+	list_for_each_entry_safe(page, tmp_p, page_list, lru) {
+		__prep_account_new_huge_page(h, page_to_nid(page));
+		enqueue_huge_page(h, page);
+	}
+	spin_unlock_irqrestore(&hugetlb_lock, flags);
+}
+
+/*
+ * Allocates a fresh hugetlb page in a node interleaved manner. The page
+ * will later be added to the appropriate hugetlb pool.
+ */
+static struct page *alloc_pool_huge_page(struct hstate *h,
+					nodemask_t *nodes_allowed,
+					nodemask_t *node_alloc_noretry)
+{
 	gfp_t gfp_mask = htlb_alloc_mask(h) | __GFP_THISNODE;
+	int nr_nodes, node;
 
 	for_each_node_mask_to_alloc(h, nr_nodes, node, nodes_allowed) {
-		page = alloc_fresh_huge_page(h, gfp_mask, node, nodes_allowed,
-						node_alloc_noretry);
+		struct page *page;
+
+		page = only_alloc_fresh_huge_page(h, gfp_mask, node,
+					nodes_allowed, node_alloc_noretry);
 		if (page)
-			break;
+			return page;
 	}
 
-	if (!page)
-		return 0;
-
-	free_huge_page(page); /* free it into the hugepage allocator */
-
-	return 1;
+	return NULL;
 }
 
 /*
@@ -3095,22 +3139,33 @@ static void __init hugetlb_page_init_vmemmap(struct page *page,
  */
 static void __init gather_bootmem_prealloc(void)
 {
+	LIST_HEAD(page_list);
 	struct huge_bootmem_page *m;
+	struct hstate *h = NULL, *prev_h = NULL;
 
 	list_for_each_entry(m, &huge_boot_pages, list) {
 		struct page *page = virt_to_page(m);
-		struct hstate *h = m->hstate;
+
+		h = m->hstate;
+		/*
+		 * It is possible to have multiple huge page sizes (hstates)
+		 * in this list.  If so, process each size separately.
+		 */
+		if (h != prev_h && prev_h != NULL)
+			prep_and_add_allocated_pages(prev_h, &page_list);
+		prev_h = h;
 
 		VM_BUG_ON(!hstate_is_gigantic(h));
 		WARN_ON(page_count(page) != 1);
 
-		hugetlb_page_init_vmemmap(page, h, HUGETLB_VMEMMAP_RESERVE_PAGES);
-		prep_new_huge_page(h, page, page_to_nid(page));
+		hugetlb_page_init_vmemmap(page, h,
+					HUGETLB_VMEMMAP_RESERVE_PAGES);
+		__prep_new_huge_page(h, page);
 		/* If HVO fails, initialize all tail struct pages */
 		if (!HPageVmemmapOptimized(page))
 			hugetlb_page_init_tail_vmemmap(page, HUGETLB_VMEMMAP_RESERVE_PAGES,
 						pages_per_huge_page(h));
-		free_huge_page(page); /* add to the hugepage allocator */
+		list_add(&page->lru, &page_list);
 
 		/*
 		 * We need to restore the 'stolen' pages to totalram_pages
@@ -3120,11 +3175,26 @@ static void __init gather_bootmem_prealloc(void)
 		adjust_managed_page_count(page, pages_per_huge_page(h));
 		cond_resched();
 	}
+
+	prep_and_add_allocated_pages(h, &page_list);
 }
 
+/*
+ * NOTE: this routine is called in different contexts for gigantic and
+ * non-gigantic pages.
+ * - For gigantic pages, this is called early in the boot process and
+ *   pages are allocated from memblock allocated or something similar.
+ *   Gigantic pages are actually added to pools later with the routine
+ *   gather_bootmem_prealloc.
+ * - For non-gigantic pages, this is called later in the boot process after
+ *   all of mm is up and functional.  Pages are allocated from buddy and
+ *   then added to hugetlb pools.
+ */
 static void __init hugetlb_hstate_alloc_pages(struct hstate *h)
 {
 	unsigned long i;
+	struct page *page;
+	LIST_HEAD(page_list);
 	nodemask_t *node_alloc_noretry;
 
 	if (!hstate_is_gigantic(h)) {
@@ -3151,14 +3221,25 @@ static void __init hugetlb_hstate_alloc_pages(struct hstate *h)
 				pr_warn_once("HugeTLB: hugetlb_cma is enabled, skip boot time allocation\n");
 				goto free;
 			}
+			/*
+			 * gigantic pages not added to list as they are not
+			 * added to pools now.
+			 */
 			if (!alloc_bootmem_huge_page(h))
 				break;
-		} else if (!alloc_pool_huge_page(h,
-					 &node_states[N_MEMORY],
-					 node_alloc_noretry))
-			break;
+		} else {
+			page = alloc_pool_huge_page(h, &node_states[N_MEMORY],
+					 node_alloc_noretry);
+			if (!page)
+				break;
+			list_add(&page->lru, &page_list);
+		}
 		cond_resched();
 	}
+
+	/* list will be empty if hstate_is_gigantic */
+	prep_and_add_allocated_pages(h, &page_list);
+
 	if (i < h->max_huge_pages) {
 		char buf[32];
 
@@ -3297,7 +3378,8 @@ found:
 static int set_max_huge_pages(struct hstate *h, unsigned long count, int nid,
 			      nodemask_t *nodes_allowed)
 {
-	unsigned long min_count, ret;
+	unsigned long min_count;
+	unsigned long allocated;
 	struct page *page;
 	LIST_HEAD(page_list);
 	NODEMASK_ALLOC(nodemask_t, node_alloc_noretry, GFP_KERNEL);
@@ -3372,8 +3454,8 @@ static int set_max_huge_pages(struct hstate *h, unsigned long count, int nid,
 		if (!adjust_pool_surplus(h, nodes_allowed, -1))
 			break;
 	}
-
-	while (count > persistent_huge_pages(h)) {
+	allocated = 0;
+	while (count > (persistent_huge_pages(h) + allocated)) {
 		/*
 		 * If this allocation races such that we no longer need the
 		 * page, free_huge_page will handle it by freeing the page
@@ -3384,15 +3466,31 @@ static int set_max_huge_pages(struct hstate *h, unsigned long count, int nid,
 		/* yield cpu to avoid soft lockup */
 		cond_resched();
 
-		ret = alloc_pool_huge_page(h, nodes_allowed,
+		page = alloc_pool_huge_page(h, nodes_allowed,
 						node_alloc_noretry);
-		spin_lock_irq(&hugetlb_lock);
-		if (!ret)
+		if (!page) {
+			prep_and_add_allocated_pages(h, &page_list);
+			spin_lock_irq(&hugetlb_lock);
 			goto out;
+		}
+		list_add(&page->lru, &page_list);
+		allocated++;
 
 		/* Bail for signals. Probably ctrl-c from user */
-		if (signal_pending(current))
+		if (signal_pending(current)) {
+			prep_and_add_allocated_pages(h, &page_list);
+			spin_lock_irq(&hugetlb_lock);
 			goto out;
+		}
+
+		spin_lock_irq(&hugetlb_lock);
+	}
+
+	/* Add allocated pages to the pool */
+	if (!list_empty(&page_list)) {
+		spin_unlock_irq(&hugetlb_lock);
+		prep_and_add_allocated_pages(h, &page_list);
+		spin_lock_irq(&hugetlb_lock);
 	}
 
 	/*
