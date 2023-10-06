@@ -480,6 +480,45 @@ int hugetlb_vmemmap_restore(const struct hstate *h, struct page *head)
 	return ret;
 }
 
+/**
+ * hugetlb_vmemmap_restore_pages - restore vmemmap for every page on the list.
+ * @h:			hstate.
+ * @page_list:		list of huge pages.
+ * @non_hvo_pages:	Output list of huge pages for which vmemmap exists.
+ *
+ * Return: number of huge pages for which vmemmap was restored, or an error code
+ *		if an error was encountered restoring vmemmap for a huge page,
+ *		huge pages that have vmemmap are moved to the non_hvo_pages
+ *		list.  Processing of entries stops when the first error is
+ *		encountered. The huge page that experienced the error and all
+ *		non-processed huge pages will remain on page_list.
+ */
+long hugetlb_vmemmap_restore_pages(const struct hstate *h,
+				struct list_head *page_list,
+				struct list_head *non_hvo_pages)
+{
+	struct page *page, *t_page;
+	long restored = 0;
+	long ret = 0;
+
+	list_for_each_entry_safe(page, t_page, page_list, lru) {
+		if (HPageVmemmapOptimized(page)) {
+			ret = hugetlb_vmemmap_restore(h, page);
+			if (ret)
+				break;
+			restored++;
+		}
+
+		/* Add non-optimized huge pages to output list */
+		list_move(&page->lru, non_hvo_pages);
+	}
+
+	if (!ret)
+		ret = restored;
+	return ret;
+}
+
+
 /* Return true iff a HugeTLB whose vmemmap should and can be optimized. */
 static bool vmemmap_should_optimize(const struct hstate *h, const struct page *head)
 {
