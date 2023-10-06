@@ -1666,7 +1666,46 @@ static void update_and_free_page(struct hstate *h, struct page *page,
 static void update_and_free_pages_bulk(struct hstate *h, struct list_head *list)
 {
 	struct page *page, *t_page;
+	bool clear_dtor = false;
 
+	/*
+	 * First allocate required vmemmmap (if necessary) for all huge pages on
+	 * list.  If vmemmap can not be allocated, we can not free the pages to
+	 * lower level allocator, so add back as hugetlb surplus page.
+	 * add_hugetlb_page() removes the page from THIS list.
+	 * Use clear_dtor to note if vmemmap was successfully allocated for
+	 * ANY page on the list.
+	 */
+	list_for_each_entry_safe(page, t_page, list, lru) {
+		if (HPageVmemmapOptimized(page)) {
+			if (hugetlb_vmemmap_restore(h, page)) {
+				spin_lock_irq(&hugetlb_lock);
+				add_hugetlb_page(h, page, true);
+				spin_unlock_irq(&hugetlb_lock);
+			} else
+				clear_dtor = true;
+		}
+	}
+
+	/*
+	 * If vmemmmap allocation was performed on any huge page above, take lock
+	 * to clear destructor of all huge pages on list.  This avoids the need to
+	 * lock/unlock for each individual huge page.
+	 * The assumption is vmemmap allocation was performed on all or none
+	 * of the huge pages on the list.  This is true expect in VERY rare cases.
+	 */
+	if (clear_dtor) {
+		spin_lock_irq(&hugetlb_lock);
+		list_for_each_entry(page, list, lru)
+			__clear_hugetlb_destructor(h, page);
+		spin_unlock_irq(&hugetlb_lock);
+	}
+
+	/*
+	 * Free huge pages back to low level allocators.  vmemmap and destructors
+	 * were taken care of above, so update_and_free_page will not need to
+	 * take hugetlb lock.
+	 */
 	list_for_each_entry_safe(page, t_page, list, lru) {
 		update_and_free_page(h, page, false);
 		cond_resched();
