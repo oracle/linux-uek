@@ -10,6 +10,8 @@
 #include <linux/sys_soc.h>
 #include "edac_module.h"
 #include "octeontx_edac.h"
+#include <linux/of.h>
+#include <linux/of_fdt.h>
 
 static const struct soc_device_attribute cn10_socinfo[] = {
 	/* cn10ka */
@@ -1295,6 +1297,21 @@ static void __exit octeontx_edac_exit(void)
 	kfree(ghes_list.ghes);
 }
 
+static int __init octeontx_sdei_init(void)
+{
+	const char *name;
+
+	name=of_flat_dt_get_machine_name();
+	if (!name)
+		return 0;
+
+	if (strstr(name, "Marvell CN3380-250SV Smart NIC")){
+		sdei_init();
+	}
+
+	return 0;
+}
+subsys_initcall_sync(octeontx_sdei_init);
 
 late_initcall(octeontx_edac_init);
 module_exit(octeontx_edac_exit);
