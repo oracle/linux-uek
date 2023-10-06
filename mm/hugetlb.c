@@ -2102,6 +2102,9 @@ static void prep_and_add_allocated_pages(struct hstate *h,
 	unsigned long flags;
 	struct page *page, *tmp_p;
 
+	/* Send list for bulk vmemmap optimization processing */
+	hugetlb_vmemmap_optimize_pages(h, page_list);
+
 	/* Add all new pool pages to free lists in one lock cycle */
 	spin_lock_irqsave(&hugetlb_lock, flags);
 	list_for_each_entry_safe(page, tmp_p, page_list, lru) {
@@ -3133,6 +3136,33 @@ static void __init hugetlb_page_init_vmemmap(struct page *page,
 	prep_compound_head(page, huge_page_order(h));
 }
 
+static void __init prep_and_add_bootmem_pages(struct hstate *h,
+					struct list_head *page_list)
+{
+	unsigned long flags;
+	struct page *page, *tmp_p;
+
+	/* Send list for bulk vmemmap optimization processing */
+	hugetlb_vmemmap_optimize_pages(h, page_list);
+
+	/* Add all new pool pages to free lists in one lock cycle */
+	spin_lock_irqsave(&hugetlb_lock, flags);
+	list_for_each_entry_safe(page, tmp_p, page_list, lru) {
+		if (!HPageVmemmapOptimized(page)) {
+			/*
+			 * If HVO fails, initialize all tail struct pages
+			 * We do not worry about potential long lock hold
+			 * time as this is early in boot and there should
+			 * be no contention.
+			 */
+			hugetlb_page_init_tail_vmemmap(page,
+					HUGETLB_VMEMMAP_RESERVE_PAGES,
+					pages_per_huge_page(h));
+		}
+	}
+	spin_unlock_irqrestore(&hugetlb_lock, flags);
+}
+
 /*
  * Put bootmem huge pages into the standard lists after mem_map is up.
  * Note: This only applies to gigantic (order > MAX_ORDER) pages.
@@ -3152,7 +3182,7 @@ static void __init gather_bootmem_prealloc(void)
 		 * in this list.  If so, process each size separately.
 		 */
 		if (h != prev_h && prev_h != NULL)
-			prep_and_add_allocated_pages(prev_h, &page_list);
+			prep_and_add_bootmem_pages(prev_h, &page_list);
 		prev_h = h;
 
 		VM_BUG_ON(!hstate_is_gigantic(h));
@@ -3160,11 +3190,7 @@ static void __init gather_bootmem_prealloc(void)
 
 		hugetlb_page_init_vmemmap(page, h,
 					HUGETLB_VMEMMAP_RESERVE_PAGES);
-		__prep_new_huge_page(h, page);
-		/* If HVO fails, initialize all tail struct pages */
-		if (!HPageVmemmapOptimized(page))
-			hugetlb_page_init_tail_vmemmap(page, HUGETLB_VMEMMAP_RESERVE_PAGES,
-						pages_per_huge_page(h));
+		init_new_huge_page(h, page);
 		list_add(&page->lru, &page_list);
 
 		/*
@@ -3176,7 +3202,7 @@ static void __init gather_bootmem_prealloc(void)
 		cond_resched();
 	}
 
-	prep_and_add_allocated_pages(h, &page_list);
+	prep_and_add_bootmem_pages(h, &page_list);
 }
 
 /*
