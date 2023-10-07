@@ -27,6 +27,7 @@
 static const int amd_erratum_383[];
 static const int amd_erratum_400[];
 static const int amd_erratum_1215[];
+static const int amd_erratum_1485[];
 static bool cpu_has_amd_erratum(struct cpuinfo_x86 *cpu, const int *erratum);
 
 /*
@@ -1035,6 +1036,10 @@ static void init_amd(struct cpuinfo_x86 *c)
 	if (!cpu_has(c, X86_FEATURE_XENPV))
 		set_cpu_bug(c, X86_BUG_SYSRET_SS_ATTRS);
 
+	if (!cpu_has(c, X86_FEATURE_HYPERVISOR) &&
+	    cpu_has_amd_erratum(c, amd_erratum_1485))
+		msr_set_bit(MSR_ZEN4_BP_CFG, MSR_ZEN4_BP_CFG_SHARED_BTB_FIX_BIT);
+
 	/* Hide IBS availability if susceptible to Rome's erratum 1215 */
 	if (cpu_has(c, X86_FEATURE_IBS) &&
 	    cpu_has_amd_erratum(c, amd_erratum_1215) && !ibs_keep) {
@@ -1175,6 +1180,9 @@ static const int amd_erratum_383[] =
  */
 static const int amd_erratum_1215[] =
 	AMD_LEGACY_ERRATUM(AMD_MODEL_RANGE(0x17, 0x30, 0, 0x3f, 0xf));
+static const int amd_erratum_1485[] =
+	AMD_LEGACY_ERRATUM(AMD_MODEL_RANGE(0x19, 0x10, 0x0, 0x1f, 0xf),
+			   AMD_MODEL_RANGE(0x19, 0x60, 0x0, 0xaf, 0xf));
 
 static bool cpu_has_amd_erratum(struct cpuinfo_x86 *cpu, const int *erratum)
 {
