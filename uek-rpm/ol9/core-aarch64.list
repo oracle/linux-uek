@@ -240,7 +240,6 @@ kernel/drivers/scsi/scsi_transport_srp.ko
 kernel/drivers/scsi/ses.ko
 kernel/drivers/scsi/st.ko
 kernel/drivers/scsi/virtio_scsi.ko
-kernel/drivers/staging/rtl8192e/rtllib_crypt_ccmp.ko
 kernel/drivers/target/iscsi/iscsi_target_mod.ko
 kernel/drivers/target/loopback/tcm_loop.ko
 kernel/drivers/target/target_core_file.ko
