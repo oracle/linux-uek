@@ -9955,7 +9955,10 @@ int bpf_check(struct bpf_prog **prog, union bpf_attr *attr,
 	if (IS_ERR_OR_NULL(btf_vmlinux)) {
 		/* Either gcc or pahole or kernel are broken. */
 		verbose(env, "in-kernel BTF is malformed\n");
-		ret = PTR_ERR(btf_vmlinux);
+		if (!btf_vmlinux)
+			ret = -EINVAL;
+		else
+			ret = PTR_ERR(btf_vmlinux);
 		goto skip_full_check;
 	}
 
