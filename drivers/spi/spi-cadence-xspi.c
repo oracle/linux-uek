@@ -332,6 +332,7 @@ struct cdns_xspi_dev {
 	const void *out_buffer;
 
 	u8 hw_num_banks;
+
 	enum cdns_xspi_sdma_size read_size;
 
 #if IS_ENABLED(CONFIG_SPI_CADENCE_MRVL_XSPI)
@@ -340,6 +341,7 @@ struct cdns_xspi_dev {
 	int write_len;
 	int xspi_id;
 	bool wo_mode;
+	int cs_defined;
 #endif
 };
 
@@ -466,15 +468,19 @@ static void spi_gpio_prepare(struct cdns_xspi_dev *cdns_xspi)
 	ret = gpio_request(pin, namestr);
 	gpio_export(pin, false);
 
-	sprintf(namestr, "spi%d_cs0", cdns_xspi->xspi_id);
-	pin = cdns_xspi->xspi_id == 0 ? (SPI_GPIO(SPI0_CS0)) : (SPI_GPIO(SPI1_CS0));
-	ret = gpio_request(pin, namestr);
-	gpio_export(pin, false);
+	if (cdns_xspi->cs_defined & BIT(0)) {
+		sprintf(namestr, "spi%d_cs0", cdns_xspi->xspi_id);
+		pin = cdns_xspi->xspi_id == 0 ? (SPI_GPIO(SPI0_CS0)) : (SPI_GPIO(SPI1_CS0));
+		ret = gpio_request(pin, namestr);
+		gpio_export(pin, false);
+	}
 
-	sprintf(namestr, "spi%d_cs1", cdns_xspi->xspi_id);
-	pin = cdns_xspi->xspi_id == 0 ? (SPI_GPIO(SPI0_CS1)) : (SPI_GPIO(SPI1_CS1));
-	ret = gpio_request(pin, namestr);
-	gpio_export(pin, false);
+	if (cdns_xspi->cs_defined & BIT(1)) {
+		sprintf(namestr, "spi%d_cs1", cdns_xspi->xspi_id);
+		pin = cdns_xspi->xspi_id == 0 ? (SPI_GPIO(SPI0_CS1)) : (SPI_GPIO(SPI1_CS1));
+		ret = gpio_request(pin, namestr);
+		gpio_export(pin, false);
+	}
 
 	sprintf(namestr, "spi%d_io0", cdns_xspi->xspi_id);
 	pin = cdns_xspi->xspi_id == 0 ? (SPI_GPIO(SPI0_IO0)) : (SPI_GPIO(SPI1_IO0));
@@ -1132,6 +1138,7 @@ static int cdns_xspi_of_get_plat_data(struct platform_device *pdev)
 			fwnode_handle_put(fwnode_child);
 			return -ENXIO;
 		}
+		cdns_xspi->cs_defined |= BIT(cs);
 	}
 
 	return 0;
@@ -1612,6 +1619,9 @@ static int cdns_xspi_probe(struct platform_device *pdev)
 	cdns_xspi->pdev = pdev;
 	cdns_xspi->dev = &pdev->dev;
 	cdns_xspi->cur_cs = 0;
+#if IS_ENABLED(CONFIG_SPI_CADENCE_MRVL_XSPI)
+	cdns_xspi->cs_defined = 0;
+#endif
 
 	init_completion(&cdns_xspi->cmd_complete);
 	init_completion(&cdns_xspi->auto_cmd_complete);
