@@ -671,9 +671,8 @@ static void rds_conn_path_destroy(struct rds_conn_path *cp, int shutdown)
 		return;
 
 	/* quiesce heartbeats */
-	if (cp->cp_conn->c_is_hb_enabled)
-		rds_queue_cancel_work(cp, &cp->cp_hb_w,
-				      "conn path destroy hb worker");
+	rds_queue_cancel_work(cp, &cp->cp_hb_w,
+			      "conn path destroy hb worker");
 
 	/* make sure lingering queued work won't try to ref the
 	 * conn. If there is work queued, we cancel it (and set the
