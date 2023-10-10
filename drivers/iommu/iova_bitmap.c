@@ -113,6 +113,8 @@ struct iova_bitmap {
 
 	/* length of the IOVA range for the whole bitmap */
 	size_t length;
+
+	struct mm_struct *mm;
 };
 
 /*
@@ -187,8 +189,17 @@ static int iova_bitmap_get(struct iova_bitmap *bitmap)
 	 */
 	addr = bitmap->bitmap + bitmap->mapped_base_index;
 
-	ret = pin_user_pages_fast((unsigned long)addr, npages,
-				  FOLL_WRITE, mapped->pages);
+	if (bitmap->mm) {
+		mmap_read_lock(bitmap->mm);
+		ret = pin_user_pages_remote(bitmap->mm, (unsigned long)addr,
+					    npages, FOLL_WRITE, mapped->pages,
+					    NULL, NULL);
+		mmap_read_unlock(bitmap->mm);
+	} else {
+		ret = pin_user_pages_fast((unsigned long)addr, npages,
+					  FOLL_WRITE, mapped->pages);
+	}
+
 	if (ret <= 0)
 		return -EFAULT;
 
@@ -234,8 +245,11 @@ static void iova_bitmap_put(struct iova_bitmap *bitmap)
  * Return: A pointer to a newly allocated struct iova_bitmap
  * or ERR_PTR() on error.
  */
-struct iova_bitmap *iova_bitmap_alloc(unsigned long iova, size_t length,
-				      unsigned long page_size, u64 __user *data)
+static struct iova_bitmap *__iova_bitmap_alloc(unsigned long iova,
+					       size_t length,
+					       unsigned long page_size,
+					       u64 __user *data,
+					       struct mm_struct *mm)
 {
 	struct iova_bitmap_map *mapped;
 	struct iova_bitmap *bitmap;
@@ -252,6 +266,7 @@ struct iova_bitmap *iova_bitmap_alloc(unsigned long iova, size_t length,
 		iova_bitmap_offset_to_index(bitmap, length - 1) + 1;
 	bitmap->iova = iova;
 	bitmap->length = length;
+	bitmap->mm = mm;
 	mapped->iova = iova;
 	mapped->pages = (struct page **)__get_free_page(GFP_KERNEL);
 	if (!mapped->pages) {
@@ -267,6 +282,21 @@ struct iova_bitmap *iova_bitmap_alloc(unsigned long iova, size_t length,
 err:
 	iova_bitmap_free(bitmap);
 	return ERR_PTR(rc);
+}
+
+struct iova_bitmap *iova_bitmap_alloc(unsigned long iova, size_t length,
+				      unsigned long page_size,
+				      u64 __user *data)
+{
+	return __iova_bitmap_alloc(iova, length, page_size, data, NULL);
+}
+
+struct iova_bitmap *iova_bitmap_alloc_remote(unsigned long iova, size_t length,
+					     unsigned long page_size,
+					     u64 __user *data,
+					     struct mm_struct *mm)
+{
+	return __iova_bitmap_alloc(iova, length, page_size, data, mm);
 }
 
 /**
