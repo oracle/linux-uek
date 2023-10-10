@@ -982,7 +982,7 @@ static struct rds_ib_mr *rds_ib_alloc_ibmr(struct rds_ib_device *rds_ibdev,
 	spin_unlock_bh(&pool->busy_lock);
 
 	init_completion(&ibmr->wr_comp);
-	ibmr->fr_state = MR_IS_INVALID; /* not needed bcas of kzalloc */
+	WRITE_ONCE(ibmr->fr_state, MR_IS_INVALID); /* not needed bcas of kzalloc */
 
 	ibmr->pool = pool;
 	if (pool->pool_type == RDS_IB_MR_8K_POOL)
@@ -1149,7 +1149,7 @@ static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool,
 			__rds_ib_teardown_mr(ibmr);
 
 		if (nfreed < free_goal ||
-		    (pool->use_fastreg && ibmr->fr_state == MR_IS_STALE)) {
+		    (pool->use_fastreg && READ_ONCE(ibmr->fr_state) == MR_IS_STALE)) {
 			if (ibmr->pool->pool_type == RDS_IB_MR_8K_POOL)
 				rds_ib_stats_inc(s_ib_rdma_mr_8k_free);
 			else
@@ -1238,7 +1238,7 @@ static int rds_ib_fastreg_inv(struct rds_ib_mr *ibmr)
 
 	down_read(&ibmr->device->fastreg_lock);
 
-	if (ibmr->fr_state != MR_IS_VALID)
+	if (READ_ONCE(ibmr->fr_state) != MR_IS_VALID)
 		goto out;
 
 	while (atomic_sub_return(1, n_wrs) <= 0) {
@@ -1249,7 +1249,7 @@ static int rds_ib_fastreg_inv(struct rds_ib_mr *ibmr)
 		schedule();
 	}
 
-	ibmr->fr_state = MR_IS_INVALID;
+	WRITE_ONCE(ibmr->fr_state, MR_IS_INVALID);
 
 	memset(&s_wr, 0, sizeof(s_wr));
 	s_wr.wr_id = (u64)ibmr;
@@ -1262,7 +1262,7 @@ static int rds_ib_fastreg_inv(struct rds_ib_mr *ibmr)
 	WARN_ON(failed_wr != &s_wr);
 	if (ret) {
 		atomic_add(1, n_wrs);
-		ibmr->fr_state = MR_IS_STALE;
+		WRITE_ONCE(ibmr->fr_state, MR_IS_STALE);
 		pr_warn_ratelimited("RDS/IB: %s:%d ib_post_send returned %d\n",
 				    __func__, __LINE__, ret);
 		goto out;
@@ -1434,7 +1434,7 @@ static inline void __rds_frwr_free_mr(struct rds_ib_mr_pool *pool,
 	 * Better to destroy it. Add it to drop_list here. gc will handle
 	 * the actual drop(destroy) in future.
 	 */
-	if (ibmr->fr_state == MR_IS_STALE) {
+	if (READ_ONCE(ibmr->fr_state) == MR_IS_STALE) {
 		__rds_ib_teardown_mr(ibmr);
 
 		/* avoid pool depletion. Take it out of pool stat */
@@ -1598,7 +1598,7 @@ static int rds_ib_map_scatterlist(struct rds_ib_device *rds_ibdev,
 
 	ret = ib_map_mr_sg_zbva(ibmr->mr, sg, sg_dma_len, &off, PAGE_SIZE);
 	if (unlikely(ret != sg_dma_len)) {
-		ibmr->fr_state = MR_IS_STALE;
+		WRITE_ONCE(ibmr->fr_state, MR_IS_STALE);
 		ret = ret < 0 ? ret : -EINVAL;
 		goto out_unmap;
 	}
@@ -1621,7 +1621,7 @@ static int rds_ib_rdma_build_fastreg(struct rds_ib_device *rds_ibdev,
 	atomic_t *n_wrs;
 	int ret = 0;
 
-	if (ibmr->fr_state == MR_IS_STALE) {
+	if (READ_ONCE(ibmr->fr_state) == MR_IS_STALE) {
 		WARN_ON(true);
 		return -EAGAIN;
 	}
@@ -1643,14 +1643,15 @@ static int rds_ib_rdma_build_fastreg(struct rds_ib_device *rds_ibdev,
 		schedule();
 	}
 
-	if (ibmr->fr_state == MR_IS_VALID) {
+	if (READ_ONCE(ibmr->fr_state) == MR_IS_VALID) {
 		memset(&inv_wr, 0, sizeof(inv_wr));
 		inv_wr.wr_id = RDS_MR_INV_WR_ID;
 		inv_wr.opcode = IB_WR_LOCAL_INV;
 		inv_wr.ex.invalidate_rkey = ibmr->mr->rkey;
 		first_wr = &inv_wr;
-	} else
-		ibmr->fr_state = MR_IS_VALID;
+	} else {
+		WRITE_ONCE(ibmr->fr_state, MR_IS_VALID);
+	}
 
 	rds_frwr_adjust_iova_rkey(ibmr);
 
@@ -1673,7 +1674,7 @@ static int rds_ib_rdma_build_fastreg(struct rds_ib_device *rds_ibdev,
 	ret = ib_post_send(qp, first_wr, &failed_wr);
 	if (ret) {
 		atomic_add(2, n_wrs);
-		ibmr->fr_state = MR_IS_STALE;
+		WRITE_ONCE(ibmr->fr_state, MR_IS_STALE);
 		pr_warn_ratelimited("RDS/IB: %s:%d ib_post_send returned %d\n",
 				    __func__, __LINE__, ret);
 		goto out;
@@ -1685,7 +1686,7 @@ static int rds_ib_rdma_build_fastreg(struct rds_ib_device *rds_ibdev,
 
 	wait_for_completion(&ibmr->wr_comp);
 	atomic_add(2, n_wrs);
-	if (ibmr->fr_state == MR_IS_STALE) {
+	if (READ_ONCE(ibmr->fr_state) == MR_IS_STALE) {
 		/* Registration request failed */
 		ret = -EAGAIN;
 	}
@@ -1742,12 +1743,12 @@ void rds_ib_fcq_handler(struct rds_ib_device *rds_ibdev, struct ib_wc *wc)
 		return;
 	ibmr = (struct rds_ib_mr *)wc->wr_id;
 
-	WARN_ON(ibmr->fr_state == MR_IS_STALE);
+	WARN_ON(READ_ONCE(ibmr->fr_state) == MR_IS_STALE);
 
 	if (wc->status != IB_WC_SUCCESS) {
 		pr_warn("RDS: IB: MR completion on fastreg qp status %u vendor_err %u\n",
 			wc->status, wc->vendor_err);
-		ibmr->fr_state = MR_IS_STALE;
+		WRITE_ONCE(ibmr->fr_state, MR_IS_STALE);
 		queue_work(rds_ibdev->rid_dev_wq, &rds_ibdev->fastreg_reset_w);
 	}
 
@@ -1762,7 +1763,7 @@ void rds_ib_mr_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 		return;
 	ibmr = (struct rds_ib_mr *)wc->wr_id;
 
-	WARN_ON(ibmr->fr_state == MR_IS_STALE);
+	WARN_ON(READ_ONCE(ibmr->fr_state) == MR_IS_STALE);
 
 	if (wc->status != IB_WC_SUCCESS) {
 		if (rds_conn_up(ic->conn)) {
@@ -1771,7 +1772,7 @@ void rds_ib_mr_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 				&ic->conn->c_laddr, &ic->conn->c_faddr,
 				ic->conn->c_tos, wc->status, wc->vendor_err);
 		}
-		ibmr->fr_state = MR_IS_STALE;
+		WRITE_ONCE(ibmr->fr_state, MR_IS_STALE);
 	}
 
 	complete(&ibmr->wr_comp);
