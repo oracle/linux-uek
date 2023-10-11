@@ -364,7 +364,7 @@ int rvu_mbox_handler_tim_enable_ring(struct rvu *rvu,
 {
 	u16 pcifunc = req->hdr.pcifunc;
 	u64 start_cyc, end_cyc, low;
-	u64 regval, clk_src;
+	u64 regval, clk_src, wrap;
 	u32 expiry, intvl;
 	int retries, ret;
 	int lf, blkaddr;
@@ -411,9 +411,12 @@ int rvu_mbox_handler_tim_enable_ring(struct rvu *rvu,
 		/* Make sure that above reads and writes complete. */
 		mb();
 		low = end_cyc & GENMASK_ULL(31, 0);
+		wrap = start_cyc & GENMASK_ULL(31, 0);
 		start_cyc >>= 32;
 		end_cyc >>= 32;
-		if (start_cyc - end_cyc || (low > (regval >> 32)) ||
+		wrap += intvl;
+		wrap &= ~GENMASK_ULL(31, 0);
+		if (start_cyc - end_cyc || (!wrap && low > (regval >> 32)) ||
 		    regval == intvl) {
 			regval = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf));
 			regval &= ~TIM_AF_RINGX_CTL1_ENA;
@@ -432,6 +435,8 @@ int rvu_mbox_handler_tim_enable_ring(struct rvu *rvu,
 	expiry = regval >> 32;
 	intvl = regval & GENMASK_ULL(31, 0);
 	rsp->timestarted = (start_cyc << 32) | expiry;
+	if (wrap)
+		rsp->timestarted += BIT_ULL(32);
 	rsp->timestarted -= intvl;
 	rsp->currentbucket = 0;
 
