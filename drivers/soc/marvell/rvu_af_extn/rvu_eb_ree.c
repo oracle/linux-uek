@@ -8,6 +8,8 @@
 #include "rvu.h"
 #include "rvu_reg.h"
 #include "rvu_eblock.h"
+#include "rvu_ree_mbox.h"
+#include "rvu_trace.h"
 
 /* Maximum number of REE blocks */
 #define MAX_REE_BLKS		2
@@ -1233,6 +1235,48 @@ static int rvu_setup_ree_hw_resource(struct rvu_block *block, void *data)
 	return 0;
 }
 
+static int rvu_ree_mbox_handler(struct otx2_mbox *mbox, int devid,
+			    struct mbox_msghdr *req)
+{
+	struct rvu *rvu = pci_get_drvdata(mbox->pdev);
+	int _id = req->id;
+
+	switch (_id) {
+
+	#define M(_name, _id, _fn_name, _req_type, _rsp_type)		\
+	{							\
+	case _id: {							\
+		struct _rsp_type *rsp;					\
+		int err;						\
+									\
+		rsp = (struct _rsp_type *)otx2_mbox_alloc_msg(		\
+			mbox, devid,					\
+			sizeof(struct _rsp_type));			\
+		if (rsp) {						\
+			rsp->hdr.id = _id;				\
+			rsp->hdr.sig = OTX2_MBOX_RSP_SIG;		\
+			rsp->hdr.pcifunc = req->pcifunc;		\
+			rsp->hdr.rc = 0;				\
+		}							\
+									\
+		err = rvu_mbox_handler_ ## _fn_name(rvu,		\
+						    (struct _req_type *)req, \
+						    rsp);		\
+		if (rsp && err)						\
+			rsp->hdr.rc = err;				\
+									\
+		trace_otx2_msg_process(mbox->pdev, _id, err, req->pcifunc); \
+		return rsp ? err : -ENOMEM;				\
+	}								\
+	}
+	MBOX_EBLOCK_REE_MESSAGES
+
+	default:
+		otx2_reply_invalid_msg(mbox, devid, req->pcifunc, req->id);
+		return -ENODEV;
+	}
+}
+
 static void *rvu_ree_probe(struct rvu *rvu, int blkaddr)
 {
 	struct ree_drvdata *data;
@@ -1259,6 +1303,12 @@ static void rvu_ree_remove(struct rvu_block *hwblock, void *data)
 	devm_kfree(hwblock->rvu->dev, data);
 }
 
+struct mbox_op ree_mbox_op = {
+	.start = 0xE00,
+	.end = 0xFFF,
+	.handler = rvu_ree_mbox_handler,
+};
+
 static struct rvu_eblock_driver_ops ree_ops = {
 	.probe	= rvu_ree_probe,
 	.remove	= rvu_ree_remove,
@@ -1267,6 +1317,7 @@ static struct rvu_eblock_driver_ops ree_ops = {
 	.free	= rvu_ree_freemem_block,
 	.register_interrupt = rvu_ree_register_interrupts_block,
 	.unregister_interrupt = rvu_ree_unregister_interrupts_block,
+	.mbox_op = &ree_mbox_op,
 };
 
 void ree_eb_module_init(void)
