@@ -145,7 +145,7 @@ struct rds_ib_refill_cache {
 	atomic64_t				hit_count;
 	atomic64_t				miss_count;
 	unsigned long				initialized;
-};
+} ____cacheline_aligned;
 
 struct rds_ib_conn_priv_cmn {
 	u8			ricpc_protocol_major;
@@ -528,13 +528,13 @@ struct rds_ib_device {
 	atomic_t		free_dev;
 	/* wait until freeing work is done */
 	struct mutex		free_dev_lock;
+	struct dentry		*debugfs_dir;
+	atomic_t		rid_refcount;
+	unsigned int            i_work_arounds;
 	struct rds_ib_refill_cache i_cache_incs;
 	struct rds_ib_refill_cache i_cache_frags[RDS_FRAG_CACHE_ENTRIES];
 	struct delayed_work        i_cache_gc_work;
 	int			   i_cache_gc_cpu;
-	struct dentry *debugfs_dir;
-
-	atomic_t		rid_refcount;
 	struct work_struct	rid_free_work;
 
 	struct list_head	rid_rs_list;	/* Device socket list */
@@ -542,8 +542,6 @@ struct rds_ib_device {
 
 	struct work_struct	rid_dev_rem_work;
 	struct completion	*rid_dev_rem_complete;
-
-	unsigned int            i_work_arounds;
 };
 
 /* Bitmasks for designated work-arounds */
