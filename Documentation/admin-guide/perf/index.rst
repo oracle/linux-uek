@@ -17,3 +17,4 @@ Performance monitor support
    arm_dsu_pmu
    thunderx2-pmu
    nvidia-pmu
+   ampere_cspmu
