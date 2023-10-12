@@ -288,6 +288,44 @@ void rvu_eblock_exit(void)
 	rvu_eb_remove_all();
 }
 
+/* Mbox handler */
+static void *rvu_eb_get_mbox_handler(int _id)
+{
+	struct rvu_eb_driver *driver;
+	struct mbox_op *op;
+
+	for_each_eblock_drv(driver) {
+		op = driver->ops->mbox_op;
+		if (_id >= op->start && _id <= op->end)
+			return op->handler;
+	}
+
+	return NULL;
+}
+
+int rvu_eblock_mbox_handler(struct otx2_mbox *mbox, int devid,
+			    struct mbox_msghdr *req)
+{
+	int (*mbox_handler)(struct otx2_mbox *mbox, int devid,
+			    struct mbox_msghdr *req);
+	int _id;
+
+	/* check if valid, if not reply with a invalid msg */
+	if (req->sig != OTX2_MBOX_REQ_SIG)
+		goto bad_message;
+
+	_id = req->id;
+
+	mbox_handler = rvu_eb_get_mbox_handler(_id);
+	if (!mbox_handler)
+		goto bad_message;
+
+	return mbox_handler(mbox, devid, req);
+
+bad_message:
+	return -EINVAL;
+}
+
 /* APIs for driver register / unregister */
 int rvu_eblock_register_driver(const struct rvu_eblock_driver_ops *ops)
 {

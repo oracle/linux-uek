@@ -2354,11 +2354,13 @@ static int rvu_process_mbox_msg(struct otx2_mbox *mbox, int devid,
 MBOX_MESSAGES
 #undef M
 
-bad_message:
 	default:
-		otx2_reply_invalid_msg(mbox, devid, req->pcifunc, req->id);
-		return -ENODEV;
+		return rvu_eblock_mbox_handler(mbox, devid, req);
 	}
+
+bad_message:
+	otx2_reply_invalid_msg(mbox, devid, req->pcifunc, req->id);
+	return -ENODEV;
 }
 
 static void __rvu_mbox_handler(struct rvu_work *mwork, int type, bool poll)
