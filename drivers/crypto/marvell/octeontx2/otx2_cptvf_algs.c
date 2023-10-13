@@ -148,13 +148,8 @@ static void output_iv_copyback(struct crypto_async_request *areq)
 			scatterwalk_map_and_copy(sreq->iv, sreq->dst, start,
 						 ivsize, 0);
 		} else {
-			if (sreq->src != sreq->dst) {
-				scatterwalk_map_and_copy(sreq->iv, sreq->src,
-							 start, ivsize, 0);
-			} else {
-				memcpy(sreq->iv, req_info->iv_out, ivsize);
-				kfree(req_info->iv_out);
-			}
+			memcpy(sreq->iv, req_info->iv_out, ivsize);
+			kfree(req_info->iv_out);
 		}
 	}
 }
@@ -241,8 +236,7 @@ static inline int create_ctx_hdr(struct skcipher_request *req, u32 enc,
 	} else {
 		req_info->req.opcode.s.minor = 3;
 		if ((ctx->cipher_type == OTX2_CPT_AES_CBC ||
-		    ctx->cipher_type == OTX2_CPT_DES3_CBC) &&
-		    req->src == req->dst) {
+		    ctx->cipher_type == OTX2_CPT_DES3_CBC)) {
 			req_info->iv_out = kmalloc(ivsize, flags);
 			if (!req_info->iv_out)
 				return -ENOMEM;
