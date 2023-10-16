@@ -1183,6 +1183,7 @@ static void rds_sock_inc_info(struct socket *sock, unsigned int len,
 	struct rds_sock *rs;
 	struct rds_incoming *inc;
 	unsigned int total = 0;
+	unsigned long flags;
 
 	len /= sizeof(struct rds_info_message);
 
@@ -1190,7 +1191,7 @@ static void rds_sock_inc_info(struct socket *sock, unsigned int len,
 
 	list_for_each_entry(rs, &rds_sock_list, rs_item) {
 		(void)rds_rs_to_sk(rs);
-		read_lock(&rs->rs_recv_lock);
+		read_lock_irqsave(&rs->rs_recv_lock, flags);
 
 		/* XXX too lazy to maintain counts.. */
 		list_for_each_entry(inc, &rs->rs_recv_queue, i_item) {
@@ -1202,7 +1203,7 @@ static void rds_sock_inc_info(struct socket *sock, unsigned int len,
 						  1);
 		}
 
-		read_unlock(&rs->rs_recv_lock);
+		read_unlock_irqrestore(&rs->rs_recv_lock, flags);
 	}
 
 	spin_unlock_bh(&rds_sock_lock);
@@ -1219,13 +1220,14 @@ static void rds6_sock_inc_info(struct socket *sock, unsigned int len,
 	struct rds_sock *rs;
 	struct rds_incoming *inc;
 	unsigned int total = 0;
+	unsigned long flags;
 
 	len /= sizeof(struct rds6_info_message);
 
 	spin_lock_bh(&rds_sock_lock);
 
 	list_for_each_entry(rs, &rds_sock_list, rs_item) {
-		read_lock(&rs->rs_recv_lock);
+		read_lock_irqsave(&rs->rs_recv_lock, flags);
 
 		/* XXX too lazy to maintain counts.. */
 		list_for_each_entry(inc, &rs->rs_recv_queue, i_item) {
@@ -1235,7 +1237,7 @@ static void rds6_sock_inc_info(struct socket *sock, unsigned int len,
 						   &rs->rs_bound_addr, 1);
 		}
 
-		read_unlock(&rs->rs_recv_lock);
+		read_unlock_irqrestore(&rs->rs_recv_lock, flags);
 	}
 
 	spin_unlock_bh(&rds_sock_lock);
