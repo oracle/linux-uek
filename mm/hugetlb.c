@@ -1952,25 +1952,32 @@ retry:
 		 * need to adjust max_huge_pages if the page is not freed.
 		 * Attempt to allocate vmemmmap here so that we can take
 		 * appropriate action on failure.
+		 *
+		 * The PageHuge check here is because remove_hugetlb_page will
+		 * clear the hugetlb desctructor for non-vmemmap optimized
+		 * hugetlb pages.
 		 */
-		rc = hugetlb_vmemmap_restore(h, head);
-		if (!rc) {
-			/*
-			 * Move PageHWPoison flag from head page to the raw
-			 * error page, which makes any subpages rather than
-			 * the error page reusable.
-			 */
-			if (PageHWPoison(head) && page != head) {
-				SetPageHWPoison(page);
-				ClearPageHWPoison(head);
+		if (PageHuge(page)) {
+			rc = hugetlb_vmemmap_restore(h, head);
+			if (rc) {
+				spin_lock_irq(&hugetlb_lock);
+				add_hugetlb_page(h, head, false);
+				h->max_huge_pages++;
+				goto out;
 			}
-			update_and_free_page(h, head, false);
-		} else {
-			spin_lock_irq(&hugetlb_lock);
-			add_hugetlb_page(h, head, false);
-			h->max_huge_pages++;
-			spin_unlock_irq(&hugetlb_lock);
 		}
+		rc = 0;
+
+		/*
+		 * Move PageHWPoison flag from head page to the raw
+		 * error page, which makes any subpages rather than
+		 * the error page reusable.
+		 */
+		if (PageHWPoison(head) && page != head) {
+			SetPageHWPoison(page);
+			ClearPageHWPoison(head);
+		}
+		update_and_free_page(h, head, false);
 
 		return rc;
 	}
