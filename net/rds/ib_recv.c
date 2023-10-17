@@ -130,7 +130,8 @@ static bool rds_ib_recv_cache_put(int cpu,
 				  struct lfstack_el *new_item_last,
 				  struct rds_ib_refill_cache *cache,
 				  int count);
-static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cache);
+static struct lfstack_el *rds_ib_recv_cache_get(int preferred_cpu,
+						struct rds_ib_refill_cache *cache);
 
 /* Recycle frag and attached recv buffer f_sg */
 static void rds_ib_frag_free(struct rds_ib_connection *ic,
@@ -256,7 +257,7 @@ static struct rds_ib_incoming *rds_ib_refill_one_inc(struct rds_ib_connection *i
 	struct rds_ib_incoming *ibinc;
 	struct lfstack_el *cache_item;
 
-	cache_item = rds_ib_recv_cache_get(&ic->rds_ibdev->i_cache_incs);
+	cache_item = rds_ib_recv_cache_get(ic->i_preferred_recv_cpu, &ic->rds_ibdev->i_cache_incs);
 	if (cache_item) {
 		ibinc = container_of(cache_item, struct rds_ib_incoming, ii_cache_entry);
 	} else {
@@ -284,8 +285,8 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 
 	atomic_add(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
 
-	cache_item = rds_ib_recv_cache_get(ic->rds_ibdev->i_cache_frags +
-					   ic->i_frag_cache_inx);
+	cache_item = rds_ib_recv_cache_get(ic->i_preferred_recv_cpu,
+					   ic->rds_ibdev->i_cache_frags + ic->i_frag_cache_inx);
 	if (cache_item) {
 		frag = container_of(cache_item, struct rds_page_frag, f_cache_entry);
 		rds_ib_stats_inc(s_ib_recv_nmb_removed_from_cache);
@@ -732,8 +733,10 @@ static bool rds_ib_recv_cache_put(int cpu,
 	return true;
 }
 
-static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cache)
+static struct lfstack_el *rds_ib_recv_cache_get(int preferred_cpu,
+						struct rds_ib_refill_cache *cache)
 {
+	struct rds_ib_cache_head *head;
 	struct lfstack_el *item;
 	union lfstack *stack;
 
@@ -741,19 +744,22 @@ static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cach
 		return NULL;
 	rds_ib_stats_inc(s_ib_rx_cache_get);
 
-	stack = &get_cpu_var(cache->percpu->stack);
+	if (preferred_cpu == WORK_CPU_UNBOUND)
+		goto no_preferred_cpu;
+
+	head = per_cpu_ptr(cache->percpu, preferred_cpu);
+	stack = &head->stack;
 	item = lfstack_pop(stack);
 	if (item) {
 		rds_ib_stats_inc(s_ib_rx_cache_get_percpu);
-		atomic_dec(this_cpu_ptr(&cache->percpu->count));
-		atomic64_inc(this_cpu_ptr(&cache->percpu->hit_count));
-		put_cpu_var(cache->percpu->stack);
+		atomic_dec(&head->count);
+		atomic64_inc(&head->hit_count);
 		return item;
 	} else {
-		atomic64_inc(this_cpu_ptr(&cache->percpu->miss_count));
+		atomic64_inc(&head->miss_count);
 	}
-	put_cpu_var(cache->percpu->stack);
 
+no_preferred_cpu:
 	item = lfstack_pop(&cache->ready);
 	if (item) {
 		rds_ib_stats_inc(s_ib_rx_cache_get_ready);
