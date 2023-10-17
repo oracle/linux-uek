@@ -2278,26 +2278,32 @@ retry:
 		 * need to adjust max_huge_pages if the page is not freed.
 		 * Attempt to allocate vmemmmap here so that we can take
 		 * appropriate action on failure.
+		 *
+		 * The folio_test_hugetlb check here is because
+		 * remove_hugetlb_folio will clear hugetlb folio flag for
+		 * non-vmemmap optimized hugetlb folios.
 		 */
-		rc = hugetlb_vmemmap_restore(h, head);
-		if (!rc) {
-			/*
-			 * Move PageHWPoison flag from head page to the raw
-			 * error page, which makes any subpages rather than
-			 * the error page reusable.
-			 */
-			if (PageHWPoison(head) && page != head) {
-				SetPageHWPoison(page);
-				ClearPageHWPoison(head);
+		if (PageHeadHuge(head)) {
+			rc = hugetlb_vmemmap_restore(h, head);
+			if (!rc) {
+				/*
+				 * Move PageHWPoison flag from head page to the raw
+				 * error page, which makes any subpages rather than
+				 * the error page reusable.
+				 */
+				if (PageHWPoison(head) && page != head) {
+					SetPageHWPoison(page);
+					ClearPageHWPoison(head);
+				}
+			} else {
+				spin_lock_irq(&hugetlb_lock);
+				add_hugetlb_page(h, head, false);
+				h->max_huge_pages++;
+				goto out;
 			}
-			update_and_free_page(h, head, false);
-		} else {
-			spin_lock_irq(&hugetlb_lock);
-			add_hugetlb_page(h, head, false);
-			h->max_huge_pages++;
-			spin_unlock_irq(&hugetlb_lock);
-		}
-
+		} else
+			rc = 0;
+		update_and_free_page(h, head, false);
 		return rc;
 	}
 out:
