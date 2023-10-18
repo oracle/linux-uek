@@ -624,6 +624,7 @@ struct perf_event {
 	/* The cumulative AND of all event_caps for events in this group. */
 	int				group_caps;
 
+	UEK_KABI_FILL_HOLE(unsigned int group_generation)
 	struct perf_event		*group_leader;
 	struct pmu			*pmu;
 	void				*pmu_private;
