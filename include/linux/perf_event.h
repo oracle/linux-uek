@@ -724,6 +724,8 @@ struct perf_event {
 	struct mutex			mmap_mutex;
 	atomic_t			mmap_count;
 
+	UEK_KABI_FILL_HOLE(unsigned int	group_generation)
+
 	struct perf_buffer		*rb;
 	struct list_head		rb_entry;
 	unsigned long			rcu_batches;
