@@ -1981,6 +1981,7 @@ extern struct device_attribute *mpt3sas_host_attrs[];
 extern struct device_attribute *mpt3sas_dev_attrs[];
 void mpt3sas_ctl_init(ushort hbas_to_enumerate);
 void mpt3sas_ctl_exit(ushort hbas_to_enumerate);
+void mpt3sas_ctl_release(struct MPT3SAS_ADAPTER *ioc);
 u8 mpt3sas_ctl_done(struct MPT3SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
 	u32 reply);
 void mpt3sas_ctl_pre_reset_handler(struct MPT3SAS_ADAPTER *ioc);
