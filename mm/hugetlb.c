@@ -1907,6 +1907,9 @@ static void prep_and_add_allocated_pages(struct hstate *h,
 	unsigned long flags;
 	struct page *page, *tmp_p;
 
+	/* Send list for bulk vmemmap optimization processing */
+	hugetlb_vmemmap_optimize_pages(h, page_list);
+
 	/* Add all new pool pages to free lists in one lock cycle */
 	spin_lock_irqsave(&hugetlb_lock, flags);
 	list_for_each_entry_safe(page, tmp_p, page_list, lru) {
