@@ -492,7 +492,7 @@ free_msg:
 	return -EMSGSIZE;
 }
 
-int devlink_nl_cmd_reload(struct sk_buff *skb, struct genl_info *info)
+int devlink_nl_reload_doit(struct sk_buff *skb, struct genl_info *info)
 {
 	struct devlink *devlink = info->user_ptr[0];
 	enum devlink_reload_action action;
@@ -652,7 +652,7 @@ nla_put_failure:
 	return err;
 }
 
-int devlink_nl_cmd_eswitch_get_doit(struct sk_buff *skb, struct genl_info *info)
+int devlink_nl_eswitch_get_doit(struct sk_buff *skb, struct genl_info *info)
 {
 	struct devlink *devlink = info->user_ptr[0];
 	struct sk_buff *msg;
@@ -673,7 +673,7 @@ int devlink_nl_cmd_eswitch_get_doit(struct sk_buff *skb, struct genl_info *info)
 	return genlmsg_reply(msg, info);
 }
 
-int devlink_nl_cmd_eswitch_set_doit(struct sk_buff *skb, struct genl_info *info)
+int devlink_nl_eswitch_set_doit(struct sk_buff *skb, struct genl_info *info)
 {
 	struct devlink *devlink = info->user_ptr[0];
 	const struct devlink_ops *ops = devlink->ops;
@@ -1102,7 +1102,7 @@ static int devlink_flash_component_get(struct devlink *devlink,
 	return 0;
 }
 
-int devlink_nl_cmd_flash_update(struct sk_buff *skb, struct genl_info *info)
+int devlink_nl_flash_update_doit(struct sk_buff *skb, struct genl_info *info)
 {
 	struct nlattr *nla_overwrite_mask, *nla_file_name;
 	struct devlink_flash_update_params params = {};
@@ -1345,7 +1345,7 @@ static const struct nla_policy devlink_selftest_nl_policy[DEVLINK_ATTR_SELFTEST_
 	[DEVLINK_ATTR_SELFTEST_ID_FLASH] = { .type = NLA_FLAG },
 };
 
-int devlink_nl_cmd_selftests_run(struct sk_buff *skb, struct genl_info *info)
+int devlink_nl_selftests_run_doit(struct sk_buff *skb, struct genl_info *info)
 {
 	struct nlattr *tb[DEVLINK_ATTR_SELFTEST_ID_MAX + 1];
 	struct devlink *devlink = info->user_ptr[0];
