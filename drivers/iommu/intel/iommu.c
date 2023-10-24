@@ -376,6 +376,7 @@ int for_each_device_domain(int (*fn)(struct device_domain_info *info,
 }
 
 const struct iommu_ops intel_iommu_ops;
+const struct iommu_dirty_ops intel_dirty_ops;
 
 static bool translation_pre_enabled(struct intel_iommu *iommu)
 {
@@ -4798,6 +4799,9 @@ static int prepare_domain_attach_device(struct iommu_domain *domain,
 		return -EINVAL;
 	}
 
+	if (ssads_supported(iommu))
+		domain->dirty_ops = &intel_dirty_ops;
+
 	/* check if this iommu agaw is sufficient for max mapped address */
 	addr_width = agaw_to_width(iommu->agaw);
 	if (addr_width > cap_mgaw(iommu->cap))
@@ -5621,6 +5625,82 @@ static void intel_iommu_iotlb_sync_map(struct iommu_domain *domain,
 		__mapping_notify_one(iommu, dmar_domain, pfn, pages);
 	}
 }
+
+static int intel_iommu_set_dirty_tracking(struct iommu_domain *domain,
+					  bool enable)
+{
+	struct dmar_domain *dmar_domain = to_dmar_domain(domain);
+	struct device_domain_info *info;
+	int ret;
+
+	spin_lock(&device_domain_lock);
+	if (dmar_domain->dirty_tracking == enable)
+		goto out_unlock;
+
+	list_for_each_entry(info, &dmar_domain->devices, link) {
+		ret = intel_pasid_setup_dirty_tracking(info->iommu,
+						       info->domain, info->dev,
+						       0, enable);
+		if (ret)
+			goto err_unwind;
+	}
+
+	dmar_domain->dirty_tracking = enable;
+out_unlock:
+	spin_unlock(&device_domain_lock);
+
+	return 0;
+
+err_unwind:
+	list_for_each_entry(info, &dmar_domain->devices, link)
+		intel_pasid_setup_dirty_tracking(info->iommu, dmar_domain,
+						 info->dev, 0,
+						 dmar_domain->dirty_tracking);
+	spin_unlock(&device_domain_lock);
+	return ret;
+}
+
+static int intel_iommu_read_and_clear_dirty(struct iommu_domain *domain,
+					    unsigned long iova, size_t size,
+					    unsigned long flags,
+					    struct iommu_dirty_bitmap *dirty)
+{
+	struct dmar_domain *dmar_domain = to_dmar_domain(domain);
+	unsigned long end = iova + size - 1;
+	unsigned long pgsize;
+
+	/*
+	 * IOMMUFD core calls into a dirty tracking disabled domain without an
+	 * IOVA bitmap set in order to clean dirty bits in all PTEs that might
+	 * have occurred when we stopped dirty tracking. This ensures that we
+	 * never inherit dirtied bits from a previous cycle.
+	 */
+	if (!dmar_domain->dirty_tracking && dirty->bitmap)
+		return -EINVAL;
+
+	do {
+		struct dma_pte *pte;
+		int lvl = 0;
+
+		pte = pfn_to_dma_pte(dmar_domain, iova >> VTD_PAGE_SHIFT, &lvl);
+		pgsize = level_size(lvl) << VTD_PAGE_SHIFT;
+		if (!pte || !dma_pte_present(pte)) {
+			iova += pgsize;
+			continue;
+		}
+
+		if (dma_sl_pte_test_and_clear_dirty(pte, flags))
+			iommu_dirty_bitmap_record(dirty, iova, pgsize);
+		iova += pgsize;
+	} while (iova < end);
+
+	return 0;
+}
+
+const struct iommu_dirty_ops intel_dirty_ops = {
+	.set_dirty_tracking = intel_iommu_set_dirty_tracking,
+	.read_and_clear_dirty = intel_iommu_read_and_clear_dirty,
+};
 
 const struct iommu_ops intel_iommu_ops = {
 	.capable		= intel_iommu_capable,

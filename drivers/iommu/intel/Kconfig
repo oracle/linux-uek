@@ -12,6 +12,7 @@ config INTEL_IOMMU
 	select DMA_OPS
 	select IOMMU_API
 	select IOMMU_IOVA
+	select IOMMUFD_DRIVER
 	select NEED_DMA_MAP_STATE
 	select DMAR_TABLE
 	select SWIOTLB
