@@ -48,7 +48,7 @@ struct octeontx_pcie_console_nexus {
 	u8                    minor_version;
 	u8                    flags;
 	u8                    num_consoles;
-	spinlock_t            excl_lock;
+	__le32                unused_excl_lock;
 #ifdef CONFIG_PREEMPT_RT
 	u32                   pad_excl_lock;
 #else
