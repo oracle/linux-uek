@@ -241,6 +241,8 @@ unsigned int blk_mq_in_flight(struct request_queue *q,
 void blk_mq_in_flight_rw(struct request_queue *q, struct block_device *part,
 		unsigned int inflight[2]);
 
+bool blk_mq_hctx_has_tags(struct blk_mq_hw_ctx *hctx);
+
 static inline void blk_mq_put_dispatch_budget(struct request_queue *q,
 					      int budget_token)
 {
