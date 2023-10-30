@@ -377,6 +377,8 @@ struct nix_smq_flush_ctx {
 	int smq;
 	u16 tl1_schq;
 	u16 tl2_schq;
+	u16 tl3_schq;
+	u16 tl4_schq;
 	struct nix_smq_tree_ctx smq_tree_ctx[NIX_TXSCH_LVL_CNT];
 };
 
