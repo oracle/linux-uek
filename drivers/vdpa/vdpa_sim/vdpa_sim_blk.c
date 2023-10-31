@@ -368,7 +368,7 @@ static int vdpasim_blk_dev_add(struct vdpa_mgmt_dev *mdev, const char *name,
 
 	blk = sim_to_blk(simdev);
 
-	blk->buffer = kvmalloc(VDPASIM_BLK_CAPACITY << SECTOR_SHIFT,
+	blk->buffer = kvzalloc(VDPASIM_BLK_CAPACITY << SECTOR_SHIFT,
 			       GFP_KERNEL);
 	if (!blk->buffer) {
 		ret = -ENOMEM;
