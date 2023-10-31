@@ -107,6 +107,15 @@ config OCTEONTX2_EINJ
 	  called otx2-einj.
 	  Unless testing, say N here.
 
+config OCTEONTX2_GHES
+	bool "OcteonTX2 GHES support"
+	depends on ARM64 && ACPI_APEI
+	help
+	  Select this option to enable Marvell GHES support. This will
+	  init and enable the MSI-X interrupts for LMC, MDC and MCC.
+	  This config will also make sure that this is enabled only
+	  for ARM64 platforms.
+
 config OCTEONTX_INFO
        tristate "OcteonTX Info driver"
 	depends on PROC_FS
