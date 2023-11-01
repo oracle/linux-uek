@@ -94,10 +94,10 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 8
 %define with_doc       1
 # kernel-headers
 %define with_headers   1
-# perf
-%define with_perf      1
 # bpftools
 %define with_bpftool   1
+# tools
+%define with_tools     %{?_without_tools:     0} %{?!_without_tools:     1}
 # kernel-debuginfo
 %define with_debuginfo %{?_without_debuginfo: 0} %{?!_without_debuginfo: 1}
 # Want to build a the vsdo directories installed
@@ -270,11 +270,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 8
 %define with_compression 0
 %define with_headers 0
 %define with_bpftool 0
-%endif
-
-# Enable perf
-%ifarch x86_64 aarch64
-%define with_perf 1
+%define with_tools 0
 %endif
 
 # Enable bpftool
@@ -329,8 +325,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 8
 %define with_embedded 0
 %define with_embedded_debug 0
 %define with_headers 0
-%define with_perf 0
 %define with_bpftool 0
+%define with_tools 0
 %else
 %if %{with_embeddedonly}
 %define with_embedded 1
@@ -339,11 +335,9 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 8
 %define with_64k_ps 0
 %define with_debug 0
 %define with_headers 0
-%define with_perf 0
 %define with_bpftool 0
 %else
 %define with_headers   1
-%define with_perf 1
 %define with_bpftool   1
 %endif
 %endif
@@ -434,8 +428,6 @@ BuildRequires: openssl, openssl-devel
 BuildRequires: rsync
 BuildRequires: numactl-devel
 BuildRequires: dwarves >= 1.16
-BuildRequires: libtraceevent
-BuildRequires: libtraceevent-devel
 %if %{with_sparse}
 BuildRequires: sparse >= 0.4.1
 %endif
@@ -636,6 +628,22 @@ This package provides debug information for the bpftool package.
 #with_bpftool
 %endif
 
+%if %{with_tools}
+%package -n kernel%{?variant}-tools
+Summary: Assortment of tools for the Linux kernel
+License: GPLv2
+BuildRequires: libtraceevent
+BuildRequires: libtraceevent-devel
+Requires: libtraceevent
+%ifnarch aarch64
+Provides: x86_energy_perf_policy = %{KVERREL}
+Provides: turbostat = %{KVERREL}
+%endif
+Provides: perf = %{KVERREL}
+%description -n kernel%{?variant}-tools
+This package contains some of tools/ directory binaries from the kernel source.
+%endif
+
 #
 # This macro does requires, provides, conflicts, obsoletes for a kernel package.
 #	%%kernel_reqprovconf <subpackage>
@@ -651,11 +659,6 @@ Provides: %{name}-drm = 4.3.0\
 Provides: %{name}-drm-nouveau = 12\
 Provides: %{name}-modeset = 1\
 Provides: oracleasm = 2.0.5\
-%ifnarch aarch64\
-Provides: x86_energy_perf_policy = %{KVERREL}%{?1:.%{1}}\
-Provides: turbostat = %{KVERREL}%{?1:.%{1}}\
-%endif\
-Provides: perf = %{KVERREL}%{?1:.%{1}}\
 %ifarch aarch64\
 Provides: kernel = %{rpmversion}-%{pkg_release}\
 Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
@@ -667,7 +670,6 @@ Requires(pre): system-release\
 Requires(post): /usr/bin/kernel-install\
 Requires(preun): /usr/bin/kernel-install\
 Requires: numactl-libs\
-Requires: libtraceevent \
 Conflicts: %{kernel_dot_org_conflicts}\
 Conflicts: %{package_conflicts}\
 Conflicts: shim-x64 <= 15.3-1.0.3\
@@ -1235,41 +1237,6 @@ BuildKernel() {
 %ifarch %{vdso_arches}
     make %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT vdso_install KERNELRELEASE=$KernelVer
 %endif
-%ifarch %{vdso_arches}
-%ifnarch noarch
-# build tools/perf:
-    if [ -d tools/perf ]; then
-	cd tools/perf
-	make %{?make_opts} %{?_smp_mflags} NO_LIBPERL=1 EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow" all
-# and install it:
-#	mkdir -p $RPM_BUILD_ROOT/usr/bin/$KernelVer/
-	mkdir -p $RPM_BUILD_ROOT/usr/libexec/
-	install -m 755 perf $RPM_BUILD_ROOT/usr/libexec/perf.$KernelVer
-	#install -m 755 libperf.a $RPM_BUILD_ROOT/lib/modules/$KernelVer/bin/%{_target_cpu}/libperf.a
-	cd ../..
-    fi
-%endif
-%ifarch x86_64 %{all_x86}
-# build tools/power/x86/x86_energy_perf_policy:
-    if [ -d tools/power/x86/x86_energy_perf_policy ]; then
-       cd tools/power/x86/x86_energy_perf_policy
-       make %{?make_opts} %{?_smp_mflags} EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow"
-# and install it:
-       mkdir -p $RPM_BUILD_ROOT/usr/libexec/
-       install -m 755 x86_energy_perf_policy $RPM_BUILD_ROOT/usr/libexec/x86_energy_perf_policy.$KernelVer
-       cd ../../../../
-    fi
-# build tools/power/x86/turbostat:
-    if [ -d tools/power/x86/turbostat ]; then
-       cd tools/power/x86/turbostat
-       make %{?make_opts} %{?_smp_mflags} EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow"
-# and install it:
-       mkdir -p $RPM_BUILD_ROOT/usr/libexec/
-       install -m 755 turbostat $RPM_BUILD_ROOT/usr/libexec/turbostat.$KernelVer
-       cd ../../../../
-    fi
-%endif
-%endif
 
     # And save the headers/makefiles etc for building modules against
     #
@@ -1612,6 +1579,35 @@ pushd tools/bpf/bpftool
 popd
 %endif
 
+%if %{with_tools}
+%ifarch %{vdso_arches}
+%ifnarch noarch
+    # build tools/perf:
+    if [ -d tools/perf ]; then
+        pushd tools/perf
+        make %{?make_opts} %{?_smp_mflags} NO_LIBPERL=1 EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow" all
+        popd
+    fi
+%endif
+%endif
+
+%ifarch x86_64 %{all_x86}
+    # build tools/power/x86/x86_energy_perf_policy:
+    if [ -d tools/power/x86/x86_energy_perf_policy ]; then
+       pushd tools/power/x86/x86_energy_perf_policy
+       make %{?make_opts} %{?_smp_mflags} EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow"
+       popd
+    fi
+
+    # build tools/power/x86/turbostat:
+    if [ -d tools/power/x86/turbostat ]; then
+       pushd tools/power/x86/turbostat
+       make %{?make_opts} %{?_smp_mflags} EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow"
+       popd
+    fi
+%endif
+%endif
+
 %if %{with_doc}
 # Make the HTML pages.
 make %{?make_opts} %{?_smp_mflags} htmldocs || %{doc_build_fail}
@@ -1718,22 +1714,43 @@ mkdir -p $docdir
 cp -a Documentation/output/* $docdir
 %endif
 
+%if %{with_tools}
 %ifnarch noarch
-# perf shell wrapper
 mkdir -p $RPM_BUILD_ROOT/usr/sbin/
 cp $RPM_SOURCE_DIR/perf $RPM_BUILD_ROOT/usr/sbin/perf
 chmod 0755 $RPM_BUILD_ROOT/usr/sbin/perf
+mkdir -p $RPM_BUILD_ROOT/usr/libexec/
+install -m 755 tools/perf/perf $RPM_BUILD_ROOT/usr/libexec/perf.%{KVERREL}
+%if %{with_debug}
+ln -sf perf.%{KVERREL} $RPM_BUILD_ROOT/usr/libexec/perf.%{KVERREL}.debug
+%endif
+%if %{with_64k_ps}
+ln -sf perf.%{KVERREL} $RPM_BUILD_ROOT/usr/libexec/perf.%{KVERREL}.64k
+%endif
+%if %{with_64k_ps_debug}
+ln -sf perf.%{KVERREL} $RPM_BUILD_ROOT/usr/libexec/perf.%{KVERREL}.64kdebug
+%endif
 %endif
 
 %ifarch x86_64 %{all_x86}
-# x86_energy_perf_policy shell wrapper
 mkdir -p $RPM_BUILD_ROOT/usr/sbin/
 cp $RPM_SOURCE_DIR/x86_energy_perf_policy $RPM_BUILD_ROOT/usr/sbin/x86_energy_perf_policy
 chmod 0755 $RPM_BUILD_ROOT/usr/sbin/x86_energy_perf_policy
-# turbostat shell wrapper
+mkdir -p $RPM_BUILD_ROOT/usr/libexec/
+install -m 755 tools/power/x86/x86_energy_perf_policy/x86_energy_perf_policy $RPM_BUILD_ROOT/usr/libexec/x86_energy_perf_policy.%{KVERREL}
+%if %{with_debug}
+ln -sf x86_energy_perf_policy.%{KVERREL} $RPM_BUILD_ROOT/usr/libexec/x86_energy_perf_policy.%{KVERREL}.debug
+%endif
+
 mkdir -p $RPM_BUILD_ROOT/usr/sbin/
 cp $RPM_SOURCE_DIR/turbostat $RPM_BUILD_ROOT/usr/sbin/turbostat
 chmod 0755 $RPM_BUILD_ROOT/usr/sbin/turbostat
+mkdir -p $RPM_BUILD_ROOT/usr/libexec/
+install -m 755 tools/power/x86/turbostat/turbostat $RPM_BUILD_ROOT/usr/libexec/turbostat.%{KVERREL}
+%if %{with_debug}
+ln -sf turbostat.%{KVERREL} $RPM_BUILD_ROOT/usr/libexec/turbostat.%{KVERREL}.debug
+%endif
+%endif
 %endif
 
 %if %{with_headers}
@@ -2073,6 +2090,16 @@ fi
 %endif
 %endif
 
+%if %{with_tools}
+%files -n kernel%{?variant}-tools
+/usr/libexec/
+/usr/sbin/perf
+%ifarch x86_64 %{all_x86}
+/usr/sbin/x86_energy_perf_policy
+/usr/sbin/turbostat
+%endif
+%endif
+
 # only some architecture builds need kernel-doc
 %if %{with_doc}
 %files doc
@@ -2130,14 +2157,6 @@ fi
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.modesetting\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.networking\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.order\
-/usr/libexec/perf.%{KVERREL}%{?2:.%{2}}\
-/usr/sbin/perf\
-%ifnarch aarch64\
-/usr/libexec/x86_energy_perf_policy.%{KVERREL}%{?2:.%{2}}\
-/usr/sbin/x86_energy_perf_policy\
-/usr/libexec/turbostat.%{KVERREL}%{?2:.%{2}}\
-/usr/sbin/turbostat\
-%endif\
 %{expand:%%files -f %{variant_name}-modules.list -n %{variant_name}-modules}\
 %{expand:%%files -f %{variant_name}-modules-extra.list -n %{variant_name}-modules-extra}\
 %config(noreplace) /etc/modprobe.d/*-blacklist.conf\
