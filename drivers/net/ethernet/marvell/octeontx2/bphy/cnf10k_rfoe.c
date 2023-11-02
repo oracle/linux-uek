@@ -547,7 +547,8 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 		return;
 	}
 
-	if (unlikely(psw->mac_err_sts || psw->mcs_err_sts)) {
+	if (unlikely(psw->mac_err_sts || (psw->mcs_err_sts &&
+					  ((psw->mcs_err_sts >> 2) != 0x1)))) {
 		if (netif_msg_rx_err(priv2))
 			net_warn_ratelimited("%s: psw mac_err_sts = 0x%x, mcs_err_sts=0x%x\n",
 					     priv2->netdev->name,
