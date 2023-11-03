@@ -245,15 +245,11 @@ enum rds_hb_state {
 	HB_PONG_RCVD,
 };
 
-struct bind_bucket;
-
 struct rds_net {
 	/* The following socket info is used for stats gathering */
 	struct mutex		rns_sock_lock;
 	u32			rns_sock_count;
 	struct list_head	rns_sock_list;
-
-	struct bind_bucket	*rns_bind_hash_table;
 };
 
 #define IS_CANONICAL(laddr, faddr) (htonl(laddr) < htonl(faddr))
@@ -381,7 +377,6 @@ struct rds_connection {
 	unsigned int		c_proposed_version;
 	unsigned int		c_version;
 	possible_net_t		c_net;
-	struct rds_net		*c_rns;
 
 	/* Re-connect stall diagnostics */
 	unsigned long           c_reconnect_start;
@@ -419,15 +414,11 @@ struct net *rds_conn_net(struct rds_connection *conn)
 	return read_pnet(&conn->c_net);
 }
 
-struct rds_net *rds_ns(struct net *);
-
 static inline
 void rds_conn_net_set(struct rds_connection *conn, struct net *net)
 {
 	/* Once set, never changed. */
 	write_pnet(&conn->c_net, net);
-
-	conn->c_rns = rds_ns(net);
 }
 
 #define RDS_FLAG_CONG_BITMAP		0x01
@@ -1102,12 +1093,10 @@ void debug_sock_put(struct sock *sock);
 
 /* bind.c */
 int rds_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len);
-void rds_remove_bound(struct rds_net *rds_ns, struct rds_sock *rs);
-struct rds_sock *rds_find_bound(struct rds_net *rds_ns,
-				struct in6_addr *addr, __be16 port,
+void rds_remove_bound(struct rds_sock *rs);
+struct rds_sock *rds_find_bound(struct in6_addr *addr, __be16 port,
 				__u32 scope_id);
-int rds_bind_tbl_net_init(struct rds_net *rds_ns);
-void rds_bind_tbl_net_exit(struct rds_net *rds_ns);
+void rds_bind_lock_init(void);
 
 /* cong.c */
 int rds_cong_monitor_init(void);
@@ -1540,6 +1529,7 @@ int rds_trans_init(void);
 void rds_trans_exit(void);
 
 /* rds_ns.c */
+struct rds_net *rds_ns(struct net *net);
 int rds_reg_pernet(void);
 void rds_unreg_pernet(void);
 
