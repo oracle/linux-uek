@@ -4,7 +4,6 @@
 /* loop.c */
 extern struct rds_transport rds_loop_transport;
 
-int rds_loop_net_init(struct rds_net *rns);
-void rds_loop_net_exit(struct rds_net *rns);
+void rds_loop_exit(void);
 
 #endif
