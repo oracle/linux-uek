@@ -791,8 +791,7 @@ void rds_ib_recv_rebuild_caches(struct rds_ib_connection *ic);
 void rds_ib_recv_free_frag(struct rds_page_frag *frag, int nent);
 void __rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp);
 void rds_ib_inc_free(struct rds_incoming *inc);
-int rds_ib_inc_copy_to_user(struct rds_sock *rs, struct rds_incoming *inc,
-			    struct iov_iter *to);
+int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to);
 void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 			    struct ib_wc *wc,
 			    struct rds_ib_ack_state *state);
@@ -861,10 +860,10 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op);
 
 /* ib_stats.c */
 DECLARE_PER_CPU(struct rds_ib_statistics, rds_ib_stats);
-#define rds_ib_stats_inc(member) rds_stats_inc_which(&rds_ib_stats, member)
+#define rds_ib_stats_inc(member) rds_stats_inc_which(rds_ib_stats, member)
 #define rds_ib_stats_dec(member) rds_stats_dec_which(rds_ib_stats, member)
 #define rds_ib_stats_add(member, count) \
-		rds_stats_add_which(&rds_ib_stats, member, count)
+		rds_stats_add_which(rds_ib_stats, member, count)
 unsigned int rds_ib_stats_info_copy(struct rds_info_iterator *iter,
 				    unsigned int avail);
 void rds_ib_stats_print(const char *where);
