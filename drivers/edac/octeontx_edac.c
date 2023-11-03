@@ -1013,10 +1013,8 @@ static int octeontx_gic_probe(struct platform_device *pdev)
 	int ret = 0;
 
 	ret = octeontx_edac_map_resource(pdev, &ghes, NULL);
-	if (ret) {
-		pr_err("failed octeontx_edac_map_resource\n");
+	if (ret)
 		return ret;
-	}
 
 	ret = octeontx_edac_device_init(pdev, ghes, "gic", ghes->name);
 
@@ -1062,27 +1060,6 @@ static void octeontx_cpu_remove(struct platform_device *pdev)
 	edac_device_del_device(&pdev->dev);
 	edac_device_free_ctl_info(edac_dev);
 	platform_device_unregister(pdev);
-}
-
-static int octeontx_gic_remove(struct platform_device *pdev)
-{
-	struct edac_device_ctl_info *edac_dev = platform_get_drvdata(pdev);
-	struct device *dev = &pdev->dev;
-	char *name = (char *)dev->driver->of_match_table->name;
-	struct octeontx_edac *ghes = NULL;
-	int i = 0;
-
-	for (i = 0; i < ghes_list.count; i++) {
-		ghes = &ghes_list.ghes[i];
-		if (strncmp(name, ghes->name, 4))
-			continue;
-		octeontx_sdei_unregister(ghes);
-	}
-	edac_device_del_device(&pdev->dev);
-	edac_device_free_ctl_info(edac_dev);
-	platform_device_unregister(pdev);
-
-	return 0;
 }
 
 static struct platform_driver tad_edac_drv = {
@@ -1132,7 +1109,7 @@ static struct platform_driver cpu_edac_drv = {
 
 static struct platform_driver gic_edac_drv = {
 	.probe = octeontx_gic_probe,
-	.remove = octeontx_gic_remove,
+	.remove = octeontx_device_remove,
 	.driver = {
 		.name = "gic_edac",
 		.of_match_table = gic_of_match,
