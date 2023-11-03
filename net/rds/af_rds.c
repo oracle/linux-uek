@@ -164,6 +164,10 @@ char *rds_str_array(char **array, size_t elements, size_t index)
 }
 EXPORT_SYMBOL(rds_str_array);
 
+/* this is just used for stats gathering :/ */
+static DEFINE_SPINLOCK(rds_sock_lock);
+static unsigned long rds_sock_count;
+static LIST_HEAD(rds_sock_list);
 struct wait_queue_head rds_poll_waitq[RDS_NMBR_WAITQ];
 
 /* kmem cache slab for struct rds_buf_info */
@@ -214,10 +218,10 @@ static int rds_release(struct socket *sock)
 	rhashtable_free_and_destroy(&rs->rs_buf_info_tbl, rds_buf_info_free,
 				    NULL);
 
-	mutex_lock(&rs->rs_rns->rns_sock_lock);
+	spin_lock_bh(&rds_sock_lock);
 	list_del_init(&rs->rs_item);
-	rs->rs_rns->rns_sock_count--;
-	mutex_unlock(&rs->rs_rns->rns_sock_lock);
+	rds_sock_count--;
+	spin_unlock_bh(&rds_sock_lock);
 
 	rds_trans_put(rs->rs_transport);
 
@@ -397,10 +401,8 @@ static unsigned int rds_poll(struct file *file, struct socket *sock,
 static int rds_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 {
 	struct rds_sock *rs = rds_sk_to_rs(sock->sk);
-	struct mutex *sock_lock;
 	rds_tos_t tos;
 
-	sock_lock = &rs->rs_rns->rns_sock_lock;
 	switch (cmd) {
 	case SIOCRDSSETTOS:
 		if (get_user(tos, (rds_tos_t __user *)arg))
@@ -410,21 +412,21 @@ static int rds_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 		    rs->rs_transport->t_type == RDS_TRANS_TCP)
 			tos = 0;
 
-		mutex_lock(sock_lock);
+		spin_lock_bh(&rds_sock_lock);
 		if (rs->rs_tos || rs->rs_conn) {
-			mutex_unlock(sock_lock);
+			spin_unlock_bh(&rds_sock_lock);
 			return -EINVAL;
 		}
 		rs->rs_tos = tos;
-		mutex_unlock(sock_lock);
+		spin_unlock_bh(&rds_sock_lock);
 		break;
-	case SIOCRDSGETTOS:
-		mutex_lock(sock_lock);
-		tos = rs->rs_tos;
-		mutex_unlock(sock_lock);
-		if (put_user(tos, (rds_tos_t __user *)arg))
-			return -EFAULT;
-		break;
+        case SIOCRDSGETTOS:
+                spin_lock_bh(&rds_sock_lock);
+                tos = rs->rs_tos;
+                spin_unlock_bh(&rds_sock_lock);
+                if (put_user(tos, (rds_tos_t __user *)arg))
+                        return -EFAULT;
+                break;
 	default:
 		return -ENOIOCTLCMD;
 	}
@@ -1055,7 +1057,6 @@ static void rds_sock_destruct(struct sock *sk)
 static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 {
 	struct rds_sock *rs;
-	struct net *net;
 	int ret;
 
 	sock_init_data(sock, sk);
@@ -1078,8 +1079,6 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 	rs->rs_conn_path = NULL;
 	rs->rs_rx_traces = 0;
 	rs->rs_pid = current->pid;
-	net = sock_net(sk);
-	rs->rs_rns = rds_ns(net);
 
 	spin_lock_init(&rs->rs_snd_lock);
 	ret = rhashtable_init(&rs->rs_buf_info_tbl, &rs_buf_info_params);
@@ -1094,10 +1093,10 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 		       &rs->rs_bound_addr);
 	}
 
-	mutex_lock(&rs->rs_rns->rns_sock_lock);
-	list_add_tail(&rs->rs_item, &rs->rs_rns->rns_sock_list);
-	rs->rs_rns->rns_sock_count++;
-	mutex_unlock(&rs->rs_rns->rns_sock_lock);
+	spin_lock_bh(&rds_sock_lock);
+	list_add_tail(&rs->rs_item, &rds_sock_list);
+	rds_sock_count++;
+	spin_unlock_bh(&rds_sock_lock);
 
 	return 0;
 }
@@ -1173,17 +1172,15 @@ static void rds_sock_inc_info(struct socket *sock, unsigned int len,
 			      struct rds_info_iterator *iter,
 			      struct rds_info_lengths *lens)
 {
-	struct rds_net *rns;
 	struct rds_sock *rs;
 	struct rds_incoming *inc;
 	unsigned int total = 0;
 
 	len /= sizeof(struct rds_info_message);
 
-	rns = rds_ns(sock_net(sock->sk));
-	mutex_lock(&rns->rns_sock_lock);
+	spin_lock_bh(&rds_sock_lock);
 
-	list_for_each_entry(rs, &rns->rns_sock_list, rs_item) {
+	list_for_each_entry(rs, &rds_sock_list, rs_item) {
 		(void)rds_rs_to_sk(rs);
 		read_lock(&rs->rs_recv_lock);
 
@@ -1200,7 +1197,7 @@ static void rds_sock_inc_info(struct socket *sock, unsigned int len,
 		read_unlock(&rs->rs_recv_lock);
 	}
 
-	mutex_unlock(&rns->rns_sock_lock);
+	spin_unlock_bh(&rds_sock_lock);
 
 	lens->nr = total;
 	lens->each = sizeof(struct rds_info_message);
@@ -1211,17 +1208,15 @@ static void rds6_sock_inc_info(struct socket *sock, unsigned int len,
 			       struct rds_info_iterator *iter,
 			       struct rds_info_lengths *lens)
 {
-	struct rds_net *rns;
 	struct rds_sock *rs;
 	struct rds_incoming *inc;
 	unsigned int total = 0;
 
 	len /= sizeof(struct rds6_info_message);
 
-	rns = rds_ns(sock_net(sock->sk));
-	mutex_lock(&rns->rns_sock_lock);
+	spin_lock_bh(&rds_sock_lock);
 
-	list_for_each_entry(rs, &rns->rns_sock_list, rs_item) {
+	list_for_each_entry(rs, &rds_sock_list, rs_item) {
 		read_lock(&rs->rs_recv_lock);
 
 		/* XXX too lazy to maintain counts.. */
@@ -1235,7 +1230,7 @@ static void rds6_sock_inc_info(struct socket *sock, unsigned int len,
 		read_unlock(&rs->rs_recv_lock);
 	}
 
-	mutex_unlock(&rns->rns_sock_lock);
+	spin_unlock_bh(&rds_sock_lock);
 
 	lens->nr = total;
 	lens->each = sizeof(struct rds6_info_message);
@@ -1254,26 +1249,16 @@ static void rds_sock_info(struct socket *sock, unsigned int len,
 			  struct rds_info_lengths *lens)
 {
 	struct rds_info_socket sinfo;
-	struct rds_net *rns;
-	u32 sock_count;
 	struct rds_sock *rs;
 
 	len /= sizeof(struct rds_info_socket);
 
-	rns = rds_ns(sock_net(sock->sk));
-	mutex_lock(&rns->rns_sock_lock);
+	spin_lock_bh(&rds_sock_lock);
 
-	if (len < rns->rns_sock_count) {
-		sock_count = rns->rns_sock_count;
+	if (len < rds_sock_count)
 		goto out;
-	} else {
-		sock_count = 0;
-	}
 
-	list_for_each_entry(rs, &rns->rns_sock_list, rs_item) {
-		if (!ipv6_addr_any(&rs->rs_bound_addr) &&
-		    !ipv6_addr_v4mapped(&rs->rs_bound_addr))
-			continue;
+	list_for_each_entry(rs, &rds_sock_list, rs_item) {
 		sinfo.sndbuf = rds_sk_sndbuf(rs);
 		sinfo.rcvbuf = rds_sk_rcvbuf(rs);
 		sinfo.bound_addr = rs->rs_bound_addr_v4;
@@ -1288,14 +1273,13 @@ static void rds_sock_info(struct socket *sock, unsigned int len,
 			sinfo.cong = -1;
 
 		rds_info_copy(iter, &sinfo, sizeof(sinfo));
-		sock_count++;
 	}
 
 out:
-	lens->nr = sock_count;
+	lens->nr = rds_sock_count;
 	lens->each = sizeof(struct rds_info_socket);
 
-	mutex_unlock(&rns->rns_sock_lock);
+	spin_unlock_bh(&rds_sock_lock);
 }
 
 #if IS_ENABLED(CONFIG_IPV6)
@@ -1304,18 +1288,16 @@ static void rds6_sock_info(struct socket *sock, unsigned int len,
 			   struct rds_info_lengths *lens)
 {
 	struct rds6_info_socket sinfo6;
-	struct rds_net *rns;
 	struct rds_sock *rs;
 
 	len /= sizeof(struct rds6_info_socket);
 
-	rns = rds_ns(sock_net(sock->sk));
-	mutex_lock(&rns->rns_sock_lock);
+	spin_lock_bh(&rds_sock_lock);
 
-	if (len < rns->rns_sock_count)
+	if (len < rds_sock_count)
 		goto out;
 
-	list_for_each_entry(rs, &rns->rns_sock_list, rs_item) {
+	list_for_each_entry(rs, &rds_sock_list, rs_item) {
 		sinfo6.sndbuf = rds_sk_sndbuf(rs);
 		sinfo6.rcvbuf = rds_sk_rcvbuf(rs);
 		sinfo6.bound_addr = rs->rs_bound_addr;
@@ -1333,10 +1315,10 @@ static void rds6_sock_info(struct socket *sock, unsigned int len,
 	}
 
 out:
-	lens->nr = rns->rns_sock_count;
+	lens->nr = rds_sock_count;
 	lens->each = sizeof(struct rds6_info_socket);
-	mutex_unlock(&rns->rns_sock_lock);
 
+	spin_unlock_bh(&rds_sock_lock);
 }
 #endif
 
@@ -1446,7 +1428,6 @@ static void __exit rds_exit(void)
 	rds_cong_monitor_free();
 	sock_unregister(rds_family_ops.family);
 	proto_unregister(&rds_proto);
-	rds_unreg_pernet();
 	rds_conn_exit();
 	rds_cong_exit();
 	rds_sysctl_exit();
@@ -1477,18 +1458,16 @@ static int __init rds_init(void)
 	rds_rs_buf_info_slab = kmem_cache_create("rds_rs_buf_info",
 						 sizeof(struct rs_buf_info),
 						 0, SLAB_HWCACHE_ALIGN, NULL);
-	if (!rds_rs_buf_info_slab)
-		return -ENOMEM;
-
-	ret = rds_reg_pernet();
-	if (ret)
-		goto out_slab;
+	if (!rds_rs_buf_info_slab) {
+		ret = -ENOMEM;
+		goto out;
+	}
 
 	rds_bind_lock_init();
 
 	ret = rds_conn_init();
 	if (ret)
-		goto out_net;
+		goto out_slab;
 	ret = rds_threads_init();
 	if (ret)
 		goto out_conn;
@@ -1532,12 +1511,8 @@ out_threads:
 out_conn:
 	rds_conn_exit();
 	rds_page_exit();
-out_net:
-	rds_unreg_pernet();
-
 out_slab:
 	kmem_cache_destroy(rds_rs_buf_info_slab);
-
 out:
 	return ret;
 }
