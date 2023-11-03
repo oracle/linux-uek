@@ -301,8 +301,7 @@ struct scatterlist *rds_message_alloc_sgs(struct rds_message *rm, int nents)
 	return sg_ret;
 }
 
-int rds_message_copy_from_user(struct rds_sock *rs, struct rds_message *rm,
-			       struct iov_iter *from)
+int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from)
 {
 	unsigned long to_copy, nbytes;
 	unsigned long sg_off;
@@ -345,7 +344,7 @@ int rds_message_copy_from_user(struct rds_sock *rs, struct rds_message *rm,
 		if (nbytes != to_copy)
 			return -EFAULT;
 
-		rds_stats_add(rs->rs_stats, s_copy_from_user, to_copy);
+		rds_stats_add(s_copy_from_user, to_copy);
 		sg_off += to_copy;
 
 		if (sg_off == sg->length)
@@ -355,8 +354,7 @@ int rds_message_copy_from_user(struct rds_sock *rs, struct rds_message *rm,
 	return ret;
 }
 
-int rds_message_inc_copy_to_user(struct rds_sock *rs, struct rds_incoming *inc,
-				 struct iov_iter *to)
+int rds_message_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 {
 	struct rds_csum csum;
 	struct rds_connection *conn;
@@ -393,7 +391,7 @@ int rds_message_inc_copy_to_user(struct rds_sock *rs, struct rds_incoming *inc,
 		if (ret != to_copy)
 			return -EFAULT;
 
-		rds_stats_add(rs->rs_stats, s_copy_to_user, to_copy);
+		rds_stats_add(s_copy_to_user, to_copy);
 		atomic64_add(to_copy, &conn->c_recv_bytes);
 		vec_off += to_copy;
 		copied += to_copy;
@@ -405,7 +403,7 @@ int rds_message_inc_copy_to_user(struct rds_sock *rs, struct rds_incoming *inc,
 	}
 
 	if (unlikely(inc->i_payload_csum.csum_enabled) && copied) {
-		rds_stats_inc(rs->rs_stats, s_recv_payload_csum_loopback);
+		rds_stats_inc(s_recv_payload_csum_loopback);
 		rds_check_csum(inc, &csum);
 	}
 
