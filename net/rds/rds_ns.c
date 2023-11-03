@@ -60,12 +60,7 @@ static __net_init int rds_init_net(struct net *net)
 	if (ret)
 		goto err;
 
-	ret = rds_conn_tbl_net_init(rns);
-	if (ret)
-		goto err_conn;
-
-err_conn:
-	rds_bind_tbl_net_exit(rns);
+	return 0;
 
 err:
 	mutex_destroy(&rns->rns_sock_lock);
