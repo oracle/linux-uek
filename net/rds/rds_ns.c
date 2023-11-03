@@ -47,7 +47,6 @@ EXPORT_SYMBOL(rds_ns);
 static __net_init int rds_init_net(struct net *net)
 {
 	struct rds_net *rns;
-	int ret;
 
 	rns = rds_ns(net);
 
@@ -56,22 +55,12 @@ static __net_init int rds_init_net(struct net *net)
 	mutex_init(&rns->rns_sock_lock);
 	INIT_LIST_HEAD(&rns->rns_sock_list);
 
-	ret = rds_bind_tbl_net_init(rns);
-	if (ret)
-		goto err;
-
 	return 0;
-
-err:
-	mutex_destroy(&rns->rns_sock_lock);
-	return ret;
 }
 
 static void rds_exit_net(struct net *net)
 {
 	struct rds_net *rns = rds_ns(net);
-
-	rds_bind_tbl_net_exit(rns);
 
 	mutex_destroy(&rns->rns_sock_lock);
 }
