@@ -53,8 +53,6 @@ unsigned int rds_tcp_stats_info_copy(struct rds_info_iterator *iter,
 				     unsigned int avail)
 {
 	struct rds_tcp_statistics stats = {0, };
-	struct rds_tcp_statistics *per_cpu_ns_ptr;
-	struct rds_net *rns;
 	uint64_t *src;
 	uint64_t *sum;
 	size_t i;
@@ -63,11 +61,8 @@ unsigned int rds_tcp_stats_info_copy(struct rds_info_iterator *iter,
 	if (avail < ARRAY_SIZE(rds_tcp_stat_names))
 		goto out;
 
-	rns = rds_ns(iter->net);
-	per_cpu_ns_ptr = __rds_get_mod_stats(rns, RDS_MOD_TCP);
-
 	for_each_online_cpu(cpu) {
-		src = (uint64_t *)per_cpu_ptr(per_cpu_ns_ptr, cpu);
+		src = (uint64_t *)&(per_cpu(rds_tcp_stats, cpu));
 		sum = (uint64_t *)&stats;
 		for (i = 0; i < sizeof(stats) / sizeof(uint64_t); i++)
 			*(sum++) += *(src++);
@@ -77,48 +72,4 @@ unsigned int rds_tcp_stats_info_copy(struct rds_info_iterator *iter,
 			    ARRAY_SIZE(rds_tcp_stat_names));
 out:
 	return ARRAY_SIZE(rds_tcp_stat_names);
-}
-
-void rds_tcp_stats_net_exit(struct net *net)
-{
-	struct rds_stats_struct *stats;
-
-	stats = rds_mod_stats_unregister(net, RDS_MOD_TCP);
-	if (!net_eq(net, &init_net))
-		free_percpu(stats->rs_stats);
-	kfree(stats);
-}
-
-int rds_tcp_stats_net_init(struct net *net)
-{
-	struct rds_stats_struct *stats;
-	int ret = 0;
-
-	stats = kmalloc(sizeof(*stats), GFP_KERNEL);
-	if (!stats)
-		return -ENOMEM;
-
-	stats->rs_names = rds_tcp_stat_names;
-	stats->rs_num_stats = sizeof(struct rds_tcp_statistics) /
-		sizeof(uint64_t);
-
-	if (net_eq(net, &init_net)) {
-		stats->rs_stats = &rds_tcp_stats;
-		ret = rds_mod_stats_register(net, RDS_MOD_TCP, stats);
-	} else {
-		stats->rs_stats =
-			__alloc_percpu(sizeof(struct rds_tcp_statistics),
-				       cache_line_size());
-		if (stats->rs_stats) {
-			ret = rds_mod_stats_register(net, RDS_MOD_TCP, stats);
-			if (ret)
-				free_percpu(stats->rs_stats);
-		} else {
-			ret = -ENOMEM;
-		}
-	}
-
-	if (ret)
-		kfree(stats);
-	return ret;
 }
