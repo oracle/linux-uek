@@ -318,13 +318,11 @@ void rds_send_worker(struct work_struct *work)
 
 		switch (ret) {
 		case -EAGAIN:
-		  rds_stats_inc(cp->cp_conn->c_stats,
-				s_send_immediate_retry);
+			rds_stats_inc(s_send_immediate_retry);
 			delay = 0;
 			break;
 		case -ENOMEM:
-		  rds_stats_inc(cp->cp_conn->c_stats,
-				s_send_delayed_retry);
+			rds_stats_inc(s_send_delayed_retry);
 			delay = 2;
 			break;
 		default:
@@ -356,13 +354,11 @@ void rds_recv_worker(struct work_struct *work)
 
 		switch (ret) {
 		case -EAGAIN:
-		  rds_stats_inc(cp->cp_conn->c_stats,
-				s_recv_immediate_retry);
+			rds_stats_inc(s_recv_immediate_retry);
 			delay = 0;
 			break;
 		case -ENOMEM:
-		  rds_stats_inc(cp->cp_conn->c_stats,
-				s_recv_delayed_retry);
+			rds_stats_inc(s_recv_delayed_retry);
 			delay = 2;
 		default:
 			return;
