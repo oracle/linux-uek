@@ -248,8 +248,8 @@ struct dentry *mrvl_spi_debug_root;
 #define CDNS_XSPI_SPIX_INTR_AUX				0x2000
 #define CDNS_MSIX_CLEAR_IRQ					0x01
 
-#define SPIX_XFER_FUNC_CTRL 0x8210
-#define SPIX_XFER_FUNC_CTRL_READ_DATA(i) (0x8000 + 8 * (i))
+#define SPIX_XFER_FUNC_CTRL 0x210
+#define SPIX_XFER_FUNC_CTRL_READ_DATA(i) (0x000 + 8 * (i))
 
 #define XFER_SOFT_RESET		BIT(11)
 #define XFER_CS_N_HOLD		GENMASK(9, 6)
@@ -318,6 +318,7 @@ struct cdns_xspi_dev {
 	void __iomem *iobase;
 	void __iomem *auxbase;
 	void __iomem *sdmabase;
+	void __iomem *xferbase;
 
 	int irq;
 	int cur_cs;
@@ -1228,7 +1229,7 @@ unsigned char reverse_bits(unsigned char num)
 
 static void cdns_xspi_read_single_qword(struct cdns_xspi_dev *cdns_xspi, u8 **buffer)
 {
-	u64 d = readq(cdns_xspi->iobase +
+	u64 d = readq(cdns_xspi->xferbase +
 		      SPIX_XFER_FUNC_CTRL_READ_DATA(cdns_xspi->current_xfer_qword));
 	u8 *ptr = (u8 *)&d;
 	int k;
@@ -1245,7 +1246,7 @@ static void cdns_xspi_read_single_qword(struct cdns_xspi_dev *cdns_xspi, u8 **bu
 
 static void cdns_xspi_finish_read(struct cdns_xspi_dev *cdns_xspi, u8 **buffer, u32 data_count)
 {
-	u64 d = readq(cdns_xspi->iobase +
+	u64 d = readq(cdns_xspi->xferbase +
 		      SPIX_XFER_FUNC_CTRL_READ_DATA(cdns_xspi->current_xfer_qword));
 	u8 *ptr = (u8 *)&d;
 	int k;
@@ -1292,7 +1293,7 @@ int cdns_xspi_transfer_one_message(struct spi_controller *master,
 
 	/* Enable xfer state machine */
 	if (!cdns_xspi->xfer_in_progress) {
-		u32 xfer_control = readl(cdns_xspi->iobase + SPIX_XFER_FUNC_CTRL);
+		u32 xfer_control = readl(cdns_xspi->xferbase + SPIX_XFER_FUNC_CTRL);
 
 		cdns_xspi->current_xfer_qword = 0;
 		cdns_xspi->xfer_in_progress = true;
@@ -1302,7 +1303,7 @@ int cdns_xspi_transfer_one_message(struct spi_controller *master,
 				 XFER_SOFT_RESET |
 				 FIELD_PREP(XFER_CS_N_HOLD, (1 << cs)));
 		xfer_control &= ~(XFER_FUNC_ENABLE | XFER_CLK_DRIVE_POL);
-		writel(xfer_control, cdns_xspi->iobase + SPIX_XFER_FUNC_CTRL);
+		writel(xfer_control, cdns_xspi->xferbase + SPIX_XFER_FUNC_CTRL);
 	}
 
 	list_for_each_entry(t, &m->transfers, transfer_list) {
@@ -1363,11 +1364,11 @@ int cdns_xspi_transfer_one_message(struct spi_controller *master,
 	}
 
 	if (!cs_change) {
-		u32 xfer_control = readl(cdns_xspi->iobase + SPIX_XFER_FUNC_CTRL);
+		u32 xfer_control = readl(cdns_xspi->xferbase + SPIX_XFER_FUNC_CTRL);
 
 		xfer_control &= ~(XFER_RECEIVE_ENABLE |
 				  XFER_SOFT_RESET);
-		writel(xfer_control, cdns_xspi->iobase + SPIX_XFER_FUNC_CTRL);
+		writel(xfer_control, cdns_xspi->xferbase + SPIX_XFER_FUNC_CTRL);
 		cdns_xspi->xfer_in_progress = false;
 	}
 
@@ -1650,6 +1651,16 @@ static int cdns_xspi_probe(struct platform_device *pdev)
 		dev_err(dev, "Failed to remap AUX address\n");
 		return PTR_ERR(cdns_xspi->auxbase);
 	}
+
+#if IS_ENABLED(CONFIG_SPI_CADENCE_MRVL_XSPI)
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 3);
+	cdns_xspi->xferbase = devm_ioremap_resource(dev, res);
+	if (IS_ERR(cdns_xspi->xferbase)) {
+		dev_info(dev, "XFER register base not found, set it\n");
+		// For compatibility with older firmware
+		cdns_xspi->xferbase = cdns_xspi->iobase + 0x8000;
+	}
+#endif
 
 	cdns_xspi->irq = platform_get_irq(pdev, 0);
 	if (cdns_xspi->irq < 0)
