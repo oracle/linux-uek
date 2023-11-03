@@ -1077,9 +1077,7 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 	rs->rs_rx_traces = 0;
 	rs->rs_pid = current->pid;
 	net = sock_net(sk);
-
 	rs->rs_rns = rds_ns(net);
-	rs->rs_stats = __rds_get_mod_stats(rs->rs_rns, RDS_MOD_RDS);
 
 	spin_lock_init(&rs->rs_snd_lock);
 	ret = rhashtable_init(&rs->rs_buf_info_tbl, &rs_buf_info_params);
@@ -1364,8 +1362,7 @@ static unsigned long parse_ul(char *ptr, unsigned long max)
 	return 0;
 }
 
-int rds_check_qos_threshold(struct rds_statistics __percpu *stats, u8 tos,
-			    size_t payload_len)
+int rds_check_qos_threshold(u8 tos, size_t payload_len)
 {
 	if (rds_qos_threshold_action == 0)
 		return 0;
@@ -1375,10 +1372,10 @@ int rds_check_qos_threshold(struct rds_statistics __percpu *stats, u8 tos,
 		if (rds_qos_threshold_action == 1)
 			return 1;
 		else if (rds_qos_threshold_action == 2) {
-			rds_stats_inc(stats, s_qos_threshold_exceeded);
+			rds_stats_inc(s_qos_threshold_exceeded);
 			return 0;
 		} else if (rds_qos_threshold_action == 3) {
-			rds_stats_inc(stats, s_qos_threshold_exceeded);
+			rds_stats_inc(s_qos_threshold_exceeded);
 			return 1;
 		} else
 			return 0;
@@ -1450,6 +1447,7 @@ static void __exit rds_exit(void)
 	rds_conn_exit();
 	rds_sysctl_exit();
 	rds_threads_exit();
+	rds_stats_exit();
 	rds_page_exit();
 	rds_info_deregister_func(RDS_INFO_SOCKETS, rds_sock_info);
 	rds_info_deregister_func(RDS_INFO_RECV_MESSAGES, rds_sock_inc_info);
@@ -1491,9 +1489,12 @@ static int __init rds_init(void)
 	ret = rds_sysctl_init();
 	if (ret)
 		goto out_threads;
-	ret = proto_register(&rds_proto, 1);
+	ret = rds_stats_init();
 	if (ret)
 		goto out_sysctl;
+	ret = proto_register(&rds_proto, 1);
+	if (ret)
+		goto out_stats;
 	ret = sock_register(&rds_family_ops);
 	if (ret)
 		goto out_proto;
@@ -1511,6 +1512,8 @@ static int __init rds_init(void)
 
 out_proto:
 	proto_unregister(&rds_proto);
+out_stats:
+	rds_stats_exit();
 out_sysctl:
 	rds_sysctl_exit();
 out_threads:

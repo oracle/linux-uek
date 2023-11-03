@@ -59,6 +59,12 @@
  * - info source copy must be pinned, may be "large"
  */
 
+struct rds_info_iterator {
+	struct page **pages;
+	void *addr;
+	unsigned long offset;
+};
+
 static DEFINE_SPINLOCK(rds_info_lock);
 static rds_info_func rds_info_funcs[RDS_INFO_LAST - RDS_INFO_FIRST + 1];
 
@@ -206,7 +212,6 @@ call_func:
 	iter.pages = pages;
 	iter.addr = NULL;
 	iter.offset = start & (PAGE_SIZE - 1);
-	iter.net = sock_net(sock->sk);
 
 	func(sock, len, &iter, &lens);
 	BUG_ON(lens.each == 0);
