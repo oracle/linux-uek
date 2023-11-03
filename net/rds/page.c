@@ -78,7 +78,7 @@ int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
 			ret = -ENOMEM;
 		} else {
 			sg_set_page(scat, page, PAGE_SIZE, 0);
-			rds_stats_inc(&rds_stats, s_page_allocs);
+			rds_stats_inc(s_page_allocs);
 			ret = 0;
 		}
 		goto out;
@@ -90,7 +90,7 @@ int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
 	while (1) {
 		/* avoid a tiny region getting stuck by tossing it */
 		if (rem->r_page && bytes > (PAGE_SIZE - rem->r_offset)) {
-			rds_stats_inc(&rds_stats, s_page_remainder_miss);
+			rds_stats_inc(s_page_remainder_miss);
 			rds_page_free(rem->r_page);
 			rem->r_page = NULL;
 		}
@@ -99,10 +99,10 @@ int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
 		if (rem->r_page && bytes <= (PAGE_SIZE - rem->r_offset)) {
 			sg_set_page(scat, rem->r_page, bytes, rem->r_offset);
 			get_page(sg_page(scat));
-			rds_stats_inc(&rds_stats, s_page_gets);
+			rds_stats_inc(s_page_gets);
 
 			if (rem->r_offset != 0)
-				rds_stats_inc(&rds_stats, s_page_remainder_hit);
+				rds_stats_inc(s_page_remainder_hit);
 
 			/* some hw (e.g. sparc) require aligned memory */
 			rem->r_offset += ALIGN(bytes, 8);
@@ -127,7 +127,7 @@ int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
 			ret = -ENOMEM;
 			break;
 		}
-		rds_stats_inc(&rds_stats, s_page_allocs);
+		rds_stats_inc(s_page_allocs);
 
 		/* did someone race to fill the remainder before us? */
 		if (rem->r_page) {
