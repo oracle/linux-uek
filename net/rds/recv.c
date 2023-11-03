@@ -455,7 +455,7 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 	if (!inc->i_hdr.h_sport)
 		rds_stats_inc(s_recv_pong);
 
-	rs = rds_find_bound(conn->c_rns, daddr, inc->i_hdr.h_dport, conn->c_bound_if);
+	rs = rds_find_bound(daddr, inc->i_hdr.h_dport, conn->c_bound_if);
 	if (!rs) {
 		rds_stats_inc(s_recv_drop_no_sock);
 		dropreason = "no socket";
