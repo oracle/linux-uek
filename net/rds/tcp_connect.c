@@ -212,7 +212,7 @@ int rds_tcp_conn_path_connect(struct rds_conn_path *cp)
 	 * once we call connect() we can start getting callbacks and they
 	 * own the socket
 	 */
-	rds_tcp_set_callbacks(sock, cp, tc->t_rtn);
+	rds_tcp_set_callbacks(sock, cp);
 	ret = sock->ops->connect(sock, addr, addrlen, O_NONBLOCK);
 	if (ret == -EINPROGRESS) {
 		reason = "connect already in progress";
@@ -224,8 +224,7 @@ int rds_tcp_conn_path_connect(struct rds_conn_path *cp)
 		sock = NULL;
 	} else {
 		reason = "connect returned nonzero value";
-		rds_tcp_restore_callbacks(sock, cp->cp_transport_data,
-					  tc->t_rtn);
+		rds_tcp_restore_callbacks(sock, cp->cp_transport_data);
 	}
 out:
 	mutex_unlock(&tc->t_conn_path_lock);
@@ -306,8 +305,7 @@ void rds_tcp_conn_path_shutdown(struct rds_conn_path *cp)
 		tc->t_last_seen_una = rds_tcp_snd_una(tc);
 		rds_send_path_drop_acked(cp, rds_tcp_snd_una(tc), rds_tcp_is_acked);
 
-		/* tc->tc_sock = NULL */
-		rds_tcp_restore_callbacks(sock, tc, tc->t_rtn);
+		rds_tcp_restore_callbacks(sock, tc); /* tc->tc_sock = NULL */
 
 		release_sock(sock->sk);
 		sock_release(sock);
