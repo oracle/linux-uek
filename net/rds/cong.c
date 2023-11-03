@@ -79,6 +79,25 @@
  * finds that the saved generation number is smaller than the global generation
  * number, it wakes up the process.
  */
+static atomic_t		rds_cong_generation = ATOMIC_INIT(0);
+
+/*
+ * Congestion monitoring
+ */
+
+struct rds_cong_monitor {
+	/* global list of monitoring sockets */
+	struct list_head	rc_monitor;
+	rwlock_t		rc_monitor_lock;
+
+	/* kworker related */
+	spinlock_t		rc_notify_lock;
+	u64			rc_notify_portmask;
+	struct work_struct	rc_notify_work;
+	bool			rc_notify_work_scheduled;
+};
+
+static struct rds_cong_monitor *rds_cong_monitor;
 
 static void rds_cong_notify_worker(struct work_struct *work)
 {
@@ -86,10 +105,6 @@ static void rds_cong_notify_worker(struct work_struct *work)
 	bool qwork = false;
 	unsigned long flags;
 	struct rds_sock *rs;
-	struct rds_cong_monitor *rds_cong_monitor;
-
-	rds_cong_monitor = container_of(work, struct rds_cong_monitor,
-					rc_notify_work);
 
 	/* take snapshot of portmask for processing */
 	spin_lock_bh(&rds_cong_monitor->rc_notify_lock);
@@ -124,7 +139,7 @@ static void rds_cong_notify_worker(struct work_struct *work)
 		queue_work(rds_wq, &rds_cong_monitor->rc_notify_work);
 }
 
-static int rds_cong_monitor_init(struct rds_net *rns)
+int rds_cong_monitor_init(void)
 {
 	struct rds_cong_monitor *rcm;
 
@@ -137,18 +152,15 @@ static int rds_cong_monitor_init(struct rds_net *rns)
 
 	spin_lock_init(&rcm->rc_notify_lock);
 	INIT_WORK(&rcm->rc_notify_work, rds_cong_notify_worker);
-	rcm->rc_rns = rns;
-	rns->rns_cong_monitor = rcm;
+	rds_cong_monitor = rcm;
 
 	return 0;
 }
 
-static void rds_cong_monitor_free(struct rds_net *rns)
+void rds_cong_monitor_free(void)
 {
-	struct rds_cong_monitor *rcm = rns->rns_cong_monitor;
-
-	cancel_work_sync(&rcm->rc_notify_work);
-	kfree(rcm);
+	cancel_work_sync(&rds_cong_monitor->rc_notify_work);
+	kfree(rds_cong_monitor);
 }
 
 /*
@@ -163,12 +175,13 @@ static void rds_cong_monitor_free(struct rds_net *rns)
  *  Receive paths can mark ports congested from interrupt context so the
  *  lock masks interrupts.
  */
+static DEFINE_SPINLOCK(rds_cong_lock);
+static struct rb_root rds_cong_tree = RB_ROOT;
 
-static struct rds_cong_map *rds_cong_tree_walk(struct rds_net *rns,
-					       struct in6_addr *addr,
+static struct rds_cong_map *rds_cong_tree_walk(struct in6_addr *addr,
 					       struct rds_cong_map *insert)
 {
-	struct rb_node **p = &rns->rns_cong_tree.rb_node;
+	struct rb_node **p = &rds_cong_tree.rb_node;
 	struct rb_node *parent = NULL;
 	struct rds_cong_map *map;
 
@@ -188,7 +201,7 @@ static struct rds_cong_map *rds_cong_tree_walk(struct rds_net *rns,
 
 	if (insert) {
 		rb_link_node(&insert->m_rb_node, parent, p);
-		rb_insert_color(&insert->m_rb_node, &rns->rns_cong_tree);
+		rb_insert_color(&insert->m_rb_node, &rds_cong_tree);
 	}
 	return NULL;
 }
@@ -198,8 +211,7 @@ static struct rds_cong_map *rds_cong_tree_walk(struct rds_net *rns,
  * these bitmaps in the process getting pointers to them.  The bitmaps are only
  * ever freed as the module is removed after all connections have been freed.
  */
-static struct rds_cong_map *rds_cong_from_addr(struct rds_net *rns,
-					       struct in6_addr *addr)
+static struct rds_cong_map *rds_cong_from_addr(struct in6_addr *addr)
 {
 	struct rds_cong_map *map;
 	struct rds_cong_map *ret = NULL;
@@ -210,7 +222,7 @@ static struct rds_cong_map *rds_cong_from_addr(struct rds_net *rns,
 	map = kzalloc(sizeof(struct rds_cong_map), GFP_KERNEL);
 	if (!map)
 		return NULL;
-	map->m_rns = rns;
+
 	map->m_addr = *addr;
 	init_waitqueue_head(&map->m_waitq);
 	INIT_LIST_HEAD(&map->m_conn_list);
@@ -222,9 +234,9 @@ static struct rds_cong_map *rds_cong_from_addr(struct rds_net *rns,
 		map->m_page_addrs[i] = zp;
 	}
 
-	spin_lock_irqsave(&rns->rns_cong_lock, flags);
-	ret = rds_cong_tree_walk(rns, addr, map);
-	spin_unlock_irqrestore(&rns->rns_cong_lock, flags);
+	spin_lock_irqsave(&rds_cong_lock, flags);
+	ret = rds_cong_tree_walk(addr, map);
+	spin_unlock_irqrestore(&rds_cong_lock, flags);
 
 	if (!ret) {
 		ret = map;
@@ -277,9 +289,9 @@ void rds_cong_add_conn(struct rds_connection *conn)
 	unsigned long flags;
 
 	rdsdebug("conn %p now on map %p\n", conn, conn->c_lcong);
-	spin_lock_irqsave(&conn->c_rns->rns_cong_lock, flags);
+	spin_lock_irqsave(&rds_cong_lock, flags);
 	list_add_tail(&conn->c_map_item, &conn->c_lcong->m_conn_list);
-	spin_unlock_irqrestore(&conn->c_rns->rns_cong_lock, flags);
+	spin_unlock_irqrestore(&rds_cong_lock, flags);
 }
 
 void rds_cong_remove_conn(struct rds_connection *conn)
@@ -287,17 +299,17 @@ void rds_cong_remove_conn(struct rds_connection *conn)
 	unsigned long flags;
 
 	rdsdebug("removing conn %p from map %p\n", conn, conn->c_lcong);
-	spin_lock_irqsave(&conn->c_rns->rns_cong_lock, flags);
+	spin_lock_irqsave(&rds_cong_lock, flags);
 	list_del_init(&conn->c_map_item);
-	spin_unlock_irqrestore(&conn->c_rns->rns_cong_lock, flags);
+	spin_unlock_irqrestore(&rds_cong_lock, flags);
 }
 
 int rds_cong_get_maps(struct rds_connection *conn)
 {
 	int hash_inx;
 
-	conn->c_lcong = rds_cong_from_addr(conn->c_rns, &conn->c_laddr);
-	conn->c_fcong = rds_cong_from_addr(conn->c_rns, &conn->c_faddr);
+	conn->c_lcong = rds_cong_from_addr(&conn->c_laddr);
+	conn->c_fcong = rds_cong_from_addr(&conn->c_faddr);
 
 	if (!(conn->c_lcong && conn->c_fcong))
 		return -ENOMEM;
@@ -317,7 +329,7 @@ void rds_cong_queue_updates(struct rds_cong_map *map)
 	struct rds_connection *conn;
 	unsigned long flags;
 
-	spin_lock_irqsave(&map->m_rns->rns_cong_lock, flags);
+	spin_lock_irqsave(&rds_cong_lock, flags);
 
 	list_for_each_entry(conn, &map->m_conn_list, c_map_item) {
 		if (!test_and_set_bit(RCMQ_BITOFF_CONGU_PENDING,
@@ -327,21 +339,17 @@ void rds_cong_queue_updates(struct rds_cong_map *map)
 		}
 	}
 
-	spin_unlock_irqrestore(&map->m_rns->rns_cong_lock, flags);
+	spin_unlock_irqrestore(&rds_cong_lock, flags);
 }
 
 void rds_cong_map_updated(struct rds_cong_map *map, uint64_t portmask)
 {
 	bool qwork = false;
-	struct rds_net *rns;
-	struct rds_cong_monitor *rds_cong_monitor;
 
 	rdsdebug("waking map %p for %pI6c\n",
 		 map, &map->m_addr);
-	rns = map->m_rns;
-	rds_cong_monitor = rns->rns_cong_monitor;
 	rds_stats_inc(s_cong_update_received);
-	atomic_inc(&rns->rns_cong_generation);
+	atomic_inc(&rds_cong_generation);
 	if (waitqueue_active(&map->m_waitq))
 		wake_up(&map->m_waitq);
 	if (waitqueue_active(map->m_wait_queue_ptr))
@@ -364,13 +372,13 @@ void rds_cong_map_updated(struct rds_cong_map *map, uint64_t portmask)
 }
 EXPORT_SYMBOL_GPL(rds_cong_map_updated);
 
-int rds_cong_updated_since(struct rds_sock *rs)
+int rds_cong_updated_since(unsigned long *recent)
 {
-	unsigned long gen = atomic_read(&rs->rs_rns->rns_cong_generation);
+	unsigned long gen = atomic_read(&rds_cong_generation);
 
-	if (likely(rs->rs_cong_track == gen))
+	if (likely(*recent == gen))
 		return 0;
-	rs->rs_cong_track = gen;
+	*recent = gen;
 	return 1;
 }
 
@@ -423,8 +431,6 @@ static int rds_cong_test_bit(struct rds_cong_map *map, __be16 port)
 void rds_cong_add_socket(struct rds_sock *rs)
 {
 	unsigned long flags;
-	struct rds_cong_monitor *rds_cong_monitor =
-					rs->rs_rns->rns_cong_monitor;
 
 	write_lock_irqsave(&rds_cong_monitor->rc_monitor_lock, flags);
 	if (list_empty(&rs->rs_cong_list))
@@ -436,17 +442,15 @@ void rds_cong_remove_socket(struct rds_sock *rs)
 {
 	unsigned long flags;
 	struct rds_cong_map *map;
-	struct rds_cong_monitor *rds_cong_monitor =
-					rs->rs_rns->rns_cong_monitor;
 
 	write_lock_irqsave(&rds_cong_monitor->rc_monitor_lock, flags);
 	list_del_init(&rs->rs_cong_list);
 	write_unlock_irqrestore(&rds_cong_monitor->rc_monitor_lock, flags);
 
 	/* update congestion map for now-closed port */
-	spin_lock_irqsave(&rs->rs_rns->rns_cong_lock, flags);
-	map = rds_cong_tree_walk(rs->rs_rns, &rs->rs_bound_addr, NULL);
-	spin_unlock_irqrestore(&rs->rs_rns->rns_cong_lock, flags);
+	spin_lock_irqsave(&rds_cong_lock, flags);
+	map = rds_cong_tree_walk(&rs->rs_bound_addr, NULL);
+	spin_unlock_irqrestore(&rds_cong_lock, flags);
 
 	if (map && rds_cong_test_bit(map, rs->rs_bound_port)) {
 		rds_cong_clear_bit(map, rs->rs_bound_port);
@@ -479,31 +483,20 @@ int rds_cong_wait(struct rds_cong_map *map, __be16 port, int nonblock,
 					!rds_cong_test_bit(map, port));
 }
 
-void rds_cong_net_exit(struct rds_net *rns)
+void rds_cong_exit(void)
 {
 	struct rb_node *node;
 	struct rds_cong_map *map;
 	unsigned long i;
 
-	while ((node = rb_first(&rns->rns_cong_tree))) {
+	while ((node = rb_first(&rds_cong_tree))) {
 		map = rb_entry(node, struct rds_cong_map, m_rb_node);
 		rdsdebug("freeing map %p\n", map);
-		rb_erase(&map->m_rb_node, &rns->rns_cong_tree);
+		rb_erase(&map->m_rb_node, &rds_cong_tree);
 		for (i = 0; i < RDS_CONG_MAP_PAGES && map->m_page_addrs[i]; i++)
 			free_page(map->m_page_addrs[i]);
 		kfree(map);
 	}
-	rds_cong_monitor_free(rns);
-}
-
-int rds_cong_net_init(struct rds_net *rns)
-{
-	rns->rns_cong_generation = ((atomic_t) { (0) });
-	rds_cong_monitor_init(rns);
-	spin_lock_init(&rns->rns_cong_lock);
-	rns->rns_cong_tree = RB_ROOT;
-
-	return 0;
 }
 
 /*
