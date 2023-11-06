@@ -131,6 +131,7 @@ netjet.ko
 netrom.ko
 nfc.ko
 nilfs2.ko
+nls_ucs2_utils.ko
 ntb_hw_intel.ko
 old_belkin-sir.ko
 orinoco_cs.ko
