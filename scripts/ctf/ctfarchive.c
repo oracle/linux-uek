@@ -164,13 +164,33 @@ static void suck_in_modules(const char *modules_builtin_name)
 		size_t j;
 
 		for (j = 0; paths[j] != NULL; j++) {
-			if (ctf_link_add_cu_mapping(output, paths[j],
+			char *alloc = NULL;
+			char *path = paths[j];
+			/*
+			 * If the name doesn't start in ./, add it, to match the names
+			 * passed to add_builtins.
+			 */
+			if (strncmp(paths[j], "./", 2) != 0) {
+				char *p;
+				if ((alloc = malloc(strlen(paths[j]) + 3)) == NULL) {
+					fprintf(stderr, "Cannot allocate memory for "
+						"builtin module object name %s.\n",
+						paths[j]);
+					exit(1);
+				}
+				p = alloc;
+				p = stpcpy(p, "./");
+				p = stpcpy(p, paths[j]);
+				path = alloc;
+			}
+			if (ctf_link_add_cu_mapping(output, path,
 						    module_name) < 0) {
 				fprintf(stderr, "Cannot add path -> module mapping for "
-					"%s -> %s: %s\n", paths[j], module_name,
+					"%s -> %s: %s\n", path, module_name,
 					ctf_errmsg(ctf_errno(output)));
 				exit(1);
 			}
+			free (alloc);
 		}
 		free(paths);
 	}
