@@ -2093,6 +2093,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			ic->i_alt.cm_id = cm_id;
 			ic->i_alt.is_stale = false;
 			ic->i_alt.isv6 = isv6;
+			ic->i_alt.dst_qp_num = event->param.conn.qp_num;
 			memcpy(&ic->i_alt.private_data, dp,
 			       sizeof(ic->i_alt.private_data));
 			ic->i_alt.version = version;
@@ -2128,7 +2129,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 				       event->param.conn.initiator_depth);
 		if (err)
 			reason = "rds_ib_cm_accept failed";
-		else if (event->param.conn.qp_num)
+		else
 			ic->i_dst_qp_num = event->param.conn.qp_num;
 	}
 
@@ -2331,6 +2332,8 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 				       ic->i_alt.responder_resources,
 				       ic->i_alt.initiator_depth);
 
+		if (!ret)
+			ic->i_dst_qp_num = ic->i_alt.dst_qp_num;
 		ic->i_alt.cm_id = NULL;
 		mutex_unlock(&conn->c_cm_lock);
 
