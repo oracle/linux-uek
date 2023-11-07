@@ -143,6 +143,15 @@ static int rvu_tim_disable_lf(struct rvu *rvu, int lf, int blkaddr)
 	rvu_poll_reg(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf),
 			TIM_AF_RINGX_CTL1_RCF_BUSY, true);
 
+	/* Clear ring state after disable. */
+	regval = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL0(lf));
+	regval &= GENMASK_ULL(31, 0);
+	rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL0(lf), regval);
+
+	regval = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf));
+	regval &= ~GENMASK_ULL(39, 20);
+	rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf), regval);
+
 	return 0;
 }
 
@@ -401,11 +410,13 @@ int rvu_mbox_handler_tim_enable_ring(struct rvu *rvu,
 		ctl1 &= ~GENMASK_ULL(39, 20);
 		local_irq_disable();
 		preempt_disable();
+		dsb(sy);
 		start_cyc = rvu_read64(rvu, blkaddr, clk_src);
 		rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf), ctl1);
 		ctl1 = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf));
 		ctl0 = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL0(lf));
 		end_cyc = rvu_read64(rvu, blkaddr, clk_src);
+		dsb(sy);
 		local_irq_enable();
 		preempt_enable();
 		low = end_cyc & GENMASK_ULL(31, 0);
