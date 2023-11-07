@@ -118,6 +118,8 @@ static struct rt_debug_tp rt_debug_tp_map[] = {
 	    "rds_ib_flow_cntrl_advertise_credits", NULL }},
 	{ RDS_RTD_RDMA_IB,
 	  { "rds_ib_add_device", "rds_ib_remove_device", NULL }},
+	{ RDS_RTD_ALL,
+	  { NULL } },
 };
 
 /* Enable all tracepoints associated with RDS_RTD_ flags that are set. */
@@ -125,6 +127,12 @@ void rds_rt_debug_tp_enable(void)
 {
 	int enable, i, j;
 
+	if (kernel_rds_rt_debug_bitmap & RDS_RTD_ALL) {
+		trace_set_clr_event("rds", NULL, 1);
+		return;
+	}
+
+	trace_set_clr_event("rds", NULL, 0);
 	for (i = 0; i < ARRAY_SIZE(rt_debug_tp_map); i++) {
 		enable = (kernel_rds_rt_debug_bitmap &
 			  rt_debug_tp_map[i].flag) != 0;

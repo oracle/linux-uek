@@ -93,6 +93,7 @@ enum {
 
 	/* bit 20 ~ 31 are module specific bits */
 	RDS_RTD_RDMA_IB			= 1 << 23,	/* 0x800000   */
+	RDS_RTD_ALL			= 1 << 31,	/* Enable All */
 };
 
 /* XXX is there one of these somewhere? */
