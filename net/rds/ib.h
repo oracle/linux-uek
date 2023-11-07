@@ -293,6 +293,7 @@ struct rds_ib_connection {
 		u32			 version;
 		u8			 responder_resources;
 		u8			 initiator_depth;
+		s32			 dst_qp_num;
 	} i_alt;
 
 	/* Number of wrs available for MR registration(frwr) */
