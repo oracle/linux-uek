@@ -36,6 +36,11 @@ install-y += $(addprefix $(MODLIB)/, modules.builtin modules.builtin.modinfo mod
 $(addprefix $(MODLIB)/, modules.builtin modules.builtin.modinfo modules.builtin.objs): $(MODLIB)/%: % FORCE
 	$(call cmd,install)
 
+install-$(CONFIG_BUILTIN_RANGES) += $(MODLIB)/modules.builtin.ranges
+
+$(MODLIB)/modules.builtin.ranges: modules.builtin.ranges FORCE
+	$(call cmd,install)
+
 endif
 
 modules := $(call read-file, $(MODORDER))
