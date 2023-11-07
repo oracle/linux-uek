@@ -722,6 +722,13 @@
 #define TIM_AF_RING_GMCTL_SHIFT		3
 #define TIM_AF_RING_SSO_PF_FUNC_SHIFT	0
 #define TIM_AF_FLAGS_REG_GPIO_EDGE_MASK	GENMASK_ULL(6, 5)
+#define TIM_AF_BKT_SKIP_INTX(a)		(0x10000 | (a) << 5)
+#define TIM_AF_BKT_SKIP_INTX_ENA_W1S(a)	(0x10010 | (a) << 5)
+#define TIM_AF_BKT_SKIP_INTX_ENA_W1C(a)	(0x10018 | (a) << 5)
+#define TIM_AF_RVU_INT			(0x10200)
+#define TIM_AF_RVU_INT_ENA_W1S		(0x10210)
+#define TIM_AF_RVU_INT_ENA_W1C		(0x10218)
+#define TIM_PRIV_AF_INT_CFG		(0x22000)
 
 /* CPT */
 #define CPT_AF_CONSTANTS0               (0x0000)

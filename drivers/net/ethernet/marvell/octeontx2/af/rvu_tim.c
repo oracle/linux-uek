@@ -522,6 +522,137 @@ int rvu_tim_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	return 0;
 }
 
+static int rvu_tim_do_register_interrupt(struct rvu *rvu, int irq_offs,
+					 irq_handler_t handler,
+					 const char *name)
+{
+	int ret = 0;
+
+	ret = request_irq(pci_irq_vector(rvu->pdev, irq_offs), handler, 0, name,
+			  rvu);
+	if (ret) {
+		dev_err(rvu->dev, "TIMAF: %s irq registration failed", name);
+		goto err;
+	}
+
+	WARN_ON(rvu->irq_allocated[irq_offs]);
+	rvu->irq_allocated[irq_offs] = true;
+err:
+	return ret;
+}
+
+static irqreturn_t rvu_tim_af_rvu_intr_handler(int irq, void *ptr)
+{
+	struct rvu *rvu = (struct rvu *)ptr;
+	struct rvu_block *block;
+	int blkaddr;
+	u64 reg;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_TIM, 0);
+	if (blkaddr < 0)
+		return IRQ_NONE;
+
+	block = &rvu->hw->block[blkaddr];
+	reg = rvu_read64(rvu, blkaddr, TIM_AF_RVU_INT);
+	dev_err_ratelimited(rvu->dev, "Received TIM_AF_RVU_INT irq : 0x%llx",
+			    reg);
+
+	rvu_write64(rvu, blkaddr, TIM_AF_RVU_INT, reg);
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t rvu_tim_af_bsk_intr_handler(int irq, void *ptr)
+{
+	struct rvu *rvu = (struct rvu *)ptr;
+	struct rvu_block *block;
+	int i, blkaddr;
+	u64 reg;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_TIM, 0);
+	if (blkaddr < 0)
+		return IRQ_NONE;
+
+	block = &rvu->hw->block[blkaddr];
+	for (i = 0; i < 4; i++) {
+		reg = rvu_read64(rvu, blkaddr, TIM_AF_BKT_SKIP_INTX(i));
+		if (!reg)
+			continue;
+		dev_err_ratelimited(rvu->dev,
+				    "Received TIM_AF_BKT_SKIP_INTX(%d) irq : 0x%llx",
+				    i, reg);
+		rvu_write64(rvu, blkaddr, TIM_AF_BKT_SKIP_INTX(i), reg);
+	}
+
+	return IRQ_HANDLED;
+}
+
+int rvu_tim_register_interrupts(struct rvu *rvu)
+{
+	int blkaddr, offs, ret = 0, i;
+
+	if (!is_block_implemented(rvu->hw, BLKADDR_TIM))
+		return 0;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_TIM, 0);
+	if (blkaddr < 0)
+		return blkaddr;
+
+	offs = rvu_read64(rvu, blkaddr, TIM_PRIV_AF_INT_CFG) & 0x7FF;
+	if (!offs) {
+		dev_warn(rvu->dev, "Failed to get TIM_AF_INT vector offsets\n");
+		return 0;
+	}
+
+	ret = rvu_tim_do_register_interrupt(rvu, offs + TIM_AF_INT_VEC_RVU,
+					    rvu_tim_af_rvu_intr_handler,
+					    "TIM_AF_RVU_INT");
+	if (ret)
+		goto err;
+	rvu_write64(rvu, blkaddr, TIM_AF_RVU_INT_ENA_W1S, ~0ULL);
+
+	for (i = 0; i < 4; i++) {
+		ret = rvu_tim_do_register_interrupt(rvu, offs +
+						    TIM_AF_INT_VEC_BKT_SKIP + i,
+						    rvu_tim_af_bsk_intr_handler,
+						    "TIM_AF_BKT_SKIP_INTX");
+		if (ret)
+			goto err;
+		rvu_write64(rvu, blkaddr, TIM_AF_BKT_SKIP_INTX_ENA_W1S(i),
+			    ~0ULL);
+	}
+
+	return 0;
+err:
+	rvu_tim_unregister_interrupts(rvu);
+	return ret;
+}
+
+void rvu_tim_unregister_interrupts(struct rvu *rvu)
+{
+	int i, blkaddr, offs;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_TIM, 0);
+	if (blkaddr < 0)
+		return;
+
+	offs = rvu_read64(rvu, blkaddr, TIM_PRIV_AF_INT_CFG) & 0x7FF;
+	if (!offs)
+		return;
+
+	rvu_write64(rvu, blkaddr, TIM_AF_RVU_INT_ENA_W1C, ~0ULL);
+
+	for (i = 0; i < 4; i++) {
+		rvu_write64(rvu, blkaddr, TIM_AF_BKT_SKIP_INTX_ENA_W1C(i),
+			    ~0ULL);
+	}
+
+	for (i = 0; i < TIM_AF_INT_VEC_CNT; i++)
+		if (rvu->irq_allocated[offs + i]) {
+			free_irq(pci_irq_vector(rvu->pdev, offs + i), rvu);
+			rvu->irq_allocated[offs + i] = false;
+		}
+}
+
 #define FOR_EACH_TIM_LF(lf)	\
 for (lf = 0; lf < hw->block[BLKTYPE_TIM].lf.max; lf++)
 
