@@ -47,6 +47,100 @@ static void add_to_link(const char *fn)
 	}
 }
 
+struct from_to
+{
+	char *from;
+	char *to;
+};
+
+/*
+ * The world's stupidest hash table of FROM -> TO.
+ */
+static struct from_to **from_tos[256];
+static size_t alloc_from_tos[256];
+static size_t num_from_tos[256];
+
+static unsigned char from_to_hash(const char *from)
+{
+	unsigned char hval = 0;
+
+	const char *p;
+	for (p = from; *p; p++)
+		hval += *p;
+
+	return hval;
+}
+
+/*
+ * Note that we will need to add a CU mapping later on.
+ *
+ * Present purely to work around a binutils bug that stops
+ * ctf_link_add_cu_mapping() working right when called repeatedly
+ * with the same FROM.
+ */
+static int add_cu_mapping(const char *from, const char *to)
+{
+	ssize_t i, j;
+
+	i = from_to_hash(from);
+
+	for (j = 0; j < num_from_tos[i]; j++)
+		if (strcmp(from, from_tos[i][j]->from) == 0) {
+			char *tmp;
+
+			free(from_tos[i][j]->to);
+			tmp = strdup(to);
+			if (!tmp)
+				goto oom;
+			from_tos[i][j]->to = tmp;
+			return 0;
+		    }
+
+	if (num_from_tos[i] >= alloc_from_tos[i]) {
+		struct from_to **tmp;
+		if (alloc_from_tos[i] < 16)
+			alloc_from_tos[i] = 16;
+		else
+			alloc_from_tos[i] *= 2;
+
+		tmp = realloc(from_tos[i], alloc_from_tos[i] * sizeof(struct from_to *));
+		if (!tmp)
+			goto oom;
+
+		from_tos[i] = tmp;
+	}
+
+	j = num_from_tos[i];
+	from_tos[i][j] = malloc(sizeof(struct from_to));
+	if (from_tos[i][j] == NULL)
+		goto oom;
+	from_tos[i][j]->from = strdup(from);
+	from_tos[i][j]->to = strdup(to);
+	if (!from_tos[i][j]->from || !from_tos[i][j]->to)
+		goto oom;
+	num_from_tos[i]++;
+
+	return 0;
+  oom:
+	fprintf(stderr,
+		"out of memory in add_cu_mapping\n");
+	exit(1);
+}
+
+/*
+ * Finally tell binutils to add all the CU mappings, with duplicate FROMs
+ * replaced with the most recent one.
+ */
+static void commit_cu_mappings(void)
+{
+	ssize_t i, j;
+
+	for (i = 0; i < 256; i++)
+		for (j = 0; j < num_from_tos[i]; j++)
+			ctf_link_add_cu_mapping(output, from_tos[i][j]->from,
+						from_tos[i][j]->to);
+}
+
 /*
  * Add a CU mapping to the link.
  *
@@ -88,7 +182,7 @@ static void add_cu_mappings(const char *fn)
 
 		n -= strlen(".ko.ctf");
 		mod = strndup(modname, n);
-		ctf_link_add_cu_mapping(output, fn, mod);
+		add_cu_mapping(fn, mod);
 		free(mod);
 	}
 	free(dynmodname);
@@ -99,7 +193,7 @@ static void add_cu_mappings(const char *fn)
  */
 static void add_builtins(const char *fn)
 {
-	if (ctf_link_add_cu_mapping(output, fn, "vmlinux") < 0)
+	if (add_cu_mapping(fn, "vmlinux") < 0)
 	{
 		fprintf(stderr, "Cannot add CTF CU mapping from %s to \"vmlinux\"\n",
 			ctf_errmsg(ctf_errno(output)));
@@ -164,8 +258,7 @@ static void suck_in_modules(const char *module_objnames_name)
 		size_t j;
 
 		for (j = 0; paths[j] != NULL; j++) {
-			if (ctf_link_add_cu_mapping(output, paths[j],
-						    module_name) < 0) {
+			if (add_cu_mapping(paths[j], module_name) < 0) {
 				fprintf(stderr, "Cannot add path -> module mapping for "
 					"%s -> %s: %s\n", paths[j], module_name,
 					ctf_errmsg(ctf_errno(output)));
@@ -247,6 +340,11 @@ int main(int argc, char *argv[])
 	 * as appropriate mappings.
 	 */
 	suck_in_modules(argv[3]);
+
+	/*
+	 * Commit the added CU mappings.
+	 */
+	commit_cu_mappings();
 
 	/*
 	 * Arrange to fix up the module names.
