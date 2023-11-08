@@ -401,4 +401,21 @@ config MODULES_TREE_LOOKUP
 	def_bool y
 	depends on PERF_EVENTS || TRACING || CFI_CLANG
 
+config BUILTIN_RANGES
+	bool "Generate address range information for builtin modules"
+	default y
+	depends on VMLINUX_MAP
+	help
+	  When modules are built into the kernel, there will be no module name
+	  associated with its symbols in /proc/kallsyms.  Tracers may want to
+	  identify symbols by module name and symbol name regardless of whether
+	  the module is configured as loadable or not.
+
+	  This option generates modules.builtin.ranges in the build tree with
+	  offset ranges (per ELF section) for the module(s) they belong to.
+	  It also records an anchor symbol to determine the load address of the
+	  section.
+
+	  It is fully compatible with CONFIG_RANDOMIZE_BASE and similar late-
+	  address-modification options.
 endif # MODULES
