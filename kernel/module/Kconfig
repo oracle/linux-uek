@@ -396,6 +396,7 @@ config MODULES_TREE_LOOKUP
 
 config BUILTIN_RANGES
 	bool "Generate address range information for builtin modules"
+	default y
 	depends on VMLINUX_MAP
 	help
 	  When modules are built into the kernel, there will be no module name
