@@ -17,6 +17,7 @@
 #include <linux/cgroup.h>
 #include <linux/blk-cgroup.h>
 #include <linux/highmem.h>
+#include <linux/uek.h>
 
 #include <trace/events/block.h>
 #include "blk.h"
@@ -1775,11 +1776,20 @@ again:
 void generic_start_io_acct(struct request_queue *q, int op,
 			   unsigned long sectors, struct hd_struct *part)
 {
+	bool inflight = false;
+	struct blk_mq_hw_ctx *hctx;
+
 	const int sgrp = op_stat_group(op);
 
 	part_stat_lock();
 
-	update_io_ticks(part, blk_get_iostat_ticks(q), false);
+	if (static_branch_unlikely(&on_exadata) &&
+	    (q->nr_hw_queues == 1)) {
+		hctx = q->queue_hw_ctx[0];
+		inflight = blk_mq_hctx_has_tags(hctx);
+	}
+
+	update_io_ticks(part, blk_get_iostat_ticks(q), inflight);
 	part_stat_inc(part, ios[sgrp]);
 	part_stat_add(part, sectors[sgrp], sectors);
 	part_inc_in_flight(q, part, op_is_write(op));
