@@ -16,6 +16,7 @@
 #include <linux/mmdebug.h>
 #include <asm/pgalloc.h>
 #include <asm/tlbflush.h>
+#include <xen/xen.h>
 #include "hugetlb_vmemmap.h"
 
 /**
@@ -782,12 +783,24 @@ static struct ctl_table hugetlb_vmemmap_sysctls[] = {
 	{ }
 };
 
+void __init hugetlb_disable_hvo_xen(void)
+{
+	pr_info("HugeTLB: hugetlb vmemmap optimization disabled in Xen\n");
+	vmemmap_optimize_enabled = false; /* may already be false */
+}
+
 static int __init hugetlb_vmemmap_init(void)
 {
 	const struct hstate *h;
 
 	/* HUGETLB_VMEMMAP_RESERVE_SIZE should cover all used struct pages */
 	BUILD_BUG_ON(__NR_USED_SUBPAGE > HUGETLB_VMEMMAP_RESERVE_PAGES);
+
+	/* Disable HVO due to suboptimal IPI technology in Xen */
+	if (xen_domain()) {
+		vmemmap_optimize_enabled = false;
+		return 0;
+	}
 
 	for_each_hstate(h) {
 		if (hugetlb_vmemmap_optimizable(h)) {

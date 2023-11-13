@@ -41,6 +41,7 @@
 #include <linux/hugetlb_cgroup.h>
 #include <linux/node.h>
 #include <linux/page_owner.h>
+#include <xen/xen.h>
 #include "internal.h"
 #include "hugetlb_vmemmap.h"
 
@@ -4249,6 +4250,9 @@ static int __init hugetlb_init(void)
 			pr_warn("HugeTLB: huge pages not supported, ignoring associated command-line parameters\n");
 		return 0;
 	}
+
+	if (xen_domain())
+		hugetlb_disable_hvo_xen();
 
 	/*
 	 * Make sure HPAGE_SIZE (HUGETLB_PAGE_ORDER) hstate exists.  Some

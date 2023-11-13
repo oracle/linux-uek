@@ -24,6 +24,7 @@ long hugetlb_vmemmap_restore_pages(const struct hstate *h,
 					struct list_head *non_hvo_pages);
 void hugetlb_vmemmap_optimize(const struct hstate *h, struct page *head);
 void hugetlb_vmemmap_optimize_pages(struct hstate *h, struct list_head *page_list);
+void __init hugetlb_disable_hvo_xen(void);
 
 static inline unsigned int hugetlb_vmemmap_size(const struct hstate *h)
 {
@@ -54,6 +55,10 @@ long hugetlb_vmemmap_restore_pages(const struct hstate *h,
 {
 	list_splice_init(page_list, non_hvo_pages);
 	return 0;
+}
+
+static inline void __init hugetlb_disable_hvo_xen(void)
+{
 }
 
 static inline void hugetlb_vmemmap_optimize(const struct hstate *h, struct page *head)
