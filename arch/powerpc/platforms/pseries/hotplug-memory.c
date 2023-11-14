@@ -591,14 +591,15 @@ static int dlpar_memory_remove_by_index(u32 drc_index, struct property *prop)
 		}
 	}
 
-	if (!lmb_found)
+	if (!lmb_found) {
+		pr_debug("Failed to look up LMB for drc index %x\n", drc_index);
 		rc = -EINVAL;
-
-	if (rc)
+	} else if (rc) {
 		pr_debug("Failed to hot-remove memory at %llx\n",
 			 lmbs[i].base_addr);
-	else
+	} else {
 		pr_debug("Memory at %llx was hot-removed\n", lmbs[i].base_addr);
+	}
 
 	return rc;
 }
