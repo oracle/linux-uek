@@ -2861,14 +2861,11 @@ static int __bnxt_poll_cqs(struct bnxt *bp, struct bnxt_napi *bnapi, int budget)
 	struct bnxt_cp_ring_info *cpr = &bnapi->cp_ring;
 	int i, work_done = 0;
 
-	for (i = 0; i < 2; i++) {
-		struct bnxt_cp_ring_info *cpr2 = cpr->cp_ring_arr[i];
+	for (i = 0; i < cpr->cp_ring_count; i++) {
+		struct bnxt_cp_ring_info *cpr2 = &cpr->cp_ring_arr[i];
 
-		if (cpr2) {
-			work_done += __bnxt_poll_work(bp, cpr2,
-						      budget - work_done);
-			cpr->has_more_work |= cpr2->has_more_work;
-		}
+		work_done += __bnxt_poll_work(bp, cpr2, budget - work_done);
+		cpr->has_more_work |= cpr2->has_more_work;
 	}
 	return work_done;
 }
@@ -2879,11 +2876,11 @@ static void __bnxt_poll_cqs_done(struct bnxt *bp, struct bnxt_napi *bnapi,
 	struct bnxt_cp_ring_info *cpr = &bnapi->cp_ring;
 	int i;
 
-	for (i = 0; i < 2; i++) {
-		struct bnxt_cp_ring_info *cpr2 = cpr->cp_ring_arr[i];
+	for (i = 0; i < cpr->cp_ring_count; i++) {
+		struct bnxt_cp_ring_info *cpr2 = &cpr->cp_ring_arr[i];
 		struct bnxt_db_info *db;
 
-		if (cpr2 && cpr2->had_work_done) {
+		if (cpr2->had_work_done) {
 			db = &cpr2->cp_db;
 			bnxt_writeq(bp, db->db_key64 | dbr_type |
 				    RING_CMP(cpr2->cp_raw_cons), db->doorbell);
@@ -2942,7 +2939,7 @@ static int bnxt_poll_p5(struct napi_struct *napi, int budget)
 			if (budget && work_done >= budget && idx == BNXT_RX_HDL)
 				break;
 
-			cpr2 = cpr->cp_ring_arr[idx];
+			cpr2 = &cpr->cp_ring_arr[idx];
 			work_done += __bnxt_poll_work(bp, cpr2,
 						      budget - work_done);
 			cpr->has_more_work |= cpr2->has_more_work;
@@ -2957,8 +2954,8 @@ static int bnxt_poll_p5(struct napi_struct *napi, int budget)
 		BNXT_DB_NQ_P5(&cpr->cp_db, raw_cons);
 	}
 poll_done:
-	cpr_rx = cpr->cp_ring_arr[BNXT_RX_HDL];
-	if (cpr_rx && (bp->flags & BNXT_FLAG_DIM)) {
+	cpr_rx = &cpr->cp_ring_arr[BNXT_RX_HDL];
+	if (cpr_rx->bnapi && (bp->flags & BNXT_FLAG_DIM)) {
 		struct dim_sample dim_sample = {};
 
 		dim_update_sample(cpr->event_ctr,
@@ -3569,36 +3566,33 @@ static void bnxt_free_cp_rings(struct bnxt *bp)
 
 		bnxt_free_ring(bp, &ring->ring_mem);
 
-		for (j = 0; j < 2; j++) {
-			struct bnxt_cp_ring_info *cpr2 = cpr->cp_ring_arr[j];
+		if (!cpr->cp_ring_arr)
+			continue;
 
-			if (cpr2) {
-				ring = &cpr2->cp_ring_struct;
-				bnxt_free_ring(bp, &ring->ring_mem);
-				bnxt_free_cp_arrays(cpr2);
-				kfree(cpr2);
-				cpr->cp_ring_arr[j] = NULL;
-			}
+		for (j = 0; j < cpr->cp_ring_count; j++) {
+			struct bnxt_cp_ring_info *cpr2 = &cpr->cp_ring_arr[j];
+
+			ring = &cpr2->cp_ring_struct;
+			bnxt_free_ring(bp, &ring->ring_mem);
+			bnxt_free_cp_arrays(cpr2);
 		}
+		kfree(cpr->cp_ring_arr);
+		cpr->cp_ring_arr = NULL;
+		cpr->cp_ring_count = 0;
 	}
 }
 
-static struct bnxt_cp_ring_info *bnxt_alloc_cp_sub_ring(struct bnxt *bp)
+static int bnxt_alloc_cp_sub_ring(struct bnxt *bp,
+				  struct bnxt_cp_ring_info *cpr)
 {
 	struct bnxt_ring_mem_info *rmem;
 	struct bnxt_ring_struct *ring;
-	struct bnxt_cp_ring_info *cpr;
 	int rc;
-
-	cpr = kzalloc(sizeof(*cpr), GFP_KERNEL);
-	if (!cpr)
-		return NULL;
 
 	rc = bnxt_alloc_cp_arrays(cpr, bp->cp_nr_pages);
 	if (rc) {
 		bnxt_free_cp_arrays(cpr);
-		kfree(cpr);
-		return NULL;
+		return -ENOMEM;
 	}
 	ring = &cpr->cp_ring_struct;
 	rmem = &ring->ring_mem;
@@ -3611,10 +3605,8 @@ static struct bnxt_cp_ring_info *bnxt_alloc_cp_sub_ring(struct bnxt *bp)
 	if (rc) {
 		bnxt_free_ring(bp, rmem);
 		bnxt_free_cp_arrays(cpr);
-		kfree(cpr);
-		cpr = NULL;
 	}
-	return cpr;
+	return rc;
 }
 
 static int bnxt_alloc_cp_rings(struct bnxt *bp)
@@ -3626,7 +3618,7 @@ static int bnxt_alloc_cp_rings(struct bnxt *bp)
 	ulp_base_vec = bnxt_get_ulp_msix_base(bp);
 	for (i = 0; i < bp->cp_nr_rings; i++) {
 		struct bnxt_napi *bnapi = bp->bnapi[i];
-		struct bnxt_cp_ring_info *cpr;
+		struct bnxt_cp_ring_info *cpr, *cpr2;
 		struct bnxt_ring_struct *ring;
 
 		if (!bnapi)
@@ -3648,23 +3640,27 @@ static int bnxt_alloc_cp_rings(struct bnxt *bp)
 		if (!(bp->flags & BNXT_FLAG_CHIP_P5))
 			continue;
 
-		if (i < bp->rx_nr_rings) {
-			struct bnxt_cp_ring_info *cpr2 =
-				bnxt_alloc_cp_sub_ring(bp);
+		cpr->cp_ring_count = 2;
+		cpr->cp_ring_arr = kcalloc(cpr->cp_ring_count, sizeof(*cpr),
+					   GFP_KERNEL);
+		if (!cpr->cp_ring_arr) {
+			cpr->cp_ring_count = 0;
+			return -ENOMEM;
+		}
 
-			cpr->cp_ring_arr[BNXT_RX_HDL] = cpr2;
-			if (!cpr2)
-				return -ENOMEM;
+		if (i < bp->rx_nr_rings) {
+			cpr2 = &cpr->cp_ring_arr[BNXT_RX_HDL];
+			rc = bnxt_alloc_cp_sub_ring(bp, cpr2);
+			if (rc)
+				return rc;
 			cpr2->bnapi = bnapi;
 		}
 		if ((sh && i < bp->tx_nr_rings) ||
 		    (!sh && i >= bp->rx_nr_rings)) {
-			struct bnxt_cp_ring_info *cpr2 =
-				bnxt_alloc_cp_sub_ring(bp);
-
-			cpr->cp_ring_arr[BNXT_TX_HDL] = cpr2;
-			if (!cpr2)
-				return -ENOMEM;
+			cpr2 = &cpr->cp_ring_arr[BNXT_TX_HDL];
+			rc = bnxt_alloc_cp_sub_ring(bp, cpr2);
+			if (rc)
+				return rc;
 			cpr2->bnapi = bnapi;
 		}
 	}
@@ -3850,11 +3846,10 @@ static void bnxt_init_cp_rings(struct bnxt *bp)
 		ring->fw_ring_id = INVALID_HW_RING_ID;
 		cpr->rx_ring_coal.coal_ticks = bp->rx_coal.coal_ticks;
 		cpr->rx_ring_coal.coal_bufs = bp->rx_coal.coal_bufs;
-		for (j = 0; j < 2; j++) {
-			struct bnxt_cp_ring_info *cpr2 = cpr->cp_ring_arr[j];
-
-			if (!cpr2)
-				continue;
+		if (!cpr->cp_ring_arr)
+			continue;
+		for (j = 0; j < cpr->cp_ring_count; j++) {
+			struct bnxt_cp_ring_info *cpr2 = &cpr->cp_ring_arr[j];
 
 			ring = &cpr2->cp_ring_struct;
 			ring->fw_ring_id = INVALID_HW_RING_ID;
@@ -5279,7 +5274,7 @@ static u16 bnxt_cp_ring_for_rx(struct bnxt *bp, struct bnxt_rx_ring_info *rxr)
 		struct bnxt_napi *bnapi = rxr->bnapi;
 		struct bnxt_cp_ring_info *cpr;
 
-		cpr = bnapi->cp_ring.cp_ring_arr[BNXT_RX_HDL];
+		cpr = &bnapi->cp_ring.cp_ring_arr[BNXT_RX_HDL];
 		return cpr->cp_ring_struct.fw_ring_id;
 	} else {
 		return bnxt_cp_ring_from_grp(bp, &rxr->rx_ring_struct);
@@ -5292,7 +5287,7 @@ static u16 bnxt_cp_ring_for_tx(struct bnxt *bp, struct bnxt_tx_ring_info *txr)
 		struct bnxt_napi *bnapi = txr->bnapi;
 		struct bnxt_cp_ring_info *cpr;
 
-		cpr = bnapi->cp_ring.cp_ring_arr[BNXT_TX_HDL];
+		cpr = &bnapi->cp_ring.cp_ring_arr[BNXT_TX_HDL];
 		return cpr->cp_ring_struct.fw_ring_id;
 	} else {
 		return bnxt_cp_ring_from_grp(bp, &txr->tx_ring_struct);
@@ -6060,7 +6055,7 @@ static int bnxt_hwrm_ring_alloc(struct bnxt *bp)
 			u32 type2 = HWRM_RING_ALLOC_CMPL;
 
 			cpr = &bnapi->cp_ring;
-			cpr2 = cpr->cp_ring_arr[BNXT_TX_HDL];
+			cpr2 = &cpr->cp_ring_arr[BNXT_TX_HDL];
 			ring = &cpr2->cp_ring_struct;
 			ring->handle = BNXT_TX_HDL;
 			map_idx = bnapi->index;
@@ -6099,7 +6094,7 @@ static int bnxt_hwrm_ring_alloc(struct bnxt *bp)
 			u32 type2 = HWRM_RING_ALLOC_CMPL;
 			struct bnxt_cp_ring_info *cpr2;
 
-			cpr2 = cpr->cp_ring_arr[BNXT_RX_HDL];
+			cpr2 = &cpr->cp_ring_arr[BNXT_RX_HDL];
 			ring = &cpr2->cp_ring_struct;
 			ring->handle = BNXT_RX_HDL;
 			rc = hwrm_ring_alloc_send_msg(bp, ring, type2, map_idx);
@@ -6246,18 +6241,16 @@ static void bnxt_hwrm_ring_free(struct bnxt *bp, bool close_path)
 		struct bnxt_ring_struct *ring;
 		int j;
 
-		for (j = 0; j < 2; j++) {
-			struct bnxt_cp_ring_info *cpr2 = cpr->cp_ring_arr[j];
+		for (j = 0; j < cpr->cp_ring_count && cpr->cp_ring_arr; j++) {
+			struct bnxt_cp_ring_info *cpr2 = &cpr->cp_ring_arr[j];
 
-			if (cpr2) {
-				ring = &cpr2->cp_ring_struct;
-				if (ring->fw_ring_id == INVALID_HW_RING_ID)
-					continue;
-				hwrm_ring_free_send_msg(bp, ring,
-					RING_FREE_REQ_RING_TYPE_L2_CMPL,
-					INVALID_HW_RING_ID);
-				ring->fw_ring_id = INVALID_HW_RING_ID;
-			}
+			ring = &cpr2->cp_ring_struct;
+			if (ring->fw_ring_id == INVALID_HW_RING_ID)
+				continue;
+			hwrm_ring_free_send_msg(bp, ring,
+						RING_FREE_REQ_RING_TYPE_L2_CMPL,
+						INVALID_HW_RING_ID);
+			ring->fw_ring_id = INVALID_HW_RING_ID;
 		}
 		ring = &cpr->cp_ring_struct;
 		if (ring->fw_ring_id != INVALID_HW_RING_ID) {
@@ -12016,12 +12009,11 @@ static void bnxt_chk_missed_irq(struct bnxt *bp)
 			continue;
 
 		cpr = &bnapi->cp_ring;
-		for (j = 0; j < 2; j++) {
-			struct bnxt_cp_ring_info *cpr2 = cpr->cp_ring_arr[j];
+		for (j = 0; j < cpr->cp_ring_count; j++) {
+			struct bnxt_cp_ring_info *cpr2 = &cpr->cp_ring_arr[j];
 			u32 val[2];
 
-			if (!cpr2 || cpr2->has_more_work ||
-			    !bnxt_has_work(bp, cpr2))
+			if (cpr2->has_more_work || !bnxt_has_work(bp, cpr2))
 				continue;
 
 			if (cpr2->cp_raw_cons != cpr2->last_cp_raw_cons) {
