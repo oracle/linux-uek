@@ -3443,6 +3443,15 @@ static void bnxt_free_tx_rings(struct bnxt *bp)
 	}
 }
 
+#define BNXT_TC_TO_RING_BASE(bp, tc)	\
+	((tc) * (bp)->tx_nr_rings_per_tc)
+
+#define BNXT_RING_TO_TC_OFF(bp, tx)	\
+	((tx) % (bp)->tx_nr_rings_per_tc)
+
+#define BNXT_RING_TO_TC(bp, tx)		\
+	((tx) / (bp)->tx_nr_rings_per_tc)
+
 static int bnxt_alloc_tx_rings(struct bnxt *bp)
 {
 	int i, j, rc;
@@ -3498,7 +3507,7 @@ static int bnxt_alloc_tx_rings(struct bnxt *bp)
 		spin_lock_init(&txr->xdp_tx_lock);
 		if (i < bp->tx_nr_rings_xdp)
 			continue;
-		if (i % bp->tx_nr_rings_per_tc == (bp->tx_nr_rings_per_tc - 1))
+		if (BNXT_RING_TO_TC_OFF(bp, i) == (bp->tx_nr_rings_per_tc - 1))
 			j++;
 	}
 	return 0;
@@ -9170,7 +9179,7 @@ static void bnxt_setup_msix(struct bnxt *bp)
 
 		for (i = 0; i < tcs; i++) {
 			count = bp->tx_nr_rings_per_tc;
-			off = i * count;
+			off = BNXT_TC_TO_RING_BASE(bp, i);
 			netdev_set_tc_queue(dev, i, count, off);
 		}
 	}
