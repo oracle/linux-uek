@@ -1582,6 +1582,8 @@ static int rvu_af_dl_nix_maxlf_set(struct devlink *devlink, u32 id,
 	int blkaddr = 0;
 
 	npc_mcam_rsrcs_deinit(rvu);
+	rvu_tim_deinit(rvu);
+
 	blkaddr = rvu_get_next_nix_blkaddr(rvu, blkaddr);
 	while (blkaddr) {
 		block = &rvu->hw->block[blkaddr];
@@ -1591,6 +1593,7 @@ static int rvu_af_dl_nix_maxlf_set(struct devlink *devlink, u32 id,
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	npc_mcam_rsrcs_init(rvu, blkaddr);
+	rvu_tim_init(rvu);
 
 	return 0;
 }

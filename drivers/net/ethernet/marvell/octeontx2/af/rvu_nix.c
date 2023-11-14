@@ -1090,7 +1090,6 @@ static void nix_aq_reset(struct rvu *rvu, struct rvu_block *block)
 	struct admin_queue *aq = block->aq;
 	u64 reg, head, tail;
 	int timeout = 2000;
-	int ret;
 
 	/* check if any AQ err is set and reset the AQ */
 	reg = rvu_read64(rvu, block->addr, NIX_AF_AQ_STATUS);

@@ -712,3 +712,10 @@ int rvu_tim_init(struct rvu *rvu)
 
 	return rc;
 }
+
+void rvu_tim_deinit(struct rvu *rvu)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+
+	kfree(hw->tim.ring_intvls);
+}

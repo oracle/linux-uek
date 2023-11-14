@@ -1200,6 +1200,7 @@ int rvu_tim_init(struct rvu *rvu);
 int rvu_tim_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot);
 int rvu_tim_register_interrupts(struct rvu *rvu);
 void rvu_tim_unregister_interrupts(struct rvu *rvu);
+void rvu_tim_deinit(struct rvu *rvu);
 
 /* REE APIs */
 int rvu_ree_init(struct rvu *rvu);
