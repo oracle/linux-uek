@@ -39,6 +39,7 @@
 #include <linux/node.h>
 #include <linux/userfaultfd_k.h>
 #include <linux/page_owner.h>
+#include <xen/xen.h>
 #include "internal.h"
 #include "hugetlb_vmemmap.h"
 
@@ -3858,6 +3859,9 @@ static int __init hugetlb_init(void)
 
 	if (!hugepages_supported())
 		return 0;
+
+	if (xen_domain())
+		hugetlb_disable_hvo_xen();
 
 	if (!size_to_hstate(default_hstate_size)) {
 		if (default_hstate_size != 0) {
