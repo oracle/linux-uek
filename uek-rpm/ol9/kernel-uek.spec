@@ -516,7 +516,7 @@ BuildRoot: %{_tmppath}/kernel-%{KVERREL}-root
 # END OF PATCH DEFINITIONS
 
 %description
-It is a kernel-uek meta package.
+It is a kernel%{?variant} meta package.
 
 %package doc
 Summary: Various documentation bits found in the kernel source
@@ -568,7 +568,7 @@ glibc package.
 Summary: Kernel source files used by %{name}-debuginfo packages
 Group: Development/Debug
 Provides: %{name}-debuginfo-common-%{_target_cpu} = %{version}-%{release}
-Provides: installonlypkg(kernel-uek)
+Provides: installonlypkg(kernel%{?variant})
 AutoReq: no
 %description debuginfo-common
 This package is required by %{name}-debuginfo subpackages.
@@ -609,6 +609,7 @@ Provides: x86_energy_perf_policy = %{KVERREL}
 Provides: turbostat = %{KVERREL}
 %endif
 Provides: perf = %{KVERREL}
+Provides: installonlypkg(kernel%{?variant}-tools)
 %description -n kernel%{?variant}-tools
 This package contains some of tools/ directory binaries from the kernel source.
 %endif
@@ -666,7 +667,7 @@ Summary: Debug information for package %{variant_name}\
 Group: Development/Debug\
 Requires: %{name}-debuginfo-common-%{_target_cpu} = %{version}-%{release}\
 Provides: %{variant_name}-debuginfo-%{_target_cpu} = %{version}-%{release}\
-Provides: installonlypkg(kernel-uek)\
+Provides: installonlypkg(%{variant_name})\
 AutoReqProv: no\
 %description -n %{variant_name}-debuginfo\
 This package provides debug information for package %{variant_name}.\
@@ -693,7 +694,7 @@ Provides: kernel%{?variant}-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: kernel-devel = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
 %endif\
-Provides: installonlypkg(kernel-uek)\
+Provides: installonlypkg(%{variant_name})\
 AutoReqProv: no\
 Requires(pre): /usr/bin/find\
 %description -n %{variant_name}-devel\
@@ -713,7 +714,7 @@ Summary: Extra kernel modules to match the %{?2:%{2}-}core kernel\
 Group: System Environment/Kernel\
 Provides: %{variant_name}-modules-extra-%{_target_cpu} = %{version}-%{release}%{?1:.%{1}}\
 Provides: %{variant_name}-modules-extra = %{version}-%{release}%{?1:.%{1}}\
-Provides: installonlypkg(kernel-uek-modules)\
+Provides: installonlypkg(%{variant_name}-modules-extra)\
 Provides: %{variant_name}-modules-extra-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-modules-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
@@ -735,11 +736,11 @@ Summary: kernel modules to match the %{?2:%{2}-}core kernel\
 Group: System Environment/Kernel\
 Provides: %{variant_name}-modules-%{_target_cpu} = %{version}-%{release}%{?1:.%{1}}\
 Provides: %{variant_name}-modules = %{version}-%{release}%{?1:.%{1}}\
-Provides: installonlypkg(kernel-uek-modules)\
+Provides: installonlypkg(%{variant_name}-modules)\
 Provides: %{variant_name}-modules-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
-Requires: linux-firmware >= 999:20230516-999.26.git6c9e0ed5.el9\
+Requires: linux-firmware >= 999:20230516-999.26.git6c9e0ed5\
 AutoReq: no\
 AutoProv: yes\
 %description -n %{variant_name}-modules\
@@ -758,10 +759,10 @@ Summary: Core kernel modules to match the %{?2:%{2}-}core kernel\
 Group: System Environment/Kernel\
 Provides: %{variant_name}-modules-core-%{_target_cpu} = %{version}-%{release}%{?1:.%{1}}\
 Provides: %{variant_name}-modules-core = %{version}-%{release}%{?1:.%{1}}\
-Provides: installonlypkg(kernel-uek-modules)\
+Provides: installonlypkg(%{variant_name}-modules-core)\
 Provides: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-core-uname-r = %{KVERREL}%{?1:.%{1}}\
-Requires: linux-firmware-core >= 999:20230516-999.26.git6c9e0ed5.el9\
+Requires: linux-firmware-core >= 999:20230516-999.26.git6c9e0ed5\
 AutoReq: no\
 AutoProv: yes\
 %description -n %{variant_name}-modules-core\
@@ -781,7 +782,7 @@ Group: System Environment/Kernel\
 Requires: %{variant_name}-core-uname-r = %{KVERREL}.%{1}\
 Requires: %{variant_name}-modules-uname-r = %{KVERREL}.%{1}\
 Requires: %{variant_name}-modules-core-uname-r = %{KVERREL}.%{1}\
-Provides: installonlypkg(kernel-uek)\
+Provides: installonlypkg(%{variant_name})\
 %description -n %{variant_name}\
 The meta-package for the %{1} kernel\
 %{nil}
@@ -798,7 +799,7 @@ The meta-package for the %{1} kernel\
 Summary: %{variant_summary}\
 Group: System Environment/Kernel\
 Provides: %{variant_name}-core-uname-r = %{KVERREL}%{?1:.%{1}}\
-Provides: installonlypkg(kernel-uek)\
+Provides: installonlypkg(%{variant_name}-core)\
 %ifarch x86_64\
 %if %{?1:0}%{!?1:1}\
 Provides: kernel-ueknano = %{KVERREL}%{?1:.%{1}}\
