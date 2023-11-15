@@ -38,8 +38,13 @@ asmlinkage int vprintk(const char *fmt, va_list args)
 	 * Use the main logbuf even in NMI. But avoid calling console
 	 * drivers that might have their own locks.
 	 */
-	if (this_cpu_read(printk_context) || in_nmi())
-		return vprintk_deferred(fmt, args);
+	if (this_cpu_read(printk_context) || in_nmi()) {
+		int len;
+
+		len = vprintk_store(0, LOGLEVEL_DEFAULT, NULL, fmt, args);
+		defer_console_output();
+		return len;
+	}
 
 	/* No obstacles. */
 	return vprintk_default(fmt, args);
