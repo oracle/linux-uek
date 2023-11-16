@@ -115,6 +115,19 @@ enum {
 
 #define RDS_CP_WQ_MAX_ACTIVE	4
 
+struct rds_cong_monitor {
+	/* global list of monitoring sockets */
+	struct list_head	rc_monitor;
+	rwlock_t		rc_monitor_lock;
+
+	/* kworker related */
+	spinlock_t		rc_notify_lock;
+	u64			rc_notify_portmask;
+	struct work_struct	rc_notify_work;
+	bool			rc_notify_work_scheduled;
+	struct rds_net		*rc_rns;
+};
+
 struct rds_cong_map {
 	struct rb_node		m_rb_node;
 	struct in6_addr		m_addr;
@@ -122,6 +135,7 @@ struct rds_cong_map {
 	struct list_head	m_conn_list;
 	struct wait_queue_head *m_wait_queue_ptr;
 	unsigned long		m_page_addrs[RDS_CONG_MAP_PAGES];
+	struct rds_net		*m_rns;
 };
 
 /*
@@ -262,6 +276,10 @@ struct rds_net {
 	spinlock_t		rns_conn_lock;		/* protect connection */
 	struct hlist_head	*rns_conn_hash;
 
+	atomic_t		rns_cong_generation;
+	struct rds_cong_monitor *rns_cong_monitor;
+	spinlock_t		rns_cong_lock;	/* protect congestion maps */
+	struct rb_root		rns_cong_tree;
 };
 
 #define IS_CANONICAL(laddr, faddr) (htonl(laddr) < htonl(faddr))
@@ -1132,8 +1150,8 @@ int rds_bind_tbl_net_init(struct rds_net *rds_ns);
 void rds_bind_tbl_net_exit(struct rds_net *rds_ns);
 
 /* cong.c */
-int rds_cong_monitor_init(void);
-void rds_cong_monitor_free(void);
+int  rds_cong_net_init(struct rds_net *rds_ns);
+void  rds_cong_net_exit(struct rds_net *rds_ns);
 int rds_cong_get_maps(struct rds_connection *conn);
 void rds_cong_add_conn(struct rds_connection *conn);
 void rds_cong_remove_conn(struct rds_connection *conn);
@@ -1142,10 +1160,9 @@ void rds_cong_clear_bit(struct rds_cong_map *map, __be16 port);
 int rds_cong_wait(struct rds_cong_map *map, __be16 port, int nonblock, struct rds_sock *rs);
 void rds_cong_queue_updates(struct rds_cong_map *map);
 void rds_cong_map_updated(struct rds_cong_map *map, uint64_t);
-int rds_cong_updated_since(unsigned long *recent);
+int rds_cong_updated_since(struct rds_sock *rs);
 void rds_cong_add_socket(struct rds_sock *);
 void rds_cong_remove_socket(struct rds_sock *);
-void rds_cong_exit(void);
 struct rds_message *rds_cong_update_alloc(struct rds_connection *conn);
 
 /* conn.c */
