@@ -213,7 +213,7 @@ static int rds_release(struct socket *sock)
 	rds_clear_recv_queue(rs);
 	rds_cong_remove_socket(rs);
 
-	rds_remove_bound(rs);
+	rds_remove_bound(rs->rs_rns, rs);
 
 	rds_send_drop_to(rs, NULL);
 	rds_notify_queue_get(rs, NULL);
@@ -1489,8 +1489,6 @@ static int __init rds_init(void)
 	ret = rds_reg_pernet();
 	if (ret)
 		goto out_slab;
-
-	rds_bind_lock_init();
 
 	ret = rds_conn_init();
 	if (ret)
