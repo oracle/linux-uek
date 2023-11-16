@@ -249,6 +249,13 @@ enum rds_hb_state {
 	HB_PONG_RCVD,
 };
 
+struct rds_net {
+	/* The following socket info is used for stats gathering */
+	spinlock_t		rns_sock_lock;
+	u32			rns_sock_count;
+	struct list_head	rns_sock_list;
+};
+
 #define IS_CANONICAL(laddr, faddr) (htonl(laddr) < htonl(faddr))
 
 /* Per mpath connection state */
@@ -944,6 +951,7 @@ struct rds_sock {
 	void			*rs_trans_private;
 	pid_t                   rs_pid;
 	unsigned char		rs_inq;
+	struct rds_net		*rs_rns;
 };
 
 static inline struct rds_sock *rds_sk_to_rs(const struct sock *sk)
@@ -1536,6 +1544,11 @@ unsigned int rds_trans_stats_info_copy(struct rds_info_iterator *iter,
 struct rds_transport *rds_trans_get(int t_type);
 int rds_trans_init(void);
 void rds_trans_exit(void);
+
+/* rds_ns.c */
+struct rds_net *rds_ns(struct net *net);
+int rds_reg_pernet(void);
+void rds_unreg_pernet(void);
 
 /* ib.c */
 
