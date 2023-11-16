@@ -822,6 +822,7 @@ static bool audit_in_mask(const struct audit_krule *rule, unsigned long val)
  * parameter can be NULL, but all others must be specified.
  * Returns 1/true if the filter finds a match, 0/false if none are found.
  */
+#pragma GCC optimize("unswitch-loops", "align-loops=16", "align-jumps=16")
 static int __audit_filter_op(struct task_struct *tsk,
 			   struct audit_context *ctx,
 			   struct list_head *list,
@@ -842,6 +843,7 @@ static int __audit_filter_op(struct task_struct *tsk,
 	}
 	return 0;
 }
+#pragma GCC reset_options
 
 /**
  * audit_filter_uring - apply filters to an io_uring operation
