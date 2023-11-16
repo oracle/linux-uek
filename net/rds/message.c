@@ -98,7 +98,7 @@ static void rds_cfu_cache_do_gc(void)
 		}
 
 		atomic_sub(nmbr_cleaned, nmbr_entries_ptr);
-		rds_stats_add(s_copy_from_user_cache_get, nmbr_cleaned);
+		rds_stats_add(&rds_stats, s_copy_from_user_cache_get, nmbr_cleaned);
 		if (++gc_control.next_cpu >= num_possible_cpus())
 			gc_control.next_cpu = 0;
 	}
@@ -175,7 +175,7 @@ static void rds_message_purge(struct rds_message *rm)
 	if (first) {
 		lfstack_push_many(stack, first, last);
 		atomic_add(cache_puts, nmbr_entries_ptr);
-		rds_stats_add(s_copy_from_user_cache_put, cache_puts);
+		rds_stats_add(&rds_stats, s_copy_from_user_cache_put, cache_puts);
 	}
 
 	rm->data.op_nents = 0;
@@ -410,7 +410,8 @@ struct scatterlist *rds_message_alloc_sgs(struct rds_message *rm, int nents)
 	return sg_ret;
 }
 
-int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from)
+int rds_message_copy_from_user(struct rds_sock *rs, struct rds_message *rm,
+			       struct iov_iter *from)
 {
 	unsigned long to_copy, nbytes;
 	unsigned long sg_off;
@@ -440,7 +441,7 @@ int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from)
 						container_of(el, struct rds_cfu_cache_entry, list);
 
 					sg_set_page(sg, entry->pg, PAGE_SIZE, 0);
-					rds_stats_inc(s_copy_from_user_cache_get);
+					rds_stats_inc(&rds_stats, s_copy_from_user_cache_get);
 					atomic_dec(nmbr_entries_ptr);
 				}
 			}
@@ -475,7 +476,7 @@ int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from)
 		if (nbytes != to_copy)
 			return -EFAULT;
 
-		rds_stats_add(s_copy_from_user, to_copy);
+		rds_stats_add(rs->rs_stats, s_copy_from_user, to_copy);
 		sg_off += to_copy;
 
 		if (sg_off == sg->length)
@@ -485,7 +486,8 @@ int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from)
 	return ret;
 }
 
-int rds_message_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
+int rds_message_inc_copy_to_user(struct rds_sock *rs, struct rds_incoming *inc,
+				 struct iov_iter *to)
 {
 	struct rds_csum csum = { .csum_val.raw = 0 };
 	struct rds_connection *conn;
@@ -522,7 +524,7 @@ int rds_message_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 		if (ret != to_copy)
 			return -EFAULT;
 
-		rds_stats_add(s_copy_to_user, to_copy);
+		rds_stats_add(rs->rs_stats, s_copy_to_user, to_copy);
 		atomic64_add(to_copy, &conn->c_recv_bytes);
 		vec_off += to_copy;
 		copied += to_copy;
@@ -534,7 +536,7 @@ int rds_message_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 	}
 
 	if (unlikely(inc->i_payload_csum.csum_enabled) && copied) {
-		rds_stats_inc(s_recv_payload_csum_loopback);
+		rds_stats_inc(rs->rs_stats, s_recv_payload_csum_loopback);
 		rds_check_csum(inc, &csum);
 	}
 

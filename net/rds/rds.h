@@ -265,6 +265,18 @@ enum rds_hb_state {
 
 struct bind_bucket;
 
+/* Structure to store an RDS module's statistics counters
+ *
+ * rs_stats: per_cpu uint64_t array of counters
+ * rs_names: array of names corresponding to the rs_stats counters
+ * rs_num_stats: number of elements in the rs_stats array
+ */
+struct rds_stats_struct {
+	void __percpu	*rs_stats;
+	char		**rs_names;
+	int		rs_num_stats;
+};
+
 struct rds_net {
 	/* The following socket info is used for stats gathering */
 	spinlock_t		rns_sock_lock;
@@ -280,6 +292,11 @@ struct rds_net {
 	struct rds_cong_monitor *rns_cong_monitor;
 	spinlock_t		rns_cong_lock;	/* protect congestion maps */
 	struct rb_root		rns_cong_tree;
+
+	struct mutex		rns_mod_mutex;	/* protect rns_mod_stats */
+
+	/* Array for RDS modules' stats information */
+	struct rds_stats_struct	*rns_mod_stats[RDS_MOD_MAX];
 };
 
 #define IS_CANONICAL(laddr, faddr) (htonl(laddr) < htonl(faddr))
@@ -438,29 +455,16 @@ struct rds_connection {
 	struct delayed_work	c_dr_sock_cancel_w;
 
 	u64			c_cp0_mprds_catchup_tx_seq;
+
+	struct rds_statistics __percpu	*c_stats;
 };
 
-static inline
-struct net *rds_conn_net(struct rds_connection *conn)
-{
-	struct net *net = read_pnet(&conn->c_net);
-
-	WARN_ON(!net);
-	return net;
-}
-
-struct rds_net *rds_ns(struct net *);
-static inline
-void rds_conn_net_set(struct rds_connection *conn, struct net *net)
-{
-	/* Once set, never changed until connection destruction. */
-	write_pnet(&conn->c_net, net);
-
-	if (net)
-		conn->c_rns = rds_ns(net);
-	else
-		conn->c_rns = NULL;
-}
+struct rds_info_iterator {
+	struct page **pages;
+	void *addr;
+	unsigned long offset;
+	struct net *net;
+};
 
 #define RDS_FLAG_CONG_BITMAP		0x01
 #define RDS_FLAG_ACK_REQUIRED		0x02
@@ -853,7 +857,8 @@ struct rds_transport {
 	int (*xmit_rdma)(struct rds_connection *conn, struct rm_rdma_op *op);
 	int (*xmit_atomic)(struct rds_connection *conn, struct rm_atomic_op *op);
 	int (*recv_path)(struct rds_conn_path *cp);
-	int (*inc_copy_to_user)(struct rds_incoming *inc, struct iov_iter *to);
+	int (*inc_copy_to_user)(struct rds_sock *rs, struct rds_incoming *inc,
+				struct iov_iter *to);
 	bool (*recv_need_bufs)(struct rds_conn_path *cp);
 	void (*inc_free)(struct rds_incoming *inc);
 
@@ -988,6 +993,7 @@ struct rds_sock {
 	pid_t                   rs_pid;
 	unsigned char		rs_inq;
 	struct rds_net		*rs_rns;
+	struct rds_statistics __percpu	*rs_stats;
 };
 
 static inline struct rds_sock *rds_sk_to_rs(const struct sock *sk)
@@ -1133,7 +1139,9 @@ static inline void __rds_wake_sk_sleep(struct sock *sk)
 	if (!sock_flag(sk, SOCK_DEAD) && waitq)
 		wake_up(waitq);
 }
-int rds_check_qos_threshold(u8 tos, size_t pauload_len);
+
+int rds_check_qos_threshold(struct rds_statistics __percpu *stats, u8 tos,
+			    size_t pauload_len);
 #define RDS_NMBR_WAITQ BIT(6)
 extern struct wait_queue_head rds_poll_waitq[RDS_NMBR_WAITQ];
 
@@ -1159,7 +1167,8 @@ void rds_cong_set_bit(struct rds_cong_map *map, __be16 port);
 void rds_cong_clear_bit(struct rds_cong_map *map, __be16 port);
 int rds_cong_wait(struct rds_cong_map *map, __be16 port, int nonblock, struct rds_sock *rs);
 void rds_cong_queue_updates(struct rds_cong_map *map);
-void rds_cong_map_updated(struct rds_cong_map *map, uint64_t);
+void rds_cong_map_updated(struct rds_connection *conn,
+			  struct rds_cong_map *map, uint64_t portmask);
 int rds_cong_updated_since(struct rds_sock *rs);
 void rds_cong_add_socket(struct rds_sock *);
 void rds_cong_remove_socket(struct rds_sock *);
@@ -1403,7 +1412,7 @@ rds_conn_self_loopback_passive(struct rds_connection *conn)
 /* message.c */
 struct rds_message *rds_message_alloc(unsigned int nents, gfp_t gfp);
 struct scatterlist *rds_message_alloc_sgs(struct rds_message *rm, int nents);
-int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from);
+int rds_message_copy_from_user(struct rds_sock *rs, struct rds_message *rm, struct iov_iter *from);
 void rds_message_populate_header(struct rds_header *hdr, __be16 sport,
 				 __be16 dport, u64 seq);
 int rds_message_add_extension(struct rds_header *hdr,
@@ -1413,7 +1422,8 @@ int rds_message_next_extension(struct rds_header *hdr,
 int rds_message_add_version_extension(struct rds_header *hdr, unsigned int version);
 int rds_message_get_version_extension(struct rds_header *hdr, unsigned int *version);
 int rds_message_add_rdma_dest_extension(struct rds_header *hdr, u32 r_key, u32 offset);
-int rds_message_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to);
+int rds_message_inc_copy_to_user(struct rds_sock *rs, struct rds_incoming *inc,
+				 struct iov_iter *to);
 void rds_message_inc_free(struct rds_incoming *inc);
 void rds_message_addref(struct rds_message *rm);
 void rds_message_put(struct rds_message *rm);
@@ -1511,21 +1521,27 @@ void __rds_put_mr_final(struct kref *kref);
 /* stats.c */
 DECLARE_PER_CPU_SHARED_ALIGNED(struct rds_statistics, rds_stats);
 #define rds_stats_inc_which(which, member) do {		\
-	per_cpu(which, get_cpu()).member++;		\
+	per_cpu_ptr(which, get_cpu())->member++;	\
 	put_cpu();					\
 } while (0)
+#define rds_stats_inc(stats, member)\
+	rds_stats_inc_which(stats, member)
 #define rds_stats_dec_which(which, member) do {		\
-       per_cpu(which, get_cpu()).member--;             	\
-       put_cpu();                                      	\
+	per_cpu(which, get_cpu()).member--;	\
+	put_cpu();				\
 } while (0)
-#define rds_stats_inc(member) rds_stats_inc_which(rds_stats, member)
 #define rds_stats_add_which(which, member, count) do {		\
-	per_cpu(which, get_cpu()).member += count;	\
-	put_cpu();					\
+	per_cpu_ptr(which, get_cpu())->member += count;	\
+	put_cpu();						\
 } while (0)
-#define rds_stats_add(member, count) rds_stats_add_which(rds_stats, member, count)
-int rds_stats_init(void);
-void rds_stats_exit(void);
+#define rds_stats_add(stats, member, count)		\
+	rds_stats_add_which(stats, member, count)
+int rds_stats_net_init(struct net *net);
+void rds_stats_net_exit(struct net *net);
+int rds_mod_stats_register(struct net *net, int module,
+			   struct rds_stats_struct *stats);
+struct rds_stats_struct *rds_mod_stats_unregister(struct net *net,
+						  int module);
 void rds_stats_info_copy(struct rds_info_iterator *iter,
 			 uint64_t *values, char **names, size_t nr);
 void rds_stats_print(const char *where);
@@ -1586,6 +1602,7 @@ int rds_trans_init(void);
 void rds_trans_exit(void);
 
 /* rds_ns.c */
+struct rds_net *rds_ns(struct net *net);
 int rds_reg_pernet(void);
 void rds_unreg_pernet(void);
 
@@ -1594,13 +1611,14 @@ void rds_unreg_pernet(void);
 static inline void rds_page_free(struct page *page)
 {
 	__free_page(page);
-	rds_stats_inc(s_page_frees);
+	rds_stats_inc(&rds_stats, s_page_frees);
 }
 
 static inline void rds_pages_free(struct page *page, int order)
 {
 	__free_pages(page, order);
-	rds_stats_inc(s_page_frees);
+	rds_stats_inc(&rds_stats, s_page_frees);
+
 }
 
 static inline
@@ -1806,10 +1824,48 @@ static __always_inline
 void rds_check_csum(struct rds_incoming *inc, struct rds_csum *csum)
 {
 	if (unlikely(inc->i_payload_csum.csum_val.raw != csum->csum_val.raw)) {
-		rds_stats_inc(s_recv_payload_bad_checksum);
+		rds_stats_inc(inc->i_conn->c_stats, s_recv_payload_bad_checksum);
 
 		if (unlikely(tracepoint_enabled(rds_receive_csum_err)))
 			do_rds_receive_csum_err(inc, csum->csum_val.raw);
+	}
+}
+
+/* Get a module's statistics memory of a given namespace.  The main purpose
+ * is for caller to store the memory for fast update to the statistics.  It
+ * is assumed that the module has already registered such that the returned
+ * memory is valid.  It is also assumed that the caller will not access this
+ * memory after the module unregisters.  Both are true if the caller is using
+ * that module.
+ */
+static inline void __percpu *__rds_get_mod_stats(struct rds_net *rns,
+						 int module)
+{
+	return rns->rns_mod_stats[module]->rs_stats;
+}
+
+static inline
+struct net *rds_conn_net(struct rds_connection *conn)
+{
+	struct net *net = read_pnet(&conn->c_net);
+
+	WARN_ON(!net);
+	return net;
+}
+
+struct rds_net *rds_ns(struct net *);
+static inline
+void rds_conn_net_set(struct rds_connection *conn, struct net *net)
+{
+	/* Once set, never changed until connection destruction. */
+	write_pnet(&conn->c_net, net);
+
+	if (net) {
+		conn->c_rns = rds_ns(net);
+		conn->c_stats = __rds_get_mod_stats(conn->c_rns, RDS_MOD_RDS);
+	} else {
+		conn->c_rns = NULL;
+		conn->c_stats = NULL;
 	}
 }
 

@@ -124,9 +124,11 @@ static void rds_recv_rcvbuf_delta(struct rds_sock *rs, struct sock *sk,
 
 	rs->rs_rcv_bytes += delta;
 	if (delta > 0)
-		rds_stats_add(s_recv_bytes_added_to_socket, delta);
+		rds_stats_add(rs->rs_stats,
+			      s_recv_bytes_added_to_socket, delta);
 	else
-		rds_stats_add(s_recv_bytes_removed_from_socket, -delta);
+		rds_stats_add(rs->rs_stats,
+			      s_recv_bytes_removed_from_socket, -delta);
 	now_congested = rs->rs_rcv_bytes > rds_sk_rcvbuf(rs);
 
 	rdsdebug("rs %p (%pI6c:%u) recv bytes %d buf %d "
@@ -201,7 +203,7 @@ static void rds_recv_incoming_exthdrs(struct rds_incoming *inc, struct rds_sock 
 			} else {
 				inc->i_payload_csum.csum_enabled = false;
 				inc->i_payload_csum.csum_val.raw = 0;
-				rds_stats_inc(s_recv_payload_csum_ignored);
+				rds_stats_inc(rs->rs_stats, s_recv_payload_csum_ignored);
 			}
 
 			break;
@@ -356,6 +358,7 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 {
 	struct rds_conn_path *cp = rds_conn_to_path(conn, inc);
 	struct rds_sock *rs = NULL;
+	struct rds_statistics __percpu *stats;
 	char *dropreason = NULL;
 	struct sock *sk;
 	u64 inc_hdr_h_sequence;
@@ -367,6 +370,8 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 
 	inc->i_conn = conn;
 	inc->i_rx_jiffies = jiffies;
+
+	stats = conn->c_stats;
 
 	/*
 	 * Sequence numbers should only increase.  Messages get their
@@ -392,7 +397,7 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 
 	if (inc_hdr_h_sequence < cp->cp_next_rx_seq
 	 && (inc->i_hdr.h_flags & RDS_FLAG_RETRANSMITTED)) {
-		rds_stats_inc(s_recv_drop_old_seq);
+		rds_stats_inc(stats, s_recv_drop_old_seq);
 		dropreason = "dropping old sequence number";
 		goto out;
 	}
@@ -413,20 +418,20 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 			goto out;
 		}
 		if (is_hb_ping) {
-			rds_stats_inc(s_recv_hb_ping);
+			rds_stats_inc(stats, s_recv_hb_ping);
 			trace_rds_heartbeat_receive_ping(conn, cp, saddr, daddr);
 			rds_recv_incoming_hb_exthdr(inc);
 			rds_send_hb(conn, 1);
 		} else if (is_hb_pong) {
-			rds_stats_inc(s_recv_hb_pong);
+			rds_stats_inc(stats, s_recv_hb_pong);
 			trace_rds_heartbeat_receive_pong(conn, cp, saddr, daddr);
 			rds_recv_incoming_hb_exthdr(inc);
 			WRITE_ONCE(cp->cp_hb_start, 0);
 		} else {
 			if (be16_to_cpu(inc->i_hdr.h_sport) == RDS_FLAG_PROBE_PORT)
-				rds_stats_inc(s_recv_mprds_ping);
+				rds_stats_inc(stats, s_recv_mprds_ping);
 			else
-				rds_stats_inc(s_recv_ping);
+				rds_stats_inc(stats, s_recv_ping);
 
 			rds_send_pong(cp, inc->i_hdr.h_sport);
 			/* if this is a handshake ping,
@@ -444,7 +449,7 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 	if (conn->c_trans->t_mp_capable &&
 	    be16_to_cpu(inc->i_hdr.h_dport) ==  RDS_FLAG_PROBE_PORT &&
 	    inc->i_hdr.h_sport == 0) {
-		rds_stats_inc(s_recv_mprds_pong);
+		rds_stats_inc(stats, s_recv_mprds_pong);
 		rds_recv_hs_exthdrs(&inc->i_hdr, cp->cp_conn);
 		/* if this is a handshake pong, start multipath if necessary */
 		rds_start_mprds(cp->cp_conn);
@@ -453,11 +458,11 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 	}
 
 	if (!inc->i_hdr.h_sport)
-		rds_stats_inc(s_recv_pong);
+		rds_stats_inc(stats, s_recv_pong);
 
 	rs = rds_find_bound(conn->c_rns, daddr, inc->i_hdr.h_dport, conn->c_bound_if);
 	if (!rs) {
-		rds_stats_inc(s_recv_drop_no_sock);
+		rds_stats_inc(stats, s_recv_drop_no_sock);
 		dropreason = "no socket";
 		goto out;
 	}
@@ -483,7 +488,7 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 		if (list_empty(&inc->i_item)) {
 			rdsdebug("adding inc %p to rs %p's recv queue\n",
 				inc, rs);
-			rds_stats_inc(s_recv_queued);
+			rds_stats_inc(stats, s_recv_queued);
 			rds_recv_rcvbuf_delta(rs, sk, inc->i_conn,
 					      be32_to_cpu(inc->i_hdr.h_len),
 					      inc->i_hdr.h_dport);
@@ -502,7 +507,7 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 		}
 	} else {
 		dropreason = "dead socket";
-		rds_stats_inc(s_recv_drop_dead_sock);
+		rds_stats_inc(stats, s_recv_drop_dead_sock);
 	}
 	write_unlock_irqrestore(&rs->rs_recv_lock, flags);
 
@@ -790,7 +795,8 @@ int rds_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 			 &inc->i_conn->c_faddr,
 			 ntohs(inc->i_hdr.h_sport));
 		save = msg->msg_iter;
-		ret = inc->i_conn->c_trans->inc_copy_to_user(inc, &msg->msg_iter);
+		ret = inc->i_conn->c_trans->inc_copy_to_user(rs, inc,
+							     &msg->msg_iter);
 		if (ret < 0)
 			break;
 
@@ -802,7 +808,7 @@ int rds_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 		if (!rds_still_queued(rs, inc, !(msg_flags & MSG_PEEK))) {
 			rds_inc_put(inc);
 			inc = NULL;
-			rds_stats_inc(s_recv_deliver_raced);
+			rds_stats_inc(rs->rs_stats, s_recv_deliver_raced);
 			msg->msg_iter = save;
 			continue;
 		}
@@ -818,7 +824,7 @@ int rds_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 			break;
 		}
 
-		rds_stats_inc(s_recv_delivered);
+		rds_stats_inc(rs->rs_stats, s_recv_delivered);
 
 		if (msg->msg_name) {
 			if (ipv6_addr_v4mapped(&inc->i_saddr)) {
