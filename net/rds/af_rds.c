@@ -573,8 +573,7 @@ static int rds_user_reset(struct rds_sock *rs, sockptr_t optval, int optlen)
 			 &reset.src.s_addr);
 
 		mutex_lock(&conn_reset_zero_dest);
-		rds_conn_laddr_list(sock_net(rds_rs_to_sk(rs)),
-				    &src6, &s_addr_conns);
+		rds_conn_laddr_list(rs->rs_rns, &src6, &s_addr_conns);
 		if (list_empty(&s_addr_conns)) {
 			mutex_unlock(&conn_reset_zero_dest);
 			goto done;
@@ -588,7 +587,7 @@ static int rds_user_reset(struct rds_sock *rs, sockptr_t optval, int optlen)
 	}
 
 	ipv6_addr_set_v4mapped(reset.dst.s_addr, &dst6);
-	conn = rds_conn_find(sock_net(rds_rs_to_sk(rs)), &src6, &dst6,
+	conn = rds_conn_find(rs->rs_rns, &src6, &dst6,
 			     rs->rs_transport, reset.tos,
 			     rs->rs_bound_scope_id);
 
@@ -625,8 +624,7 @@ static int rds6_user_reset(struct rds_sock *rs, sockptr_t optval, int optlen)
 			&reset.src);
 
 		mutex_lock(&conn_reset_zero_dest);
-		rds_conn_laddr_list(sock_net(rds_rs_to_sk(rs)),
-				    &reset.src, &s_addr_conns);
+		rds_conn_laddr_list(rs->rs_rns, &reset.src, &s_addr_conns);
 		if (list_empty(&s_addr_conns)) {
 			mutex_unlock(&conn_reset_zero_dest);
 			goto done;
@@ -639,9 +637,9 @@ static int rds6_user_reset(struct rds_sock *rs, sockptr_t optval, int optlen)
 		goto done;
 	}
 
-	conn = rds_conn_find(sock_net(rds_rs_to_sk(rs)),
-			     &reset.src, &reset.dst, rs->rs_transport,
-			     reset.tos, rs->rs_bound_scope_id);
+	conn = rds_conn_find(rs->rs_rns, &reset.src, &reset.dst,
+			     rs->rs_transport, reset.tos,
+			     rs->rs_bound_scope_id);
 
 	if (conn) {
 		bool is_tcp = conn->c_trans->t_type == RDS_TRANS_TCP;
