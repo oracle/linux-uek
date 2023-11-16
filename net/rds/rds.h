@@ -293,6 +293,9 @@ struct rds_net {
 	spinlock_t		rns_cong_lock;	/* protect congestion maps */
 	struct rb_root		rns_cong_tree;
 
+	spinlock_t		rns_loop_conns_lock;	/* protect loopback conns */
+	struct list_head	rns_loop_conns;
+
 	struct mutex		rns_mod_mutex;	/* protect rns_mod_stats */
 
 	/* Array for RDS modules' stats information */
