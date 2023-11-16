@@ -1169,8 +1169,13 @@ out:
 static int rds_ib_laddr_check(struct net *net, const struct in6_addr *addr,
 			      __u32 scope_id)
 {
-	struct rds_ib_device *rds_ibdev = rds_ib_get_device(addr);
+	struct rds_ib_device *rds_ibdev;
 
+	/* RDS/IB is only supported in the initial network namespace */
+	if (!net_eq(net, &init_net))
+		return -EPROTOTYPE;
+
+	rds_ibdev = rds_ib_get_device(addr);
 	if (rds_ibdev) {
 		rds_ib_dev_put(rds_ibdev);
 
