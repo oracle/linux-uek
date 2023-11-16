@@ -386,6 +386,7 @@ static int rds_tcp_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 		tc->t_tinc_data_rem = 0;
 		INIT_WORK(&tc->t_fan_out_w, rds_tcp_fan_out_w);
 		init_waitqueue_head(&tc->t_recv_done_waitq);
+		tc->t_stats = __rds_get_mod_stats(conn->c_rns, RDS_MOD_TCP);
 
 		/* Once set, they will never change until the conn is dead. */
 		conn->c_path[i].cp_transport_data = tc;
@@ -412,6 +413,7 @@ static void rds_tcp_conn_free(void *arg)
 	list_del(&tc->t_tcp_node);
 	spin_unlock_irqrestore(&rds_tcp_conn_lock, flags);
 
+	tc->t_stats = NULL;
 	kmem_cache_free(rds_tcp_conn_slab, tc);
 }
 
@@ -525,17 +527,24 @@ void rds_tcp_accept_work(struct rds_tcp_net *rtn)
 static __net_init int rds_tcp_init_net(struct net *net)
 {
 	struct rds_tcp_net *rtn = net_generic(net, rds_tcp_netid);
-	struct ctl_table *tbl;
+	struct ctl_table *tbl = NULL;
 	int err = 0;
 
 	memset(rtn, 0, sizeof(*rtn));
 
 	mutex_init(&rtn->rds_tcp_accept_lock);
 
+	err = rds_tcp_stats_net_init(net);
+	if (err)
+		return err;
+
 	rtn->rds_tcp_accept_wq =
 		create_singlethread_workqueue("rds_tcp_accept");
-	if (!rtn->rds_tcp_accept_wq)
-		return -ENOMEM;
+	if (!rtn->rds_tcp_accept_wq) {
+		pr_warn("could not create TCP accept workqueue\n");
+		err = -ENOMEM;
+		goto fail;
+	}
 
 	/* {snd, rcv}buf_size default to 0, which implies we let the
 	 * stack pick the value, and permit auto-tuning of buffer size.
@@ -547,7 +556,8 @@ static __net_init int rds_tcp_init_net(struct net *net)
 			      sizeof(rds_tcp_sysctl_table), GFP_KERNEL);
 		if (!tbl) {
 			pr_warn("could not set allocate syctl table\n");
-			return -ENOMEM;
+			err = -ENOMEM;
+			goto fail;
 		}
 		rtn->ctl_table = tbl;
 	}
@@ -584,6 +594,7 @@ static __net_init int rds_tcp_init_net(struct net *net)
 	return 0;
 
 fail:
+	rds_tcp_stats_net_exit(net);
 	if (net != &init_net)
 		kfree(tbl);
 	return err;
@@ -639,6 +650,7 @@ static void __net_exit rds_tcp_exit_net(struct net *net)
 	struct rds_tcp_net *rtn = net_generic(net, rds_tcp_netid);
 
 	rds_tcp_kill_sock(net, rtn);
+	rds_tcp_stats_net_exit(net);
 
 	if (rtn->rds_tcp_sysctl)
 		unregister_net_sysctl_table(rtn->rds_tcp_sysctl);
