@@ -215,7 +215,7 @@ restart:
 		trace_rds_send_lock_contention(NULL, conn, cp,
 					       "send lock contention",
 					       -EBUSY);
-		rds_stats_inc(s_send_lock_contention);
+		rds_stats_inc(conn->c_stats, s_send_lock_contention);
 		ret = -EBUSY;
 
 		/* If we cannot send, may be refill the recv queue instead? */
@@ -269,7 +269,7 @@ restart:
 						      &conn->c_laddr,
 						      &conn->c_faddr,
 						      "stuck rm");
-				rds_stats_inc(s_send_stuck_rm);
+				rds_stats_inc(conn->c_stats, s_send_stuck_rm);
 				ret = -EAGAIN;
 				break;
 			}
@@ -360,7 +360,8 @@ restart:
 					if (be64_to_cpu(rm0->m_inc.i_hdr.h_sequence) < conn->c_cp0_mprds_catchup_tx_seq) {
 						/* the retransmit queue of cp_index#0 has not quite caught up yet */
 						spin_unlock_irqrestore(&cp0->cp_lock, flags);
-						rds_stats_inc(s_mprds_catchup_tx0_retries);
+						rds_stats_inc(conn->c_stats,
+							      s_mprds_catchup_tx0_retries);
 						goto over_batch;
 					}
 				}
@@ -377,7 +378,7 @@ restart:
 				    be64_to_cpu(rm0->m_inc.i_hdr.h_sequence) < conn->c_cp0_mprds_catchup_tx_seq) {
 					/* the send queue of cp_index#0 has not quite caught up yet */
 					spin_unlock_irqrestore(&cp0->cp_lock, flags);
-					rds_stats_inc(s_mprds_catchup_tx0_retries);
+					rds_stats_inc(conn->c_stats, s_mprds_catchup_tx0_retries);
 					goto over_batch;
 				}
 
@@ -441,7 +442,8 @@ restart:
 					rds_sysctl_max_unacked_packets;
 				cp->cp_unacked_bytes =
 					rds_sysctl_max_unacked_bytes;
-				rds_stats_inc(s_send_ack_required);
+				rds_stats_inc(conn->c_stats,
+					      s_send_ack_required);
 			} else {
 				cp->cp_unacked_bytes -= len;
 				cp->cp_unacked_packets--;
@@ -645,7 +647,7 @@ over_batch:
 				goto restart;
 			rds_cond_queue_send_work(cp, 1);
 		} else if (raced) {
-			rds_stats_inc(s_send_lock_queue_raced);
+			rds_stats_inc(conn->c_stats, s_send_lock_queue_raced);
 		}
 	}
 out:
@@ -681,7 +683,7 @@ static void rds_send_sndbuf_remove(struct rds_sock *rs, struct rds_message *rm)
 	rs->rs_snd_bytes -= len;
 
 	if (rs->rs_snd_bytes == 0)
-		rds_stats_inc(s_send_queue_empty);
+		rds_stats_inc(rs->rs_stats, s_send_queue_empty);
 }
 
 static inline int rds_send_is_acked(struct rds_message *rm, u64 ack,
@@ -1375,6 +1377,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	size_t total_payload_len = payload_len, rdma_payload_len = 0;
 	struct rds_conn_path *cpath = NULL;
 	struct rs_buf_info *bufi;
+	struct rds_net *rns;
 	struct in6_addr daddr;
 	__u32 scope_id = 0;
 	int namelen;
@@ -1474,6 +1477,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 		scope_id = rs->rs_bound_scope_id;
 		release_sock(sk);
 	}
+	rns = rs->rs_rns;
 
 	lock_sock(sk);
 	if (ipv6_addr_any(&rs->rs_bound_addr) || ipv6_addr_any(&daddr)) {
@@ -1577,7 +1581,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	/* Attach data to the rm */
 	if (payload_len) {
 		rm->data.op_sg = rds_message_alloc_sgs(rm, ceil(payload_len, PAGE_SIZE));
-		ret = rds_message_copy_from_user(rm, &msg->msg_iter);
+		ret = rds_message_copy_from_user(rs, rm, &msg->msg_iter);
 		if (ret) {
 			reason = "could not copy msg from user";
 			goto out;
@@ -1592,7 +1596,8 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	 */
 	total_payload_len += rdma_payload_len;
 
-	if (rds_check_qos_threshold(rs->rs_tos, total_payload_len)) {
+	if (rds_check_qos_threshold(rs->rs_stats, rs->rs_tos,
+				    total_payload_len)) {
 		ret = -EINVAL;
 		reason = "exceeded qos threshold";
 		goto out;
@@ -1703,7 +1708,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 
 	while (!rds_send_queue_rm(rs, conn, cpath, rm, rs->rs_bound_port,
 				  dport, &queued, bufi)) {
-		rds_stats_inc(s_send_queue_full);
+		rds_stats_inc(rs->rs_stats, s_send_queue_full);
 
 		if (nonblock) {
 			ret = -EAGAIN;
@@ -1738,10 +1743,10 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	 * By now we've committed to the send.  We reuse rds_send_worker()
 	 * to retry sends in the rds thread if the transport asks us to.
 	 */
-	rds_stats_inc(s_send_queued);
+	rds_stats_inc(rs->rs_stats, s_send_queued);
 
 	if (!dport)
-		rds_stats_inc(s_send_ping);
+		rds_stats_inc(rs->rs_stats, s_send_ping);
 	else if (unlikely(rm->m_payload_csum.csum_enabled)) {
 		struct rds_ext_header_rdma_csum r_csum = {
 			.h_rdma_csum_enabled = true,
@@ -1749,7 +1754,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 		};
 
 		rds_message_add_extension(&rm->m_inc.i_hdr, RDS_EXTHDR_CSUM, &r_csum);
-		rds_stats_inc(s_send_payload_csum_added);
+		rds_stats_inc(rs->rs_stats, s_send_payload_csum_added);
 	}
 
 	ret = rds_send_xmit(cpath);
@@ -1851,7 +1856,7 @@ static int rds_send_probe(struct rds_conn_path *cp, __be16 sport,
 
 	spin_unlock_irqrestore(&cp->cp_lock, flags);
 
-	rds_stats_inc(s_send_queued);
+	rds_stats_inc(cp->cp_conn->c_stats, s_send_queued);
 
 	if (!test_bit(RDS_LL_SEND_FULL, &cp->cp_flags))
 		rds_cond_queue_send_work(cp, 0);
@@ -1880,11 +1885,11 @@ rds_send_hb(struct rds_connection *conn, int response)
 
 	if (response) {
 		flags |= RDS_FLAG_HB_PONG;
-		rds_stats_inc(s_send_hb_pong);
+		rds_stats_inc(conn->c_stats, s_send_hb_pong);
 		trace_rds_heartbeat_send_pong(conn, &conn->c_path[0], &conn->c_laddr, &conn->c_faddr);
 	} else {
 		flags |= RDS_FLAG_HB_PING;
-		rds_stats_inc(s_send_hb_ping);
+		rds_stats_inc(conn->c_stats, s_send_hb_ping);
 		trace_rds_heartbeat_send_ping(conn, &conn->c_path[0], &conn->c_laddr, &conn->c_faddr);
 	}
 	flags |= RDS_FLAG_ACK_REQUIRED;
@@ -1896,9 +1901,9 @@ int
 rds_send_pong(struct rds_conn_path *cp, __be16 dport)
 {
 	if (be16_to_cpu(dport) == RDS_FLAG_PROBE_PORT)
-		rds_stats_inc(s_send_mprds_pong);
+		rds_stats_inc(cp->cp_conn->c_stats, s_send_mprds_pong);
 	else
-		rds_stats_inc(s_send_pong);
+		rds_stats_inc(cp->cp_conn->c_stats, s_send_pong);
 
 	return rds_send_probe(cp, 0, dport, 0);
 }
@@ -1918,7 +1923,7 @@ rds_send_hs_ping(struct rds_connection *conn, int cp_index)
 	conn->c_ping_triggered = 1;
 
 	spin_unlock_irqrestore(&cp->cp_lock, flags);
-	rds_stats_inc(s_send_mprds_ping);
+	rds_stats_inc(conn->c_stats, s_send_mprds_ping);
 	rds_send_probe(cp, cpu_to_be16(RDS_FLAG_PROBE_PORT), 0, 0);
 }
 EXPORT_SYMBOL_GPL(rds_send_hs_ping);

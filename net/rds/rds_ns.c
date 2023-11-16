@@ -53,12 +53,18 @@ static __net_init int rds_init_net(struct net *net)
 
 	memset(rns, 0, sizeof(*rns));
 
+	mutex_init(&rns->rns_mod_mutex);
+
 	spin_lock_init(&rns->rns_sock_lock);
 	INIT_LIST_HEAD(&rns->rns_sock_list);
 
 	ret = rds_bind_tbl_net_init(rns);
 	if (ret)
 		goto err;
+
+	ret = rds_stats_net_init(net);
+	if (ret)
+		goto err_stats;
 
 	ret = rds_conn_tbl_net_init(rns);
 	if (ret)
@@ -74,9 +80,13 @@ err_cong:
 	rds_conn_tbl_net_exit(rns);
 
 err_conn:
+	rds_stats_net_exit(net);
+
+err_stats:
 	rds_bind_tbl_net_exit(rns);
 
 err:
+	mutex_destroy(&rns->rns_mod_mutex);
 	return ret;
 }
 
@@ -86,6 +96,8 @@ static void rds_exit_net(struct net *net)
 
 	rds_bind_tbl_net_exit(rns);
 	rds_cong_net_exit(rns);
+	rds_stats_net_exit(net);
+	mutex_destroy(&rns->rns_mod_mutex);
 }
 
 static struct pernet_operations rds_net_ops = {
