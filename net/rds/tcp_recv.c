@@ -480,7 +480,7 @@ void rds_tcp_data_ready(struct sock *sk)
 
 	tc = cp->cp_transport_data;
 	ready = tc->t_orig_data_ready;
-	rds_tcp_stats_inc(s_tcp_data_ready_calls);
+	rds_tcp_stats_inc(tc->t_stats, s_tcp_data_ready_calls);
 
 	if (rds_tcp_read_sock(cp, GFP_ATOMIC) == -ENOMEM)
 		rds_cond_queue_recv_work(cp, 0);
