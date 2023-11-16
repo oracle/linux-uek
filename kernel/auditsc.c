@@ -790,6 +790,7 @@ static bool audit_in_mask(const struct audit_krule *rule, unsigned long val)
  * also not high enough that we already know we have to write an audit
  * record (i.e., the state is AUDIT_SETUP_CONTEXT or AUDIT_BUILD_CONTEXT).
  */
+#pragma GCC optimize("unswitch-loops", "align-loops=16", "align-jumps=16")
 enum audit_state audit_filter_syscall(struct task_struct *tsk,
 					     struct audit_context *ctx,
 					     struct list_head *list)
@@ -815,6 +816,7 @@ enum audit_state audit_filter_syscall(struct task_struct *tsk,
 	rcu_read_unlock();
 	return AUDIT_BUILD_CONTEXT;
 }
+#pragma GCC reset_options
 
 /*
  * Given an audit_name check the inode hash table to see if they match.
