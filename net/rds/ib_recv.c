@@ -772,7 +772,8 @@ no_preferred_cpu:
 	return item;
 }
 
-int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
+int rds_ib_inc_copy_to_user(struct rds_sock *rs, struct rds_incoming *inc,
+			    struct iov_iter *to)
 {
 	struct rds_csum csum = { .csum_val.raw = 0 };
 	struct rds_ib_connection *ic = inc->i_conn->c_transport_data;
@@ -809,7 +810,7 @@ int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 		if (ret != to_copy)
 			return -EFAULT;
 
-		rds_stats_add(s_copy_to_user, to_copy);
+		rds_stats_add(rs->rs_stats, s_copy_to_user, to_copy);
 		atomic64_add(to_copy, &conn->c_recv_bytes);
 		frag_off += to_copy;
 		copied += to_copy;
@@ -835,7 +836,7 @@ int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 	}
 
 	if (unlikely(inc->i_payload_csum.csum_enabled) && copied) {
-		rds_stats_inc(s_recv_payload_csum_ib);
+		rds_stats_inc(rs->rs_stats, s_recv_payload_csum_ib);
 		rds_check_csum(inc, &csum);
 	}
 
@@ -1135,7 +1136,7 @@ static void rds_ib_cong_recv(struct rds_connection *conn,
 	trace_rds_receive(&ibinc->ii_inc, NULL, conn, NULL,
 			  &conn->c_faddr, &conn->c_laddr);
 
-	rds_cong_map_updated(map, uncongested);
+	rds_cong_map_updated(conn, map, uncongested);
 }
 
 static void rds_ib_process_recv(struct rds_connection *conn,
@@ -1174,7 +1175,7 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 		rds_conn_drop(conn, DR_IB_HEADER_CORRUPTED, 0);
 		pr_warn("RDS/IB: incoming message from %pI6c has corrupted header - forcing a reconnect\n",
 			&conn->c_faddr);
-		rds_stats_inc(s_recv_drop_bad_checksum);
+		rds_stats_inc(conn->c_stats, s_recv_drop_bad_checksum);
 		return;
 	}
 
@@ -1275,7 +1276,7 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 		 * the complete frame, and after bumping the next_rx
 		 * sequence. */
 		if (hdr->h_flags & RDS_FLAG_ACK_REQUIRED) {
-			rds_stats_inc(s_recv_ack_required);
+			rds_stats_inc(conn->c_stats, s_recv_ack_required);
 			state->ack_required = 1;
 		}
 
@@ -1315,7 +1316,7 @@ void rds_ib_srq_process_recv(struct rds_connection *conn,
 		printk(KERN_WARNING "RDS: from %pI6c has corrupted header - "
 			"forcing a reconnect\n",
 			&conn->c_faddr);
-		rds_stats_inc(s_recv_drop_bad_checksum);
+		rds_stats_inc(conn->c_stats, s_recv_drop_bad_checksum);
 		rds_ib_frag_free(ic, recv->r_frag);
 		recv->r_frag = NULL;
 		return;
@@ -1380,7 +1381,7 @@ void rds_ib_srq_process_recv(struct rds_connection *conn,
 			state->ack_next_valid = 1;
 		}
 		if (hdr->h_flags & RDS_FLAG_ACK_REQUIRED) {
-			rds_stats_inc(s_recv_ack_required);
+			rds_stats_inc(conn->c_stats, s_recv_ack_required);
 			state->ack_required = 1;
 		}
 		rds_inc_put(&ibinc->ii_inc);
