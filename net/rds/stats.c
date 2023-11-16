@@ -134,6 +134,8 @@ static void rds_stats_info(struct socket *sock, unsigned int len,
 			   struct rds_info_lengths *lens)
 {
 	struct rds_statistics stats = {0, };
+	struct rds_statistics *per_cpu_ns_ptr;
+	struct rds_net *rns;
 	uint64_t *src;
 	uint64_t *sum;
 	size_t i;
@@ -146,9 +148,11 @@ static void rds_stats_info(struct socket *sock, unsigned int len,
 		avail = 0;
 		goto trans;
 	}
+	rns = rds_ns(iter->net);
+	per_cpu_ns_ptr = __rds_get_mod_stats(rns, RDS_MOD_RDS);
 
 	for_each_online_cpu(cpu) {
-		src = (uint64_t *)&(per_cpu(rds_stats, cpu));
+		src = (uint64_t *)per_cpu_ptr(per_cpu_ns_ptr, cpu);
 		sum = (uint64_t *)&stats;
 		for (i = 0; i < sizeof(stats) / sizeof(uint64_t); i++)
 			*(sum++) += *(src++);
@@ -164,15 +168,95 @@ trans:
 		   ARRAY_SIZE(rds_stat_names);
 }
 
-void rds_stats_exit(void)
+struct rds_stats_struct *rds_mod_stats_unregister(struct net *net,
+						  int module)
 {
-	rds_info_deregister_func(RDS_INFO_COUNTERS, rds_stats_info);
+	struct rds_stats_struct *stats;
+	struct rds_net *rns;
+
+	WARN_ON(module < 0 || module >= RDS_MOD_MAX);
+
+	rns = rds_ns(net);
+
+	mutex_lock(&rns->rns_mod_mutex);
+	stats = rns->rns_mod_stats[module];
+	rns->rns_mod_stats[module] = NULL;
+	mutex_unlock(&rns->rns_mod_mutex);
+
+	return stats;
+}
+EXPORT_SYMBOL_GPL(rds_mod_stats_unregister);
+
+int rds_mod_stats_register(struct net *net, int module,
+			   struct rds_stats_struct *stats)
+{
+	struct rds_net *rns;
+	int ret = 0;
+
+	WARN_ON(module < 0 || module >= RDS_MOD_MAX);
+
+	rns = rds_ns(net);
+
+	mutex_lock(&rns->rns_mod_mutex);
+	if (rns->rns_mod_stats[module])
+		ret = -EINVAL;
+	else
+		rns->rns_mod_stats[module] = stats;
+	mutex_unlock(&rns->rns_mod_mutex);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(rds_mod_stats_register);
+
+void rds_stats_net_exit(struct net *net)
+{
+	struct rds_stats_struct *stats;
+
+	stats = rds_mod_stats_unregister(net, RDS_MOD_RDS);
+	if (net_eq(net, &init_net))
+		rds_info_deregister_func(RDS_INFO_COUNTERS, rds_stats_info);
+	else
+		free_percpu(stats->rs_stats);
+	kfree(stats);
 }
 
-int rds_stats_init(void)
+int rds_stats_net_init(struct net *net)
 {
-	rds_info_register_func(RDS_INFO_COUNTERS, rds_stats_info);
+	struct rds_stats_struct *stats;
+	int ret;
+
+	stats = kmalloc(sizeof(*stats), GFP_KERNEL);
+	if (!stats)
+		return -ENOMEM;
+
+	stats->rs_names = rds_stat_names;
+	stats->rs_num_stats = sizeof(struct rds_statistics) / sizeof(uint64_t);
+
+	if (net_eq(net, &init_net)) {
+		stats->rs_stats = &rds_stats;
+		ret = rds_mod_stats_register(net, RDS_MOD_RDS, stats);
+		if (ret)
+			goto err;
+		rds_info_register_func(RDS_INFO_COUNTERS, rds_stats_info);
+	} else {
+		stats->rs_stats = __alloc_percpu(sizeof(struct rds_statistics),
+						 cache_line_size());
+		if (!stats->rs_stats) {
+			ret = -ENOMEM;
+			goto err;
+		}
+		ret = rds_mod_stats_register(net, RDS_MOD_RDS, stats);
+		if (ret) {
+			free_percpu(stats->rs_stats);
+			goto err;
+		}
+	}
+
 	return 0;
+
+err:
+	kfree(stats);
+	return ret;
 }
 
 void rds_stats_print(const char *where)
