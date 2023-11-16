@@ -258,6 +258,10 @@ struct rds_net {
 	struct list_head	rns_sock_list;
 
 	struct bind_bucket	*rns_bind_hash_table;
+
+	spinlock_t		rns_conn_lock;		/* protect connection */
+	struct hlist_head	*rns_conn_hash;
+
 };
 
 #define IS_CANONICAL(laddr, faddr) (htonl(laddr) < htonl(faddr))
@@ -421,18 +425,23 @@ struct rds_connection {
 static inline
 struct net *rds_conn_net(struct rds_connection *conn)
 {
-	return read_pnet(&conn->c_net);
+	struct net *net = read_pnet(&conn->c_net);
+
+	WARN_ON(!net);
+	return net;
 }
 
 struct rds_net *rds_ns(struct net *);
-
 static inline
 void rds_conn_net_set(struct rds_connection *conn, struct net *net)
 {
-	/* Once set, never changed. */
+	/* Once set, never changed until connection destruction. */
 	write_pnet(&conn->c_net, net);
 
-	conn->c_rns = rds_ns(net);
+	if (net)
+		conn->c_rns = rds_ns(net);
+	else
+		conn->c_rns = NULL;
 }
 
 #define RDS_FLAG_CONG_BITMAP		0x01
@@ -1142,6 +1151,8 @@ struct rds_message *rds_cong_update_alloc(struct rds_connection *conn);
 /* conn.c */
 int rds_conn_init(void);
 void rds_conn_exit(void);
+int rds_conn_tbl_net_init(struct rds_net *rns);
+void rds_conn_tbl_net_exit(struct rds_net *rns);
 struct rds_connection *rds_conn_create(struct net *net,
 				       const struct in6_addr *laddr,
 				       const struct in6_addr *faddr,
@@ -1152,7 +1163,8 @@ struct rds_connection *rds_conn_create_outgoing(struct net *net,
 						struct in6_addr *faddr,
 						struct rds_transport *trans,
 						u8 tos, gfp_t gfp, int dev_if);
-struct rds_connection *rds_conn_find(struct net *net, struct in6_addr *laddr,
+struct rds_connection *rds_conn_find(struct rds_net *rns,
+				     struct in6_addr *laddr,
 				     struct in6_addr *faddr,
 				     struct rds_transport *trans, u8 tos,
 				     int dev_if);
@@ -1164,7 +1176,7 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err);
 void rds_conn_faddr_ha_changed(const struct in6_addr *faddr,
 			       const unsigned char *ha,
 			       unsigned ha_len);
-void rds_conn_laddr_list(struct net *net, struct in6_addr *laddr,
+void rds_conn_laddr_list(struct rds_net *rns, struct in6_addr *laddr,
 			 struct list_head *laddr_conns);
 void rds_conn_connect_if_down(struct rds_connection *conn);
 void rds_conn_path_connect_if_down(struct rds_conn_path *conn);
