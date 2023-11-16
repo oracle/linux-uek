@@ -372,12 +372,12 @@ int rds_tcp_accept_one(struct rds_tcp_net *rtn)
 		/* Duelling SYN resolution has already been done in
 		 * rds_tcp_accept_one_path.
 		 */
-		rds_tcp_reset_callbacks(new_sock, cp);
+		rds_tcp_reset_callbacks(new_sock, cp, rtn);
 		/* rds_connect_path_complete() marks RDS_CONN_UP */
 		rds_connect_path_complete(cp, RDS_CONN_RESETTING);
 		reason = "conn resetting";
 	} else {
-		rds_tcp_set_callbacks(new_sock, cp);
+		rds_tcp_set_callbacks(new_sock, cp, rtn);
 		rds_connect_path_complete(cp, RDS_CONN_CONNECTING);
 		wake_up(&cp->cp_up_waitq);
 		reason = "conn connecting";
