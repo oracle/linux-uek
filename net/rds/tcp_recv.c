@@ -180,7 +180,8 @@ short_copy:
 /*
  * this is pretty lame, but, whatever.
  */
-int rds_tcp_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
+int rds_tcp_inc_copy_to_user(struct rds_sock *rs, struct rds_incoming *inc,
+			     struct iov_iter *to)
 {
 	struct rds_csum csum = { .csum_val.raw = 0 };
 	struct rds_tcp_incoming *tinc;
@@ -213,7 +214,7 @@ int rds_tcp_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 			if (ret < 0)
 				return ret;
 
-			rds_stats_add(s_copy_to_user, to_copy);
+			rds_stats_add(rs->rs_stats, s_copy_to_user, to_copy);
 			ret += to_copy;
 			skb_off += to_copy;
 
@@ -223,7 +224,7 @@ int rds_tcp_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 	}
 out:
 	if (unlikely(inc->i_payload_csum.csum_enabled) && ret) {
-		rds_stats_inc(s_recv_payload_csum_tcp);
+		rds_stats_inc(rs->rs_stats, s_recv_payload_csum_tcp);
 		rds_check_csum(inc, &csum);
 	}
 
@@ -285,7 +286,7 @@ static void rds_tcp_cong_recv(struct rds_connection *conn,
 
 	trace_rds_receive(&tinc->ti_inc, NULL, conn, NULL,
 			  &conn->c_faddr, &conn->c_laddr);
-	rds_cong_map_updated(map, ~(u64) 0);
+	rds_cong_map_updated(conn, map, ~(u64)0);
 }
 
 struct rds_tcp_desc_arg {
