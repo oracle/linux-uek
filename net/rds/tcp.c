@@ -622,9 +622,7 @@ static void rds_tcp_kill_sock(struct net *net, struct rds_tcp_net *rtn)
 		sock_release(rtn->rds_tcp_accepted_sock);
 	spin_lock_irq(&rds_tcp_conn_lock);
 	list_for_each_entry_safe(tc, _tc, &rds_tcp_conn_list, t_tcp_node) {
-		struct net *c_net = tc->t_cpath->cp_conn->c_net;
-
-		if (net != c_net)
+		if (!net_eq(net, rds_conn_net(tc->t_cpath->cp_conn)))
 			continue;
 		if (!list_has_conn(&tmp_list, tc->t_cpath->cp_conn))
 			list_move_tail(&tc->t_tcp_node, &tmp_list);
@@ -679,9 +677,8 @@ static void rds_tcp_sysctl_reset(struct net *net)
 
 	spin_lock_irq(&rds_tcp_conn_lock);
 	list_for_each_entry_safe(tc, _tc, &rds_tcp_conn_list, t_tcp_node) {
-		struct net *c_net = tc->t_cpath->cp_conn->c_net;
-
-		if (net != c_net || !tc->t_sock)
+		if (!net_eq(net, rds_conn_net(tc->t_cpath->cp_conn)) ||
+		    !tc->t_sock)
 			continue;
 
 		/* reconnect with new parameters */
