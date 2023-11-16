@@ -60,7 +60,12 @@ static __net_init int rds_init_net(struct net *net)
 	if (ret)
 		goto err;
 
-	return 0;
+	ret = rds_conn_tbl_net_init(rns);
+	if (ret)
+		goto err_conn;
+
+err_conn:
+	rds_bind_tbl_net_exit(rns);
 
 err:
 	return ret;
