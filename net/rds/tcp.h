@@ -25,6 +25,15 @@ struct rds_tcp_incoming {
 	struct sk_buff_head	ti_skb_list;
 };
 
+struct rds_tcp_statistics {
+	u64	s_tcp_data_ready_calls;
+	u64	s_tcp_write_space_calls;
+	u64	s_tcp_sndbuf_full;
+	u64	s_tcp_connect_raced;
+	u64	s_tcp_listen_closed_stale;
+	u64	s_tcp_ka_timeout;
+};
+
 struct rds_tcp_connection {
 
 	struct list_head	t_tcp_node;
@@ -54,15 +63,8 @@ struct rds_tcp_connection {
 
 	/* for rds_tcp_conn_path_shutdown */
 	wait_queue_head_t	t_recv_done_waitq;
-};
 
-struct rds_tcp_statistics {
-	uint64_t	s_tcp_data_ready_calls;
-	uint64_t	s_tcp_write_space_calls;
-	uint64_t	s_tcp_sndbuf_full;
-	uint64_t	s_tcp_connect_raced;
-	uint64_t	s_tcp_listen_closed_stale;
-	uint64_t        s_tcp_ka_timeout;
+	struct rds_tcp_statistics __percpu	*t_stats;
 };
 
 /* tcp.c */
@@ -116,8 +118,11 @@ void rds_tcp_write_space(struct sock *sk);
 
 /* tcp_stats.c */
 DECLARE_PER_CPU(struct rds_tcp_statistics, rds_tcp_stats);
-#define rds_tcp_stats_inc(member) rds_stats_inc_which(&rds_tcp_stats, member)
+#define rds_tcp_stats_inc(stats, member) rds_stats_inc_which(stats, member)
 unsigned int rds_tcp_stats_info_copy(struct rds_info_iterator *iter,
 				     unsigned int avail);
+int rds_tcp_stats_net_init(struct net *net);
+void rds_tcp_stats_net_exit(struct net *net);
+
 
 #endif
