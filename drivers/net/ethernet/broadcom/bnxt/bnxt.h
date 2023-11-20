@@ -1572,6 +1572,7 @@ struct bnxt_ctx_mem_type {
 		};
 		u32	split[BNXT_MAX_SPLIT_ENTRY];
 	};
+	struct bnxt_ctx_pg_info	*pg_info;
 };
 
 #define BNXT_CTX_MRAV_AV_SPLIT_ENTRY	0
