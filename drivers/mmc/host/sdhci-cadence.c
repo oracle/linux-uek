@@ -948,7 +948,8 @@ static int sdhci_cdns_sd6_dll_reset(struct sdhci_cdns_priv *priv, bool reset)
 
 static void sdhci_cdns_sd6_calc_phy(struct sdhci_cdns_sd6_phy *phy)
 {
-	if (phy->mode == MMC_TIMING_MMC_HS) {
+	if ((phy->mode == MMC_TIMING_MMC_HS) ||
+	    (phy->mode == MMC_TIMING_SD_HS)) {
 		phy->settings.cp_clk_wr_delay = 0;
 		phy->settings.cp_clk_wrdqs_delay = 0;
 		phy->settings.cp_data_select_oe_end = 1;
