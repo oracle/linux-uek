@@ -1607,7 +1607,7 @@ struct bnxt_ctx_mem_info {
 
 	u32	flags;
 	#define BNXT_CTX_FLAG_INITED	0x01
-	struct bnxt_ctx_mem_type	ctx_arr[BNXT_CTX_MAX];
+	struct bnxt_ctx_mem_type	ctx_arr[BNXT_CTX_V2_MAX];
 };
 
 enum bnxt_health_severity {
@@ -2068,6 +2068,7 @@ struct bnxt {
 	#define BNXT_FW_CAP_PTP				BIT_ULL(32)
 	#define BNXT_FW_CAP_THRESHOLD_TEMP_SUPPORTED	BIT_ULL(33)
 	#define BNXT_FW_CAP_PRE_RESV_VNICS		BIT_ULL(35)
+	#define BNXT_FW_CAP_BACKING_STORE_V2		BIT_ULL(36)
 
 	u32			fw_dbg_cap;
 
