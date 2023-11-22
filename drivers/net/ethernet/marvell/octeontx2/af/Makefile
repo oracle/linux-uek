@@ -4,10 +4,10 @@
 #
 
 ccflags-y += -I$(src)
-ccflags-y += -I drivers/soc/marvell/rvu_af_extn
+ccflags-y += -I$(srctree)/drivers/soc/marvell/rvu_af_extn
 obj-$(CONFIG_OCTEONTX2_MBOX) += rvu_mbox.o
 obj-$(CONFIG_OCTEONTX2_AF) += rvu_af.o
-EB_DIR=../../../../../../drivers/soc/marvell/rvu_af_extn/
+EB_DIR=../../../../../../drivers/soc/marvell/rvu_af_extn
 
 rvu_mbox-y := mbox.o rvu_trace.o
 rvu_af-y := cgx.o rvu.o rvu_cgx.o rvu_npa.o rvu_nix.o rvu_nix_spi.o \
