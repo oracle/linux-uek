@@ -1156,6 +1156,9 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 
 	pkt_len = skb->len;
 
+	if (skb->len < 64)
+		memset((void __force *)job_entry->pkt_dma_addr, 0, 64);
+
 	/* Copy packet data to dma buffer */
 	memcpy((void __force *)job_entry->pkt_dma_addr, skb->data, skb->len);
 
