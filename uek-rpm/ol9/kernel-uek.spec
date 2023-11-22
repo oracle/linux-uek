@@ -108,10 +108,12 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define with_64k_ps %{?_with_64k_ps: %{_with_64k_ps}} %{?!_with_64k_ps: 0}
 %define with_64k_ps_debug %{?_with_64k_ps_debug: %{_with_64k_ps_debug}} %{?!_with_64k_ps_debug: 0}
 # build pensando kernel
-%define with_embedded %{?_without_embedded: 0} %{?!_without_embedded: 1}
+%define with_embedded2 %{?_without_embedded: 0} %{?!_without_embedded: 1}
 
 # verbose build, i.e. no silent rules and V=1
 %define with_verbose %{?_with_verbose:        1} %{?!_with_verbose:      0}
+# CTF
+%define with_ctf	1
 
 %if %{with_verbose}
 %define make_opts V=1
@@ -141,6 +143,9 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 
 # Only build the 64k page size kernel (--with 64konly):
 %define with_64konly    %{?_with_64konly:       1} %{?!_with_64konly:       0}
+
+# Only build the embedded kernel (--with embeddedonly)
+%define with_embeddedonly %{?_with_embeddedonly: 1} %{?!_with_embeddedonly: 0}
 
 # Only build the embedded kernel (--with embeddedonly)
 %define with_embeddedonly %{?_with_embeddedonly: 1} %{?!_with_embeddedonly: 0}
@@ -229,6 +234,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define with_64k_ps 0
 %define with_64k_ps_debug 0
 %define with_embedded 0
+%define with_embedded2 0
 %endif
 
 %define all_x86 i386 i686
@@ -245,10 +251,15 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define with_debug 0
 %endif
 
-# don't do 4k/64k page size or embedded kernels for arch except aarch64
+# don't do 4k/64k page size or embedded2 kernels for arch except aarch64
 %ifnarch aarch64
 %define with_64k_ps       0
 %define with_64k_ps_debug 0
+%define with_embedded2 0
+%endif
+
+# don't do embedded kernel for arch except mips64
+%ifnarch mips64
 %define with_embedded 0
 %endif
 
@@ -320,13 +331,13 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define with_up 0
 %define with_container 0
 %define with_debug 0
-%define with_embedded 0
+%define with_embedded2 0
 %define with_headers 0
 %define with_perf 0
 %define with_bpftool 0
 %else
 %if %{with_embeddedonly}
-%define with_embedded 1
+%define with_embedded2 1
 %define with_up 0
 %define with_container 0
 %define with_64k_ps 0
@@ -341,6 +352,27 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %endif
 %endif
 %endif
+
+%ifarch mips64
+%define image_install_path boot
+%define asmarch mips
+%define hdrarch mips
+%define make_target vmlinux
+%define kernel_image vmlinux
+%define with_embedded 1
+%define with_up 0
+%define with_container 0
+%define with_debug 0
+%define with_headers   1
+%define with_perf 0
+%define with_bpftool   0
+%define with_ctf   0
+# eu-strip works on both host and target binaries
+%define __strip eu-strip
+# but doesn't grok the -N flag used by brp-strip-lto
+%define __brp_strip_lto true
+%endif
+
 
 # To temporarily exclude an architecture from being built, add it to
 # %nobuildarches. Do _NOT_ use the ExclusiveArch: line, because if we
@@ -395,7 +427,7 @@ Version: %{rpmversion}
 Release: %{pkg_release}
 # DO NOT CHANGE THE 'ExclusiveArch' LINE TO TEMPORARILY EXCLUDE AN ARCHITECTURE BUILD.
 # SET %%nobuildarches (ABOVE) INSTEAD
-ExclusiveArch: noarch %{all_x86} x86_64 %{arm} aarch64
+ExclusiveArch: noarch %{all_x86} x86_64 %{arm} aarch64 mips64
 ExclusiveOS: Linux
 
 %ifnarch %{nobuildarches}
@@ -496,6 +528,7 @@ Source44: core-x86_64.list
 Source45: core-aarch64.list
 Source46: filter-modules.sh
 Source47: core-emb2-aarch64.list
+Source48: core-emb-mips64.list
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
@@ -504,6 +537,7 @@ Source1007: config-aarch64
 Source1008: config-aarch64-debug
 Source1009: config-aarch64-container
 Source1010: config-aarch64-embedded2
+Source1011: config-mips64-emb
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -522,7 +556,7 @@ Source203: kabi_lockedlist_aarch64
 
 Source210: tcindex-disable.conf
 
-%ifarch x86_64
+%ifarch x86_64 mips64
 %define sb_cer %{SOURCE22}
 %endif
 
@@ -532,7 +566,7 @@ Source210: tcindex-disable.conf
 
 BuildRoot: %{_tmppath}/kernel-%{KVERREL}-root
 
-%ifnarch aarch64 x86_64
+%ifnarch aarch64 x86_64 mips64
 # Override find_provides to use a script that provides "kernel(symbol) = hash".
 # Pass path of the RPM temp dir containing kabideps to find-provides script.
 %global _use_internal_dependency_generator 0
@@ -638,7 +672,7 @@ Provides: %{name}-drm = 4.3.0\
 Provides: %{name}-drm-nouveau = 12\
 Provides: %{name}-modeset = 1\
 Provides: oracleasm = 2.0.5\
-%ifnarch aarch64\
+%ifnarch aarch64 mips64\
 Provides: x86_energy_perf_policy = %{KVERREL}%{?1:.%{1}}\
 Provides: turbostat = %{KVERREL}%{?1:.%{1}}\
 %endif\
@@ -819,6 +853,11 @@ This package include debug kernel for 64k page size.
 %kernel_variant_package -o emb2
 %description -n kernel%{?variant}emb2-core
 This package includes an embedded kernel.
+
+%define variant_summary The MIPS64 Linux kernel compiled for the T73 platform
+%kernel_variant_package -o emb
+%description -n kernel%{?variant}emb-core
+This package includes T73 kernel for mips platform
 
 %define variant_summary The Linux kernel compiled with extra debugging enabled
 %kernel_variant_package debug
@@ -1002,6 +1041,10 @@ mkdir -p configs
 	cp %{SOURCE1010} configs/config-emb2
 %endif
 
+%ifarch mips64
+	cp %{SOURCE1011} configs/config-emb
+%endif
+
 	echo 'CONFIG_DTRACE=y' >> configs/config
 	echo 'CONFIG_DTRACE=y' >> configs/config-debug
 
@@ -1104,6 +1147,9 @@ BuildKernel() {
 	echo 'CONFIG_ARM64_64K_PAGES=y' >> configs/config-debug
 	cp configs/config-debug .config
 	modlistVariant=../kernel%{?variant}64kdebug
+    elif [ "$Flavour" == "emb" ]; then
+        cp configs/config-emb .config
+        modlistVariant=../kernel%{?variant}emb
     elif [ "$Flavour" == "emb2" ]; then
         cp configs/config-emb2 .config
         modlistVariant=../kernel%{?variant}emb2
@@ -1115,7 +1161,7 @@ BuildKernel() {
     Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
     echo USING ARCH=$Arch
     make %{?make_opts} ARCH=$Arch %{?_kernel_cc} olddefconfig > /dev/null
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb2" ]; then
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb2" ]; then
        make %{?make_opts} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
     else
        make %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
@@ -1128,9 +1174,11 @@ BuildKernel() {
     find arch/$Arch/boot/dts -name '*.dtb' -type f | xargs rm -f
 %endif
 
+%if %{with_ctf}
     cp Module.symvers Module.symvers.save
     make -k %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} ctf %{?sparse_mflags}
     mv -f Module.symvers.save Module.symvers
+%endif
 
     # Start installing the results
 %if %{with_debuginfo}
@@ -1251,7 +1299,7 @@ BuildKernel() {
     %_sourcedir/kabitool -s Module.symvers -o %{_tmppath}/kernel-$KernelVer-kabideps
 
 %if %{with_kabichk}
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb2" ]; then
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb2" ]; then
        # Create symbol type data which can be used to introspect kABI breakages
        python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
 
@@ -1306,6 +1354,11 @@ BuildKernel() {
     cp -a --parents arch/arm/include/asm/xen $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
     cp -a --parents arch/arm/include/asm/opcodes.h $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
 %endif
+%ifarch mips64
+    cp -a --parents arch/%{asmarch}/Kbuild.platforms $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
+    cp -a --parents arch/%{asmarch}/cavium-octeon/Platform $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
+    cp -a --parents arch/%{asmarch}/generic/Platform $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
+%endif
 %ifarch %{arm}
     if [ -d arch/%{asmarch}/mach-${Flavour}/include ]; then
       cp -a --parents arch/%{asmarch}/mach-${Flavour}/include $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
@@ -1317,7 +1370,7 @@ BuildKernel() {
     cp -a --parents Kbuild $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
     cp -a --parents kernel/bounds.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
     cp -a --parents arch/%{asmarch}/kernel/asm-offsets.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
-%ifnarch aarch64
+%ifnarch aarch64 mips64
     cp -a --parents arch/%{asmarch}/kernel/asm-offsets_64.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
 %endif
     cp -a --parents security/selinux/include $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
@@ -1432,7 +1485,9 @@ BuildKernel() {
     find lib/modules/$KernelVer/kernel -name *.ko | sort -n > modules.list
 
     cp $RPM_SOURCE_DIR/filter-modules.sh .
-    if [ "$Flavour" == "emb2" ]; then
+    if [ "$Flavour" == "emb" ]; then
+      cp $RPM_SOURCE_DIR/core-emb-%{_target_cpu}.list core.list
+    elif [ "$Flavour" == "emb2" ]; then
       cp $RPM_SOURCE_DIR/core-emb2-%{_target_cpu}.list core.list
     else
       cp $RPM_SOURCE_DIR/core-%{_target_cpu}.list core.list
@@ -1539,6 +1594,10 @@ BuildKernel %make_target %kernel_image 64kdebug
 %endif
 
 %if %{with_embedded}
+BuildKernel %make_target %kernel_image emb
+%endif
+
+%if %{with_embedded2}
 BuildKernel %make_target %kernel_image emb2
 %endif
 
@@ -1580,6 +1639,11 @@ make %{?make_opts} %{?_smp_mflags} htmldocs || %{doc_build_fail}
        %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.64kdebug/ %{dgst} \
      fi \
     if [ "%{with_embedded}" -ne "0" ]; then \
+       mv certs/signing_key.pem.sign.emb certs/signing_key.pem \
+       mv certs/signing_key.x509.sign.emb certs/signing_key.x509 \
+       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb/ %{dgst} \
+    fi \
+    if [ "%{with_embedded2}" -ne "0" ]; then \
        mv certs/signing_key.pem.sign.emb2 certs/signing_key.pem \
        mv certs/signing_key.x509.sign.emb2 certs/signing_key.x509 \
        %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb2/ %{dgst} \
@@ -1611,13 +1675,17 @@ make %{?make_opts} %{?_smp_mflags} htmldocs || %{doc_build_fail}
 %global __debug_package 1
 %files debuginfo-common
 %defattr(-,root,root)
+%ifnarch mips64
 %dir /usr/src/debug
 /usr/src/debug/kernel-%{version}/linux-%{kversion}-%{release}
+%endif
 %dir %{debuginfodir}
 %dir %{debuginfodir}/%{image_install_path}
 %dir %{debuginfodir}/lib
 %dir %{debuginfodir}/lib/modules
+%ifnarch mips64
 %dir %{debuginfodir}/usr/src/kernels
+%endif
 %endif
 %endif
 
@@ -1888,6 +1956,11 @@ fi\
 %kernel_variant_postun -o emb2
 %kernel_variant_post -o -v emb2
 
+%kernel_variant_pre -o emb
+%kernel_variant_preun -o emb
+%kernel_variant_postun -o emb
+%kernel_variant_post -o -v emb
+
 if [ -x /sbin/ldconfig ]
 then
     /sbin/ldconfig -X || exit $?
@@ -1978,7 +2051,9 @@ fi
 %ghost /boot/config-%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
+%if %{with_ctf} \
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel/vmlinux.ctfa\
+%endif \
 /lib/modules/%{KVERREL}%{?2:.%{2}}/build\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/source\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/updates\
@@ -1989,13 +2064,15 @@ fi
 /lib/modules/%{KVERREL}%{?2:.%{2}}/vdso\
 %endif\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.*\
+%ifnarch mips64\
 /usr/libexec/perf.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/perf\
+%endif\
 %ifarch %{arm} aarch64\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/dtb \
 %ghost /%{image_install_path}/dtb-%{KVERREL}%{?2:.%{2}} \
 %endif\
-%ifnarch aarch64\
+%ifnarch aarch64 mips64\
 /usr/libexec/x86_energy_perf_policy.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/x86_energy_perf_policy\
 /usr/libexec/turbostat.%{KVERREL}%{?2:.%{2}}\
@@ -2004,7 +2081,9 @@ fi
 %ghost /boot/initramfs-%{KVERREL}%{?2:.%{2}}.img\
 %{expand:%%files -f %{variant_name}-modules.list -n %{variant_name}-modules}\
 %{expand:%%files -f %{variant_name}-modules-extra.list -n %{variant_name}-modules-extra}\
+%ifnarch mips64\
 %config(noreplace) /etc/modprobe.d/*-blacklist.conf\
+%endif\
 %{expand:%%files -n %{variant_name}-devel}\
 %defattr(-,root,root)\
 %dir /usr/src/kernels\
@@ -2018,7 +2097,9 @@ fi
 %{debuginfodir}/%{elf_image_install_path}/*-%{KVERREL}%{?2:.%{2}}.debug\
 %endif\
 %{debuginfodir}/lib/modules/%{KVERREL}%{?2:.%{2}}\
+%ifnarch mips64\
 %{debuginfodir}/usr/src/kernels/%{KVERREL}%{?2:.%{2}}\
+%endif\
 %endif\
 %endif\
 %endif\
@@ -2032,6 +2113,8 @@ fi
 %kernel_variant_files -o %{with_64k_ps} 64k
 %kernel_variant_files -o %{with_64k_ps_debug} 64kdebug
 
-%kernel_variant_files -o %{with_embedded} emb2
+%kernel_variant_files -o %{with_embedded} emb
+
+%kernel_variant_files -o %{with_embedded2} emb2
 
 %changelog
