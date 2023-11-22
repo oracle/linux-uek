@@ -1848,9 +1848,11 @@ void otx2_set_cints_affinity(struct otx2_nic *pfvf)
 {
 	struct otx2_hw *hw = &pfvf->hw;
 	int vec, cpu, irq, cint;
+	cpumask_t mask;
 
 	vec = hw->nix_msixoff + NIX_LF_CINT_VEC_START;
-	cpu = cpumask_first(cpu_online_mask);
+	cpumask_and(&mask, cpu_online_mask, irq_default_affinity);
+	cpu = cpumask_first(&mask);
 
 	/* CQ interrupts */
 	for (cint = 0; cint < pfvf->hw.cint_cnt; cint++, vec++) {
@@ -1862,7 +1864,7 @@ void otx2_set_cints_affinity(struct otx2_nic *pfvf)
 		irq = pci_irq_vector(pfvf->pdev, vec);
 		irq_set_affinity_hint(irq, hw->affinity_mask[vec]);
 
-		cpu = cpumask_next(cpu, cpu_online_mask);
+		cpu = cpumask_next(cpu, &mask);
 		if (unlikely(cpu >= nr_cpu_ids))
 			cpu = 0;
 	}
