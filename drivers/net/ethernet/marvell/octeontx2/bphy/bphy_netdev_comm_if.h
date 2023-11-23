@@ -42,4 +42,9 @@ enum bphy_netdev_packet_type {
 	PACKET_TYPE_MAX,
 };
 
+#define MAX_PSM_QUEUE_MASKS 4
+struct bphy_psm_queue_mask {
+	u64 mask[MAX_PSM_QUEUE_MASKS];
+};
+
 #endif

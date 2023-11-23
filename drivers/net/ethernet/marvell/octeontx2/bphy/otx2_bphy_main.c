@@ -850,6 +850,23 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 		ret = 0;
 		goto out;
 	}
+	case OTX2_IOCTL_PSM_REGISTER_QUEUES_FOR_CLEANUP:
+	{
+		u8 mask_idx;
+
+		if (copy_from_user(&cdev->psm_queue_masks, (void __user *)arg,
+				   sizeof(struct bphy_psm_queue_mask))) {
+			dev_err(cdev->dev, "copy from user fault\n");
+			ret = -EFAULT;
+			goto out;
+		}
+
+		for (mask_idx = 0; mask_idx < MAX_PSM_QUEUE_MASKS; mask_idx++)
+			dev_info(cdev->dev, "PSM queues to be cleaned (%u) = 0x%llx\n",
+				 mask_idx, cdev->psm_queue_masks.mask[mask_idx]);
+		ret = 0;
+		goto out;
+	}
 	default:
 	{
 		dev_info(cdev->dev, "ioctl: no match\n");
@@ -883,6 +900,64 @@ error:
 	mutex_unlock(&cdev->mutex_lock);
 
 	return status;
+}
+
+static void otx2_bphy_release_psm_queues(struct otx2_bphy_cdev_priv *cdev)
+{
+	u32 index, queue_groups;
+	u64 psm_rst_offset;
+	u16 max_psm_queue_id;
+
+	if (CHIP_CNF10K(cdev->hw_version)) {
+		psm_rst_offset = CNF10K_PSM_RST;
+		max_psm_queue_id = CNF10K_PSM_MAX_QUEUE_ID;
+	} else {
+		psm_rst_offset = PSM_RST;
+		max_psm_queue_id = PSM_MAX_QUEUE_ID;
+	}
+
+	queue_groups = (max_psm_queue_id + 1) / 64 +
+			(((max_psm_queue_id + 1) % 64) ? 1 : 0);
+
+	for (index = 0; index < queue_groups; index++) {
+		u16 bit;
+		u64 mask = cdev->psm_queue_masks.mask[index];
+
+		/* disable the queues */
+		writeq(mask,
+		       psm_reg_base + PSM_QUEUE_ENA_W1C(index));
+
+		for (bit = 0; bit < 64; bit++) {
+			struct psm_queue_info info;
+			struct psm_rst rst;
+			u8 q;
+			u64 *value;
+
+			memset(&info, 0, sizeof(info));
+			memset(&rst, 0, sizeof(rst));
+
+			q = bit + (index * 64);
+			if (!(mask & BIT(bit)) || q > max_psm_queue_id)
+				continue;
+
+			/* flush the queue */
+			value = (u64 *)(&info);
+			*value = readq(psm_reg_base + PSM_QUEUE_INFO(q));
+			if (info.in_cont_seq == 1) {
+				do {
+					usleep_range(5, 10);
+					*value = readq(psm_reg_base +
+						       PSM_QUEUE_INFO(q));
+				} while (info.rdy_for_followup == 1);
+			}
+
+			/* reset the queue */
+			rst.queue_reset_qid = q;
+			rst.queue_reset = 1;
+			value = (u64 *)(&rst);
+			writeq(*value, psm_reg_base + psm_rst_offset);
+		}
+	}
 }
 
 static int otx2_bphy_cdev_release(struct inode *inode, struct file *filp)
@@ -919,6 +994,9 @@ static int otx2_bphy_cdev_release(struct inode *inode, struct file *filp)
 		if (cpri_available())
 			otx2_bphy_cpri_cleanup();
 	}
+
+	/* release the psm queues */
+	otx2_bphy_release_psm_queues(cdev);
 
 	cdev->odp_intf_cfg = 0;
 

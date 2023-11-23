@@ -164,6 +164,9 @@
 #define CNF10K_RFOEX_LINK_TX_PTP_RING_CTL(a, b)		(0x1100ULL + \
 							 (((unsigned long)(a) << 24)) + \
 							 ((b) << 3))
+/* PSM register offset */
+#define CNF10K_PSM_RST					(0xFA000ULL)
+#define CNF10K_PSM_MAX_QUEUE_ID				254
 
 /* MHAB Structures */
 struct cnf10k_mhbw_jd_dma_cfg_word_0_s {

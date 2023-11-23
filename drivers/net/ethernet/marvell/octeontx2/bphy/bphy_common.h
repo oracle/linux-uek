@@ -74,6 +74,37 @@ struct cpri_pkt_ul_wqe_hdr {
 	u64 w1;
 };
 
+struct psm_queue_info {
+	u64 new_cmd_vld         : 1;
+	u64 new_cmdlo_vld       : 1;
+	u64 cur_cmd_vld         : 1;
+	u64 in_cont_seq         : 1;
+	u64 rdy_for_followup    : 1;
+	u64 cont_job_wait_done  : 1;
+	u64 cont_job_wait_cdt   : 1;
+	u64 queue_jobreq        : 1;
+	u64 state               : 4;
+	u64 queue_njreq         : 3;
+	u64 queue_mabq          : 1;
+	u64 runjob_ctr          : 8;
+	u64 badcmd_opc          : 6;
+	u64 reserved_30_31      : 2;
+	u64 cont_mab_id         : 6;
+	u64 reserved_38_39      : 2;
+	u64 cur_cmd_opcode      : 6;
+	u64 cur_cmd_subopcode   : 2;
+	u64 cur_cmd_wait_cond   : 8;
+	u64 cur_cmd_jobtype     : 8;
+};
+
+struct psm_rst {
+	u64 queue_reset_qid     : 8;
+	u64 reserved_8_15       : 8;
+	u64 queue_reset         : 1;
+	u64 reserved_17_62      : 46;
+	u64 psm_reset           : 1;
+};
+
 /* iova to kernel virtual addr */
 static inline void __iomem *otx2_iova_to_virt(struct iommu_domain *domain, u64 iova)
 {

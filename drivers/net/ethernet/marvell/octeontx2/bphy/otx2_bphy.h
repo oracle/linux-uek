@@ -50,6 +50,10 @@
 					     struct ptp_clk_src_cfg)
 #define OTX2_IOCTL_PTP_SW_PHC_RESET	_IO(OTX2_RFOE_IOCTL_BASE, 0x0D)
 
+#define OTX2_IOCTL_PSM_REGISTER_QUEUES_FOR_CLEANUP \
+					_IOW(OTX2_RFOE_IOCTL_BASE, 0x0E, \
+						struct bphy_psm_queue_mask)
+
 //#define ASIM		/* ASIM environment */
 
 #define OTX2_BPHY_MHAB_INST		3
@@ -79,6 +83,7 @@ struct otx2_bphy_cdev_priv {
 #define ODP_INTF_CFG_RFOE		BIT(0)
 #define ODP_INTF_CFG_CPRI		BIT(1)
 	u32				flags;
+	struct bphy_psm_queue_mask	psm_queue_masks;
 };
 
 #endif

@@ -171,6 +171,10 @@
 						 ((unsigned long)(a) << 36) | \
 						 ((unsigned long)(b) << 11))
 
+/* PSM register offset */
+#define PSM_RST					(0xF0200ULL)
+#define PSM_MAX_QUEUE_ID			127
+
 /* MHAB definitions */
 struct mhbw_jd_dma_cfg_word_0_s {
 	u64 dma_mode		: 3;
