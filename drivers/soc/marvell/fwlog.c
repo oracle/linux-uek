@@ -44,6 +44,7 @@ static ssize_t fwlogs_read(struct file *file, char __user *buf, size_t count, lo
 		if (*ppos >= rdlen)
 			return 0;
 		rdbuf = fwlog_buf + *ppos;
+		rdlen -= *ppos;
 	} else {
 		/* If the buffer is wrappedaround , rdlen is always max buffer size */
 		if (*ppos >= (fwlog_hdr->fwlog_end - fwlog_hdr->fwlog_base))
