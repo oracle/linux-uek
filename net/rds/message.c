@@ -151,6 +151,7 @@ static void rds_message_purge(struct rds_message *rm)
 
 	for (i = 0; i < rm->data.op_nents; i++) {
 		if (rm->m_alloc_cpu != NUMA_NO_NODE && rm->data.op_sg[i].length >= PAGE_SIZE &&
+		    page_ref_count(sg_page(rm->data.op_sg + i)) == 1 &&
 		    atomic_read(nmbr_entries_ptr) < rds_sysctl_cfu_cache_cap) {
 			struct rds_cfu_cache_entry *entry =
 				page_address(sg_page(rm->data.op_sg + i));
