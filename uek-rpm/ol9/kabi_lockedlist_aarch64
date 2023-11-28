@@ -261,6 +261,7 @@
 	param_ops_int
 	path_get
 	path_put
+	pin_user_pages
 	pipe_lock
 	pipe_unlock
 	posix_lock_file
@@ -329,6 +330,7 @@
 	unlock_page
 	unlock_rename
 	unmap_mapping_range
+	unpin_user_pages
 	unregister_blkdev
 	unregister_filesystem
 	up
