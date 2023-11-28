@@ -591,6 +591,7 @@
 	phys_base
 	physical_mask
 	pid_task
+	pin_user_pages
 	posix_lock_file
 	posix_test_lock
 	prepare_creds
@@ -789,6 +790,7 @@
 	unlock_page
 	unlock_rename
 	unmap_mapping_range
+	unpin_user_pages
 	unregister_blkdev
 	unregister_chrdev_region
 	unregister_filesystem
