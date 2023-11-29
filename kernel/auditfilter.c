@@ -80,6 +80,7 @@ static void audit_free_lsm_field(struct audit_field *f)
 	}
 }
 
+static struct kmem_cache *entry_cache;
 static inline void audit_free_rule(struct audit_entry *e)
 {
 	int i;
@@ -93,7 +94,7 @@ static inline void audit_free_rule(struct audit_entry *e)
 			audit_free_lsm_field(&erule->fields[i]);
 	kfree(erule->fields);
 	kfree(erule->filterkey);
-	kfree(e);
+	kmem_cache_free(entry_cache, e);
 }
 
 void audit_free_rule_rcu(struct rcu_head *head)
@@ -108,13 +109,20 @@ static inline struct audit_entry *audit_init_entry(u32 field_count)
 	struct audit_entry *entry;
 	struct audit_field *fields;
 
-	entry = kzalloc(sizeof(*entry), GFP_KERNEL);
+	if (!entry_cache) {
+		entry_cache = kmem_cache_create("audit_entry", sizeof(*entry), 0,
+						SLAB_HWCACHE_ALIGN, NULL);
+		if (!entry_cache)
+			return NULL;
+	}
+
+	entry = kmem_cache_zalloc(entry_cache, GFP_KERNEL);
 	if (unlikely(!entry))
 		return NULL;
 
 	fields = kcalloc(field_count, sizeof(*fields), GFP_KERNEL);
 	if (unlikely(!fields)) {
-		kfree(entry);
+		kmem_cache_free(entry_cache, entry);
 		return NULL;
 	}
 	entry->rule.fields = fields;
