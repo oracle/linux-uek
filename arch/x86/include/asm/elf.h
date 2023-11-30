@@ -161,8 +161,19 @@ do {						\
 
 /* Including asm/ia32.h causes KABI breakage so access variable directly */
 extern bool __ia32_enabled;
+
+static inline bool ia32_enabled_verbose(void)
+{
+	bool enabled = __ia32_enabled;
+
+	if (IS_ENABLED(CONFIG_IA32_EMULATION) && !enabled)
+		pr_notice_once("32-bit emulation disabled. You can reenable with ia32_emulation=on\n");
+
+	return enabled;
+}
+
 #define compat_elf_check_arch(x)					\
-	((elf_check_arch_ia32(x) && __ia32_enabled) ||			\
+	((elf_check_arch_ia32(x) && ia32_enabled_verbose()) ||		\
 	 (IS_ENABLED(CONFIG_X86_X32_ABI) && (x)->e_machine == EM_X86_64))
 
 static inline void elf_common_init(struct thread_struct *t,
