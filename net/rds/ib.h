@@ -15,10 +15,10 @@
  * scaling challenges seen with 6144 value. However we have to revisit this to
  * undrestand what needs to be done as a permanent fix.
  */
-#define RDS_FMR_1M_POOL_SIZE		12288
-#define RDS_FMR_1M_MSG_SIZE		256  /* 1M */
-#define RDS_FMR_8K_MSG_SIZE             2
-#define RDS_FMR_8K_POOL_SIZE		((256 / (RDS_FMR_8K_MSG_SIZE + 1)) * (8192 / 4))
+#define RDS_MR_1M_POOL_SIZE		12288
+#define RDS_MR_1M_MSG_SIZE		256  /* 1M */
+#define RDS_MR_8K_MSG_SIZE		2
+#define RDS_MR_8K_POOL_SIZE		((256 / (RDS_MR_8K_MSG_SIZE + 1)) * (8192 / 4))
 
 #define RDS_IB_MAX_SGE			8
 #define RDS_IB_RECV_SGE			2
@@ -489,7 +489,6 @@ struct rds_ib_device {
 	struct ib_pd		*pd;
 	struct workqueue_struct	*rid_dev_wq; /* Device work queue */
 
-	bool			use_fastreg:1;
 	bool			rid_mod_unload:1;
 	bool			rid_dev_rem:1;
 	bool			rid_tasklet_work_initialized:1;
@@ -507,9 +506,8 @@ struct rds_ib_device {
 	struct ib_mr		*mr;
 	struct rds_ib_mr_pool	*mr_1m_pool;
 	struct rds_ib_mr_pool   *mr_8k_pool;
-	unsigned int		fmr_max_remaps;
-	unsigned int		max_8k_fmrs;
-	unsigned int		max_1m_fmrs;
+	unsigned int		max_8k_mrs;
+	unsigned int		max_1m_mrs;
 	int			max_sge;
 	unsigned int		max_wrs;
 	unsigned int		max_initiator_depth;
@@ -609,13 +607,11 @@ struct rds_ib_statistics {
 	uint64_t	s_ib_rdma_mr_8k_free;
 	uint64_t	s_ib_rdma_mr_8k_used;
 	uint64_t	s_ib_rdma_mr_8k_pool_flush;
-	uint64_t	s_ib_rdma_mr_8k_pool_wait;
 	uint64_t	s_ib_rdma_mr_8k_pool_depleted;
 	uint64_t        s_ib_rdma_mr_1m_alloc;
 	uint64_t        s_ib_rdma_mr_1m_free;
 	uint64_t        s_ib_rdma_mr_1m_used;
 	uint64_t        s_ib_rdma_mr_1m_pool_flush;
-	uint64_t        s_ib_rdma_mr_1m_pool_wait;
 	uint64_t        s_ib_rdma_mr_1m_pool_depleted;
 	uint64_t	s_ib_rdma_flush_mr_pool_avoided;
 	uint64_t	s_ib_atomic_cswp;
@@ -700,8 +696,8 @@ void rds_ib_free_one_frag(struct rds_page_frag *frag, size_t cache_sz);
 void rds_ib_free_one_inc(struct rds_ib_incoming *inc);
 extern struct ib_client rds_ib_client;
 
-extern unsigned int rds_ib_fmr_1m_pool_size;
-extern unsigned int rds_ib_fmr_8k_pool_size;
+extern unsigned int rds_ib_mr_1m_pool_size;
+extern unsigned int rds_ib_mr_8k_pool_size;
 extern bool prefer_frwr;
 extern unsigned int rds_ib_retry_count;
 extern unsigned int rds_ib_rnr_retry_count;
@@ -770,8 +766,6 @@ void *rds_ib_get_mr(struct scatterlist *sg, unsigned long nents,
 void rds_ib_sync_mr(void *trans_private, int dir);
 void rds_ib_free_mr(void *trans_private, int invalidate);
 void rds_ib_flush_mrs(void);
-int rds_ib_fmr_init(void);
-void rds_ib_fmr_exit(void);
 void rds_ib_fcq_handler(struct rds_ib_device *rds_ibdev, struct ib_wc *wc);
 void rds_ib_mr_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc);
 void rds_rrds_free(struct kref *kref);
@@ -886,7 +880,7 @@ extern unsigned long rds_ib_sysctl_max_unsolicited_wrs;
 extern unsigned long rds_ib_sysctl_max_unsig_bytes;
 extern unsigned long rds_ib_sysctl_max_recv_allocation;
 extern unsigned int rds_ib_sysctl_flow_control;
-extern unsigned int rds_ib_sysctl_disable_unmap_fmr_cpu;
+extern unsigned int rds_ib_sysctl_disable_unmap_mr_cpu;
 extern int rds_ib_sysctl_local_ack_timeout;
 extern u32 rds_frwr_wake_intrvl;
 extern u32 rds_frwr_ibmr_gc_time;
