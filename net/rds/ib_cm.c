@@ -538,8 +538,7 @@ static void rds_ib_cq_event_handler_fastreg(struct ib_event *event, void *data)
 	pr_info("RDS/IB: event %u (%s) rds_ibdev %p\n", event->event,
 		rds_ib_event_str(event->event), data);
 
-	if (rds_ibdev->use_fastreg)
-		queue_work(rds_wq, &rds_ibdev->fastreg_reset_w);
+	queue_work(rds_wq, &rds_ibdev->fastreg_reset_w);
 }
 
 static void rds_ib_cq_comp_handler_fastreg(struct ib_cq *cq, void *context)
@@ -1368,7 +1367,6 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	unsigned long max_wrs;
 	char *reason = NULL;
 	int ret;
-	int mr_reg;
 
 	WARN_ON(ic->rds_ibdev);
 
@@ -1389,20 +1387,15 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	/* In the case of FRWR, mr registration wrs use the
 	 * same work queue as the send wrs. To make sure that we are not
 	 * overflowing the workqueue, we allocate separately for each operation.
-	 * mr_reg is the wr numbers allocated for reg.
 	 */
-	if (rds_ibdev->use_fastreg)
-		mr_reg = RDS_IB_DEFAULT_FREG_WR;
-	else
-		mr_reg = 0;
 
-	max_wrs = rds_ibdev->max_wrs < rds_ib_sysctl_max_send_wr + 1  + mr_reg ?
-		rds_ibdev->max_wrs - 1 - mr_reg : rds_ib_sysctl_max_send_wr;
+	max_wrs = rds_ibdev->max_wrs < rds_ib_sysctl_max_send_wr + 1 + RDS_IB_DEFAULT_FREG_WR ?
+		rds_ibdev->max_wrs - 1 - RDS_IB_DEFAULT_FREG_WR : rds_ib_sysctl_max_send_wr;
 	if (ic->i_send_ring.w_nr != max_wrs)
 		rds_ib_ring_resize(&ic->i_send_ring, max_wrs);
 
-	max_wrs = rds_ibdev->max_wrs < rds_ib_sysctl_max_recv_wr + 1 + mr_reg ?
-		rds_ibdev->max_wrs - 1 - mr_reg : rds_ib_sysctl_max_recv_wr;
+	max_wrs = rds_ibdev->max_wrs < rds_ib_sysctl_max_recv_wr + 1 + RDS_IB_DEFAULT_FREG_WR ?
+		rds_ibdev->max_wrs - 1 - RDS_IB_DEFAULT_FREG_WR : rds_ib_sysctl_max_recv_wr;
 	if (ic->i_recv_ring.w_nr != max_wrs)
 		rds_ib_ring_resize(&ic->i_recv_ring, max_wrs);
 
@@ -1448,7 +1441,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 			&ic->i_scq, &ic->i_scq_entries,
 			rds_ib_cq_comp_handler_send,
 			rds_ib_cq_event_handler, conn,
-			ic->i_send_ring.w_nr + 1 + mr_reg,
+			ic->i_send_ring.w_nr + 1 + RDS_IB_DEFAULT_FREG_WR,
 			"send", conn->c_tos);
 	if (IS_ERR(ic->i_scq)) {
 		reason = "rds_ib_check_cq for send failed";
@@ -1488,7 +1481,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	qp_attr.event_handler = rds_ib_qp_event_handler;
 	qp_attr.qp_context = conn;
 	/* + 1 to allow for the single ack message */
-	qp_attr.cap.max_send_wr = ic->i_send_ring.w_nr + 1 + mr_reg;
+	qp_attr.cap.max_send_wr = ic->i_send_ring.w_nr + 1 + RDS_IB_DEFAULT_FREG_WR;
 	qp_attr.cap.max_recv_wr = ic->i_recv_ring.w_nr + 1;
 	qp_attr.cap.max_send_sge = rds_ibdev->max_sge;
 	qp_attr.cap.max_recv_sge = rds_ibdev->max_sge;
