@@ -45,22 +45,19 @@
 
 static struct dentry *debugfs_basedir;
 
-unsigned int rds_ib_fmr_1m_pool_size = RDS_FMR_1M_POOL_SIZE;
-unsigned int rds_ib_fmr_8k_pool_size = RDS_FMR_8K_POOL_SIZE;
+unsigned int rds_ib_mr_1m_pool_size = RDS_MR_1M_POOL_SIZE;
+unsigned int rds_ib_mr_8k_pool_size = RDS_MR_8K_POOL_SIZE;
 unsigned int rds_ib_retry_count = RDS_IB_DEFAULT_RETRY_COUNT;
-bool prefer_frwr;
 unsigned int rds_ib_rnr_retry_count = RDS_IB_DEFAULT_RNR_RETRY_COUNT;
 unsigned int rds_ib_cache_gc_interval = RDS_IB_DEFAULT_CACHE_GC_INTERVAL;
 const u64 fw_ver_16_32_1010 = (((u64)16 << 32) | ((u64)32 << 16) | (u64)1010);
 
-module_param(rds_ib_fmr_1m_pool_size, int, 0444);
-MODULE_PARM_DESC(rds_ib_fmr_1m_pool_size, " Max number of 1m fmr per HCA");
-module_param(rds_ib_fmr_8k_pool_size, int, 0444);
-MODULE_PARM_DESC(rds_ib_fmr_8k_pool_size, " Max number of 8k fmr per HCA");
+module_param(rds_ib_mr_1m_pool_size, int, 0444);
+MODULE_PARM_DESC(rds_ib_mr_1m_pool_size, " Max number of 1m MRs per HCA");
+module_param(rds_ib_mr_8k_pool_size, int, 0444);
+MODULE_PARM_DESC(rds_ib_mr_8k_pool_size, " Max number of 8k MRs per HCA");
 module_param(rds_ib_retry_count, int, 0444);
 MODULE_PARM_DESC(rds_ib_retry_count, " Number of hw retries before reporting an error");
-module_param(prefer_frwr, bool, 0444);
-MODULE_PARM_DESC(prefer_frwr, "Preference of FRWR over FMR for memory registration(Y/N)");
 module_param(rds_ib_rnr_retry_count, int, 0444);
 MODULE_PARM_DESC(rds_ib_rnr_retry_count, " QP rnr retry count");
 module_param(rds_ib_cache_gc_interval, int, 0444);
@@ -69,7 +66,7 @@ MODULE_PARM_DESC(rds_ib_cache_gc_interval, " Cache cleanup interval in seconds")
 /*
  * we have a clumsy combination of RCU and a rwsem protecting this list
  * because it is used both in the get_mr fast path and while blocking in
- * the FMR flushing path.
+ * the MR flushing path.
  */
 DECLARE_RWSEM(rds_ib_devices_lock);
 struct list_head rds_ib_devices;
@@ -630,15 +627,13 @@ static void rds_ib_dev_free(struct work_struct *work)
 		rds_ib_destroy_mr_pool(rds_ibdev->mr_8k_pool);
 	if (rds_ibdev->mr_1m_pool)
 		rds_ib_destroy_mr_pool(rds_ibdev->mr_1m_pool);
-	if (rds_ibdev->use_fastreg) {
-		trace_rds_ib_queue_cancel_work(rds_ibdev, NULL,
-					       &rds_ibdev->fastreg_reset_w, 0,
-					       "dev free, cancel reset work");
-		cancel_work_sync(&rds_ibdev->fastreg_reset_w);
-		down_write(&rds_ibdev->fastreg_lock);
-		rds_ib_destroy_fastreg(rds_ibdev);
-		up_write(&rds_ibdev->fastreg_lock);
-	}
+	trace_rds_ib_queue_cancel_work(rds_ibdev, NULL,
+				       &rds_ibdev->fastreg_reset_w, 0,
+				       "dev free, cancel reset work");
+	cancel_work_sync(&rds_ibdev->fastreg_reset_w);
+	down_write(&rds_ibdev->fastreg_lock);
+	rds_ib_destroy_fastreg(rds_ibdev);
+	up_write(&rds_ibdev->fastreg_lock);
 	if (rds_ibdev->mr)
 		ib_dereg_mr(rds_ibdev->mr);
 	if (rds_ibdev->rid_dev_wq)
@@ -1189,13 +1184,18 @@ int rds_ib_add_one(struct ib_device *device)
 	int error = 0;
 	struct rds_ib_device *rds_ibdev;
 	struct ib_device_attr *dev_attr;
-	bool has_frwr, has_fmr;
 	struct ib_udata uhw;
 	char *reason = NULL;
 
 	/* Only handle IB (no iWARP) devices */
 	if (device->node_type != RDMA_NODE_IB_CA)
 		return -EOPNOTSUPP;
+
+	if (!(device->attrs.device_cap_flags & IB_DEVICE_MEM_MGT_EXTENSIONS)) {
+		pr_info("RDS/IB: IB_DEVICE_MEM_MGT_EXTENSIONS NOT enabled for ib_device: %s\n",
+			device->name);
+		return -EOPNOTSUPP;
+	}
 
 	trace_rds_ib_add_device(device, NULL, NULL, NULL,
 				"adding IB device", 0);
@@ -1243,17 +1243,16 @@ int rds_ib_add_one(struct ib_device *device)
 		rds_ibdev->max_sge = RDS_IB_MAX_SGE;
 
 	WARN_ON(rds_ibdev->max_sge < 2);
-	rds_ibdev->fmr_max_remaps = 32;
 
-	rds_ibdev->max_1m_fmrs = dev_attr->max_mr ?
+	rds_ibdev->max_1m_mrs = dev_attr->max_mr ?
 		min_t(unsigned int, dev_attr->max_mr,
-		      rds_ib_fmr_1m_pool_size) :
-		      rds_ib_fmr_1m_pool_size;
+		      rds_ib_mr_1m_pool_size) :
+		      rds_ib_mr_1m_pool_size;
 
-	rds_ibdev->max_8k_fmrs = dev_attr->max_mr ?
+	rds_ibdev->max_8k_mrs = dev_attr->max_mr ?
 		min_t(unsigned int, dev_attr->max_mr,
-		      rds_ib_fmr_8k_pool_size) :
-		      rds_ib_fmr_8k_pool_size;
+		      rds_ib_mr_8k_pool_size) :
+		      rds_ib_mr_8k_pool_size;
 
 	rds_ibdev->max_initiator_depth = dev_attr->max_qp_init_rd_atom;
 	rds_ibdev->max_responder_resources = dev_attr->max_qp_rd_atom;
@@ -1305,34 +1304,24 @@ int rds_ib_add_one(struct ib_device *device)
 		goto put_dev;
 	}
 
-	has_frwr = (dev_attr->device_cap_flags & IB_DEVICE_MEM_MGT_EXTENSIONS);
-	has_fmr = false;
-
-	if (has_frwr && (!has_fmr || prefer_frwr)) {
-		INIT_WORK(&rds_ibdev->fastreg_reset_w, rds_ib_reset_fastreg);
-		init_rwsem(&rds_ibdev->fastreg_lock);
-		atomic_set(&rds_ibdev->fastreg_wrs, RDS_IB_DEFAULT_FREG_WR);
-		error = rds_ib_setup_fastreg(rds_ibdev);
-		if (error) {
-			pr_err("RDS/IB: Failed to setup fastreg resources\n");
-			reason = "rds_ib_setup_fastreg failed";
-			goto put_dev;
-		}
-		/* Should set this only when everything is set up.  Otherwise,
-		 * if failure happens, the clean up routine will do the
-		 * wrong thing.
-		 */
-		rds_ibdev->use_fastreg = true;
+	INIT_WORK(&rds_ibdev->fastreg_reset_w, rds_ib_reset_fastreg);
+	init_rwsem(&rds_ibdev->fastreg_lock);
+	atomic_set(&rds_ibdev->fastreg_wrs, RDS_IB_DEFAULT_FREG_WR);
+	error = rds_ib_setup_fastreg(rds_ibdev);
+	if (error) {
+		pr_err("RDS/IB: Failed to setup fastreg resources\n");
+		reason = "rds_ib_setup_fastreg failed";
+		goto put_dev;
 	}
-	pr_info("RDS/IB: %s will be used for ib_device: %s\n",
-		rds_ibdev->use_fastreg ? "FRWR" : "FMR", device->name);
+
+	pr_info("RDS/IB: FRWR will be used for ib_device: %s\n", device->name);
 
 	rds_ibdev->mr_1m_pool =
 		rds_ib_create_mr_pool(rds_ibdev, RDS_IB_MR_1M_POOL);
 	if (IS_ERR(rds_ibdev->mr_1m_pool)) {
 		error = PTR_ERR(rds_ibdev->mr_1m_pool);
 		rds_ibdev->mr_1m_pool = NULL;
-		reason = "rds_ib_create_mr_pool (1k) failed";
+		reason = "rds_ib_create_mr_pool (1m) failed";
 		goto put_dev;
 	}
 
@@ -1410,13 +1399,9 @@ int rds_ib_init(void)
 	/* Initialise the RDS IB fragment size */
 	rds_ib_init_frag(RDS_PROTOCOL_VERSION);
 
-	ret = rds_ib_fmr_init();
-	if (ret)
-		goto out;
-
 	ret = rds_ib_sysctl_init();
 	if (ret)
-		goto out_fmr_exit;
+		goto out;
 
 	ret = rds_ib_recv_init();
 	if (ret)
@@ -1464,8 +1449,6 @@ out_recv:
 	rds_ib_recv_exit();
 out_sysctl:
 	rds_ib_sysctl_exit();
-out_fmr_exit:
-	rds_ib_fmr_exit();
 out:
 	return ret;
 }
@@ -1528,7 +1511,6 @@ void rds_ib_exit(void)
 
 	destroy_workqueue(rds_evt_wq);
 	destroy_workqueue(rds_aux_wq);
-	rds_ib_fmr_exit();
 	debugfs_remove_recursive(debugfs_basedir);
 }
 
