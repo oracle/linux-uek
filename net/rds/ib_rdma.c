@@ -63,7 +63,7 @@ module_param_call(rds_ib_preferred_cpu,
 int rds_ib_preferred_cpu_load[NR_CPUS];
 DEFINE_SPINLOCK(rds_ib_preferred_cpu_load_lock);
 
-struct workqueue_struct *rds_ib_fmr_wq;
+struct workqueue_struct *rds_ib_mr_flushd_wq;
 
 enum rds_ib_fr_state {
 	MR_IS_INVALID,		/* mr ready to be used */
@@ -81,7 +81,6 @@ struct rds_ib_mr {
 	struct rds_ib_mr_pool	*pool;
 	struct rds_ib_connection *ic;
 
-	struct ib_fmr		*fmr;
 	struct ib_mr		*mr;
 	enum rds_ib_fr_state	fr_state;
 	struct completion	wr_comp;
@@ -109,15 +108,12 @@ struct rds_ib_mr {
 };
 
 /*
- * Our own little FMR pool
+ * Our own little MR pool
  */
 struct rds_ib_mr_pool {
 	unsigned int		pool_type;
-	struct mutex		flush_lock;		/* serialize fmr invalidate */
-	struct delayed_work	flush_worker;		/* flush worker */
 
 	atomic_t		item_count;		/* total # of MRs */
-	atomic_t		dirty_count;		/* # dirty of MRs */
 
 	struct xlist_head	drop_list;		/* MRs that have reached their max_maps limit */
 	struct xlist_head	free_list;		/* unused MRs */
@@ -125,16 +121,9 @@ struct rds_ib_mr_pool {
 	/* "clean_list" concurrency */
 	spinlock_t		clean_lock;
 
-	wait_queue_head_t	flush_wait;
-
-	atomic_t		free_pinned;		/* memory pinned by free MRs */
 	unsigned long		max_items;
-	atomic_t		max_items_soft;
-	unsigned long		max_free_pinned;
-	unsigned                unmap_fmr_cpu;
+	unsigned int		unmap_mr_cpu;
 	unsigned long		max_pages;
-	bool			use_fastreg;
-	bool                    flush_ongoing;
 
 	spinlock_t		busy_lock; /* protect ops on 'busy_list' */
 	/* All in use MRs allocated from this pool are listed here. This list
@@ -148,6 +137,9 @@ struct rds_ib_mr_pool {
 	struct delayed_work	frwr_clean_worker;
 	bool			condemned;
 };
+
+static void rds_frwr_clean_worker(struct work_struct *work);
+static void rds_frwr_clean(struct rds_ib_mr_pool *pool, bool all);
 
 static inline u32 rds_frwr_iova_mask(struct rds_ib_mr_pool *pool)
 {
@@ -172,15 +164,24 @@ static inline void rds_frwr_adjust_iova_rkey(struct rds_ib_mr *ibmr)
 	ib_update_fast_reg_key(ibmr->mr, ibmr->cur_low_rkey_byte);
 }
 
-static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool, int free_all, struct rds_ib_mr **);
-static void rds_ib_mr_pool_flush_worker(struct work_struct *work);
+/* Flush our pool of MRs.
+ *
+ * As MRs are cleaned periodically under FRWR, the code only
+ * increments statistic counters unless all MRs are to be flushed.
+ */
+static inline void rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool)
+{
+	if (pool->pool_type == RDS_IB_MR_8K_POOL)
+		rds_ib_stats_inc(s_ib_rdma_mr_8k_pool_flush);
+	else
+		rds_ib_stats_inc(s_ib_rdma_mr_1m_pool_flush);
+
+	rds_frwr_clean(pool, true);
+}
 
 static int rds_ib_map_fastreg_mr(struct rds_ib_device *rds_ibdev,
 				 struct rds_ib_mr *ibmr,
 				 struct scatterlist *sg, unsigned int sg_len);
-
-static void rds_frwr_clean_worker(struct work_struct *work);
-static void rds_frwr_clean(struct rds_ib_mr_pool *pool, bool all);
 
 static int rds_ib_set_preferred_cpu(const char *val, const struct kernel_param *kp)
 {
@@ -616,8 +617,8 @@ void rds_ib_destroy_nodev_conns(void)
 	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
 }
 
-static unsigned int get_unmap_fmr_cpu(struct rds_ib_device *rds_ibdev,
-				      int pool_type)
+static unsigned int get_unmap_mr_cpu(struct rds_ib_device *rds_ibdev,
+				     int pool_type)
 {
 	int index;
 	int ib_node = rdsibdev_to_node(rds_ibdev);
@@ -670,46 +671,31 @@ struct rds_ib_mr_pool *rds_ib_create_mr_pool(struct rds_ib_device *rds_ibdev,
 	INIT_XLIST_HEAD(&pool->drop_list);
 	INIT_LIST_HEAD(&pool->clean_list);
 	spin_lock_init(&pool->clean_lock);
-	mutex_init(&pool->flush_lock);
-	init_waitqueue_head(&pool->flush_wait);
-	INIT_DELAYED_WORK(&pool->flush_worker, rds_ib_mr_pool_flush_worker);
 
 	if (pool_type == RDS_IB_MR_1M_POOL) {
-		pool->max_pages = RDS_FMR_1M_MSG_SIZE + 1;
-		pool->max_items = rds_ibdev->max_1m_fmrs;
-		pool->unmap_fmr_cpu = get_unmap_fmr_cpu(rds_ibdev, pool_type);
+		pool->max_pages = RDS_MR_1M_MSG_SIZE + 1;
+		pool->max_items = rds_ibdev->max_1m_mrs;
+		pool->unmap_mr_cpu = get_unmap_mr_cpu(rds_ibdev, pool_type);
 	} else /* pool_type == RDS_IB_MR_8K_POOL */ {
-		pool->max_pages = RDS_FMR_8K_MSG_SIZE + 1;
-		pool->max_items = rds_ibdev->max_8k_fmrs;
-		pool->unmap_fmr_cpu = get_unmap_fmr_cpu(rds_ibdev, pool_type);
+		pool->max_pages = RDS_MR_8K_MSG_SIZE + 1;
+		pool->max_items = rds_ibdev->max_8k_mrs;
+		pool->unmap_mr_cpu = get_unmap_mr_cpu(rds_ibdev, pool_type);
 	}
-	pool->max_free_pinned =
-		pool->max_items * pool->max_pages / 4;
-	atomic_set(&pool->max_items_soft, pool->max_items);
-	pool->flush_ongoing = false;
 
-	if (rds_ibdev->use_fastreg) {
-		INIT_DELAYED_WORK(&pool->frwr_clean_worker,
-				  rds_frwr_clean_worker);
-		pool->frwr_clean_wq = create_workqueue("rds_frmr_clean_wq");
-		if (!pool->frwr_clean_wq) {
-			kfree(pool);
-			return ERR_PTR(-ENOMEM);
-		}
-		unmap_cpu = rds_ib_sysctl_disable_unmap_fmr_cpu ?
-			WORK_CPU_UNBOUND : pool->unmap_fmr_cpu;
-		rds_ib_queue_delayed_work_on(rds_ibdev, unmap_cpu,
-					     pool->frwr_clean_wq,
-					     &pool->frwr_clean_worker,
-					     msecs_to_jiffies(rds_frwr_wake_intrvl),
-					     "frwr clean");
-
-		/* Should set this only when everything is set up.  Otherwise,
-		 * if failure happens, the clean up routine will do the
-		 * wrong thing.
-		 */
-		pool->use_fastreg = true;
+	INIT_DELAYED_WORK(&pool->frwr_clean_worker,
+			  rds_frwr_clean_worker);
+	pool->frwr_clean_wq = create_workqueue("rds_frmr_clean_wq");
+	if (!pool->frwr_clean_wq) {
+		kfree(pool);
+		return ERR_PTR(-ENOMEM);
 	}
+	unmap_cpu = rds_ib_sysctl_disable_unmap_mr_cpu ?
+		WORK_CPU_UNBOUND : pool->unmap_mr_cpu;
+	rds_ib_queue_delayed_work_on(rds_ibdev, unmap_cpu,
+				     pool->frwr_clean_wq,
+				     &pool->frwr_clean_worker,
+				     msecs_to_jiffies(rds_frwr_wake_intrvl),
+				     "frwr clean");
 
 	return pool;
 }
@@ -782,32 +768,25 @@ void rds_ib_destroy_mr_pool(struct rds_ib_mr_pool *pool)
 		list_del_init(&ibmr->pool_list);
 		if (ibmr->rs)
 			rds_rdma_drop_keys(ibmr->rs);
-		if (pool->use_fastreg) {
-			__rds_ib_teardown_mr(ibmr);
-			if (ibmr->mr)
-				ib_dereg_mr(ibmr->mr);
-		}
+		__rds_ib_teardown_mr(ibmr);
+		if (ibmr->mr)
+			ib_dereg_mr(ibmr->mr);
 	}
 
-	if (pool->use_fastreg) {
-		/* No need to call rds_frwr_clean() as rds_ib_flush_mr_pool()
-		 * with free_all set to 1 calls rds_frwr_clean().
-		 */
-		rds_ib_queue_cancel_work(NULL,
-					 &pool->frwr_clean_worker,
-					"cancel frwr worker, destroy MR pool");
-		destroy_workqueue(pool->frwr_clean_wq);
-	}
-	rds_ib_queue_cancel_work(NULL, &pool->flush_worker,
-				 "cancel flush worker, destroy MR pool");
-	rds_ib_flush_mr_pool(pool, 1, NULL);
+	/* No need to call rds_frwr_clean() as rds_ib_flush_mr_pool()
+	 * calls rds_frwr_clean().
+	 */
+	rds_ib_queue_cancel_work(NULL, &pool->frwr_clean_worker,
+				 "cancel frwr worker, destroy MR pool");
+	destroy_workqueue(pool->frwr_clean_wq);
+
+	rds_ib_flush_mr_pool(pool);
 
 	WARN_ON(atomic_read(&pool->item_count));
-	WARN_ON(atomic_read(&pool->free_pinned));
 	kfree(pool);
 }
 
-static inline struct rds_ib_mr *rds_ib_reuse_fmr(struct rds_ib_mr_pool *pool)
+static inline struct rds_ib_mr *rds_ib_reuse_mr(struct rds_ib_mr_pool *pool)
 {
 	struct rds_ib_mr *ibmr = NULL;
 	unsigned long flags;
@@ -863,61 +842,42 @@ static struct rds_ib_mr *rds_ib_alloc_ibmr(struct rds_ib_device *rds_ibdev,
 {
 	struct rds_ib_mr_pool *pool;
 	struct rds_ib_mr *ibmr = NULL;
-	unsigned int unmap_fmr_cpu = 0;
-	int err = 0, iter = 0;
+	unsigned int unmap_mr_cpu = 0;
+	int err = 0;
 
-	if (npages <= RDS_FMR_8K_MSG_SIZE)
+	if (npages <= RDS_MR_8K_MSG_SIZE)
 		pool = rds_ibdev->mr_8k_pool;
 	else
 		pool = rds_ibdev->mr_1m_pool;
 
-	unmap_fmr_cpu = rds_ib_sysctl_disable_unmap_fmr_cpu ?
-		WORK_CPU_UNBOUND : pool->unmap_fmr_cpu;
-	if (atomic_read(&pool->dirty_count) >=
-		atomic_read(&pool->max_items_soft) / 10)
-		rds_ib_queue_delayed_work_on(rds_ibdev, unmap_fmr_cpu,
-					     rds_ib_fmr_wq, &pool->flush_worker,
-					     10, "dirty count too high");
+	unmap_mr_cpu = rds_ib_sysctl_disable_unmap_mr_cpu ?
+		WORK_CPU_UNBOUND : pool->unmap_mr_cpu;
 
-	while (1) {
-		ibmr = rds_ib_reuse_fmr(pool);
-		if (ibmr)
-			return ibmr;
+	ibmr = rds_ib_reuse_mr(pool);
+	if (ibmr)
+		return ibmr;
 
-		/* No clean MRs - now we have the choice of either
-		 * allocating a fresh MR up to the limit imposed by the
-		 * driver, or flush any dirty unused MRs.
-		 * We try to avoid stalling in the send path if possible,
-		 * so we allocate as long as we're allowed to.
-		 *
-		 * We're fussy with enforcing the FMR limit, though. If the driver
-		 * tells us we can't use more than N fmrs, we shouldn't start
-		 * arguing with it */
-		if (atomic_inc_return(&pool->item_count) <=
-					atomic_read(&pool->max_items_soft))
-			break;
-
+	/* No clean MRs - now we have the choice of either
+	 * allocating a fresh MR up to the limit imposed by the
+	 * driver, or flush any dirty unused MRs.
+	 * We try to avoid stalling in the send path if possible,
+	 * so we allocate as long as we're allowed to.
+	 *
+	 * We're fussy with enforcing the MR pool limit, though. If the driver
+	 * tells us we can't use more than N MRs, we shouldn't start
+	 * arguing with it
+	 */
+	if (atomic_inc_return(&pool->item_count) > pool->max_items) {
 		atomic_dec(&pool->item_count);
 
 		/* FRWR MR goes directly to the clean list.  If the limit is
 		 * already reached, return an error.
 		 */
-		if (++iter > 2 || rds_ibdev->use_fastreg) {
-			if (pool->pool_type == RDS_IB_MR_8K_POOL)
-				rds_ib_stats_inc(s_ib_rdma_mr_8k_pool_depleted);
-			else
-				rds_ib_stats_inc(s_ib_rdma_mr_1m_pool_depleted);
-			return ERR_PTR(-EAGAIN);
-		}
-
-		/* We do have some empty MRs. Flush them out. */
 		if (pool->pool_type == RDS_IB_MR_8K_POOL)
-			rds_ib_stats_inc(s_ib_rdma_mr_8k_pool_wait);
+			rds_ib_stats_inc(s_ib_rdma_mr_8k_pool_depleted);
 		else
-			rds_ib_stats_inc(s_ib_rdma_mr_1m_pool_wait);
-		rds_ib_flush_mr_pool(pool, 0, &ibmr);
-		if (ibmr)
-			return ibmr;
+			rds_ib_stats_inc(s_ib_rdma_mr_1m_pool_depleted);
+		return ERR_PTR(-EAGAIN);
 	}
 
 	ibmr = kzalloc(sizeof(*ibmr), GFP_KERNEL);
@@ -926,53 +886,13 @@ static struct rds_ib_mr *rds_ib_alloc_ibmr(struct rds_ib_device *rds_ibdev,
 		goto out_no_cigar;
 	}
 
-	if (rds_ibdev->use_fastreg)
-		err = rds_ib_init_fastreg_mr(rds_ibdev, pool, ibmr);
-	else
-		err = -ENOSYS;
+	err = rds_ib_init_fastreg_mr(rds_ibdev, pool, ibmr);
 
 	if (err) {
-		int total_pool_size;
-		int prev_8k_max;
-		int prev_1m_max;
+		/* encourage caller to retry if out of memory */
+		if (err == -ENOMEM)
+			err = -EAGAIN;
 
-		if (err != -ENOMEM)
-			goto out_no_cigar;
-
-		/* Re-balance the pool sizes to reflect the memory resources
-		 * available to the VM.
-		 */
-		total_pool_size =
-			atomic_read(&rds_ibdev->mr_8k_pool->item_count)
-				* (RDS_FMR_8K_MSG_SIZE + 1) +
-			atomic_read(&rds_ibdev->mr_1m_pool->item_count)
-				* RDS_FMR_1M_MSG_SIZE;
-
-		if (!total_pool_size)
-			goto out_no_cigar;
-
-		prev_8k_max = atomic_read(
-				&rds_ibdev->mr_8k_pool->max_items_soft);
-		prev_1m_max = atomic_read(
-				&rds_ibdev->mr_1m_pool->max_items_soft);
-		atomic_set(&rds_ibdev->mr_8k_pool->max_items_soft,
-			   (total_pool_size / 4) / (RDS_FMR_8K_MSG_SIZE + 1));
-		atomic_set(&rds_ibdev->mr_1m_pool->max_items_soft,
-			   (total_pool_size * 3 / 4) / RDS_FMR_1M_MSG_SIZE);
-		printk(KERN_ERR "RDS/IB: Adjusted 8K FMR pool (%d->%d)\n",
-		       prev_8k_max,
-		       atomic_read(&rds_ibdev->mr_8k_pool->max_items_soft));
-		printk(KERN_ERR "RDS/IB: Adjusted 1M FMR pool (%d->%d)\n",
-		       prev_1m_max,
-		       atomic_read(&rds_ibdev->mr_1m_pool->max_items_soft));
-		if (pool == rds_ibdev->mr_1m_pool) {
-			rds_ib_flush_mr_pool(rds_ibdev->mr_1m_pool, 0, NULL);
-			rds_ib_flush_mr_pool(rds_ibdev->mr_8k_pool, 1, NULL);
-		} else {
-			rds_ib_flush_mr_pool(rds_ibdev->mr_1m_pool, 1, NULL);
-			rds_ib_flush_mr_pool(rds_ibdev->mr_8k_pool, 0, NULL);
-		}
-		err = -EAGAIN;
 		goto out_no_cigar;
 	}
 
@@ -982,15 +902,14 @@ static struct rds_ib_mr *rds_ib_alloc_ibmr(struct rds_ib_device *rds_ibdev,
 	spin_unlock_bh(&pool->busy_lock);
 
 	init_completion(&ibmr->wr_comp);
-	WRITE_ONCE(ibmr->fr_state, MR_IS_INVALID); /* not needed bcas of kzalloc */
+
+	/* ibmr->fr_state is already MR_IS_INVALID due to kzalloc */
 
 	ibmr->pool = pool;
 	if (pool->pool_type == RDS_IB_MR_8K_POOL)
 		rds_ib_stats_inc(s_ib_rdma_mr_8k_alloc);
 	else
 		rds_ib_stats_inc(s_ib_rdma_mr_1m_alloc);
-
-	atomic_add_unless(&pool->max_items_soft, 1, pool->max_items);
 
 	return ibmr;
 
@@ -1018,17 +937,6 @@ void rds_ib_sync_mr(void *trans_private, int direction)
 	}
 }
 
-static inline unsigned int rds_ib_flush_goal(struct rds_ib_mr_pool *pool, int free_all)
-{
-	unsigned int item_count;
-
-	item_count = atomic_read(&pool->item_count);
-	if (free_all)
-		return item_count;
-
-	return 0;
-}
-
 /*
  * given an xlist of mrs, put them all into the list_head for more processing
  */
@@ -1052,181 +960,6 @@ static int xlist_append_to_list(struct xlist_head *xlist,
 		count++;
 	}
 	return count;
-}
-
-/*
- * Flush our pool of MRs.
- * At a minimum, all currently unused MRs are unmapped.
- * If the number of MRs allocated exceeds the limit, we also try
- * to free as many MRs as needed to get back to this limit.
- */
-static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool,
-				int free_all, struct rds_ib_mr **ibmr_ret)
-{
-	struct rds_ib_mr *ibmr, *next;
-	LIST_HEAD(unmap_list);
-	LIST_HEAD(fmr_list);
-	unsigned long unpinned = 0;
-	unsigned int nfreed = 0, dirty_to_clean = 0, free_goal;
-	unsigned long flags;
-	int ret = 0;
-
-	if (pool->pool_type == RDS_IB_MR_8K_POOL)
-		rds_ib_stats_inc(s_ib_rdma_mr_8k_pool_flush);
-	else
-		rds_ib_stats_inc(s_ib_rdma_mr_1m_pool_flush);
-
-	/* For FRWR, MRs are cleaned periodically.  Only if all MRs need
-	 * to be flushed, there is no need to do anything here.
-	 */
-	if (pool->use_fastreg) {
-		if (free_all)
-			rds_frwr_clean(pool, true);
-		return ret;
-	}
-
-	if (ibmr_ret) {
-		DEFINE_WAIT(wait);
-		while (!mutex_trylock(&pool->flush_lock)) {
-			ibmr = rds_ib_reuse_fmr(pool);
-			if (ibmr) {
-				*ibmr_ret = ibmr;
-				finish_wait(&pool->flush_wait, &wait);
-				goto out_nolock;
-			}
-
-			prepare_to_wait(&pool->flush_wait, &wait,
-					TASK_UNINTERRUPTIBLE);
-			if (list_empty(&pool->clean_list))
-				schedule();
-
-			ibmr = rds_ib_reuse_fmr(pool);
-			if (ibmr) {
-				*ibmr_ret = ibmr;
-				finish_wait(&pool->flush_wait, &wait);
-				goto out_nolock;
-			}
-		}
-		finish_wait(&pool->flush_wait, &wait);
-	} else
-		mutex_lock(&pool->flush_lock);
-
-	if (ibmr_ret) {
-		ibmr = rds_ib_reuse_fmr(pool);
-		if (ibmr) {
-			*ibmr_ret = ibmr;
-			goto out;
-		}
-	}
-
-	WRITE_ONCE(pool->flush_ongoing, true);
-	smp_wmb();
-
-	/* Get the list of all MRs to be dropped. Ordering matters -
-	 * we want to put drop_list ahead of free_list.
-	 */
-	dirty_to_clean = xlist_append_to_list(&pool->drop_list, &unmap_list);
-	dirty_to_clean += xlist_append_to_list(&pool->free_list, &unmap_list);
-	if (free_all) {
-		spin_lock_irqsave(&pool->clean_lock, flags);
-		list_splice_init(&pool->clean_list, &unmap_list);
-		spin_unlock_irqrestore(&pool->clean_lock, flags);
-	}
-
-	free_goal = rds_ib_flush_goal(pool, free_all);
-
-	if (list_empty(&unmap_list))
-		goto out;
-
-	/* Now we can destroy the DMA mapping and unpin any pages */
-	list_for_each_entry_safe(ibmr, next, &unmap_list, pool_list) {
-		/* Teardown only FMRs here, teardown fastreg MRs later after
-		 * invalidating. However, increment 'unpinned' for both, since
-		 * it is used to trigger flush.
-		 */
-		unpinned += ibmr->sg_len;
-		if (!pool->use_fastreg)
-			__rds_ib_teardown_mr(ibmr);
-
-		if (nfreed < free_goal ||
-		    (pool->use_fastreg && READ_ONCE(ibmr->fr_state) == MR_IS_STALE)) {
-			if (ibmr->pool->pool_type == RDS_IB_MR_8K_POOL)
-				rds_ib_stats_inc(s_ib_rdma_mr_8k_free);
-			else
-				rds_ib_stats_inc(s_ib_rdma_mr_1m_free);
-			list_del(&ibmr->pool_list);
-			if (pool->use_fastreg) {
-				__rds_ib_teardown_mr(ibmr);
-				if (ibmr->mr)
-					ib_dereg_mr(ibmr->mr);
-			}
-			kfree(ibmr);
-			nfreed++;
-		}
-	}
-
-	if (!list_empty(&unmap_list)) {
-		spin_lock_irqsave(&pool->clean_lock, flags);
-		list_splice(&unmap_list, &pool->clean_list);
-		if (ibmr_ret) {
-			ibmr = list_first_entry(&pool->clean_list,
-						struct rds_ib_mr,
-						pool_list);
-			list_del_init(&ibmr->pool_list);
-		}
-		spin_unlock_irqrestore(&pool->clean_lock, flags);
-
-		/* add ibmr to busy_list before handing over */
-		if (ibmr_ret) {
-			spin_lock_bh(&pool->busy_lock);
-			list_add(&ibmr->pool_list, &pool->busy_list);
-			spin_unlock_bh(&pool->busy_lock);
-
-			*ibmr_ret = ibmr;
-		}
-	}
-
-	atomic_sub(unpinned, &pool->free_pinned);
-	atomic_sub(dirty_to_clean, &pool->dirty_count);
-	atomic_sub(nfreed, &pool->item_count);
-
-out:
-	WRITE_ONCE(pool->flush_ongoing, false);
-	smp_wmb();
-	mutex_unlock(&pool->flush_lock);
-	if (waitqueue_active(&pool->flush_wait))
-		wake_up(&pool->flush_wait);
-out_nolock:
-	return ret;
-}
-
-int rds_ib_fmr_init(void)
-{
-	rds_ib_fmr_wq = create_workqueue("rds_fmr_flushd");
-	if (!rds_ib_fmr_wq) {
-		pr_err("%s: failed to create rds_ib_fmr_wq\n", __func__);
-		return -ENOMEM;
-	}
-	return 0;
-}
-
-/*
- * By the time this is called all the IB devices should have been torn down and
- * had their pools freed.  As each pool is freed its work struct is waited on,
- * so the pool flushing work queue should be idle by the time we get here.
- */
-void rds_ib_fmr_exit(void)
-{
-	destroy_workqueue(rds_ib_fmr_wq);
-}
-
-static void rds_ib_mr_pool_flush_worker(struct work_struct *work)
-{
-	struct rds_ib_mr_pool *pool = container_of(work, struct rds_ib_mr_pool, flush_worker.work);
-
-	trace_rds_ib_queue_worker(NULL, rds_ib_fmr_wq, work, 0,
-				  "MR pool flush worker");
-	rds_ib_flush_mr_pool(pool, 0, NULL);
 }
 
 static int rds_ib_fastreg_inv(struct rds_ib_mr *ibmr)
@@ -1386,7 +1119,7 @@ static void rds_frwr_clean_worker(struct work_struct *work)
 	unsigned int unmap_cpu;
 	u32 fuzz;
 
-	trace_rds_ib_queue_worker(NULL, rds_ib_fmr_wq, work, 0,
+	trace_rds_ib_queue_worker(NULL, rds_ib_mr_flushd_wq, work, 0,
 				  "frwr clean worker");
 	pool = container_of(work, struct rds_ib_mr_pool,
 			    frwr_clean_worker.work);
@@ -1395,8 +1128,8 @@ static void rds_frwr_clean_worker(struct work_struct *work)
 		return;
 
 	rds_frwr_clean(pool, false);
-	unmap_cpu = rds_ib_sysctl_disable_unmap_fmr_cpu ?
-		WORK_CPU_UNBOUND : pool->unmap_fmr_cpu;
+	unmap_cpu = rds_ib_sysctl_disable_unmap_mr_cpu ?
+		WORK_CPU_UNBOUND : pool->unmap_mr_cpu;
 
 	/* Restart the timer.  Add some fuzz (quarter of the interval) to
 	 * avoid GC workers of different pools of the same device waking
@@ -1450,10 +1183,7 @@ static inline void __rds_frwr_free_mr(struct rds_ib_mr_pool *pool,
 void rds_ib_free_mr(void *trans_private, int invalidate)
 {
 	struct rds_ib_mr *ibmr = trans_private;
-	struct rds_ib_device *rds_ibdev = ibmr->device;
 	struct rds_ib_mr_pool *pool = ibmr->pool;
-	unsigned int unmap_fmr_cpu = rds_ib_sysctl_disable_unmap_fmr_cpu ?
-				     WORK_CPU_UNBOUND : pool->unmap_fmr_cpu;
 
 	rdsdebug("RDS/IB: free_mr nents %u\n", ibmr->sg_len);
 
@@ -1464,46 +1194,7 @@ void rds_ib_free_mr(void *trans_private, int invalidate)
 	list_del_init(&ibmr->pool_list);
 	spin_unlock_bh(&pool->busy_lock);
 
-	if (rds_ibdev->use_fastreg) {
-		__rds_frwr_free_mr(pool, ibmr, invalidate);
-		return;
-	}
-
-	/* Return it to the pool's free list */
-	xlist_add(&ibmr->xlist, &ibmr->xlist,
-		  &pool->free_list);
-	atomic_add(ibmr->sg_len, &pool->free_pinned);
-	atomic_inc(&pool->dirty_count);
-
-	/* If we've pinned too many pages, request a flush.  This is not
-	 * applicable to FRWR.
-	 */
-	if (atomic_read(&pool->free_pinned) >= pool->max_free_pinned ||
-	    atomic_read(&pool->dirty_count) >=
-	    atomic_read(&pool->max_items_soft) / 5) {
-		smp_rmb();
-		if (!READ_ONCE(pool->flush_ongoing)) {
-			rds_ib_queue_delayed_work_on(rds_ibdev, unmap_fmr_cpu,
-						     rds_ib_fmr_wq,
-						     &pool->flush_worker, 10,
-						     "flush frwr");
-		} else {
-			rds_ib_stats_inc(s_ib_rdma_flush_mr_pool_avoided);
-		}
-	}
-
-	if (invalidate) {
-		if (likely(!in_interrupt())) {
-			rds_ib_flush_mr_pool(pool, 0, NULL);
-		} else {
-			/* We get here if the user created a MR marked
-			 * as use_once and invalidate at the same time. */
-			rds_ib_queue_delayed_work_on(rds_ibdev, unmap_fmr_cpu,
-						     rds_ib_fmr_wq,
-						     &pool->flush_worker, 10,
-						     "flush frwr");
-		}
-	}
+	__rds_frwr_free_mr(pool, ibmr, invalidate);
 }
 
 void rds_ib_flush_mrs(void)
@@ -1512,14 +1203,11 @@ void rds_ib_flush_mrs(void)
 
 	down_read(&rds_ib_devices_lock);
 	list_for_each_entry(rds_ibdev, &rds_ib_devices, list) {
-
 		if (rds_ibdev->mr_8k_pool)
-			rds_ib_flush_mr_pool(rds_ibdev->mr_8k_pool,
-					     rds_ibdev->mr_8k_pool->use_fastreg, NULL);
+			rds_ib_flush_mr_pool(rds_ibdev->mr_8k_pool);
 
 		if (rds_ibdev->mr_1m_pool)
-			rds_ib_flush_mr_pool(rds_ibdev->mr_1m_pool,
-					     rds_ibdev->mr_8k_pool->use_fastreg, NULL);
+			rds_ib_flush_mr_pool(rds_ibdev->mr_1m_pool);
 	}
 	up_read(&rds_ib_devices_lock);
 }
@@ -1558,14 +1246,11 @@ void *rds_ib_get_mr(struct scatterlist *sg, unsigned long nents,
 
 	ibmr->ic = ic;
 
-	if (rds_ibdev->use_fastreg) {
-		ret = rds_ib_map_fastreg_mr(rds_ibdev, ibmr, sg, nents);
-		if (ret == 0) {
-			*key_ret = ibmr->mr->rkey;
-			*iova_ret = ibmr->cur_iova;
-		}
-	} else
-		ret = -ENOSYS;
+	ret = rds_ib_map_fastreg_mr(rds_ibdev, ibmr, sg, nents);
+	if (ret == 0) {
+		*key_ret = ibmr->mr->rkey;
+		*iova_ret = ibmr->cur_iova;
+	}
 
 	ibmr->rs = rs;
 	ibmr->device = rds_ibdev;
