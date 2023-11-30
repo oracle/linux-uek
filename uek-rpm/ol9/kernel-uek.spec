@@ -310,6 +310,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 8
 %define with_debug 0
 %define with_headers 0
 %define with_bpftool 0
+%define with_tools 0
 %else
 %define with_headers 1
 %define with_bpftool 1
