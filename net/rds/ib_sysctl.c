@@ -79,7 +79,7 @@ u32 rds_frwr_ibmr_qrtn_time = 300000;
  */
 
 unsigned int rds_ib_sysctl_flow_control = 0;
-unsigned int rds_ib_sysctl_disable_unmap_fmr_cpu; /* = 0 */
+unsigned int rds_ib_sysctl_disable_unmap_mr_cpu; /* = 0 */
 
 /* Min/max from IBTA spec C9-140 */
 static int rds_ib_sysctl_min_local_ack_timeout;
@@ -167,9 +167,9 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.proc_handler	= proc_dointvec,
 	},
 	{
-		.procname       = "disable_unmap_fmr_cpu_assignment",
-		.data           = &rds_ib_sysctl_disable_unmap_fmr_cpu,
-		.maxlen         = sizeof(rds_ib_sysctl_disable_unmap_fmr_cpu),
+		.procname       = "disable_unmap_mr_cpu_assignment",
+		.data           = &rds_ib_sysctl_disable_unmap_mr_cpu,
+		.maxlen         = sizeof(rds_ib_sysctl_disable_unmap_mr_cpu),
 		.mode           = 0644,
 		.proc_handler   = &proc_dointvec,
 	},
