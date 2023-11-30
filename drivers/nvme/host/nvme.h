@@ -333,6 +333,7 @@ struct nvme_ctrl {
 	unsigned long flags;
 #define NVME_CTRL_FAILFAST_EXPIRED	0
 #define NVME_CTRL_ADMIN_Q_STOPPED	1
+#define NVME_CTRL_FROZEN			6
 	struct nvmf_ctrl_options *opts;
 
 	struct page *discard_page;
