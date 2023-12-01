@@ -1026,6 +1026,8 @@ struct bnxt_tpa_info {
 
 	u16			cfa_code; /* cfa_code in TPA start compl */
 	u8			agg_count;
+	u8			vlan_valid:1;
+	u8			cfa_code_valid:1;
 	struct rx_agg_cmp	*agg_arr;
 };
 
