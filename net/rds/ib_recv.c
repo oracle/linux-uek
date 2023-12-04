@@ -767,7 +767,7 @@ static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cach
 
 int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 {
-	struct rds_csum csum;
+	struct rds_csum csum = { .csum_val.raw = 0 };
 	struct rds_ib_connection *ic = inc->i_conn->c_transport_data;
 	struct rds_connection *conn = inc->i_conn;
 	struct rds_ib_incoming *ibinc;
