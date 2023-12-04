@@ -142,6 +142,7 @@ EXPORT_SYMBOL(synchronize_irq);
 
 #ifdef CONFIG_SMP
 cpumask_var_t irq_default_affinity;
+EXPORT_SYMBOL(irq_default_affinity);
 
 static bool __irq_can_set_affinity(struct irq_desc *desc)
 {
