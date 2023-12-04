@@ -32,6 +32,7 @@
 #include <asm/msr.h>
 #include <asm/cmdline.h>
 #include <asm/sev.h>
+#include <asm/ia32.h>
 
 #include "mm_internal.h"
 
@@ -502,6 +503,25 @@ void __init sme_early_init(void)
 	x86_platform.guest.enc_status_change_finish  = amd_enc_status_change_finish;
 	x86_platform.guest.enc_tlb_flush_required    = amd_enc_tlb_flush_required;
 	x86_platform.guest.enc_cache_flush_required  = amd_enc_cache_flush_required;
+	/*
+	 * The VMM is capable of injecting interrupt 0x80 and triggering the
+	 * compatibility syscall path.
+	 *
+	 * By default, the 32-bit emulation is disabled in order to ensure
+	 * the safety of the VM.
+	 *
+	 * UEK7 NOTE: In a divergence from upstream, 32-bit emulation is only
+	 * disabled by default for SEV-ES and SEV-SNP and not SEV. This
+	 * trade-off is for backwards compatibility reasons - avoid a case
+	 * where a user running a 32-bit app on an SEV guest loses functionality
+	 * on upgrade without gaining much extra security (given that SEV does
+	 * not have protected state (registers, etc), it is already susceptible
+	 * to a malicious VMM impacting its integrity). If a user wishes to also
+	 * explicitly disable 32-bit emulation on SEV, they can specify
+	 * 'ia32_emulation=n" in the kernel boot args.
+	 */
+	if (sev_status & MSR_AMD64_SEV_ES_ENABLED)
+		ia32_disable();
 }
 
 void __init mem_encrypt_free_decrypted_mem(void)
