@@ -182,7 +182,7 @@ short_copy:
  */
 int rds_tcp_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 {
-	struct rds_csum csum;
+	struct rds_csum csum = { .csum_val.raw = 0 };
 	struct rds_tcp_incoming *tinc;
 	struct sk_buff *skb;
 	unsigned long to_copy, skb_off;
