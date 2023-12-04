@@ -484,7 +484,7 @@ int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from)
 
 int rds_message_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 {
-	struct rds_csum csum;
+	struct rds_csum csum = { .csum_val.raw = 0 };
 	struct rds_connection *conn;
 	struct rds_message *rm;
 	struct scatterlist *sg;
