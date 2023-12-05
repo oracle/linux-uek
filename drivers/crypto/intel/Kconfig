@@ -1,3 +1,4 @@
 # SPDX-License-Identifier: GPL-2.0
 
 source "drivers/crypto/intel/qat/Kconfig"
+source "drivers/crypto/intel/iaa/Kconfig"
