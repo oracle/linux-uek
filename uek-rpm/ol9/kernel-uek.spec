@@ -381,6 +381,7 @@ ExclusiveOS: Linux
 %ifnarch %{nobuildarches}
 Requires: %{name}-core-uname-r = %{KVERREL}
 Requires: %{name}-modules-uname-r = %{KVERREL}
+Requires: %{name}-modules-core-uname-r = %{KVERREL}
 %endif
 
 #
@@ -474,8 +475,8 @@ Source22: secureboot.cer
 Source23: turbostat
 source24: secureboot_aarch64.cer
 Source43: generate_bls_conf.sh
-Source44: core-x86_64.list
-Source45: core-aarch64.list
+Source44: modules-core-x86_64.list
+Source45: modules-core-aarch64.list
 Source46: filter-modules.sh
 
 Source1000: config-x86_64
@@ -625,9 +626,9 @@ Provides: perf = %{KVERREL}%{?1:.%{1}}\
 Provides: kernel = %{rpmversion}-%{pkg_release}\
 Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
 %endif\
+Requires: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
-Requires: linux-firmware-core >= 999:20230516-999.26.git6c9e0ed5.el9\
 Requires(pre): system-release\
 Requires(post): /usr/bin/kernel-install\
 Requires(preun): /usr/bin/kernel-install\
@@ -710,6 +711,7 @@ Provides: %{variant_name}-modules-extra = %{version}-%{release}%{?1:.%{1}}\
 Provides: installonlypkg(kernel-uek-modules)\
 Provides: %{variant_name}-modules-extra-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-modules-uname-r = %{KVERREL}%{?1:.%{1}}\
+Requires: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
 AutoReq: no\
 AutoProv: yes\
 %description -n %{variant_name}-modules-extra\
@@ -731,11 +733,34 @@ Provides: %{variant_name}-modules = %{version}-%{release}%{?1:.%{1}}\
 Provides: installonlypkg(kernel-uek-modules)\
 Provides: %{variant_name}-modules-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-uname-r = %{KVERREL}%{?1:.%{1}}\
+Requires: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: linux-firmware >= 999:20230516-999.26.git6c9e0ed5.el9\
 AutoReq: no\
 AutoProv: yes\
 %description -n %{variant_name}-modules\
 This package provides commonly used kernel modules for the %{?2:%{2}-}core kernel package.\
+%{nil}
+
+#
+# This macro creates a kernel%%{?variant}-<subpackage>-modules-core package.
+#       %%kernel_modules_core_package [-o] <subpackage> <pretty-name>
+# -o flag omits the hyphen preceding <subpackage> in the package name
+#
+%define kernel_modules_core_package(o) \
+%define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
+%package -n %{variant_name}-modules-core\
+Summary: Core kernel modules to match the %{?2:%{2}-}core kernel\
+Group: System Environment/Kernel\
+Provides: %{variant_name}-modules-core-%{_target_cpu} = %{version}-%{release}%{?1:.%{1}}\
+Provides: %{variant_name}-modules-core = %{version}-%{release}%{?1:.%{1}}\
+Provides: installonlypkg(kernel-uek-modules)\
+Provides: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
+Requires: %{variant_name}-core-uname-r = %{KVERREL}%{?1:.%{1}}\
+Requires: linux-firmware-core >= 999:20230516-999.26.git6c9e0ed5.el9\
+AutoReq: no\
+AutoProv: yes\
+%description -n %{variant_name}-modules-core\
+This package provides essential kernel modules for the %{?2:%{2}-}core kernel package.\
 %{nil}
 
 #
@@ -750,6 +775,7 @@ Summary: Kernel meta-package for the %{1} kernel\
 Group: System Environment/Kernel\
 Requires: %{variant_name}-core-uname-r = %{KVERREL}.%{1}\
 Requires: %{variant_name}-modules-uname-r = %{KVERREL}.%{1}\
+Requires: %{variant_name}-modules-core-uname-r = %{KVERREL}.%{1}\
 Provides: installonlypkg(kernel-uek)\
 %description -n %{variant_name}\
 The meta-package for the %{1} kernel\
@@ -779,6 +805,7 @@ Provides: kernel-ueknano = %{KVERREL}%{?1:.%{1}}\
 %endif\
 %{expand:%%kernel_devel_package %{-o:%{-o}} %{?1:%{1}} %{!?{-n}:%{1}}%{?{-n}:%{-n*}}}\
 %{expand:%%kernel_modules_package %{-o:%{-o}} %{?1:%{1}} %{!?{-n}:%{1}}%{?{-n}:%{-n*}}}\
+%{expand:%%kernel_modules_core_package %{-o:%{-o}} %{?1:%{1}} %{!?{-n}:%{1}}%{?{-n}:%{-n*}}}\
 %{expand:%%kernel_modules_extra_package %{-o:%{-o}} %{?1:%{1}} %{!?{-n}:%{1}}%{?{-n}:%{-n*}}}\
 %{expand:%%kernel_debuginfo_package %{-o:-o} %{?1:%{1}}}\
 %{nil}
@@ -1373,7 +1400,7 @@ BuildKernel() {
     %{SOURCE11} $RPM_BUILD_ROOT lib/modules/$KernelVer $RPM_SOURCE_DIR/mod-extra.list
 
     #
-    # Generate the kernel%{?variant}-core and kernel%{?variant}-modules files lists
+    # Generate the kernel%{?variant}-modules-core and kernel%{?variant}-modules files lists
     #
 
     # Copy the System.map file for depmod to use, and create a backup of the
@@ -1404,18 +1431,18 @@ BuildKernel() {
     find lib/modules/$KernelVer/kernel -name *.ko | sort -n > modules.list
 
     cp $RPM_SOURCE_DIR/filter-modules.sh .
-    cp $RPM_SOURCE_DIR/core-%{_target_cpu}.list core.list
+    cp $RPM_SOURCE_DIR/modules-core-%{_target_cpu}.list modules-core.list
 
     # Append full path to the beginning of each line.
-    sed -i "s/^/lib\/modules\/$KernelVer\//" core.list
+    sed -i "s/^/lib\/modules\/$KernelVer\//" modules-core.list
 
-    ./filter-modules.sh core.list modules.list
+    ./filter-modules.sh modules-core.list modules.list
     rm filter-modules.sh
 
     # Run depmod on the resulting module tree and make sure it isn't broken
     depmod -b . -aeF ./System.map $KernelVer &> depmod.out
     if [ -s depmod.out ]; then
-        echo "Depmod failure. You may have to add missing modules to core list"
+        echo "Depmod failure. You may have to add missing modules to modules-core list"
         cat depmod.out
         exit 1
     else
@@ -1425,7 +1452,7 @@ BuildKernel() {
     remove_depmod_files
 
     # Go back and find all of the various directories in the tree.  We use this
-    # for the dir lists in kernel-uek-core
+    # for the dir lists in kernel-uek-modules-core
     find lib/modules/$KernelVer/kernel -mindepth 1 -type d | sort -n > module-dirs.list
 
     # Cleanup
@@ -1437,12 +1464,12 @@ BuildKernel() {
     # Make sure the files lists start with absolute paths or rpmbuild fails.
     # Also add in the dir entries
     sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/modules.list > ${modlistVariant}-modules.list
-    sed -e 's/^lib*/%dir \/lib/' %{?zipsed} $RPM_BUILD_ROOT/module-dirs.list > ${modlistVariant}-core.list
-    sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/core.list >> ${modlistVariant}-core.list
+    sed -e 's/^lib*/%dir \/lib/' %{?zipsed} $RPM_BUILD_ROOT/module-dirs.list > ${modlistVariant}-modules-core.list
+    sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/modules-core.list >> ${modlistVariant}-modules-core.list
     sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/mod-extra.list >> ${modlistVariant}-modules-extra.list
 
     # Cleanup
-    rm -f $RPM_BUILD_ROOT/core.list
+    rm -f $RPM_BUILD_ROOT/modules-core.list
     rm -f $RPM_BUILD_ROOT/modules.list
     rm -f $RPM_BUILD_ROOT/module-dirs.list
     rm -f $RPM_BUILD_ROOT/mod-extra.list
@@ -1699,9 +1726,34 @@ fi\
 %define kernel_modules_post(o) \
 %{expand:%%post -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-modules}\
 /sbin/depmod -a %{KVERREL}%{?1:.%{1}}\
+if [ ! -f %{_localstatedir}/lib/rpm-state/%{name}/installing_core_%{KVERREL}%{?1:.%{1}} ]; then\
+        mkdir -p %{_localstatedir}/lib/rpm-state/%{name}\
+        touch %{_localstatedir}/lib/rpm-state/%{name}/need_to_run_dracut_%{KVERREL}%{?1:.%{1}}\
+fi\
 %{nil}\
 %{expand:%%postun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-modules}\
 /sbin/depmod -a %{KVERREL}%{?1:.%{1}}\
+%{nil}\
+%{expand:%%posttrans -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-modules}\
+if [ -f %{_localstatedir}/lib/rpm-state/%{name}/need_to_run_dracut_%{KVERREL}%{?1:.%{1}} ]; then\
+        rm -f %{_localstatedir}/lib/rpm-state/%{name}/need_to_run_dracut_%{KVERREL}%{?1:.%{1}}\
+        echo "Running: dracut -f --kver %{KVERREL}%{?1:.%{1}}"\
+        dracut -f --kver "%{KVERREL}%{?1:.%{1}}" || exit $?\
+fi\
+%{nil}
+
+#
+# This macro defines a %%post script for a kernel*-modules-core package.
+# It also defines a %%postun script that does the same thing.
+# -o flag omits the hyphen preceding <subpackage> in the package name
+#       %%kernel_modules_core_post [-o] [<subpackage>]
+#
+%define kernel_modules_core_post(o) \
+%{expand:%%posttrans -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-modules-core}\
+/sbin/depmod -a %{KVERREL}%{?1:.%{1}}\
+%{nil}\
+%{expand:%%postun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-modules-core}\
+rm -f /lib/modules/%{KVERREL}%{?1:.%{1}}/modules.*\
 %{nil}
 
 # This macro defines a %%posttrans script for a kernel package.
@@ -1715,7 +1767,12 @@ if [ -x /sbin/weak-modules ]\
 then\
     /sbin/weak-modules --add-kernel %{KVERREL}%{?1:.%{1}} || exit $?\
 fi\
+rm -f %{_localstatedir}/lib/rpm-state/%{name}/installing_core_%{KVERREL}%{?1:.%{1}}\
 /bin/kernel-install add %{KVERREL}%{?1:.%{1}} /lib/modules/%{KVERREL}%{?1:.%{1}}/vmlinuz || exit $?\
+if [[ ! -e "/boot/symvers-%{KVERREL}%{?1.+%{1}}.gz" ]]; then\
+    ln -s "/lib/modules/%{KVERREL}%{?1:.%{1}}/symvers.gz" "/boot/symvers-%{KVERREL}%{?1:.%{1}}.gz"\
+    command -v restorecon &>/dev/null && restorecon "/boot/symvers-%{KVERREL}%{?1:.%{1}}.gz" \
+fi\
 %{nil}
 
 #
@@ -1727,6 +1784,7 @@ fi\
 %define kernel_variant_post(ov:r:) \
 %{expand:%%kernel_devel_post %{-o:-o} %{?-v:%{?-v*}}}\
 %{expand:%%kernel_modules_post %{-o:-o} %{?-v:%{?-v*}}}\
+%{expand:%%kernel_modules_core_post %{-o:-o} %{?-v:%{?-v*}}}\
 %{expand:%%kernel_modules_extra_post %{-o:-o} %{?-v:%{?-v*}}}\
 %{expand:%%kernel_variant_posttrans %{-o:-o} %{?-v:%{?-v*}}}\
 %{expand:%%post -n kernel%{?variant}%{?-v*:%{!-o:-}%{-v*}}-core}\
@@ -1736,6 +1794,8 @@ if [ `uname -i` == "x86_64" -o `uname -i` == "aarch64" ] &&\
    [ $1 -eq 1 ]; then\
   /bin/sed -r -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?variant}%{?-v:%{!-o:-}%{-v*}}-core/' /etc/sysconfig/kernel || exit $?\
 fi}\
+mkdir -p %{_localstatedir}/lib/rpm-state/%{name}\
+touch %{_localstatedir}/lib/rpm-state/%{name}/installing_core_%{KVERREL}%{?-v:.%{-v*}}\
 %{nil}
 
 #
@@ -1913,18 +1973,25 @@ fi
 %if %{1}\
 %define variant_name kernel%{?variant}%{?2:%{!-o:-}%{2}}\
 %{expand:%%files -n %{variant_name}}\
-%{expand:%%files -f %{variant_name}-core.list -n %{variant_name}-core}\
+%{expand:%%files -n %{variant_name}-core}\
 %defattr(-,root,root)\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/%{?-k:%{-k*}}%{!?-k:vmlinuz}\
 %ghost /%{image_install_path}/%{?-k:%{-k*}}%{!?-k:vmlinuz}-%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/.vmlinuz.hmac \
 %ghost /%{image_install_path}/.vmlinuz-%{KVERREL}%{?2:.%{2}}.hmac \
+%ifarch %{arm} aarch64\
+/lib/modules/%{KVERREL}%{?2:.%{2}}/dtb \
+%ghost /%{image_install_path}/dtb-%{KVERREL}%{?2:.%{2}} \
+%endif\
 %attr(600,root,root) /lib/modules/%{KVERREL}%{?2:.%{2}}/System.map\
 %ghost /boot/System.map-%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/symvers.gz\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/config\
+/lib/modules/%{KVERREL}%{?2:.%{2}}/modules.builtin*\
 %ghost /boot/symvers-%{KVERREL}%{?2:.%{2}}.gz\
+%ghost /boot/initramfs-%{KVERREL}%{?2:.%{2}}.img\
 %ghost /boot/config-%{KVERREL}%{?2:.%{2}}\
+%{expand:%%files -f %{variant_name}-modules-core.list -n %{variant_name}-modules-core}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/build\
@@ -1936,20 +2003,19 @@ fi
 %ifarch %{vdso_arches}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/vdso\
 %endif\
-/lib/modules/%{KVERREL}%{?2:.%{2}}/modules.*\
+/lib/modules/%{KVERREL}%{?2:.%{2}}/modules.block\
+/lib/modules/%{KVERREL}%{?2:.%{2}}/modules.drm\
+/lib/modules/%{KVERREL}%{?2:.%{2}}/modules.modesetting\
+/lib/modules/%{KVERREL}%{?2:.%{2}}/modules.networking\
+/lib/modules/%{KVERREL}%{?2:.%{2}}/modules.order\
 /usr/libexec/perf.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/perf\
-%ifarch %{arm} aarch64\
-/lib/modules/%{KVERREL}%{?2:.%{2}}/dtb \
-%ghost /%{image_install_path}/dtb-%{KVERREL}%{?2:.%{2}} \
-%endif\
 %ifnarch aarch64\
 /usr/libexec/x86_energy_perf_policy.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/x86_energy_perf_policy\
 /usr/libexec/turbostat.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/turbostat\
 %endif\
-%ghost /boot/initramfs-%{KVERREL}%{?2:.%{2}}.img\
 %{expand:%%files -f %{variant_name}-modules.list -n %{variant_name}-modules}\
 %{expand:%%files -f %{variant_name}-modules-extra.list -n %{variant_name}-modules-extra}\
 %config(noreplace) /etc/modprobe.d/*-blacklist.conf\
