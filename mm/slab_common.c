@@ -298,7 +298,7 @@ struct kmem_cache *
 kmem_cache_create_usercopy(const char *name,
 		  unsigned int size, unsigned int align,
 		  slab_flags_t flags,
-		  unsigned int useroffset, unsigned int usersize,
+		  unsigned int useroffset, unsigned usersize,
 		  void (*ctor)(void *))
 {
 	struct kmem_cache *s = NULL;

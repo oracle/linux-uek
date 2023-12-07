@@ -150,7 +150,7 @@ struct kmem_cache *kmem_cache_create(const char *name, unsigned int size,
 struct kmem_cache *kmem_cache_create_usercopy(const char *name,
 			unsigned int size, unsigned int align,
 			slab_flags_t flags,
-			unsigned int useroffset, unsigned int usersize,
+			unsigned int useroffset, unsigned usersize,
 			void (*ctor)(void *));
 void kmem_cache_destroy(struct kmem_cache *);
 int kmem_cache_shrink(struct kmem_cache *);
