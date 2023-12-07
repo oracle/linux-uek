@@ -1183,6 +1183,8 @@ static void __init octeontx_sdei_init(void)
 	const char *name;
 
 	name=of_flat_dt_get_machine_name();
+	if (!name)
+		return;
 	if (strstr(name, "Marvell CN3380-250SV Smart NIC")){
 		sdei_init();
 	}
