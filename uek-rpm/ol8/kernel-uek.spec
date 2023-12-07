@@ -1861,7 +1861,7 @@ fi\
 /sbin/depmod -a %{KVERREL}%{?1:.%{1}}\
 %{nil}\
 %{expand:%%postun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-modules-core}\
-rm -f /lib/modules/%{KVERREL}%{?1:.%{1}}/modules.*\
+ls /lib/modules/%{KVERREL}%{?1:.%{1}}/modules.* | grep -v builtin | xargs rm -f\
 %{nil}
 
 # This macro defines a %%posttrans script for a kernel package.
@@ -1877,8 +1877,8 @@ then\
 fi\
 rm -f %{_localstatedir}/lib/rpm-state/%{name}/installing_core_%{KVERREL}%{?1:.%{1}}\
 /bin/kernel-install add %{KVERREL}%{?1:.%{1}} /lib/modules/%{KVERREL}%{?1:.%{1}}/vmlinuz || exit $?\
-if [[ ! -e "/boot/symvers-%{KVERREL}%{?1.+%{1}}.gz" ]]; then\
-    ln -s "/lib/modules/%{KVERREL}%{?1:.%{1}}/symvers.gz" "/boot/symvers-%{KVERREL}%{?1:.%{1}}.gz"\
+if [[ ! -e "/boot/symvers-%{KVERREL}%{?1:.%{1}}.gz" ]]; then\
+    ln -sf "/lib/modules/%{KVERREL}%{?1:.%{1}}/symvers.gz" "/boot/symvers-%{KVERREL}%{?1:.%{1}}.gz"\
     command -v restorecon &>/dev/null && restorecon "/boot/symvers-%{KVERREL}%{?1:.%{1}}.gz" \
 fi\
 %{nil}
