@@ -713,7 +713,6 @@ static bool rds_ib_recv_cache_put(int cpu,
 				  int count)
 {
 	struct rds_ib_cache_head *head;
-
 	if (!test_bit(RDS_IB_CACHE_INITIALIZED, &cache->initialized) || !cache->percpu) {
 		return false;
 	}
@@ -729,6 +728,7 @@ static bool rds_ib_recv_cache_put(int cpu,
 		}
 	}
 
+	atomic_add(count, &cache->count);
 	lfstack_push_many(&cache->ready, new_item_first, new_item_last);
 	return true;
 }
@@ -763,6 +763,7 @@ no_preferred_cpu:
 	item = lfstack_pop(&cache->ready);
 	if (item) {
 		rds_ib_stats_inc(s_ib_rx_cache_get_ready);
+		atomic_dec(&cache->count);
 		atomic64_inc(&cache->hit_count);
 	} else {
 		rds_ib_stats_inc(s_ib_rx_cache_get_miss);
