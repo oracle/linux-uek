@@ -713,6 +713,7 @@ static bool rds_ib_recv_cache_put(int cpu,
 		}
 	}
 
+	atomic_add(count, &cache->count);
 	lfstack_push_many(&cache->ready, new_item_first, new_item_last);
 	return true;
 }
@@ -740,6 +741,7 @@ static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cach
 	item = lfstack_pop(&cache->ready);
 	if (item) {
 		rds_ib_stats_inc(s_ib_rx_cache_get_ready);
+		atomic_dec(&cache->count);
 		atomic64_inc(&cache->hit_count);
 	} else {
 		rds_ib_stats_inc(s_ib_rx_cache_get_miss);
