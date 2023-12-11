@@ -395,7 +395,11 @@ EXPORT_SYMBOL_NS_GPL(otx2_cptlf_free_irqs_affinity, CRYPTO_DEV_OCTEONTX2_CPT);
 int otx2_cptlf_set_irqs_affinity(struct otx2_cptlfs_info *lfs)
 {
 	struct otx2_cptlf_info *lf = lfs->lf;
-	int slot, offs, ret;
+	int slot, offs, ret, cpu;
+	struct cpumask mask;
+
+	cpumask_and(&mask, cpu_online_mask, irq_default_affinity);
+	cpu = cpumask_first(&mask);
 
 	for (slot = 0; slot < lfs->lfs_num; slot++) {
 		if (!zalloc_cpumask_var(&lf[slot].affinity_mask, GFP_KERNEL)) {
@@ -405,9 +409,11 @@ int otx2_cptlf_set_irqs_affinity(struct otx2_cptlfs_info *lfs)
 			goto free_affinity_mask;
 		}
 
-		cpumask_set_cpu(cpumask_local_spread(slot,
-				dev_to_node(&lfs->pdev->dev)),
-				lf[slot].affinity_mask);
+		cpumask_set_cpu(cpu, lf[slot].affinity_mask);
+		cpu = slot % cpumask_weight(&mask);
+		cpu = cpumask_next(cpu, &mask);
+		if (cpu >= nr_cpu_ids)
+			cpu = cpumask_first(&mask);
 
 		for (offs = 0; offs < OTX2_CPT_LF_MSIX_VECTORS; offs++) {
 			ret = irq_set_affinity_hint(pci_irq_vector(lfs->pdev,
