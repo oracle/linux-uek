@@ -194,10 +194,11 @@ static int ib_rds_cache_hit_show(struct seq_file *m, void *v)
 			cache = rds_ibdev->i_cache_frags + i - 1;
 		miss = atomic64_read(&cache->miss_count);
 		hit = atomic64_read(&cache->hit_count);
-		seq_printf(m, "%15s %15llu %4llu %5s",
+		cnt = atomic_read(&cache->count);
+		seq_printf(m, "%15s %15llu %4llu %5u",
 			   "",
 			   hit,
-			   (hit + miss) ? hit  * 100 / (hit + miss) : 0, " ");
+			   (hit + miss) ? hit * 100 / (hit + miss) : 0, cnt);
 	}
 	seq_puts(m, "\n");
 
@@ -273,6 +274,7 @@ static int rds_ib_alloc_cache(struct rds_ib_refill_cache *cache)
 		atomic64_set(&head->gc_count, 0);
 	}
 	lfstack_init(&cache->ready);
+	atomic_set(&cache->count, 0);
 	atomic64_set(&cache->hit_count, 0);
 	atomic64_set(&cache->miss_count, 0);
 	set_bit_mb(RDS_IB_CACHE_INITIALIZED, &cache->initialized);
@@ -294,6 +296,9 @@ static void rds_ib_free_cache(struct rds_ib_refill_cache *cache)
 	lfstack_free(&cache->ready);
 	free_percpu(cache->percpu);
 	cache->percpu = NULL;
+	if (atomic_read(&cache->count))
+		pr_warn("RDS: %s:%d ready-cache not empty, contains %d elements\n",
+			__func__, __LINE__, atomic_read(&cache->count));
 	atomic64_set(&cache->hit_count, 0);
 	atomic64_set(&cache->miss_count, 0);
 	atomic64_set(&head->gc_count, 0);
