@@ -461,6 +461,11 @@ static void rds_ib_cache_gc_worker(struct work_struct *work)
 {
 	int i, j;
 	int nmbr_to_check = num_possible_cpus() / 2;
+	struct rds_ib_refill_cache *cache;
+	struct lfstack_el *cache_item;
+	struct rds_ib_incoming *inc;
+	struct rds_page_frag *frag;
+	int cnt = 0;
 	struct rds_ib_device *rds_ibdev = container_of(work,
 						       struct rds_ib_device,
 						       i_cache_gc_work.work);
@@ -478,6 +483,29 @@ static void rds_ib_cache_gc_worker(struct work_struct *work)
 		if (++rds_ibdev->i_cache_gc_cpu >= num_possible_cpus())
 			rds_ibdev->i_cache_gc_cpu = 0;
 
+		/* resched for waiters in non-preempt kernel */
+		cond_resched();
+	}
+	cache = &rds_ibdev->i_cache_incs;
+	cache_item = lfstack_pop_all(&cache->ready);
+	while (cache_item) {
+		inc = container_of(cache_item, struct rds_ib_incoming, ii_cache_entry);
+		cache_item = lfstack_next(cache_item);
+		rds_ib_free_one_inc(inc);
+		cnt++;
+	}
+	atomic_sub(cnt, &cache->count);
+	for (i = 0; i < RDS_FRAG_CACHE_ENTRIES; i++) {
+		cache = rds_ibdev->i_cache_frags + i;
+		cache_item = lfstack_pop_all(&cache->ready);
+		cnt = 0;
+		while (cache_item) {
+			frag = container_of(cache_item, struct rds_page_frag, f_cache_entry);
+			cache_item = lfstack_next(cache_item);
+			rds_ib_free_one_frag(frag, PAGE_SIZE << i);
+			cnt++;
+		}
+		atomic_sub(cnt, &cache->count);
 		/* resched for waiters in non-preempt kernel */
 		cond_resched();
 	}
