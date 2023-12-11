@@ -144,6 +144,7 @@ struct rds_ib_refill_cache {
 	union lfstack				ready;
 	atomic64_t				hit_count;
 	atomic64_t				miss_count;
+	atomic_t				count;
 	unsigned long				initialized;
 } ____cacheline_aligned;
 
