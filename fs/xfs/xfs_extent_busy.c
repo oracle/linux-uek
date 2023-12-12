@@ -592,10 +592,12 @@ xfs_extent_busy_clear(
  */
 void
 xfs_extent_busy_flush(
-	struct xfs_mount	*mp,
+	struct xfs_trans	*tp,
 	struct xfs_perag	*pag,
-	unsigned		busy_gen)
+	unsigned		busy_gen,
+	uint32_t		alloc_flags)
 {
+	struct xfs_mount	*mp = tp->t_mountp;
 	DEFINE_WAIT		(wait);
 	int			log_flushed = 0, error;
 
@@ -603,6 +605,12 @@ xfs_extent_busy_flush(
 	error = _xfs_log_force(mp, XFS_LOG_SYNC, &log_flushed);
 	if (error)
 		return;
+
+	/* Avoid deadlocks on uncommitted busy extents. */
+	if (!list_empty(&tp->t_busy)) {
+		if (alloc_flags & XFS_ALLOC_FLAG_TRYFLUSH)
+			return;
+	}
 
 	do {
 		prepare_to_wait(&pag->pagb_wait, &wait, TASK_KILLABLE);
