@@ -323,6 +323,7 @@
 0x5fcab266	tag_pages_for_writeback	vmlinux	EXPORT_SYMBOL
 0x2364c85a	tasklet_init	vmlinux	EXPORT_SYMBOL
 0xd1c3b0fa	truncate_inode_pages	vmlinux	EXPORT_SYMBOL
+0x5297c2ba	truncate_inode_pages_final	vmlinux	EXPORT_SYMBOL
 0xebae18b3	truncate_inode_pages_range	vmlinux	EXPORT_SYMBOL
 0x8aa7ef71	truncate_pagecache	vmlinux	EXPORT_SYMBOL
 0x5c6088c3	truncate_setsize	vmlinux	EXPORT_SYMBOL

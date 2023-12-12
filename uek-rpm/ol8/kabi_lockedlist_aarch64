@@ -324,6 +324,7 @@
 	tag_pages_for_writeback
 	tasklet_init
 	truncate_inode_pages
+	truncate_inode_pages_final
 	truncate_inode_pages_range
 	truncate_pagecache
 	truncate_setsize

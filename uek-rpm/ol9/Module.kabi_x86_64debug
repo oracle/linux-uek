@@ -780,6 +780,7 @@
 0x14450b4b	tracepoint_probe_register	vmlinux	EXPORT_SYMBOL_GPL
 0x65d21184	tracepoint_probe_unregister	vmlinux	EXPORT_SYMBOL_GPL
 0x50f4b7ad	truncate_inode_pages	vmlinux	EXPORT_SYMBOL
+0x2c58a728	truncate_inode_pages_final	vmlinux	EXPORT_SYMBOL
 0x8c4a0314	truncate_inode_pages_range	vmlinux	EXPORT_SYMBOL
 0x9b22f136	truncate_pagecache	vmlinux	EXPORT_SYMBOL
 0x1e6575da	truncate_setsize	vmlinux	EXPORT_SYMBOL
