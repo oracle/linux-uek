@@ -1581,7 +1581,7 @@ void arch_do_signal_or_restart(struct pt_regs *regs)
 {
 	unsigned long continue_addr = 0, restart_addr = 0;
 	int retval = 0;
-	struct ksignal ksig;
+	struct ksignal ksig = {};
 	bool syscall = in_syscall(regs);
 
 	/*
