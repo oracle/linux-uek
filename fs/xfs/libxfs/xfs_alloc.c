@@ -1112,6 +1112,7 @@ xfs_alloc_ag_vextent_near(
 	xfs_extlen_t	rlen;		/* length of returned extent */
 	bool		busy;
 	unsigned	busy_gen;
+	uint32_t	alloc_flags;
 #ifdef DEBUG
 	/*
 	 * Randomly don't execute the first algorithm.
@@ -1132,6 +1133,7 @@ xfs_alloc_ag_vextent_near(
 	if (args->agbno > args->max_agbno)
 		args->agbno = args->max_agbno;
 
+	alloc_flags = XFS_ALLOC_FLAG_TRYFLUSH;
 restart:
 	bno_cur_lt = NULL;
 	bno_cur_gt = NULL;
@@ -1420,7 +1422,9 @@ restart:
 
 		if (busy) {
 			trace_xfs_alloc_near_busy(args);
-			xfs_extent_busy_flush(args->mp, args->pag, busy_gen);
+			xfs_extent_busy_flush(args->tp, args->pag, busy_gen,
+						alloc_flags);
+			alloc_flags &= ~XFS_ALLOC_FLAG_TRYFLUSH;
 			goto restart;
 		}
 		trace_xfs_alloc_size_neither(args);
@@ -1503,7 +1507,10 @@ xfs_alloc_ag_vextent_size(
 	xfs_extlen_t	rlen;		/* length of returned extent */
 	bool		busy;
 	unsigned	busy_gen;
+	uint32_t	alloc_flags;
 
+	/* Retry once quickly if we find busy extents before blocking. */
+	alloc_flags = XFS_ALLOC_FLAG_TRYFLUSH;
 restart:
 	/*
 	 * Allocate and initialize a cursor for the by-size btree.
@@ -1568,8 +1575,9 @@ restart:
 				xfs_btree_del_cursor(cnt_cur,
 						     XFS_BTREE_NOERROR);
 				trace_xfs_alloc_size_busy(args);
-				xfs_extent_busy_flush(args->mp,
-							args->pag, busy_gen);
+				xfs_extent_busy_flush(args->tp, args->pag,
+						      busy_gen, alloc_flags);
+				alloc_flags &= ~XFS_ALLOC_FLAG_TRYFLUSH;
 				goto restart;
 			}
 		}
@@ -1638,7 +1646,9 @@ restart:
 		if (busy) {
 			xfs_btree_del_cursor(cnt_cur, XFS_BTREE_NOERROR);
 			trace_xfs_alloc_size_busy(args);
-			xfs_extent_busy_flush(args->mp, args->pag, busy_gen);
+			xfs_extent_busy_flush(args->tp, args->pag, busy_gen,
+					      alloc_flags);
+			alloc_flags &= ~XFS_ALLOC_FLAG_TRYFLUSH;
 			goto restart;
 		}
 		goto out_nominleft;
