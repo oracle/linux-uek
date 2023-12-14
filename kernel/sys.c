@@ -77,6 +77,9 @@
 
 #include "uid16.h"
 
+#include <linux/mmu_context.h>
+#include "sched/sched.h"
+
 #ifndef SET_UNALIGN_CTL
 # define SET_UNALIGN_CTL(a, b)	(-EINVAL)
 #endif
@@ -2436,6 +2439,64 @@ static inline int prctl_set_mdwe(unsigned long bits, unsigned long arg3,
 	return 0;
 }
 
+#ifdef CONFIG_NUMA_BALANCING
+static int prctl_chg_pref_nid(unsigned long cmd, int nid, pid_t pid, unsigned long uaddr)
+{
+	struct task_struct *task;
+	int err = 0;
+
+	if (cmd >= PR_PREFERRED_NID_CMD_MAX)
+		return -ERANGE;
+
+	rcu_read_lock();
+	if (pid == 0) {
+		task = current;
+	} else {
+		task = find_task_by_vpid((pid_t)pid);
+		if (!task) {
+			rcu_read_unlock();
+			return -ESRCH;
+		}
+	}
+	get_task_struct(task);
+	rcu_read_unlock();
+
+	/*
+	 * Check if this process has the right to modify the specified
+	 * process. Use the regular "ptrace_may_access()" checks.
+	 */
+	if (!ptrace_may_access(task, PTRACE_MODE_READ_REALCREDS)) {
+		err = -EPERM;
+		goto out;
+	}
+
+	switch (cmd) {
+	case PR_PREFERRED_NID_GET:
+		if (uaddr & 0x3) {
+			err = -EINVAL;
+			goto out;
+		}
+		err = put_user(task->numa_preferred_nid_force, (int __user *)uaddr);
+		break;
+
+	case PR_PREFERRED_NID_SET:
+		if (!(-1 <= nid && nid < num_possible_nodes())) {
+			pr_err("prctl_chg_pref_nid: %d error\n", nid);
+			err = -EINVAL;
+			goto out;
+		}
+
+		task->numa_preferred_nid_force = nid;
+		sched_setnuma(task, nid);
+		break;
+	}
+
+out:
+	put_task_struct(task);
+	return err;
+}
+#endif /* CONFIG_NUMA_BALANCING */
+
 static inline int prctl_get_mdwe(unsigned long arg2, unsigned long arg3,
 				 unsigned long arg4, unsigned long arg5)
 {
@@ -2729,6 +2790,11 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 #ifdef CONFIG_SCHED_CORE
 	case PR_SCHED_CORE:
 		error = sched_core_share_pid(arg2, arg3, arg4, arg5);
+		break;
+#endif
+#ifdef CONFIG_NUMA_BALANCING
+	case PR_PREFERRED_NID:
+		error = prctl_chg_pref_nid(arg2, arg3, arg4, arg5);
 		break;
 #endif
 	case PR_SET_MDWE:
