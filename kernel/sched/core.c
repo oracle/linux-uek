@@ -8005,8 +8005,12 @@ int migrate_task_to(struct task_struct *p, int target_cpu)
 void sched_setnuma(struct task_struct *p, int nid)
 {
 	guard(task_rq_lock)(p);
-	scoped_guard (sched_change, p, DEQUEUE_SAVE)
-		p->numa_preferred_nid = nid;
+	scoped_guard (sched_change, p, DEQUEUE_SAVE) {
+		if (p->numa_preferred_nid_force != NUMA_NO_NODE)
+			p->numa_preferred_nid = p->numa_preferred_nid_force;
+		else
+			p->numa_preferred_nid = nid;
+	}
 }
 #endif /* CONFIG_NUMA_BALANCING */
 
