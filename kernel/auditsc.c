@@ -865,7 +865,6 @@ static void audit_filter_uring(struct task_struct *tsk,
  * high enough that we already know we have to write an audit record
  * (i.e., the state is AUDIT_STATE_BUILD).
  */
-#pragma GCC optimize("unswitch-loops", "align-loops=16", "align-jumps=16")
 static void audit_filter_syscall(struct task_struct *tsk,
 				 struct audit_context *ctx)
 {
@@ -877,7 +876,6 @@ static void audit_filter_syscall(struct task_struct *tsk,
 			NULL, ctx->major);
 	rcu_read_unlock();
 }
-#pragma GCC reset_options
 
 /*
  * Given an audit_name check the inode hash table to see if they match.
