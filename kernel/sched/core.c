@@ -7817,7 +7817,10 @@ void sched_setnuma(struct task_struct *p, int nid)
 	if (running)
 		put_prev_task(rq, p);
 
-	p->numa_preferred_nid = nid;
+	if (p->numa_preferred_nid_force != NUMA_NO_NODE)
+		p->numa_preferred_nid = p->numa_preferred_nid_force;
+	else
+		p->numa_preferred_nid = nid;
 
 	if (queued)
 		enqueue_task(rq, p, ENQUEUE_RESTORE | ENQUEUE_NOCLOCK);

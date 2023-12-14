@@ -2627,8 +2627,13 @@ static void numa_migrate_preferred(struct task_struct *p)
 	unsigned long interval = HZ;
 
 	/* This task has no NUMA fault statistics yet */
-	if (unlikely(p->numa_preferred_nid == NUMA_NO_NODE || !p->numa_faults))
+	if (unlikely(p->numa_preferred_nid == NUMA_NO_NODE))
 		return;
+
+	if (p->numa_preferred_nid_force == NUMA_NO_NODE) {
+		if (unlikely(!p->numa_faults))
+			return;
+	}
 
 	/* Periodically retry migrating the task to the preferred node */
 	interval = min(interval, msecs_to_jiffies(p->numa_scan_period) / 16);
@@ -3557,6 +3562,7 @@ void init_numa_balancing(unsigned long clone_flags, struct task_struct *p)
 
 	/* New address space, reset the preferred nid */
 	if (!(clone_flags & CLONE_VM)) {
+		p->numa_preferred_nid_force = NUMA_NO_NODE;
 		p->numa_preferred_nid = NUMA_NO_NODE;
 		return;
 	}
@@ -9317,7 +9323,10 @@ static int migrate_degrades_locality(struct task_struct *p, struct lb_env *env)
 	if (!static_branch_likely(&sched_numa_balancing))
 		return -1;
 
-	if (!p->numa_faults || !(env->sd->flags & SD_NUMA))
+	if (p->numa_preferred_nid_force == NUMA_NO_NODE && !p->numa_faults)
+		return -1;
+
+	if (!(env->sd->flags & SD_NUMA))
 		return -1;
 
 	src_nid = cpu_to_node(env->src_cpu);
