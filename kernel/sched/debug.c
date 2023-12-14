@@ -1153,6 +1153,7 @@ static void sched_show_numa(struct task_struct *p, struct seq_file *m)
 		P(mm->numa_scan_seq);
 
 	P(numa_pages_migrated);
+	P(numa_preferred_nid_force);
 	P(numa_preferred_nid);
 	P(total_numa_faults);
 	SEQ_printf(m, "current_node=%d, numa_group_id=%d\n",
