@@ -293,6 +293,14 @@ struct prctl_mm_map {
 
 #define PR_GET_AUXV			0x41555856
 
+/* This enables setting a task's numa_preferred_nid, placed here to keep
+ * surrounding context the same in the presence of new prctls.
+ */
+#define PR_PREFERRED_NID		101
+# define PR_PREFERRED_NID_GET		0
+# define PR_PREFERRED_NID_SET		1
+# define PR_PREFERRED_NID_CMD_MAX	2
+
 #define PR_SET_MEMORY_MERGE		67
 #define PR_GET_MEMORY_MERGE		68
 
