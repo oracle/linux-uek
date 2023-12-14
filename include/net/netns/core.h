@@ -10,6 +10,7 @@ struct netns_core {
 	struct ctl_table_header	*sysctl_hdr;
 
 	int	sysctl_somaxconn;
+	UEK_KABI_FILL_HOLE(int  sysctl_optmem_max)
 
 #ifdef CONFIG_PROC_FS
 	int __percpu *sock_inuse;
