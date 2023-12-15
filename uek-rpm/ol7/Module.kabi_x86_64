@@ -939,6 +939,7 @@
 0xa2265abd	trace_raw_output_prep	vmlinux	EXPORT_SYMBOL
 0x8888b156	trace_seq_printf	vmlinux	EXPORT_SYMBOL_GPL
 0xe0adfa65	truncate_inode_pages	vmlinux	EXPORT_SYMBOL	
+0xf0604907	truncate_inode_pages_final	vmlinux	EXPORT_SYMBOL
 0xaffb4424	truncate_inode_pages_range	vmlinux	EXPORT_SYMBOL	
 0xdca6ab25	truncate_pagecache	vmlinux	EXPORT_SYMBOL	
 0x8d169a40	truncate_setsize	vmlinux	EXPORT_SYMBOL	
