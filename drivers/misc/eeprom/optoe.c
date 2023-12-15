@@ -194,6 +194,7 @@ struct optoe_data {
 
 	u8 *writebuf;
 	unsigned int write_max;
+	unsigned int write_timeout;
 
 	unsigned int num_addresses;
 
@@ -223,7 +224,8 @@ static unsigned int io_limit = OPTOE_PAGE_SIZE;
  * specs often allow 5 msec for a page write, sometimes 20 msec;
  * it's important to recover from write timeouts.
  */
-static unsigned int write_timeout = 25;
+#define OPTOE_DEFAULT_WRITE_TIMEOUT 25
+#define OPTOE_MAX_SUPPORTED_WRITE_TIMEOUT 500
 
 /*
  * flags to distinguish one-address (QSFP family) from two-address (SFP family)
@@ -352,7 +354,7 @@ static ssize_t optoe_eeprom_read(struct optoe_data *optoe,
 	 * loop a few times until this one succeeds, waiting at least
 	 * long enough for one entire page write to work.
 	 */
-	timeout = jiffies + msecs_to_jiffies(write_timeout);
+	timeout = jiffies + msecs_to_jiffies(optoe->write_timeout);
 	do {
 		read_time = jiffies;
 
@@ -453,7 +455,7 @@ static ssize_t optoe_eeprom_write(struct optoe_data *optoe,
 	 * loop a few times until this one succeeds, waiting at least
 	 * long enough for one entire page write to work.
 	 */
-	timeout = jiffies + msecs_to_jiffies(write_timeout);
+	timeout = jiffies + msecs_to_jiffies(optoe->write_timeout);
 	do {
 		write_time = jiffies;
 
@@ -855,6 +857,39 @@ static ssize_t set_dev_write_max_size(struct device *dev,
 	return count;
 }
 
+static ssize_t show_dev_write_timeout_size(struct device *dev,
+			struct device_attribute *dattr, char *buf)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct optoe_data *optoe = i2c_get_clientdata(client);
+	ssize_t count;
+
+	mutex_lock(&optoe->lock);
+	count = sprintf(buf, "%u\n", optoe->write_timeout);
+	mutex_unlock(&optoe->lock);
+
+	return count;
+}
+
+static ssize_t set_dev_write_timeout_size(struct device *dev,
+			struct device_attribute *attr,
+			const char *buf, size_t count)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct optoe_data *optoe = i2c_get_clientdata(client);
+	unsigned int write_timeout_size;
+
+	if (kstrtouint(buf, 0, &write_timeout_size) != 0 ||
+		write_timeout_size < 0 || write_timeout_size > OPTOE_MAX_SUPPORTED_WRITE_TIMEOUT)
+		return -EINVAL;
+
+	mutex_lock(&optoe->lock);
+	optoe->write_timeout = write_timeout_size;
+	mutex_unlock(&optoe->lock);
+
+	return count;
+}
+
 static ssize_t show_dev_class(struct device *dev,
 			struct device_attribute *dattr, char *buf)
 {
@@ -961,6 +996,8 @@ static ssize_t set_port_name(struct device *dev,
 static DEVICE_ATTR(port_name,  0644, show_port_name, set_port_name);
 #endif  /* if NOT defined EEPROM_CLASS, the common case */
 
+static DEVICE_ATTR(write_timeout, 0644, show_dev_write_timeout_size,
+					set_dev_write_timeout_size);
 static DEVICE_ATTR(write_max, 0644, show_dev_write_max_size,
 					set_dev_write_max_size);
 static DEVICE_ATTR(dev_class,  0644, show_dev_class, set_dev_class);
@@ -969,6 +1006,7 @@ static struct attribute *optoe_attrs[] = {
 #ifndef EEPROM_CLASS
 	&dev_attr_port_name.attr,
 #endif
+	&dev_attr_write_timeout.attr,
 	&dev_attr_write_max.attr,
 	&dev_attr_dev_class.attr,
 	NULL,
@@ -1079,6 +1117,7 @@ static int optoe_probe(struct i2c_client *client,
 	optoe->use_smbus = use_smbus;
 	optoe->chip = chip;
 	optoe->num_addresses = num_addresses;
+	optoe->write_timeout = OPTOE_DEFAULT_WRITE_TIMEOUT;
 	memcpy(optoe->port_name, port_name, MAX_PORT_NAME_LEN);
 
 	/*
