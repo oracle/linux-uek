@@ -4,7 +4,9 @@
 
 #include <linux/compiler.h>
 #include <linux/types.h>
+#ifdef __KERNEL__
 #include <linux/uek_kabi.h>
+#endif
 
 typedef union sigval {
 	int sival_int;
@@ -100,7 +102,11 @@ union __sifields {
 			struct {
 				unsigned long _data;
 				__u32 _type;
+#ifdef __KERNEL__
 				UEK_KABI_EXTEND(__u32 _flags)
+#else
+				__u32 _flags;
+#endif
 			} _perf;
 		};
 	} _sigfault;

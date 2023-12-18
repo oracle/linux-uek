@@ -11,7 +11,9 @@
  */
 
 #include <linux/types.h>
+#ifdef __KERNEL__
 #include <linux/uek_kabi.h>
+#endif
 #include <asm/byteorder.h>
 
 enum rseq_cpu_id_state {
@@ -110,6 +112,7 @@ struct rseq {
 	 * 32-bit architectures should update the low order bits of the
 	 * rseq_cs field, leaving the high order bits initialized to 0.
 	 */
+#ifdef __KERNEL__
 	UEK_KABI_REPLACE(
         union {
                 __u64 ptr64;
@@ -127,6 +130,9 @@ struct rseq {
                 } ptr;
 #endif
         } rseq_cs, __u64 rseq_cs)
+#else /* __KERNEL__ */
+	__u64 rseq_cs;
+#endif /* __KERNEL__ */
 
 	/*
 	 * Restartable sequences flags field.
