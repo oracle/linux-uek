@@ -162,6 +162,9 @@
 #include "dev.h"
 #include "net-sysfs.h"
 
+static int ifnames_skip = 0;
+core_param(ifnames_skip, ifnames_skip, int, 0444);
+
 static DEFINE_SPINLOCK(ptype_lock);
 struct list_head ptype_base[PTYPE_HASH_SIZE] __read_mostly;
 
@@ -1114,6 +1117,12 @@ static int __dev_alloc_name(struct net *net, const char *name, char *res)
 	inuse = bitmap_zalloc(max_netdevices, GFP_ATOMIC);
 	if (!inuse)
 		return -ENOMEM;
+
+	if (ifnames_skip) {
+		int j;
+		for (j = 0; j < ifnames_skip && j < max_netdevices; j++)
+			set_bit(j, inuse);
+	}
 
 	for_each_netdev(net, d) {
 		struct netdev_name_node *name_node;
