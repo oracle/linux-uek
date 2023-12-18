@@ -123,6 +123,7 @@ bool tcp_rack_mark_lost(struct sock *sk)
 void tcp_rack_advance(struct tcp_sock *tp, u8 sacked, u32 end_seq,
 		      u64 xmit_time)
 {
+	struct inet_connection_sock *icsk = inet_csk((struct sock *)tp);
 	u32 rtt_us;
 
 	rtt_us = tcp_stamp_us_delta(tp->tcp_mstamp, xmit_time);
@@ -136,8 +137,17 @@ void tcp_rack_advance(struct tcp_sock *tp, u8 sacked, u32 end_seq,
 		 * the aRTT term is bounded by the fast recovery or timeout,
 		 * so it's at least one RTT (i.e., retransmission is at least
 		 * an RTT later).
+		 *
+		 * Special case: if this is a SACK for the highest-sequence
+		 * segment and that segment is a retransmit (e.g., a
+		 * TLP retransmit), then it is safe to treat this as a SACK
+		 * for the retransmit. This is because whether it is a SACK
+		 * for the retransmit or a SACK for the original, either way
+		 * after we wait for the reordering window we can mark all
+		 * un-SACKed data segments as lost.
 		 */
-		return;
+		if (!(icsk->icsk_ca_state == TCP_CA_Open && end_seq == tp->snd_nxt))
+			return;
 	}
 	tp->rack.advanced = 1;
 	tp->rack.rtt_us = rtt_us;
