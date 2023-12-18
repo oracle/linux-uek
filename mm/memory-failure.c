@@ -461,15 +461,15 @@ static struct task_struct *task_early_kill(struct task_struct *tsk,
 /*
  * Collect processes when the error hit an anonymous page.
  */
-static void collect_procs_anon(struct page *page, struct list_head *to_kill,
-				int force_early)
+static void collect_procs_anon(struct page *head, struct page *page,
+				struct list_head *to_kill, int force_early)
 {
 	struct vm_area_struct *vma;
 	struct task_struct *tsk;
 	struct anon_vma *av;
 	pgoff_t pgoff;
 
-	av = page_lock_anon_vma_read(page);
+	av = page_lock_anon_vma_read(head);
 	if (av == NULL)	/* Not actually mapped anymore */
 		return;
 
@@ -497,12 +497,12 @@ static void collect_procs_anon(struct page *page, struct list_head *to_kill,
 /*
  * Collect processes when the error hit a file mapped page.
  */
-static void collect_procs_file(struct page *page, struct list_head *to_kill,
-				int force_early)
+static void collect_procs_file(struct page *head, struct page *page,
+				struct list_head *to_kill, int force_early)
 {
 	struct vm_area_struct *vma;
 	struct task_struct *tsk;
-	struct address_space *mapping = page->mapping;
+	struct address_space *mapping = head->mapping;
 	pgoff_t pgoff;
 
 	i_mmap_lock_read(mapping);
@@ -566,16 +566,16 @@ static int collect_procs_dev(unsigned long pfn, struct list_head *to_kill,
 /*
  * Collect the processes who have the corrupted page mapped to kill.
  */
-static void collect_procs(struct page *page, struct list_head *tokill,
-				int force_early)
+static void collect_procs(struct page *head, struct page *page,
+				struct list_head *tokill, int force_early)
 {
-	if (!page->mapping)
+	if (!head->mapping)
 		return;
 
 	if (PageAnon(page))
-		collect_procs_anon(page, tokill, force_early);
+		collect_procs_anon(head, page, tokill, force_early);
 	else
-		collect_procs_file(page, tokill, force_early);
+		collect_procs_file(head, page, tokill, force_early);
 }
 
 struct hwp_walk {
@@ -1285,7 +1285,7 @@ static bool hwpoison_user_mappings(struct page *p, unsigned long pfn,
 	 * there's nothing that can be done.
 	 */
 	if (kill)
-		collect_procs(hpage, &tokill, flags & MF_ACTION_REQUIRED);
+		collect_procs(hpage, p, &tokill, flags & MF_ACTION_REQUIRED);
 
 	unmap_success = try_to_unmap(hpage, ttu);
 	if (!unmap_success)
@@ -1518,7 +1518,7 @@ static int memory_failure_dev_pagemap(unsigned long pfn, int flags,
 	 * SIGBUS (i.e. MF_MUST_KILL)
 	 */
 	flags |= MF_ACTION_REQUIRED | MF_MUST_KILL;
-	collect_procs(page, &tokill, flags & MF_ACTION_REQUIRED);
+	collect_procs(page, page, &tokill, flags & MF_ACTION_REQUIRED);
 
 	list_for_each_entry(tk, &tokill, nd)
 		if (tk->size_shift)
@@ -1556,7 +1556,7 @@ static void kill_procs_now(struct page *p, unsigned long pfn, int flags,
 {
 	LIST_HEAD(tokill);
 
-	collect_procs(hpage, &tokill, flags & MF_ACTION_REQUIRED);
+	collect_procs(hpage, p, &tokill, flags & MF_ACTION_REQUIRED);
 	kill_procs(&tokill, true, pfn, flags);
 }
 
