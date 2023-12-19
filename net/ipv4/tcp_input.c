@@ -306,7 +306,7 @@ static void tcp_enter_quickack_mode(struct sock *sk, unsigned int max_quickacks)
 
 	tcp_incr_quickack(sk, max_quickacks);
 	inet_csk_exit_pingpong_mode(sk);
-	icsk->icsk_ack.ato = TCP_ATO_MIN;
+	icsk->icsk_ack.ato = sysctl_tcp_delack_min;
 }
 
 /* Send ACKs quickly, if "quick" count is not exhausted
@@ -794,13 +794,14 @@ static void tcp_event_data_recv(struct sock *sk, struct sk_buff *skb)
 		 * delayed ACK engine.
 		 */
 		tcp_incr_quickack(sk, TCP_MAX_QUICKACKS);
-		icsk->icsk_ack.ato = TCP_ATO_MIN;
+		icsk->icsk_ack.ato = sysctl_tcp_delack_min;
 	} else {
 		int m = now - icsk->icsk_ack.lrcvtime;
+		int rto_min = sysctl_tcp_delack_min;
 
-		if (m <= TCP_ATO_MIN / 2) {
+		if (m <= rto_min / 2) {
 			/* The fastest case is the first. */
-			icsk->icsk_ack.ato = (icsk->icsk_ack.ato >> 1) + TCP_ATO_MIN / 2;
+			icsk->icsk_ack.ato = (icsk->icsk_ack.ato >> 1) + rto_min / 2;
 		} else if (m < icsk->icsk_ack.ato) {
 			icsk->icsk_ack.ato = (icsk->icsk_ack.ato >> 1) + m;
 			if (icsk->icsk_ack.ato > icsk->icsk_rto)
@@ -6309,7 +6310,7 @@ consume:
 			inet_csk_schedule_ack(sk);
 			tcp_enter_quickack_mode(sk, TCP_MAX_QUICKACKS);
 			inet_csk_reset_xmit_timer(sk, ICSK_TIME_DACK,
-						  TCP_DELACK_MAX, TCP_RTO_MAX);
+					sysctl_tcp_delack_max, TCP_RTO_MAX);
 			goto consume;
 		}
 		tcp_send_ack(sk);

@@ -991,6 +991,16 @@ tcp_challenge_ack_limit - INTEGER
 	in RFC 5961 (Improving TCP's Robustness to Blind In-Window Attacks)
 	Default: 1000
 
+tcp_delack_min - INTEGER
+	Minimum time (in milliseconds) to delay before sending an ACK.
+
+	Default: 40
+
+tcp_delack_max - INTEGER
+	Maximum time (in milliseconds) to delay before sending an ACK.
+
+	Default: 200
+
 UDP variables
 =============
 

@@ -249,6 +249,9 @@ void tcp_time_wait(struct sock *sk, int state, int timeo);
 extern int sysctl_tcp_max_orphans;
 extern long sysctl_tcp_mem[3];
 
+extern int sysctl_tcp_delack_max;
+extern int sysctl_tcp_delack_min;
+
 #define TCP_RACK_LOSS_DETECTION  0x1 /* Use RACK to detect losses */
 #define TCP_RACK_STATIC_REO_WND  0x2 /* Use static RACK reo wnd */
 #define TCP_RACK_NO_DUPTHRESH    0x4 /* Do not use DUPACK threshold in RACK */
@@ -352,7 +355,7 @@ static inline void tcp_dec_quickack_mode(struct sock *sk)
 		if (pkts >= icsk->icsk_ack.quick) {
 			icsk->icsk_ack.quick = 0;
 			/* Leaving quickack mode we deflate ATO. */
-			icsk->icsk_ack.ato   = TCP_ATO_MIN;
+			icsk->icsk_ack.ato = sysctl_tcp_delack_min;
 		} else
 			icsk->icsk_ack.quick -= pkts;
 	}

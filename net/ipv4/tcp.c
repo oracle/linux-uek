@@ -296,6 +296,12 @@ EXPORT_SYMBOL(sysctl_tcp_mem);
 atomic_long_t tcp_memory_allocated;	/* Current allocated memory. */
 EXPORT_SYMBOL(tcp_memory_allocated);
 
+int sysctl_tcp_delack_max = TCP_DELACK_MAX;
+int sysctl_tcp_delack_min = TCP_DELACK_MIN;
+
+EXPORT_SYMBOL(sysctl_tcp_delack_max);
+EXPORT_SYMBOL(sysctl_tcp_delack_min);
+
 #if IS_ENABLED(CONFIG_SMC)
 DEFINE_STATIC_KEY_FALSE(tcp_have_smc);
 EXPORT_SYMBOL(tcp_have_smc);
