@@ -1184,6 +1184,7 @@ static const struct x86_cpu_id intel_idle_ids[] __initconst = {
 	INTEL_CPU_FAM6(SKYLAKE_X,		idle_cpu_skx),
 	INTEL_CPU_FAM6(ICELAKE_X,		idle_cpu_icx),
 	INTEL_CPU_FAM6(SAPPHIRERAPIDS_X,	idle_cpu_spr),
+	INTEL_CPU_FAM6(EMERALDRAPIDS_X,		idle_cpu_spr),
 	INTEL_CPU_FAM6(XEON_PHI_KNL,		idle_cpu_knl),
 	INTEL_CPU_FAM6(XEON_PHI_KNM,		idle_cpu_knl),
 	INTEL_CPU_FAM6(ATOM_GOLDMONT,		idle_cpu_bxt),
@@ -1584,6 +1585,7 @@ static void __init intel_idle_init_cstates_icpu(struct cpuidle_driver *drv)
 		skx_idle_state_table_update();
 		break;
 	case INTEL_FAM6_SAPPHIRERAPIDS_X:
+	case INTEL_FAM6_EMERALDRAPIDS_X:
 		spr_idle_state_table_update();
 		break;
 	}

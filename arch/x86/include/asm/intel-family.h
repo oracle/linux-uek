@@ -93,6 +93,8 @@
 
 #define INTEL_FAM6_SAPPHIRERAPIDS_X	0x8F
 
+#define INTEL_FAM6_EMERALDRAPIDS_X	0xCF
+
 /* Hybrid Core/Atom Processors */
 
 #define	INTEL_FAM6_LAKEFIELD		0x8A

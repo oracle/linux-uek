@@ -2398,6 +2398,7 @@ int has_turbo_ratio_group_limits(int family, int model)
 	case INTEL_FAM6_SKYLAKE_X:
 	case INTEL_FAM6_ICELAKE_X:
 	case INTEL_FAM6_SAPPHIRERAPIDS_X:
+	case INTEL_FAM6_EMERALDRAPIDS_X:
 	case INTEL_FAM6_ATOM_GOLDMONT_D:
 	case INTEL_FAM6_ATOM_TREMONT_D:
 		return 1;
@@ -3605,6 +3606,7 @@ int probe_nhm_msrs(unsigned int family, unsigned int model)
 		break;
 	case INTEL_FAM6_SKYLAKE_X:	/* SKX */
 	case INTEL_FAM6_SAPPHIRERAPIDS_X:	/* SPR */
+	case INTEL_FAM6_EMERALDRAPIDS_X:
 		pkg_cstate_limits = skx_pkg_cstate_limits;
 		has_misc_feature_control = 1;
 		break;
@@ -3729,6 +3731,7 @@ int is_spr(unsigned int family, unsigned int model)
 
 	switch (model) {
 	case INTEL_FAM6_SAPPHIRERAPIDS_X:
+	case INTEL_FAM6_EMERALDRAPIDS_X:
 		return 1;
 	}
 	return 0;
@@ -3843,6 +3846,7 @@ int has_glm_turbo_ratio_limit(unsigned int family, unsigned int model)
 	case INTEL_FAM6_SKYLAKE_X:
 	case INTEL_FAM6_ICELAKE_X:
 	case INTEL_FAM6_SAPPHIRERAPIDS_X:
+	case INTEL_FAM6_EMERALDRAPIDS_X:
 		return 1;
 	default:
 		return 0;
@@ -3871,6 +3875,7 @@ int has_config_tdp(unsigned int family, unsigned int model)
 	case INTEL_FAM6_SKYLAKE_X:	/* SKX */
 	case INTEL_FAM6_ICELAKE_X:	/* ICX */
 	case INTEL_FAM6_SAPPHIRERAPIDS_X:	/* SPR */
+	case INTEL_FAM6_EMERALDRAPIDS_X:
 	case INTEL_FAM6_XEON_PHI_KNL:	/* Knights Landing */
 		return 1;
 	default:
@@ -4331,6 +4336,7 @@ static double rapl_dram_energy_units_probe(int model, double rapl_energy_units)
 	case INTEL_FAM6_XEON_PHI_KNL:	/* KNL */
 	case INTEL_FAM6_ICELAKE_X:	/* ICX */
 	case INTEL_FAM6_SAPPHIRERAPIDS_X:	/* SPR */
+	case INTEL_FAM6_EMERALDRAPIDS_X:
 		return (rapl_dram_energy_units = 15.3 / 1000000);
 	default:
 		return (rapl_energy_units);
@@ -4421,6 +4427,7 @@ void rapl_probe_intel(unsigned int family, unsigned int model)
 	case INTEL_FAM6_SKYLAKE_X:	/* SKX */
 	case INTEL_FAM6_ICELAKE_X:	/* ICX */
 	case INTEL_FAM6_SAPPHIRERAPIDS_X:	/* SPR */
+	case INTEL_FAM6_EMERALDRAPIDS_X:
 	case INTEL_FAM6_XEON_PHI_KNL:	/* KNL */
 		do_rapl =
 		    RAPL_PKG | RAPL_DRAM | RAPL_DRAM_POWER_INFO | RAPL_DRAM_PERF_STATUS | RAPL_PKG_PERF_STATUS |
@@ -4803,6 +4810,7 @@ int has_snb_msrs(unsigned int family, unsigned int model)
 	case INTEL_FAM6_SKYLAKE_X:	/* SKX */
 	case INTEL_FAM6_ICELAKE_X:	/* ICX */
 	case INTEL_FAM6_SAPPHIRERAPIDS_X:	/* SPR */
+	case INTEL_FAM6_EMERALDRAPIDS_X:
 	case INTEL_FAM6_ATOM_GOLDMONT:	/* BXT */
 	case INTEL_FAM6_ATOM_GOLDMONT_PLUS:
 	case INTEL_FAM6_ATOM_GOLDMONT_D:	/* DNV */
