@@ -3583,10 +3583,16 @@ static void otx2_vf_ptp_info_task(struct work_struct *work)
 	vf_idx = config - config->pf->vf_configs;
 	pf = config->pf;
 
+	if (config->intf_down)
+		return;
+
+	mutex_lock(&pf->mbox.lock);
+
 	msghdr = otx2_mbox_alloc_msg_rsp(&pf->mbox_pfvf[0].mbox_up, vf_idx,
 					 sizeof(*req), sizeof(struct msg_rsp));
 	if (!msghdr) {
 		dev_err(pf->dev, "Failed to create VF%d link event\n", vf_idx);
+		mutex_unlock(&pf->mbox.lock);
 		return;
 	}
 
@@ -3595,7 +3601,11 @@ static void otx2_vf_ptp_info_task(struct work_struct *work)
 	req->hdr.sig = OTX2_MBOX_REQ_SIG;
 	req->ptp_en = pf->ptp->ptp_en;
 
+	otx2_mbox_wait_for_zero(&pf->mbox_pfvf[0].mbox_up, vf_idx);
+
 	otx2_sync_mbox_up_msg(&pf->mbox_pfvf[0], vf_idx);
+
+	mutex_unlock(&pf->mbox.lock);
 }
 
 static int otx2_sriov_enable(struct pci_dev *pdev, int numvfs)
