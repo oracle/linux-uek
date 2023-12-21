@@ -285,6 +285,11 @@ EXPORT_SYMBOL_GPL(tcp_orphan_count);
 long sysctl_tcp_mem[3] __read_mostly;
 EXPORT_SYMBOL(sysctl_tcp_mem);
 
+int sysctl_tcp_delack_max __read_mostly = TCP_DELACK_MAX;
+int sysctl_tcp_delack_min __read_mostly = TCP_DELACK_MIN;
+EXPORT_SYMBOL(sysctl_tcp_delack_max);
+EXPORT_SYMBOL(sysctl_tcp_delack_min);
+
 atomic_long_t tcp_memory_allocated;	/* Current allocated memory. */
 EXPORT_SYMBOL(tcp_memory_allocated);
 
