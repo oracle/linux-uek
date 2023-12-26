@@ -80,8 +80,8 @@ struct rvu_debugfs {
 	struct dump_ctx nix_cq_ctx;
 	struct dump_ctx nix_rq_ctx;
 	struct dump_ctx nix_sq_ctx;
-	struct cpt_ctx cpt_ctx[MAX_CPT_BLKS];
 	struct dump_ctx nix_tm_ctx;
+	struct cpt_ctx cpt_ctx[MAX_CPT_BLKS];
 	int npa_qsize_id;
 	int nix_qsize_id;
 };
