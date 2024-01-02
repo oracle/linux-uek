@@ -1,30 +1,116 @@
 # SPDX-License-Identifier: GPL-2.0
 if CPU_CAVIUM_OCTEON
 
+config CAVIUM_OCTEON2
+       bool "Build the kernel to be used only on OCTEON II or OCTEON III processor cores"
+       default "n"
+       help
+         This option enables the generation of Octeon2 specific
+         instructions by the compiler, resulting in a kernel that is
+         more efficient, but that will not run on Octeon and
+         OcteonPlus processor cores.
+
 config CAVIUM_CN63XXP1
-	bool "Enable CN63XXP1 errata workarounds"
+	bool "Enable CN6XXX DCache prefetch errata workaround"
 	default "n"
 	help
-	  The CN63XXP1 chip requires build time workarounds to
+	  The CN6XXX chip requires build time workarounds to
 	  function reliably, select this option to enable them.  These
 	  workarounds will cause a slight decrease in performance on
-	  non-CN63XXP1 hardware, so it is recommended to select "n"
-	  unless it is known the workarounds are needed.
-
-config CAVIUM_OCTEON_CVMSEG_SIZE
-	int "Number of L1 cache lines reserved for CVMSEG memory"
-	range 0 54
-	default 1
-	help
-	  CVMSEG LM is a segment that accesses portions of the dcache as a
-	  local memory; the larger CVMSEG is, the smaller the cache is.
-	  This selects the size of CVMSEG LM, which is in cache blocks. The
-	  legally range is from zero to 54 cache blocks (i.e. CVMSEG LM is
-	  between zero and 6192 bytes).
+	  non-CN6XXX hardware.
 
 endif # CPU_CAVIUM_OCTEON
 
 if CAVIUM_OCTEON_SOC
+
+config CAVIUM_OCTEON_EXTRA_CVMSEG
+	int "Number of extra L1 cache lines reserved for CVMSEG memory"
+	range 0 50
+	default 0
+	help
+	  CVMSEG LM is a segment that accesses portions of the dcache
+	  as a local memory; the larger CVMSEG is, the smaller the
+	  cache is.  The kernel uses two or three blocks (one for TLB
+	  exception handlers, one for driver IOBDMA operations, and on
+	  models that need it, one for LMTDMA operations). This
+	  selects an optional extra number of CVMSEG lines for use by
+	  other software.
+
+	  Normally no extra lines are required, and this parameter
+	  should be set to zero.
+
+config FAST_ACCESS_TO_THREAD_POINTER
+	bool "Enable fast access to the thread pointer"
+	default "y"
+	help
+	  For Mips, normally the TLS thread pointer is accessed by the
+	  userspace program executing a "rdhwr" from register $29. This
+	  register doesn't exist, so the kernel emulates the instruction
+	  assigning the thread pointer to the value register. This option
+	  supplies an alternate, faster access to the thread pointer. A
+	  side effect of this option is that the highest 8 bytes of CVMSEG
+	  is used by the kernel to save and restore the thread pointer during
+	  the TLB fault handlers. This CVMSEG address isn't available to user
+	  applications.
+
+choice
+       prompt "Allow User space to access hardware IO directly"
+       default CAVIUM_OCTEON_USER_IO_PER_PROCESS
+       depends on CPU_CAVIUM_OCTEON
+
+config CAVIUM_OCTEON_USER_IO
+       bool "Allowed"
+       depends on CPU_CAVIUM_OCTEON
+       help
+         Allows user applications to directly access the Octeon hardware
+         IO addresses (0x1000000000000 - 0x1ffffffffffff). This allows high
+         performance networking applications to run in user space with minimal
+         performance penalties. This also means a user application can bring
+         down the entire system. Only use this option on embedded devices
+         where all user applications are strictly controlled.
+
+config CAVIUM_OCTEON_USER_IO_PER_PROCESS
+       bool "Per process"
+       help
+         Allows user applications to use XKPHYS addresses directly to IO.
+         This option dynamically enable/disable with sysmips syscall,
+         by a process with root privilege. Without root privilege you can
+         only remove access.
+
+config CAVIUM_OCTEON_USER_IO_DISABLED
+       bool "Disabled"
+
+endchoice
+
+choice
+       prompt "Allow User space to access memory directly"
+       default CAVIUM_OCTEON_USER_MEM_PER_PROCESS
+       depends on CPU_CAVIUM_OCTEON
+
+config CAVIUM_OCTEON_USER_MEM
+       bool "Allowed"
+       help
+         Allows user applications to use XKPHYS addresses directly to memory.
+         This allows user space direct access to shared memory not in use by
+         Linux. This memory is suitable for use with the Octeon hardware.
+         Cavium simple executive applications also share this memory. Since
+         this bypass all of the Linux memory protection, only use this option
+         on embedded devices where all user applications are strictly
+         controlled.
+
+config CAVIUM_OCTEON_USER_MEM_PER_PROCESS
+       bool "Per process"
+       help
+         Allows user applications to use XKPHYS addresses directly to memory.
+         This option dynamically enable/disable with sysmips syscall,
+         by a process with root privilege. Without root privilege you can only
+         remove access.
+
+config CAVIUM_OCTEON_USER_MEM_DISABLED
+       bool "Disabled"
+
+endchoice
+
 
 config CAVIUM_OCTEON_LOCK_L2
 	bool "Lock often used kernel code in the L2"
@@ -67,6 +153,46 @@ config CAVIUM_OCTEON_LOCK_L2_MEMCPY
 	help
 	  Lock the kernel's implementation of memcpy() into L2.
 
+config CAVIUM_OCTEON_NAND
+        tristate "Octeon NAND driver"
+        depends on MTD_NAND && !CPU_LITTLE_ENDIAN && BROKEN
+        help
+          This option enables a MTD driver for the NAND controller introduced
+          in the Octeon CN52XX pass 2 processor. It supports up to 8 NAND
+          devices connected directly to Octeon's boot bus.
+
+config CAVIUM_OCTEON_RAPIDIO
+	bool "Enable support for Octeon Serial Rapid IO"
+	depends on !CPU_LITTLE_ENDIAN
+	depends on PCI
+	depends on BROKEN
+	select RAPIDIO
+	select OCTEON_ETHERNET_MEM
+	select OCTEON_FPA3
+	help
+	  Connect the SRIO interfaces available in the Octeon II series of
+	  processors to the kernel's RapidIO subsystem. The existence of the
+	  SRIO ports is automatically detected and configured as either a
+	  host or device. Bus enumeration will be performed on host interfaces
+	  as appropriate. After configuring this option, you will likely want
+	  to enable the RapidIO network adapter under the devices menu.
+
+config CAVIUM_PCIE_RESET
+	bool "OCTEON-specific PCIe reset file"
+	depends on PCI
+	help
+	  Adds /proc/pcie_reset
+
+config OCTEON_FPA3
+	tristate "Octeon III fpa driver"
+	default "n"
+	depends on CPU_CAVIUM_OCTEON
+	help
+	  This option enables a Octeon III driver for the Free Pool Unit (FPA).
+	  The FPA is a hardware unit that manages pools of pointers to free
+	  L2/DRAM memory. This driver provides an interface to reserve,
+	  initialize, and fill fpa pools.
+
 config OCTEON_ILM
 	tristate "Module to measure interrupt latency using Octeon CIU Timer"
 	help
@@ -75,5 +201,20 @@ config OCTEON_ILM
 
 	  To compile this driver as a module, choose M here.  The module
 	  will be called octeon-ilm
+
+config OCTEON_ERROR_INJECTOR
+	tristate "Module to inject hardware errors into the system"
+	help
+	  Used to test hardware error reporting.  Should never be used
+	  in a normal running system.
+
+config CAVIUM_OCTEON_IPSEC
+       bool "Enable enhancements to the IPSec stack to allow procotol offload."
+       default "n"
+       depends on NET_KEY
+       help
+         This enables enhancements to the IPSec stack to allow some of the
+         processing required for IPSec to be performed on another processor
+         which must be running the ipsec-filter application.
 
 endif # CAVIUM_OCTEON_SOC
