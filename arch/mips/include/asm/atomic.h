@@ -24,6 +24,154 @@
 #include <asm/sync.h>
 #include <asm/war.h>
 
+#if (IS_ENABLED(CONFIG_CAVIUM_OCTEON2))
+/*
+ * atomic_add - add integer to atomic variable
+ * @i: integer value to add
+ * @v: pointer of type atomic_t
+ *
+ * Atomically adds @i to @v.
+ */
+static inline void atomic_add(int i, atomic_t *v)
+{
+       __asm__ __volatile__(
+       ".set   push\n\t"
+       ".set   arch=octeon+\n\t"       
+       "saa    %1, (%2)\t# atomic_add (%0)\n\t"
+       ".set   pop"
+       : "+m" (v->counter)
+       : "r" (i), "r" (&v->counter));
+}
+
+/*
+ * atomic_sub - subtract the atomic variable
+ * @i: integer value to subtract
+ * @v: pointer of type atomic_t
+ *
+ * Atomically subtracts @i from @v.
+ */
+static inline void atomic_sub(int i, atomic_t *v)
+{
+       __asm__ __volatile__(
+       ".set   push\n\t"
+       ".set   arch=octeon+\n\t"
+       "saa    %1, (%2)\t# atomic_sub(%0)\n\t"
+       ".set   pop"
+       : "+m" (v->counter)
+       : "r" (-i), "r" (&v->counter));
+}
+
+/*
+ * Same as above, but return the result value
+ */
+static inline int atomic_add_return_relaxed(int i, atomic_t *v)
+{
+       int result;
+
+       if (__builtin_constant_p(i) && i == 1)
+               __asm__ __volatile__("lai\t%0,(%2)\t# atomic_add_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter));
+       else if (__builtin_constant_p(i) && i == -1)
+               __asm__ __volatile__("lad\t%0,(%2)\t# atomic_add_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter));
+       else
+               __asm__ __volatile__("laa\t%0,(%2),%3\t# atomic_add_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter), "r" (i));
+       return result + i;
+}
+
+static inline int atomic_fetch_add_relaxed(int i, atomic_t *v)
+{
+       int result;
+
+       if (__builtin_constant_p(i) && i == 1)
+               __asm__ __volatile__("lai\t%0,(%2)\t# atomic_add_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter));
+       else if (__builtin_constant_p(i) && i == -1)
+               __asm__ __volatile__("lad\t%0,(%2)\t# atomic_add_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter));
+       else
+               __asm__ __volatile__("laa\t%0,(%2),%3\t# atomic_add_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter), "r" (i));
+       return result;
+}
+
+static inline int atomic_add_return(int i, atomic_t *v)
+{
+       int result;
+
+       smp_mb__before_llsc();
+
+       /*
+        * For proper barrier semantics, the preceding
+        * smp_mb__before_llsc() must expand to syncw.
+        */
+       result = atomic_add_return_relaxed(i, v);
+       return result;
+}
+#define atomic_add_return atomic_add_return
+static inline int atomic_sub_return_relaxed(int i, atomic_t *v)
+{
+       int result;
+
+       if (__builtin_constant_p(i) && i == -1)
+               __asm__ __volatile__("lai\t%0,(%2)\t# atomic_sub_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter));
+       else if (__builtin_constant_p(i) && i == 1)
+               __asm__ __volatile__("lad\t%0,(%2)\t# atomic_sub_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter));
+       else
+               __asm__ __volatile__("laa\t%0,(%2),%3\t# atomic_sub_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter), "r" (-i));
+       return result - i;
+}
+
+static inline int atomic_fetch_sub_relaxed(int i, atomic_t *v)
+{
+       int result;
+
+       if (__builtin_constant_p(i) && i == -1)
+               __asm__ __volatile__("lai\t%0,(%2)\t# atomic_sub_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter));
+       else if (__builtin_constant_p(i) && i == 1)
+               __asm__ __volatile__("lad\t%0,(%2)\t# atomic_sub_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter));
+       else
+               __asm__ __volatile__("laa\t%0,(%2),%3\t# atomic_sub_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter), "r" (-i));
+       return result;
+}
+
+static inline int atomic_sub_return(int i, atomic_t *v)
+{
+       int result;
+
+       smp_mb__before_llsc();
+
+       /*
+        * For proper barrier semantics, the preceding
+        * smp_mb__before_llsc() must expand to syncw.
+        */
+       result = atomic_sub_return_relaxed(i, v);
+
+       smp_llsc_mb();
+       return result;
+}
+#define atomic_sub_return atomic_sub_return
+#endif
+
 #define ATOMIC_OPS(pfx, type)						\
 static __always_inline type arch_##pfx##_read(const pfx##_t *v)		\
 {									\
@@ -256,6 +404,157 @@ static __inline__ type arch_##pfx##_sub_if_positive(type i, pfx##_t * v)	\
 									\
 	return result;							\
 }
+#if (IS_ENABLED(CONFIG_CAVIUM_OCTEON2))
+/*
+ * atomic64_add - add integer to atomic variable
+ * @i: integer value to add
+ * @v: pointer of type atomic64_t
+ *
+ * Atomically adds @i to @v.
+ */
+static inline void atomic64_add(long i, atomic64_t *v)
+{
+       __asm__ __volatile__(
+       ".set   push\n\t"
+       ".set   arch=octeon+\n\t"
+       "saad   %1, (%2)\t# atomic64_add (%0)\n\t"
+       ".set   pop"
+       : "+m" (v->counter)
+       : "r" (i), "r" (v));
+}
+
+/*
+ * atomic64_sub - subtract the atomic variable
+ * @i: integer value to subtract
+ * @v: pointer of type atomic64_t
+ *
+ * Atomically subtracts @i from @v.
+ */
+static inline void atomic64_sub(long i, atomic64_t *v)
+{
+       __asm__ __volatile__(
+       ".set   push\n\t"
+       ".set   arch=octeon+\n\t"
+       "saad    %1, (%2)\t# atomic64_sub (%0)\n\t"
+       ".set   pop"
+       : "+m" (v->counter)
+       : "r" (-i), "r" (v));
+}
+
+/*
+ * Same as above, but return the result value
+ */
+static inline long atomic64_add_return_relaxed(long i, atomic64_t *v)
+{
+       long result;
+
+       if (__builtin_constant_p(i) && i == 1)
+               __asm__ __volatile__("laid\t%0,(%2)\t# atomic64_add_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter));
+       else if (__builtin_constant_p(i) && i == -1)
+               __asm__ __volatile__("ladd\t%0,(%2)\t# atomic64_add_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter));
+       else
+               __asm__ __volatile__("laad\t%0,(%2),%3\t# atomic64_add_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter), "r" (i));
+       return result + i;
+}
+
+/*
+ * Same as above, but return the previous value
+ */
+static inline long atomic64_fetch_add_relaxed(long i, atomic64_t *v)
+{
+       long result;
+
+       if (__builtin_constant_p(i) && i == 1)
+               __asm__ __volatile__("laid\t%0,(%2)\t# atomic64_add_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter));
+       else if (__builtin_constant_p(i) && i == -1)
+               __asm__ __volatile__("ladd\t%0,(%2)\t# atomic64_add_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter));
+       else
+               __asm__ __volatile__("laad\t%0,(%2),%3\t# atomic64_add_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter), "r" (i));
+       return result;
+}
+
+static inline long atomic64_add_return(long i, atomic64_t *v)
+{
+       long result;
+
+       smp_mb__before_llsc();
+       /*
+        * For proper barrier semantics, the preceding
+        * smp_mb__before_llsc() must expand to syncw.
+        */
+       result = atomic64_add_return_relaxed(i, v);
+       smp_llsc_mb();
+       return result;
+}
+#define atomic64_add_return atomic64_add_return
+static inline long atomic64_sub_return_relaxed(long i, atomic64_t *v)
+{
+       long result;
+
+       if (__builtin_constant_p(i) && i == -1)
+               __asm__ __volatile__("laid\t%0,(%2)\t# atomic64_sub_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter));
+       else if (__builtin_constant_p(i) && i == 1)
+               __asm__ __volatile__("ladd\t%0,(%2)\t# atomic64_sub_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter));
+       else
+               __asm__ __volatile__("laad\t%0,(%2),%3\t# atomic64_sub_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter), "r" (-i));
+
+       return result - i;
+}
+
+static inline long atomic64_fetch_sub_relaxed(long i, atomic64_t *v)
+{
+       long result;
+
+       if (__builtin_constant_p(i) && i == -1)
+               __asm__ __volatile__("laid\t%0,(%2)\t# atomic64_sub_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter));
+       else if (__builtin_constant_p(i) && i == 1)
+               __asm__ __volatile__("ladd\t%0,(%2)\t# atomic64_sub_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter));
+       else
+               __asm__ __volatile__("laad\t%0,(%2),%3\t# atomic64_sub_return (%1)"
+                               : "=r" (result), "+m" (v->counter)
+                               : "r" (&v->counter), "r" (-i));
+
+       return result;
+}
+
+static inline long atomic64_sub_return(long i, atomic64_t *v)
+{
+       long result;
+
+       smp_mb__before_llsc();
+
+       /*
+        * For proper barrier semantics, the preceding
+        * smp_mb__before_llsc() must expand to syncw.
+        */
+       result = atomic64_sub_return_relaxed(i, v);
+       smp_llsc_mb();
+       return result;
+}
+#define atomic64_sub_return atomic64_sub_return
+#endif
 
 ATOMIC_SIP_OP(atomic, int, subu, ll, sc)
 #define arch_atomic_dec_if_positive(v)	arch_atomic_sub_if_positive(1, v)
