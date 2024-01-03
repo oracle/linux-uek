@@ -25,7 +25,7 @@
  * Valid machtype values for group unknown
  */
 #define  MACH_UNKNOWN		0	/* whatever...			*/
-
+extern bool initrd_in_reserved;
 /*
  * Valid machtype for group DEC
  */
