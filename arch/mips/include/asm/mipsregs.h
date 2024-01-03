@@ -91,6 +91,7 @@
 #define CP0_DEPC $24
 #define CP0_PERFORMANCE $25
 #define CP0_ECC $26
+#define CP0_ERRCTL $26
 #define CP0_CACHEERR $27
 #define CP0_TAGLO $28
 #define CP0_TAGHI $29
@@ -1216,6 +1217,21 @@
 #define FPU_CSR_RD	0x3	/* towards -Infinity */
 
 
+/*
+ * These defines are used on Octeon to implement fast access to the
+ * thread pointer from userspace. Octeon uses a 64bit location in
+ * CVMSEG to store the thread pointer for quick access.
+ *
+ * We use the second CVMSEG line.  TLB refill uses location -16 (and
+ * below), fast access is -8 (both from the top of the area).
+ */
+#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
+#define FAST_ACCESS_THREAD_OFFSET (2 * 128 - 8 - 32768)
+#define FAST_ACCESS_THREAD_REGISTER			\
+	(*(unsigned long *)(FAST_ACCESS_THREAD_OFFSET))
+#endif
+#define CAVIUM_OCTEON_SCRATCH_OFFSET (2 * 128 - 16 - 32768)
+
 #ifndef __ASSEMBLY__
 
 /*
@@ -1992,6 +2008,9 @@ do {									\
 
 #define read_octeon_c0_dcacheerr()	__read_64bit_c0_register($27, 1)
 #define write_octeon_c0_dcacheerr(val)	__write_64bit_c0_register($27, 1, val)
+
+#define read_octeon_c0_errctl()		__read_64bit_c0_register($26, 0)
+#define write_octeon_c0_errctl(val)	__write_64bit_c0_register($26, 0, val)
 
 /* BMIPS3300 */
 #define read_c0_brcm_config_0()		__read_32bit_c0_register($22, 0)
