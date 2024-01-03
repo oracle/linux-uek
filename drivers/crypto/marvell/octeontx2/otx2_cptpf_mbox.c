@@ -592,9 +592,10 @@ void otx2_cptpf_afpf_mbox_handler(struct work_struct *work)
 		offset = msg->next_msgoff;
 		/* Sync VF response ready to be sent */
 		smp_wmb();
+		if (mdev->msgs_acked == rsp_hdr->num_msgs - 1)
+			otx2_mbox_reset(afpf_mbox, 0);
 		mdev->msgs_acked++;
 	}
-	otx2_mbox_reset(afpf_mbox, 0);
 }
 
 static void handle_msg_cpt_inst_lmtst(struct otx2_cptpf_dev *cptpf,
