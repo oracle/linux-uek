@@ -41,6 +41,18 @@ static inline void wmb(void)
 		: "m" (*(int *)CKSEG1)		\
 		: "memory")
 #ifdef CONFIG_CPU_CAVIUM_OCTEON
+# ifdef CONFIG_CAVIUM_OCTEON2
+#  define OCTEON_SYNCW_STR     ".set push\n\t.set arch=octeon\n\tsyncw\n\t.set pop"
+# else
+/*
+ * We actually use two syncw instructions in a row when we need a
+ * write memory barrier. This is because the CN3XXX series of Octeons
+ * have errata Core-401.  This can cause a single syncw to not enforce
+ * ordering under very rare conditions. Even if it is rare, better
+ * safe than sorry.
+ */
+#  define OCTEON_SYNCW_STR     ".set push\n.set arch=octeon\nsyncw\nsyncw\n.set pop\n"
+# endif /* CONFIG_CAVIUM_OCTEON2 */
 # define fast_iob()	do { } while (0)
 #else /* ! CONFIG_CPU_CAVIUM_OCTEON */
 # ifdef CONFIG_SGI_IP28
