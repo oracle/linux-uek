@@ -12,8 +12,10 @@
 # include <mmzone.h>
 #endif
 
+#ifndef CONFIG_CAVIUM_OCTEON_SOC
 #ifndef pa_to_nid
 #define pa_to_nid(addr) 0
+#endif
 #endif
 
 #ifndef nid_to_addrbase
