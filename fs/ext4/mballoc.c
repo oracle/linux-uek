@@ -5222,6 +5222,9 @@ static int ext4_try_to_trim_range(struct super_block *sb,
 	void *bitmap;
 	int ret = 0;
 
+	if (unlikely(EXT4_MB_GRP_BBITMAP_CORRUPT(e4b->bd_info)))
+		return 0;
+
 	bitmap = e4b->bd_bitmap;
 	start = (e4b->bd_info->bb_first_free > start) ?
 		e4b->bd_info->bb_first_free : start;
