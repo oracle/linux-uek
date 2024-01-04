@@ -637,7 +637,7 @@ static void bsp_init_amd(struct cpuinfo_x86 *c)
 
 	/* Figure out Zen generations: */
 	switch (c->x86) {
-	case 0x17: {
+	case 0x17:
 		switch (c->x86_model) {
 		case 0x00 ... 0x2f:
 		case 0x50 ... 0x5f:
@@ -653,8 +653,8 @@ static void bsp_init_amd(struct cpuinfo_x86 *c)
 			goto warn;
 		}
 		break;
-	}
-	case 0x19: {
+
+	case 0x19:
 		switch (c->x86_model) {
 		case 0x00 ... 0x0f:
 		case 0x20 ... 0x5f:
@@ -668,7 +668,17 @@ static void bsp_init_amd(struct cpuinfo_x86 *c)
 			goto warn;
 		}
 		break;
-	}
+
+	case 0x1a:
+		switch (c->x86_model) {
+		case 0x00 ... 0x0f:
+			setup_force_cpu_cap(X86_FEATURE_ZEN5);
+			break;
+		default:
+			goto warn;
+		}
+		break;
+
 	default:
 		break;
 	}
@@ -1121,6 +1131,11 @@ static void init_amd_zen4(struct cpuinfo_x86 *c)
 {
 }
 
+static void init_amd_zen5(struct cpuinfo_x86 *c)
+{
+	init_amd_zen_common();
+}
+
 static void init_amd(struct cpuinfo_x86 *c)
 {
 	early_init_amd(c);
@@ -1163,6 +1178,8 @@ static void init_amd(struct cpuinfo_x86 *c)
 		init_amd_zen3(c);
 	else if (boot_cpu_has(X86_FEATURE_ZEN4))
 		init_amd_zen4(c);
+	else if (boot_cpu_has(X86_FEATURE_ZEN5))
+		init_amd_zen5(c);
 
 	/*
 	 * Enable workaround for FXSAVE leak on CPUs
