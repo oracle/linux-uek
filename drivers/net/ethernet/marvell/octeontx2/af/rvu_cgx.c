@@ -120,15 +120,40 @@ static void rvu_map_cgx_nix_block(struct rvu *rvu, int pf,
 		pfvf->nix_blkaddr = BLKADDR_NIX1;
 }
 
-static int rvu_map_cgx_lmac_pf(struct rvu *rvu)
+static bool rvu_cgx_is_mgmt_port(struct rvu *rvu, int cgx_id, int lmac_id)
+{
+	struct cgx_lmac_fwdata_s *fwdata;
+
+	fwdata =  &rvu->fwdata->cgx_fw_data_usx[cgx_id][lmac_id];
+	if (fwdata->mgmt_port)
+		return true;
+
+	return false;
+}
+
+static void __rvu_map_cgx_lmac_pf(struct rvu *rvu, int pf, int cgx, int lmac)
 {
 	struct npc_pkind *pkind = &rvu->hw->pkind;
+	int numvfs, hwvfs;
+	int free_pkind;
+
+	rvu->pf2cgxlmac_map[pf] = cgxlmac_id_to_bmap(cgx, lmac);
+	rvu->cgxlmac2pf_map[CGX_OFFSET(cgx) + lmac] = 1 << pf;
+	free_pkind = rvu_alloc_rsrc(&pkind->rsrc);
+	pkind->pfchan_map[free_pkind] = ((pf) & 0x3F) << 16;
+	rvu_map_cgx_nix_block(rvu, pf, cgx, lmac);
+	rvu->cgx_mapped_pfs++;
+	rvu_get_pf_numvfs(rvu, pf, &numvfs, &hwvfs);
+	rvu->cgx_mapped_vfs += numvfs;
+}
+
+static int rvu_map_cgx_lmac_pf(struct rvu *rvu)
+{
 	int cgx_cnt_max = rvu->cgx_cnt_max;
 	int pf = PF_CGXMAP_BASE;
 	unsigned long lmac_bmap;
-	int size, free_pkind;
 	int cgx, lmac, iter;
-	int numvfs, hwvfs;
+	int size;
 
 	if (!cgx_cnt_max)
 		return 0;
@@ -157,6 +182,24 @@ static int rvu_map_cgx_lmac_pf(struct rvu *rvu)
 		return -ENOMEM;
 
 	rvu->cgx_mapped_pfs = 0;
+
+	/* Map mgmt port always to first PF */
+	for (cgx = 0; cgx < cgx_cnt_max; cgx++) {
+		if (!rvu_cgx_pdata(cgx, rvu))
+			continue;
+		lmac_bmap = cgx_get_lmac_bmap(rvu_cgx_pdata(cgx, rvu));
+		for_each_set_bit(iter, &lmac_bmap, rvu->hw->lmac_per_cgx) {
+			lmac = cgx_get_lmacid(rvu_cgx_pdata(cgx, rvu), iter);
+			if (rvu_cgx_is_mgmt_port(rvu, cgx, lmac)) {
+				__rvu_map_cgx_lmac_pf(rvu, pf, cgx, lmac);
+				pf++;
+				goto non_mgmtport_mapping;
+			}
+		}
+	}
+
+non_mgmtport_mapping:
+
 	for (cgx = 0; cgx < cgx_cnt_max; cgx++) {
 		if (!rvu_cgx_pdata(cgx, rvu))
 			continue;
@@ -164,14 +207,9 @@ static int rvu_map_cgx_lmac_pf(struct rvu *rvu)
 		for_each_set_bit(iter, &lmac_bmap, rvu->hw->lmac_per_cgx) {
 			lmac = cgx_get_lmacid(rvu_cgx_pdata(cgx, rvu),
 					      iter);
-			rvu->pf2cgxlmac_map[pf] = cgxlmac_id_to_bmap(cgx, lmac);
-			rvu->cgxlmac2pf_map[CGX_OFFSET(cgx) + lmac] = 1 << pf;
-			free_pkind = rvu_alloc_rsrc(&pkind->rsrc);
-			pkind->pfchan_map[free_pkind] = ((pf) & 0x3F) << 16;
-			rvu_map_cgx_nix_block(rvu, pf, cgx, lmac);
-			rvu->cgx_mapped_pfs++;
-			rvu_get_pf_numvfs(rvu, pf, &numvfs, &hwvfs);
-			rvu->cgx_mapped_vfs += numvfs;
+			if (rvu_cgx_is_mgmt_port(rvu, cgx, lmac))
+				continue;
+			__rvu_map_cgx_lmac_pf(rvu, pf, cgx, lmac);
 			pf++;
 		}
 	}
