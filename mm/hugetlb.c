@@ -3210,6 +3210,8 @@ static void __init prep_and_add_bootmem_pages(struct hstate *h,
 					HUGETLB_VMEMMAP_RESERVE_PAGES,
 					pages_per_huge_page(h));
 		}
+		__prep_account_new_huge_page(h, page_to_nid(page));
+		enqueue_huge_page(h, page);
 	}
 	spin_unlock_irqrestore(&hugetlb_lock, flags);
 }
