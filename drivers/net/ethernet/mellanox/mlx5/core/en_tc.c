@@ -4461,14 +4461,10 @@ mlx5e_add_fdb_flow(struct mlx5e_priv *priv,
 		   struct mlx5e_tc_flow **__flow)
 {
 	struct mlx5e_rep_priv *rpriv = priv->ppriv;
-	struct mlx5_eswitch_rep *in_rep;
+	struct mlx5_eswitch_rep *in_rep = rpriv->rep;
 	struct mlx5_core_dev *in_mdev = priv->mdev;
 	struct mlx5e_tc_flow *flow;
 	int err;
-
-	if (!rpriv)
-		return -EINVAL;
-	in_rep = rpriv->rep;
 
 	flow = __mlx5e_add_fdb_flow(priv, f, flow_flags, filter_dev, in_rep,
 				    in_mdev);
@@ -4593,7 +4589,7 @@ int mlx5e_configure_flower(struct net_device *dev, struct mlx5e_priv *priv,
 {
 	struct netlink_ext_ack *extack = f->common.extack;
 	struct rhashtable *tc_ht = get_tc_ht(priv, flags);
-	struct mlx5e_rep_priv *rpriv;
+	struct mlx5e_rep_priv *rpriv = priv->ppriv;
 	struct mlx5e_tc_flow *flow;
 	int err = 0;
 
@@ -4602,7 +4598,6 @@ int mlx5e_configure_flower(struct net_device *dev, struct mlx5e_priv *priv,
 
 	mlx5_esw_get(priv->mdev);
 
-	rpriv = priv->ppriv;
 	rcu_read_lock();
 	flow = rhashtable_lookup(tc_ht, &f->cookie, tc_ht_params);
 	if (flow) {
