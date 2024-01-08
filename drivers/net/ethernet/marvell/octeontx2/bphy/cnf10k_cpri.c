@@ -536,6 +536,7 @@ int cnf10k_cpri_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 	struct cnf10k_cpri_ndev_priv *priv, *priv2;
 	int i, intf_idx = 0, lmac, ret;
 	struct net_device *netdev;
+	u8 mac_addr[ETH_ALEN];
 
 	for (i = 0; i < CNF10K_BPHY_CPRI_MAX_MHAB; i++) {
 		priv2 = NULL;
@@ -576,10 +577,11 @@ int cnf10k_cpri_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			memcpy(priv->mac_addr, &cpri_cfg->eth_addr[lmac],
 			       ETH_ALEN);
 			if (is_valid_ether_addr(priv->mac_addr))
-				ether_addr_copy(netdev->dev_addr,
+				ether_addr_copy(mac_addr,
 						priv->mac_addr);
 			else
-				eth_random_addr(netdev->dev_addr);
+				eth_random_addr(mac_addr);
+			dev_addr_set(netdev, mac_addr);
 			priv->pdev = pci_get_device(OTX2_BPHY_PCI_VENDOR_ID,
 						    OTX2_BPHY_PCI_DEVICE_ID,
 						    NULL);

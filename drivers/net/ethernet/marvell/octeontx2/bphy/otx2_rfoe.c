@@ -1436,6 +1436,7 @@ int otx2_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 	struct ptp_bcn_off_cfg *ptp_cfg;
 	struct net_device *netdev;
 	struct rx_ft_cfg *ft_cfg;
+	u8 mac_addr[ETH_ALEN];
 	u8 pkt_type_mask;
 
 	cdev->num_rfoe_mhab = 3;
@@ -1502,10 +1503,11 @@ int otx2_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,
 			memcpy(priv->mac_addr, if_cfg->lmac_info.eth_addr,
 			       ETH_ALEN);
 			if (is_valid_ether_addr(priv->mac_addr))
-				ether_addr_copy(netdev->dev_addr,
+				ether_addr_copy(mac_addr,
 						priv->mac_addr);
 			else
-				eth_random_addr(netdev->dev_addr);
+				eth_random_addr(mac_addr);
+			dev_addr_set(netdev, mac_addr);
 			priv->pdev = pci_get_device(OTX2_BPHY_PCI_VENDOR_ID,
 						    OTX2_BPHY_PCI_DEVICE_ID,
 						    NULL);
