@@ -69,6 +69,7 @@ static inline unsigned int page_size_ftlb(unsigned int mmuextdef)
 #define HPAGE_MASK	({BUILD_BUG(); 0; })
 #define HUGETLB_PAGE_ORDER	({BUILD_BUG(); 0; })
 #endif /* CONFIG_MIPS_HUGE_TLB_SUPPORT */
+#ifndef __ASSEMBLY__
 
 #include <linux/pfn.h>
 
@@ -172,15 +173,11 @@ typedef struct { unsigned long pgprot; } pgprot_t;
 /*
  * __pa()/__va() should be used only during mem init.
  */
+unsigned long __phys_addr(unsigned long x);
 static inline unsigned long ___pa(unsigned long x)
 {
 	if (IS_ENABLED(CONFIG_64BIT)) {
-		/*
-		 * For MIPS64 the virtual address may either be in one of
-		 * the compatibility segements ckseg0 or ckseg1, or it may
-		 * be in xkphys.
-		 */
-		return x < CKSEG0 ? XPHYSADDR(x) : CPHYSADDR(x);
+		 return __phys_addr(x);
 	}
 
 	if (!IS_ENABLED(CONFIG_EVA)) {
@@ -214,7 +211,16 @@ static inline unsigned long ___pa(unsigned long x)
  * also affect MIPS so we keep this one until GCC 3.x has been retired
  * before we can apply https://patchwork.linux-mips.org/patch/1541/
  */
-#define __pa_symbol_nodebug(x)	__pa(RELOC_HIDE((unsigned long)(x), 0))
+
+# ifdef CONFIG_MAPPED_KERNEL
+extern unsigned long phys_to_kernel_offset;
+  define __pa_symbol(x)       (RELOC_HIDE((unsigned long)(x), 0) - phys_to_kernel_offset)
+# else
+#  ifndef __pa_symbol
+#   define __pa_symbol(x)      __pa(RELOC_HIDE((unsigned long)(x), 0))
+#  endif
+# endif
+#endif /*__ASSEMBLY__*/
 
 #ifdef CONFIG_DEBUG_VIRTUAL
 extern phys_addr_t __phys_addr_symbol(unsigned long x);
@@ -254,7 +260,7 @@ static inline int pfn_valid(unsigned long pfn)
 		    : 0);						\
 })
 
-#endif
+#endif	/*defined(CONFIG_NEED_MULTIPLE_NODES)*/
 
 #define virt_to_pfn(kaddr)   	PFN_DOWN(virt_to_phys((void *)(kaddr)))
 #define virt_to_page(kaddr)	pfn_to_page(virt_to_pfn(kaddr))
