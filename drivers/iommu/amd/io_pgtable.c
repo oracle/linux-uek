@@ -538,61 +538,37 @@ static bool pte_test_and_clear_dirty(u64 *ptep, unsigned long size,
 	return dirty;
 }
 
-static bool pte_is_large_or_base(u64 *ptep)
-{
-	return (PM_PTE_LEVEL(*ptep) == 0 || PM_PTE_LEVEL(*ptep) == 7);
-}
-
-static int walk_iova_range(u64 *pt, unsigned long iova, size_t size,
-			   int level, unsigned long flags,
-			   struct iommu_dirty_bitmap *dirty)
-{
-	unsigned long addr, isize, end = iova + size;
-	unsigned long page_size;
-	int i, next_level;
-	u64 *p, *ptep;
-
-	next_level = level - 1;
-	isize = page_size = PTE_LEVEL_PAGE_SIZE(next_level);
-
-	for (addr = iova; addr < end; addr += isize) {
-		i = PM_LEVEL_INDEX(next_level, addr);
-		ptep = &pt[i];
-
-		/* PTE present? */
-		if (!IOMMU_PTE_PRESENT(*ptep))
-			continue;
-
-		if (level > 1 && !pte_is_large_or_base(ptep)) {
-			p = IOMMU_PTE_PAGE(*ptep);
-			isize = min(end - addr, page_size);
-			walk_iova_range(p, addr, isize, next_level,
-					flags, dirty);
-		} else {
-			isize = PM_PTE_LEVEL(*ptep) == 7 ?
-					PTE_PAGE_SIZE(*ptep) : page_size;
-
-			/*
-			 * Mark the whole IOVA range as dirty even if only one of
-			 * the replicated PTEs were marked dirty.
-			 */
-			if (pte_test_and_clear_dirty(ptep, isize, flags))
-				iommu_dirty_bitmap_record(dirty, addr, isize);
-		}
-	}
-
-	return 0;
-}
-
 static int iommu_v1_read_and_clear_dirty(struct io_pgtable_ops *ops,
 					 unsigned long iova, size_t size,
 					 unsigned long flags,
 					 struct iommu_dirty_bitmap *dirty)
 {
 	struct amd_io_pgtable *pgtable = io_pgtable_ops_to_data(ops);
+	unsigned long end = iova + size - 1;
 
-	return walk_iova_range(pgtable->root, iova, size,
-			       pgtable->mode, flags, dirty);
+	do {
+		unsigned long pgsize = 0;
+		u64 *ptep, pte;
+
+		ptep = fetch_pte(pgtable, iova, &pgsize);
+		if (ptep)
+			pte = READ_ONCE(*ptep);
+		if (!ptep || !IOMMU_PTE_PRESENT(pte)) {
+			pgsize = pgsize ?: PTE_LEVEL_PAGE_SIZE(0);
+			iova += pgsize;
+			continue;
+		}
+
+		/*
+		 * Mark the whole IOVA range as dirty even if only one of
+		 * the replicated PTEs were marked dirty.
+		 */
+		if (pte_test_and_clear_dirty(ptep, pgsize, flags))
+			iommu_dirty_bitmap_record(dirty, iova, pgsize);
+		iova += pgsize;
+	} while (iova < end);
+
+	return 0;
 }
 
 /*
