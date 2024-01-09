@@ -203,7 +203,7 @@ struct octeon_cop2_state {
 	.cp2			= {0,},
 
 struct octeon_cvmseg_state {
-	unsigned long cvmseg[CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE]
+	unsigned long cvmseg[CONFIG_CAVIUM_OCTEON_EXTRA_CVMSEG + 3]
 			    [cpu_dcache_line_size() / sizeof(unsigned long)];
 };
 
@@ -399,6 +399,11 @@ unsigned long get_wchan(struct task_struct *p);
 
 #define ARCH_HAS_PREFETCHW
 #define prefetchw(x) __builtin_prefetch((x), 1, 1)
+
+#if defined(CONFIG_CAVIUM_OCTEON_USER_MEM_PER_PROCESS) || defined(CONFIG_CAVIUM_OCTEON_USER_IO_PER_PROCESS)
+#define prepare_arch_switch(next)  octeon_prepare_arch_switch(next)
+extern void octeon_prepare_arch_switch(struct task_struct *next);
+#endif
 
 #endif
 
