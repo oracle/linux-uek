@@ -129,6 +129,8 @@ static inline struct thread_info *current_thread_info(void)
 #define TIF_MSA_CTX_LIVE	30	/* MSA context must be preserved */
 #define TIF_SYSCALL_TRACE	31	/* syscall trace active */
 
+#define TIF_XKPHYS_MEM_EN      32
+#define TIF_XKPHYS_IO_EN       33
 #define _TIF_SYSCALL_TRACE	(1<<TIF_SYSCALL_TRACE)
 #define _TIF_SIGPENDING		(1<<TIF_SIGPENDING)
 #define _TIF_NEED_RESCHED	(1<<TIF_NEED_RESCHED)
@@ -153,6 +155,8 @@ static inline struct thread_info *current_thread_info(void)
 #define _TIF_MSA_CTX_LIVE	(1<<TIF_MSA_CTX_LIVE)
 #define _TIF_SYSCALL_TRACEPOINT	(1<<TIF_SYSCALL_TRACEPOINT)
 
+#define _TIF_XKPHYS_MEM_EN     (1<<TIF_XKPHYS_MEM_EN)
+#define _TIF_XKPHYS_IO_EN      (1<<TIF_XKPHYS_IO_EN)
 #define _TIF_WORK_SYSCALL_ENTRY	(_TIF_NOHZ | _TIF_SYSCALL_TRACE |	\
 				 _TIF_SYSCALL_AUDIT | \
 				 _TIF_SYSCALL_TRACEPOINT | _TIF_SECCOMP)
