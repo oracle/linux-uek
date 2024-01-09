@@ -51,6 +51,12 @@ static const struct dmi_system_id oracle_AST2600_bmc_table[] = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "ORACLE SERVER E5"),
 		},
 	},
+	{
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Oracle Corporation"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "ORACLE SERVER E6"),
+		},
+	},
 	{}
 };
 
