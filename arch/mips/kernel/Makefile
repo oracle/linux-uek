@@ -45,7 +45,7 @@ obj-$(CONFIG_FUNCTION_TRACER)	+= mcount.o ftrace.o
 sw-y				:= r4k_switch.o
 sw-$(CONFIG_CPU_R3000)		:= r2300_switch.o
 sw-$(CONFIG_CPU_TX39XX)		:= r2300_switch.o
-sw-$(CONFIG_CPU_CAVIUM_OCTEON)	:= octeon_switch.o
+sw-$(CONFIG_CPU_CAVIUM_OCTEON) := octeon_switch.o octeon-cpu.o
 obj-y				+= $(sw-y)
 
 obj-$(CONFIG_MIPS_FP_SUPPORT)	+= fpu-probe.o
@@ -114,5 +114,8 @@ obj-$(CONFIG_MIPS_CPC)		+= mips-cpc.o
 
 obj-$(CONFIG_CPU_PM)		+= pm.o
 obj-$(CONFIG_MIPS_CPS_PM)	+= pm-cps.o
+ifdef CONFIG_MAPPED_KERNEL
+  PHYS_LOAD_ADDRESS = -D"PHYSADDR=$(CONFIG_PHYS_LOAD_ADDRESS)"
+endif
 
-CPPFLAGS_vmlinux.lds		:= $(KBUILD_CFLAGS)
+CPPFLAGS_vmlinux.lds           := $(KBUILD_CFLAGS) $(PHYS_LOAD_ADDRESS)
