@@ -6,7 +6,7 @@
 #include <linux/nodemask.h>
 #include <linux/percpu.h>
 
-static DEFINE_PER_CPU(struct cpu, cpu_devices);
+DEFINE_PER_CPU(struct cpu, cpu_devices);
 
 static int __init topology_init(void)
 {
