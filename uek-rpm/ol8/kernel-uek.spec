@@ -752,7 +752,7 @@ Summary: Extra kernel modules to match the %{?2:%{2}-}core kernel\
 Group: System Environment/Kernel\
 Provides: %{variant_name}-modules-extra-%{_target_cpu} = %{version}-%{release}%{?1:.%{1}}\
 Provides: %{variant_name}-modules-extra = %{version}-%{release}%{?1:.%{1}}\
-Provides: installonlypkg(%{variant_name}-modules-extra)\
+Provides: installonlypkg(%{variant_name}-modules)\
 Provides: %{variant_name}-modules-extra-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-modules-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
@@ -801,6 +801,7 @@ Provides: installonlypkg(%{variant_name}-modules-core)\
 Provides: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-core-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: linux-firmware-core >= 999:20230516-999.26.git6c9e0ed5\
+Requires: libdnf >= 0.63.0-17.0.2\
 AutoReq: no\
 AutoProv: yes\
 %description -n %{variant_name}-modules-core\
