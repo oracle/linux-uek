@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
 #include <linux/highmem.h>
 #include <linux/crash_dump.h>
-
+#include <linux/errno.h>
+#include <linux/io.h>
 /**
  * copy_oldmem_page - copy one page from "oldmem"
  * @pfn: page frame number to be copied
@@ -23,16 +24,16 @@ ssize_t copy_oldmem_page(unsigned long pfn, char *buf,
 	if (!csize)
 		return 0;
 
-	vaddr = kmap_local_pfn(pfn);
+	vaddr = ioremap(pfn << PAGE_SHIFT, PAGE_SIZE);
 
 	if (!userbuf) {
 		memcpy(buf, vaddr + offset, csize);
+		iounmap(vaddr);
 	} else {
 		if (copy_to_user(buf, vaddr + offset, csize))
 			csize = -EFAULT;
 	}
 
-	kunmap_local(vaddr);
-
+	iounmap(vaddr);
 	return csize;
 }
