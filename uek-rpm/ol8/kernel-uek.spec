@@ -1121,7 +1121,8 @@ BuildContainerKernel() {
     install -m 755 $KernelImage ${KernelDir}/vmlinuz-$KernelVer
     ln -sf vmlinuz-$KernelVer ${KernelDir}/vmlinuz.container
 
-    install -m 755 vmlinux ${KernelDir}/vmlinux-$KernelVer
+    eu-strip --remove-comment vmlinux -o ${KernelDir}/vmlinux-$KernelVer
+    chmod 755 ${KernelDir}/vmlinux-$KernelVer
     ln -sf vmlinux-$KernelVer ${KernelDir}/vmlinux.container
 
     install -m 644 .config "${KernelDir}/config-${KernelVer}"
