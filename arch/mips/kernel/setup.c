@@ -44,6 +44,7 @@
 #include <asm/smp-ops.h>
 #include <asm/prom.h>
 
+#include <mach_bootmem.h>
 #ifdef CONFIG_MIPS_ELF_APPENDED_DTB
 char __section(".appended_dtb") __appended_dtb[0x100000];
 #endif /* CONFIG_MIPS_ELF_APPENDED_DTB */
@@ -65,6 +66,7 @@ unsigned long mips_machtype __read_mostly = MACH_UNKNOWN;
 
 EXPORT_SYMBOL(mips_machtype);
 
+bool initrd_in_reserved;
 static char __initdata command_line[COMMAND_LINE_SIZE];
 char __initdata arcs_cmdline[COMMAND_LINE_SIZE];
 
@@ -254,11 +256,15 @@ static unsigned long __init init_initrd(void)
  * Initialize the bootmem allocator. It also setup initrd related data
  * if needed.
  */
-#if defined(CONFIG_SGI_IP27) || (defined(CONFIG_CPU_LOONGSON64) && defined(CONFIG_NUMA))
-
+#if defined(CONFIG_SGI_IP27) || (defined(CONFIG_CPU_LOONGSON3) && defined(CONFIG_NUMA)) || \
+       (defined(CONFIG_CPU_CAVIUM_OCTEON) && defined(CONFIG_NUMA))
+#ifndef mach_bootmem_init
+static void mach_bootmem_init(void) {}
+#endif
 static void __init bootmem_init(void)
 {
 	init_initrd();
+	mach_bootmem_init();
 	finalize_initrd();
 }
 
@@ -269,6 +275,7 @@ static void __init bootmem_init(void)
 	phys_addr_t ramstart, ramend;
 	unsigned long start, end;
 	int i;
+	unsigned long reserved_end;
 
 	ramstart = memblock_start_of_DRAM();
 	ramend = memblock_end_of_DRAM();
@@ -279,7 +286,13 @@ static void __init bootmem_init(void)
 	 * as our memory range starting point. Once bootmem is inited we
 	 * will reserve the area used for the initrd.
 	 */
-	init_initrd();
+	if (initrd_in_reserved) {
+               init_initrd();
+               reserved_end = PFN_UP(__pa_symbol(&_end));
+       } else {
+               reserved_end = max_t(unsigned long, init_initrd(),
+                                    PFN_UP(__pa_symbol(&_end)));
+       }
 
 	/* Reserve memory occupied by kernel. */
 	memblock_reserve(__pa_symbol(&_text),
@@ -510,6 +523,12 @@ static void __init check_kernel_sections_mem(void)
 		pr_info("Kernel sections are not in the memory maps\n");
 		memblock_add(start, size);
 	}
+       /*
+        * Octeon bootloader places shared data structure right after
+        * the kernel => make sure it will not be corrupted.
+        */
+       memblock_reserve(__pa_symbol(&_end),
+                        start + size - __pa_symbol(&_end));
 }
 
 static void __init bootcmdline_append(const char *s, size_t max)
