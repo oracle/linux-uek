@@ -181,6 +181,44 @@ static void emulate_load_store_insn(struct pt_regs *regs,
 				compute_return_epc(regs);
 				regs->regs[insn.dsp_format.rd] = value;
 				break;
+#ifdef CONFIG_64BIT
+			case ldx_op:
+				if (!access_ok(addr, 8))
+					goto sigbus;
+
+				LoadDW(addr, value, res);
+				if (res)
+					goto fault;
+				compute_return_epc(regs);
+				regs->regs[insn.dsp_format.rd] = value;
+				break;
+
+			case lwux_op:
+				if (!access_ok(addr, 4))
+					goto sigbus;
+
+				LoadWU(addr, value, res);
+				if (res)
+					goto fault;
+				compute_return_epc(regs);
+				regs->regs[insn.dsp_format.rd] = value;
+				break;
+#endif /* CONFIG_64BIT */
+
+			case lhux_op:
+				if (!access_ok(addr, 2))
+					goto sigbus;
+
+				LoadHWU(addr, value, res);
+				if (res)
+					goto fault;
+				compute_return_epc(regs);
+				regs->regs[insn.dsp_format.rd] = value;
+				break;
+
+			case lbux_op:
+			case lbx_op:
+				goto sigbus;
 			default:
 				goto sigill;
 			}
@@ -1471,13 +1509,70 @@ sigill:
 	    ("Unhandled kernel unaligned access or invalid instruction", regs);
 	force_sig(SIGILL);
 }
+#ifdef CONFIG_CPU_CAVIUM_OCTEON
+#include <asm/octeon/octeon.h>
+#endif
 
 asmlinkage void do_ade(struct pt_regs *regs)
 {
 	enum ctx_state prev_state;
 	unsigned int *pc;
 
+#ifdef CONFIG_CPU_CAVIUM_OCTEON
+	const unsigned long CVMSEG_BASE = 0xffffffffffff8000ul;
+	const unsigned long CVMSEG_IO           = 0xffffffffffffa000ul;
+	const unsigned long CVMSEG_IO_END       = 0xffffffffffffc000ul;
+	u64 cvmmemctl;
+	unsigned long cvmseg_size	= octeon_cvmseg_lines * 128;
+#endif
+
 	prev_state = exception_enter();
+
+#ifdef CONFIG_CPU_CAVIUM_OCTEON
+	/*
+        * Allows tasks to access CVMSEG addresses. These are special
+        * addresses into the Octeon L1 Cache that can be used as fast
+        * scratch memory. By default access to this memory is
+        * disabled so we don't have to save it on context
+        * switch. When a userspace task references one of these
+        * addresses, we enable the region and size it to match the
+        * app.
+        */
+       if ((regs->cp0_badvaddr >= CVMSEG_IO && regs->cp0_badvaddr < CVMSEG_IO_END) ||
+           (regs->cp0_badvaddr >= CVMSEG_BASE && regs->cp0_badvaddr < CVMSEG_BASE + cvmseg_size)) {
+#if defined(CONFIG_CAVIUM_OCTEON_USER_IO_PER_PROCESS)
+               struct task_struct *group_leader = current->group_leader;
+               if (!test_tsk_thread_flag(group_leader, TIF_XKPHYS_IO_EN)) {
+                       prev_state = exception_enter();
+                       goto sigbus;
+               }
+#endif
+	       preempt_disable();
+               cvmmemctl = __read_64bit_c0_register($11, 7);
+               /* Make sure all async operations are done */
+               asm volatile ("synciobdma" ::: "memory");
+               /* Enable userspace access to CVMSEG */
+               cvmmemctl |= 1 << 6;
+               __write_64bit_c0_register($11, 7, cvmmemctl);
+               /*
+                * Restore the processes CVMSEG data. Leave off the
+                * last 8 bytes since the kernel stores the thread
+                * pointer there.
+                */
+
+		if (octeon_cvmseg_lines > 0)
+			memcpy((void *)(CVMSEG_BASE + 0), current->thread.cvmseg.cvmseg[0],
+			       128);
+		if (octeon_cvmseg_lines > 2)
+			memcpy((void *)(CVMSEG_BASE + 256), current->thread.cvmseg.cvmseg[2],
+			       cvmseg_size - 256);
+
+               preempt_enable();
+               return;
+       }
+#endif
+
+
 	perf_sw_event(PERF_COUNT_SW_ALIGNMENT_FAULTS,
 			1, regs, regs->cp0_badvaddr);
 	/*
