@@ -735,6 +735,9 @@ static unsigned int number_of_same_symbols(char *func_name)
 
 	kallsyms_on_each_symbol(count_symbols, &args);
 
+#ifdef CONFIG_LIVEPATCH
+	module_kallsyms_on_each_symbol(count_symbols, &args);
+#endif
 	return args.count;
 }
 
