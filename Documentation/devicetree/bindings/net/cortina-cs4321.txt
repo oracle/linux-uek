@@ -1,0 +1,27 @@
+Cortina CS4321 dual RXAIU/quad XAUI 10G Ethernet PHYs.  Each PHY
+within the package is mostly independent and has the following
+properties.  These phys do *not* implement the standard IEEE 802.3
+clause 45 registers.
+
+Required Properties:
+
+- compatible : "cortina,cs4321" or "cortina,cs4318".
+- reg : The address on the system management bus (MDIO/I2C/SPI address)
+- cortina,host-mode : Either "rxaui" or "xaui", the protocol used to
+  communicate with the Ethernet MAC.
+
+Optional Properties:
+
+- interrupts : One set of cells (per the interrupt-parent) for the
+  interrupt line.
+- interrupt-parent : Standard interrupt-parent property for the interrupt.
+
+Example:
+
+	phy0: ethernet-phy@4 {
+		reg = <0x04>;
+		compatible = "cortina,cs4318";
+		interrupt-parent = <&gpio>;
+		interrupts = <11 8>; /* Pin 11, active low */
+		cortina,host-mode = "rxaui";
+	};
