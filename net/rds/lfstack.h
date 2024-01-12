@@ -108,6 +108,31 @@ out:
 #endif
 }
 
+static inline struct lfstack_el *lfstack_pop_all(struct lfstack *stack)
+{
+#ifdef LFSTACK_LOCKFREE
+	struct lfstack_el *first, *next;
+	uintptr_t seq, nseq;
+
+	next = NULL;
+	nseq = 0;
+	do {
+		first = READ_ONCE(stack->first);
+		seq   = READ_ONCE(stack->seq);
+	} while (!cmpxchg_double(&stack->first, &stack->seq, first, seq, next, nseq));
+
+	return first;
+#else
+	struct lfstack_el *el;
+	unsigned long flags;
+
+	spin_lock_irqsave(&stack->lfs_lock, flags);
+	el = (struct lfstack_el *)llist_del_all((struct llist_head *)stack);
+	spin_unlock_irqrestore(&stack->lfs_lock, flags);
+	return el;
+#endif
+}
+
 static inline void lfstack_link(struct lfstack_el *first, struct lfstack_el *next)
 {
 	/* Ensure prior memory ops get executed before updating first->next */
