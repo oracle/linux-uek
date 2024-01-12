@@ -466,6 +466,14 @@ static void sata_pmp_quirks(struct ata_port *ap)
 			if (link->pmp == 4)
 				link->flags |= ATA_LFLAG_DISABLED;
 		}
+	} else if (vendor == 0x1b21 && devid == 0x1092) {
+		ata_for_each_link(link, ap, EDGE) {
+			/* SRST breaks detection and disks get misclassified
+			* LPM disabled to avoid potential problems
+			*/
+			link->flags |= ATA_LFLAG_NO_SRST |
+				       ATA_LFLAG_NO_LPM;
+		}
 	}
 }
 
