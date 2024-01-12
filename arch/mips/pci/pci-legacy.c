@@ -71,7 +71,7 @@ pcibios_align_resource(void *data, const struct resource *res,
 
 static void pcibios_scanbus(struct pci_controller *hose)
 {
-	static int next_busno;
+	int next_busno = 0;
 	static int need_domain_info;
 	LIST_HEAD(resources);
 	struct pci_bus *bus;
@@ -280,9 +280,21 @@ static int pcibios_enable_resources(struct pci_dev *dev, int mask)
 int pcibios_enable_device(struct pci_dev *dev, int mask)
 {
 	int err = pcibios_enable_resources(dev, mask);
-
+        struct pci_dev *_dev;
+        struct pci_host_bridge *hbrg;
 	if (err < 0)
 		return err;
+        _dev = NULL;
+        hbrg = NULL;
+
+	for_each_pci_dev(_dev) {
+               hbrg = pci_find_host_bridge(_dev->bus);
+               hbrg->swizzle_irq = pci_common_swizzle;
+               hbrg->map_irq = pcibios_map_irq;
+               pci_assign_irq(_dev);
+               hbrg->swizzle_irq = NULL;
+               hbrg->map_irq = NULL;
+       }
 
 	return pcibios_plat_dev_init(dev);
 }
