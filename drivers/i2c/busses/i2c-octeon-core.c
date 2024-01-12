@@ -654,6 +654,17 @@ out:
 	return (ret != 0) ? ret : num;
 }
 
+static int octeon_i2c_cvmx_map[3] = {-ENODEV, -ENODEV, -ENODEV};
+
+int octeon_i2c_cvmx2i2c(unsigned int cvmx_twsi_bus_num)
+{
+	if (cvmx_twsi_bus_num < ARRAY_SIZE(octeon_i2c_cvmx_map))
+		return octeon_i2c_cvmx_map[cvmx_twsi_bus_num];
+	else
+		return -ENODEV;
+}
+EXPORT_SYMBOL(octeon_i2c_cvmx2i2c);
+
 /* calculate and set clock divisors */
 void octeon_i2c_set_clock(struct octeon_i2c *i2c)
 {
@@ -700,6 +711,8 @@ int octeon_i2c_init_lowlevel(struct octeon_i2c *i2c)
 {
 	u8 status = 0;
 	int tries;
+	u8 ctrl = octeon_i2c_ctl_read(i2c);
+	u8 initial_status = octeon_i2c_stat_read(i2c);
 
 	/* reset controller */
 	octeon_i2c_reg_write(i2c, SW_TWSI_EOP_TWSI_RST, 0);
@@ -717,6 +730,19 @@ int octeon_i2c_init_lowlevel(struct octeon_i2c *i2c)
 		return -EIO;
 	}
 
+	if (!(ctrl & TWSI_CTL_CE) && initial_status != STAT_IDLE) {
+		dev_err(i2c->dev,
+			"Error: initial status: %02x, forcing STOP to bus\n",
+			initial_status);
+		octeon_i2c_ctl_write(i2c, TWSI_CTL_ENAB);
+		octeon_i2c_write_int(i2c, 0);
+		udelay(5);
+		octeon_i2c_write_int(i2c, TWSI_INT_SDA_OVR | TWSI_INT_SCL_OVR);
+		udelay(5);
+		octeon_i2c_write_int(i2c, TWSI_INT_SDA_OVR);
+		udelay(5);
+		octeon_i2c_write_int(i2c, 0);
+	}
 	/* toggle twice to force both teardowns */
 	octeon_i2c_hlc_enable(i2c);
 	octeon_i2c_hlc_disable(i2c);
