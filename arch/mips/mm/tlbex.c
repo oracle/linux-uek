@@ -120,20 +120,14 @@ static int use_lwx_insns(void)
 		return 0;
 	}
 }
-#if defined(CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE) && \
-    CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE > 0
+#ifdef CONFIG_CPU_CAVIUM_OCTEON
 static bool scratchpad_available(void)
 {
 	return true;
 }
 static int scratchpad_offset(int i)
 {
-	/*
-	 * CVMSEG starts at address -32768 and extends for
-	 * CAVIUM_OCTEON_CVMSEG_SIZE 128 byte cache lines.
-	 */
-	i += 1; /* Kernel use starts at the top and works down. */
-	return CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE * 128 - (8 * i) - 32768;
+	return CAVIUM_OCTEON_SCRATCH_OFFSET - (8 * i);
 }
 #else
 static bool scratchpad_available(void)
@@ -1278,15 +1272,24 @@ build_fast_tlb_refill_handler (u32 **p, struct uasm_label **l,
 		UASM_i_MFC0(p, scratch, c0_kscratch(), c0_scratch_reg);
 		build_tlb_write_entry(p, l, r, tlb_random);
 		uasm_l_leave(l, *p);
+#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
+		UASM_i_MFC0(p, K0, 4, 2);
+#endif
 		rv.restore_scratch = 1;
 	} else if (PAGE_SHIFT == 14 || PAGE_SHIFT == 13)  {
 		build_tlb_write_entry(p, l, r, tlb_random);
 		uasm_l_leave(l, *p);
 		UASM_i_LW(p, scratch, scratchpad_offset(0), 0);
+#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
+		UASM_i_LW(p, K0, FAST_ACCESS_THREAD_OFFSET, 0);  /* K0 = thread pointer */
+#endif
 	} else {
 		UASM_i_LW(p, scratch, scratchpad_offset(0), 0);
 		build_tlb_write_entry(p, l, r, tlb_random);
 		uasm_l_leave(l, *p);
+#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
+		UASM_i_LW(p, K0, FAST_ACCESS_THREAD_OFFSET, 0);  /* K0 = thread pointer */
+#endif
 		rv.restore_scratch = 1;
 	}
 
@@ -1358,6 +1361,9 @@ static void build_r4000_tlb_refill_handler(void)
 		build_update_entries(&p, K0, K1);
 		build_tlb_write_entry(&p, &l, &r, tlb_random);
 		uasm_l_leave(&l, p);
+#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
+		UASM_i_LW(&p, K0, FAST_ACCESS_THREAD_OFFSET, 0);  /* K0 = thread ptr */
+#endif
 		uasm_i_eret(&p); /* return from trap */
 	}
 #ifdef CONFIG_MIPS_HUGE_TLB_SUPPORT
@@ -1611,6 +1617,18 @@ static void build_setup_pgd(void)
 		struct uasm_reloc *r = relocs;
 
 		/* PGD << 11 in c0_Context */
+#ifdef CONFIG_MAPPED_KERNEL
+               /*
+                * if (&swapper_pg_dir == pgd)
+                *     pgd = pgd - phys_to_kernel_offset;
+                */
+               UASM_i_LA(&p, a1, (long)&swapper_pg_dir);
+               uasm_il_bne(&p, &r, a0, a1, label_tlbl_goaround1);
+               UASM_i_LA_mostly(&p, a1, (long)&phys_to_kernel_offset);
+               UASM_i_LW(&p, a1, uasm_rel_lo((long)&phys_to_kernel_offset), a1);
+               UASM_i_SUBU(&p, a0, a0, a1);
+               /* Fall through to tlbl_goaround1. */
+#else
 		/*
 		 * If it is a ckseg0 address, convert to a physical
 		 * address.  Shifting right by 29 and adding 4 will
@@ -1622,6 +1640,7 @@ static void build_setup_pgd(void)
 		uasm_il_bnez(&p, &r, a1, label_tlbl_goaround1);
 		uasm_i_nop(&p);
 		uasm_i_dinsm(&p, a0, 0, 29, 64 - 29);
+#endif
 		uasm_l_tlbl_goaround1(&l, p);
 		UASM_i_SLL(&p, a0, a0, 11);
 		UASM_i_MTC0(&p, a0, C0_CONTEXT);
@@ -2105,6 +2124,9 @@ build_r4000_tlbchange_handler_tail(u32 **p, struct uasm_label **l,
 	build_tlb_write_entry(p, l, r, tlb_indexed);
 	uasm_l_leave(l, *p);
 	build_restore_work_registers(p);
+#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
+	UASM_i_LW(p, K0, FAST_ACCESS_THREAD_OFFSET, 0);  /* K0 = thread ptr */
+#endif
 	uasm_i_eret(p); /* return from trap */
 
 #ifdef CONFIG_64BIT
@@ -2164,6 +2186,7 @@ static void build_r4000_tlb_load_handler(void)
 		 */
 		WARN(cpu_has_tlbex_tlbp_race(), "Unhandled race in RiXi path");
 
+		UASM_i_MFC0(&p, wr.r3, C0_ENTRYHI);
 		uasm_i_tlbr(&p);
 
 		switch (current_cpu_type()) {
@@ -2176,6 +2199,8 @@ static void build_r4000_tlb_load_handler(void)
 				uasm_i_ehb(&p);
 			break;
 		}
+
+		UASM_i_MTC0(&p, wr.r3, C0_ENTRYHI);
 
 		/* Examine  entrylo 0 or 1 based on ptr. */
 		if (use_bbit_insns()) {
@@ -2238,6 +2263,7 @@ static void build_r4000_tlb_load_handler(void)
 		 */
 		WARN(cpu_has_tlbex_tlbp_race(), "Unhandled race in RiXi path");
 
+		UASM_i_MFC0(&p, wr.r3, C0_ENTRYHI);
 		uasm_i_tlbr(&p);
 
 		switch (current_cpu_type()) {
@@ -2250,6 +2276,8 @@ static void build_r4000_tlb_load_handler(void)
 				uasm_i_ehb(&p);
 			break;
 		}
+
+		UASM_i_MTC0(&p, wr.r3, C0_ENTRYHI);
 
 		/* Examine  entrylo 0 or 1 based on ptr. */
 		if (use_bbit_insns()) {
