@@ -113,6 +113,29 @@ static inline struct lfstack_el *lfstack_pop(union lfstack *stack)
 #endif
 }
 
+static inline struct lfstack_el *lfstack_pop_all(union lfstack *stack)
+{
+#ifdef LFSTACK_LOCKFREE
+	union lfstack old_v, new_v;
+
+	new_v.first = NULL;
+	new_v.seq   = 0;
+	do {
+		old_v.first = READ_ONCE(stack->first);
+		old_v.seq   = READ_ONCE(stack->seq);
+	} while (!try_cmpxchg128(&stack->full, &old_v.full, new_v.full));
+	return old_v.first;
+#else
+	struct lfstack_el *el;
+	unsigned long flags;
+
+	spin_lock_irqsave(&stack->lfs_lock, flags);
+	el = (struct lfstack_el *)llist_del_all((struct llist_head *)stack);
+	spin_unlock_irqrestore(&stack->lfs_lock, flags);
+	return el;
+#endif
+}
+
 static inline void lfstack_link(struct lfstack_el *first, struct lfstack_el *next)
 {
 	/* Ensure prior memory ops get executed before updating first->next */
