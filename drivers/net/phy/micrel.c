@@ -1538,6 +1538,12 @@ static int ksz886x_cable_test_get_status(struct phy_device *phydev,
 	return ret;
 }
 
+static struct of_device_id micrel9031_match[] = {
+       {
+               .compatible = "micrel,ksz9031",
+       }
+};
+
 static struct phy_driver ksphy_driver[] = {
 {
 	.phy_id		= PHY_ID_KS8737,
@@ -1738,6 +1744,9 @@ static struct phy_driver ksphy_driver[] = {
 	.get_stats	= kszphy_get_stats,
 	.suspend	= kszphy_suspend,
 	.resume		= kszphy_resume,
+	.mdiodrv.driver         = {
+                               .of_match_table = micrel9031_match,
+                         },
 }, {
 	.phy_id		= PHY_ID_KSZ8873MLL,
 	.phy_id_mask	= MICREL_PHY_ID_MASK,
