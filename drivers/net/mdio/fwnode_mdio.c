@@ -111,8 +111,14 @@ int fwnode_mdiobus_register_phy(struct mii_bus *bus,
 	else
 		phy = phy_device_create(bus, addr, phy_id, 0, NULL);
 	if (IS_ERR(phy)) {
-		rc = PTR_ERR(phy);
-		goto clean_mii_ts;
+		struct phy_c45_device_ids c45_ids = {0};
+		phy = phy_device_create(bus, addr, 0, is_c45, &c45_ids);
+		if (IS_ERR(phy)) {
+			dev_err(&bus->dev, "cannot create PHY at address %i\n",
+				addr);
+			rc = PTR_ERR(phy);
+			goto clean_mii_ts;
+		}
 	}
 
 	if (is_acpi_node(child)) {
