@@ -741,6 +741,7 @@ void skb_release_head_state(struct sk_buff *skb)
 #endif
 	skb_ext_put(skb);
 }
+EXPORT_SYMBOL(skb_release_head_state);
 
 /* Free everything but the sk_buff shell. */
 static void skb_release_all(struct sk_buff *skb, enum skb_drop_reason reason)
@@ -1080,6 +1081,9 @@ static void __copy_skb_header(struct sk_buff *new, const struct sk_buff *old)
 #endif
 #ifdef CONFIG_NET_SCHED
 	CHECK_SKB_FIELD(tc_index);
+#ifdef CONFIG_CAVIUM_NET_PACKET_FWD_OFFLOAD
+	CHECK_SKB_FIELD(cvm_info);
+#endif
 #endif
 
 }
