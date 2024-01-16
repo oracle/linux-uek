@@ -1684,10 +1684,21 @@ static void unmap_page_range_mt(struct mmu_gather *tlb,
 		.size        = end - addr,
 		.align       = PMD_SIZE,
 		.min_chunk   = max(1ul << 27, PMD_SIZE),
-		.max_threads = 16,
+		.max_threads = 8,
 	};
 
 	BUG_ON(addr >= end);
+	WARN_ON_ONCE(!tlb->fullmm);
+
+	/*
+	 * Pages in VMAs being preserved will have an additional reference
+	 * due to the mappings having been copied prior to unmapping the full
+	 * address space. Since lock contention due to freeing pages will not
+	 * be an issue, use additional threads to unmap them.
+	 */
+	if (vma->vm_flags & VM_EXEC_KEEP)
+		job.max_threads = 16;
+
 	padata_do_multithreaded(&job);
 }
 
