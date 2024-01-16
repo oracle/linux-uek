@@ -220,14 +220,6 @@ static inline void adf_disable_sriov(struct adf_accel_dev *accel_dev)
 {
 }
 
-static inline void adf_enable_pf2vf_interrupts(struct adf_accel_dev *accel_dev)
-{
-}
-
-static inline void adf_disable_pf2vf_interrupts(struct adf_accel_dev *accel_dev)
-{
-}
-
 static inline int adf_init_pf_wq(void)
 {
 	return 0;
@@ -243,10 +235,6 @@ static inline int adf_init_vf_wq(void)
 }
 
 static inline void adf_exit_vf_wq(void)
-{
-}
-
-static inline void adf_flush_vf_wq(struct adf_accel_dev *accel_dev)
 {
 }
 
