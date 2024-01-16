@@ -415,10 +415,6 @@ static int adf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto out_err_disable_aer;
 	}
 
-	ret = adf_sysfs_init(accel_dev);
-	if (ret)
-		goto out_err_disable_aer;
-
 	ret = hw_data->dev_config(accel_dev);
 	if (ret)
 		goto out_err_disable_aer;
@@ -428,6 +424,10 @@ static int adf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto out_err_dev_shutdown;
 
 	ret = adf_dev_start(accel_dev);
+	if (ret)
+		goto out_err_dev_stop;
+
+	ret = adf_sysfs_init(accel_dev);
 	if (ret)
 		goto out_err_dev_stop;
 
