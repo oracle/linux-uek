@@ -1422,6 +1422,26 @@ static void unmap_page_range_mt(struct mmu_gather *tlb,
 	BUG_ON(addr >= end);
 
 	/*
+	 * Assumptions made below about VM_EXEC_KEEP VMAs only hold true
+	 * if the entire address space is being unmapped.
+	 */
+	if (!tlb->fullmm) {
+		unmap_page_range(tlb, vma, addr, end, details);
+		return;
+	}
+
+	/*
+	 * Reduce the number of maximum threads from the default 16 for VMAs
+	 * not being preserved across exec since some lock contention due
+	 * to pages being freed simultaneously impedes performance with too
+	 * many threads.
+	 * Pages in vmas being preserved will have an additional reference
+	 * due to the mappings having been copied prior to unmapping the full
+	 * address space and will not be subject to the same issues.
+	 */
+	if (!(vma->vm_flags & VM_EXEC_KEEP))
+		ktask_ctl_set_max_threads(&ctl, 8);
+	/*
 	 * Start the work handed to ktask on a PMD_SIZE aligned boundary to
 	 * ensure any PMD huge pages are not split unnecessarily.
 	 */
