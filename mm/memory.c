@@ -1415,6 +1415,7 @@ static void unmap_page_range_mt(struct mmu_gather *tlb,
 			struct zap_details *details)
 {
 	struct unmap_page_range_args args = { tlb, vma, details, addr, end };
+	const unsigned long total_sz = end - addr;
 	size_t min_chunk = roundup(KTASK_MEM_CHUNK, PMD_SIZE);
 	DEFINE_KTASK_CTL(ctl, unmap_page_range_chunk, &args, min_chunk);
 	size_t size = end - addr;
@@ -1438,9 +1439,25 @@ static void unmap_page_range_mt(struct mmu_gather *tlb,
 	 * Pages in vmas being preserved will have an additional reference
 	 * due to the mappings having been copied prior to unmapping the full
 	 * address space and will not be subject to the same issues.
+	 * Also, for sufficiently large, private anon VMAs, using
+	 * multiple threads can result in severe lock contention the swap
+	 * subsystem if a signficant portion is swapped out. Since the number
+	 * of swapped pages is tracked per MM and not per VMA, err on the
+	 * side of caution and assume the number applies to the VMA and revert
+	 * to unmapping single threaded if necessary.
 	 */
 	if (!(vma->vm_flags & VM_EXEC_KEEP))
 		ktask_ctl_set_max_threads(&ctl, 8);
+		if (!(vma->vm_flags & VM_SHARED) && total_sz >= min_chunk * 3) {
+			unsigned long swapped_sz;
+
+			swapped_sz = get_mm_counter(tlb->mm, MM_SWAPENTS) << PAGE_SHIFT;
+			if (swapped_sz >= max(min_chunk * 3, total_sz / 4)) {
+				unmap_page_range(tlb, vma, addr, end, details);
+				return;
+			}
+	}
+
 	/*
 	 * Start the work handed to ktask on a PMD_SIZE aligned boundary to
 	 * ensure any PMD huge pages are not split unnecessarily.
