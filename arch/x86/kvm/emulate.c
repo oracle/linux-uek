@@ -2438,7 +2438,7 @@ static int rsm_load_state_32(struct x86_emulate_ctxt *ctxt,
 	struct desc_ptr dt;
 	u16 selector;
 	u32 val, cr0, cr3, cr4;
-	int i;
+	int i, r;
 
 	cr0 =                      GET_SMSTATE(u32, smstate, 0x7ffc);
 	cr3 =                      GET_SMSTATE(u32, smstate, 0x7ff8);
@@ -2488,7 +2488,15 @@ static int rsm_load_state_32(struct x86_emulate_ctxt *ctxt,
 
 	ctxt->ops->set_smbase(ctxt, GET_SMSTATE(u32, smstate, 0x7ef8));
 
-	return rsm_enter_protected_mode(ctxt, cr0, cr3, cr4);
+	r = rsm_enter_protected_mode(ctxt, cr0, cr3, cr4);
+
+	if (r != X86EMUL_CONTINUE)
+		return r;
+
+	static_call(kvm_x86_set_interrupt_shadow)(ctxt->vcpu, 0);
+	ctxt->interruptibility = GET_SMSTATE(u8, smstate, 0x7f1a);
+
+	return r;
 }
 
 #ifdef CONFIG_X86_64
@@ -2558,6 +2566,9 @@ static int rsm_load_state_64(struct x86_emulate_ctxt *ctxt,
 		if (r != X86EMUL_CONTINUE)
 			return r;
 	}
+
+	static_call(kvm_x86_set_interrupt_shadow)(ctxt->vcpu, 0);
+	ctxt->interruptibility = GET_SMSTATE(u8, smstate, 0x7ecb);
 
 	return X86EMUL_CONTINUE;
 }

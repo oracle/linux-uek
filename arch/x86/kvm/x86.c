@@ -9494,6 +9494,8 @@ static void enter_smm_save_state_32(struct kvm_vcpu *vcpu, char *buf)
 	/* revision id */
 	put_smstate(u32, buf, 0x7efc, 0x00020000);
 	put_smstate(u32, buf, 0x7ef8, vcpu->arch.smbase);
+
+	put_smstate(u8, buf, 0x7f1a, static_call(kvm_x86_get_interrupt_shadow)(vcpu));
 }
 
 #ifdef CONFIG_X86_64
@@ -9548,6 +9550,8 @@ static void enter_smm_save_state_64(struct kvm_vcpu *vcpu, char *buf)
 
 	for (i = 0; i < 6; i++)
 		enter_smm_save_seg_64(vcpu, buf, i);
+
+	put_smstate(u8, buf, 0x7ecb, static_call(kvm_x86_get_interrupt_shadow)(vcpu));
 }
 #endif
 
@@ -9583,6 +9587,8 @@ static void enter_smm(struct kvm_vcpu *vcpu)
 
 	kvm_set_rflags(vcpu, X86_EFLAGS_FIXED);
 	kvm_rip_write(vcpu, 0x8000);
+
+	static_call(kvm_x86_set_interrupt_shadow)(vcpu, 0);
 
 	cr0 = vcpu->arch.cr0 & ~(X86_CR0_PE | X86_CR0_EM | X86_CR0_TS | X86_CR0_PG);
 	static_call(kvm_x86_set_cr0)(vcpu, cr0);
