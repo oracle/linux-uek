@@ -1861,13 +1861,15 @@ static void unmap_page_range_mt(struct mmu_gather *tlb,
 			 struct zap_details *details)
 {
 	struct unmap_page_range_args args = { tlb, vma, details, addr, end };
+	const unsigned long total_sz = end - addr;
+	const unsigned long min_chunk_sz = max(1ul << 27, PMD_SIZE);
 	struct padata_mt_job job = {
 		.thread_fn   = unmap_page_range_chunk,
 		.fn_arg      = &args,
 		.start       = addr,
-		.size        = end - addr,
+		.size        = total_sz,
 		.align       = PMD_SIZE,
-		.min_chunk   = max(1ul << 27, PMD_SIZE),
+		.min_chunk   = min_chunk_sz,
 		.max_threads = 8,
 	};
 
@@ -1887,9 +1889,24 @@ static void unmap_page_range_mt(struct mmu_gather *tlb,
 	 * due to the mappings having been copied prior to unmapping the full
 	 * address space. Since lock contention due to freeing pages will not
 	 * be an issue, use additional threads to unmap them.
+	 * Otherwise for sufficiently large, private anon VMAs, using
+	 * multiple threads can result in severe lock contention the swap
+	 * subsystem if a signficant portion is swapped out. Since the number
+	 * of swapped pages is tracked per MM and not per VMA, err on the
+	 * side of caution and assume the number applies to the VMA and revert
+	 * to unmapping single threaded if necessary.
 	 */
-	if (vma->vm_flags & VM_EXEC_KEEP)
+	if (vma->vm_flags & VM_EXEC_KEEP) {
 		job.max_threads = 16;
+	} else if (!(vma->vm_flags & VM_SHARED) && total_sz >= min_chunk_sz * 3) {
+		unsigned long swapped_sz;
+
+		swapped_sz = get_mm_counter(tlb->mm, MM_SWAPENTS) << PAGE_SHIFT;
+		if (swapped_sz >= max(min_chunk_sz * 3, total_sz / 4)) {
+			unmap_page_range(tlb, vma, addr, end, details);
+			return;
+		}
+	}
 
 	padata_do_multithreaded(&job);
 }
