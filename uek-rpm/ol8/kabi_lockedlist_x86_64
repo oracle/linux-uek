@@ -74,6 +74,8 @@
 	__request_module
 	__request_region
 	__root_device_register
+	__sb_end_write
+	__sb_start_write
 	__set_page_dirty_buffers
 	__set_page_dirty_nobuffers
 	__skb_flow_dissect
@@ -107,6 +109,7 @@
 	__x86_indirect_thunk_rdi
 	__x86_indirect_thunk_rdx
 	__x86_indirect_thunk_rsi
+	__x86_return_thunk
 	_bin2bcd
 	_cond_resched
 	_copy_from_iter
@@ -495,6 +498,7 @@
 	hrtimer_init
 	hrtimer_start_range_ns
 	hrtimer_try_to_cancel
+	hugetlb_optimize_vmemmap_key
 	iget5_locked
 	iget_locked
 	igrab
