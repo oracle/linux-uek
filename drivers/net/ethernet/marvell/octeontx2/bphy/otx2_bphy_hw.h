@@ -346,6 +346,16 @@ struct rfoex_abx_slotx_configuration2 {
 	u64 reserved1		: 8;
 };
 
+struct rfoex_rx_ctrl {
+	u64 data_pkt_rx_en		: 1;
+	u64 rx_idle			: 1;
+	u64 reserved_2_3		: 2;
+	u64 rx_ptp_mode			: 4;
+	u64 reserved_8_15		: 8;
+	u64 vlan_tpid_err_drop_ena	: 4;
+	u64 reserved_20_63		: 44;
+};
+
 struct mhab_job_desc_cfg {
 	struct rfoex_abx_slotx_configuration cfg;
 	struct rfoex_abx_slotx_configuration1 cfg1;
