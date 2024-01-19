@@ -347,13 +347,17 @@ static void rds_ib_free_frag_cache_one(struct rds_ib_refill_cache *cache, size_t
 	struct lfstack_el *cache_item;
 	struct rds_page_frag *frag;
 	struct rds_ib_cache_head *head = per_cpu_ptr(cache->percpu, cpu);
+	int cnt = 0;
 
 	trace_rds_ib_free_cache_one(head, cpu, "frag(s)");
-	while ((cache_item = lfstack_pop(&head->stack))) {
-		atomic_dec(&head->count);
+	cache_item = lfstack_pop_all(&head->stack);
+	while (cache_item) {
 		frag = container_of(cache_item, struct rds_page_frag, f_cache_entry);
+		cache_item = lfstack_next(cache_item);
 		rds_ib_free_one_frag(frag, cache_sz);
+		cnt++;
 	}
+	atomic_sub(cnt, &head->count);
 }
 
 static void rds_ib_free_frag_cache(struct rds_ib_refill_cache *cache, size_t cache_sz)
@@ -390,13 +394,18 @@ static void rds_ib_free_inc_cache_one(struct rds_ib_refill_cache *cache, int cpu
 	struct lfstack_el *cache_item;
 	struct rds_ib_incoming *inc;
 	struct rds_ib_cache_head *head = per_cpu_ptr(cache->percpu, cpu);
+	int cnt = 0;
 
 	trace_rds_ib_free_cache_one(head, cpu, "inc(s)");
-	while ((cache_item = lfstack_pop(&head->stack))) {
-		atomic_dec(&head->count);
+	cache_item = lfstack_pop_all(&head->stack);
+
+	while (cache_item) {
 		inc = container_of(cache_item, struct rds_ib_incoming, ii_cache_entry);
+		cache_item = lfstack_next(cache_item);
 		rds_ib_free_one_inc(inc);
+		cnt++;
 	}
+	atomic_sub(cnt, &head->count);
 }
 
 static void rds_ib_free_inc_cache(struct rds_ib_refill_cache *cache)
