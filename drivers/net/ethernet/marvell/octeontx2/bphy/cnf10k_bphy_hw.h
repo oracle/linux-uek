@@ -491,4 +491,17 @@ struct rfoe_link_tx_ptp_ring_ctl {
 	u64 tail_idx3             : 5;
 };
 
+struct rfoe_rx_ctrl {
+	u64 data_pkt_rx_en		: 4;
+	u64 rx_idle			: 1;
+	u64 reserved_5_6		: 2;
+	u64 tstamp_format		: 1;
+	u64 rx_ptp_mode			: 4;
+	u64 reserved_12_14		: 3;
+	u64 rx_sync_enhanced_mode	: 1;
+	u64 vlan_tpid_err_drop_ena	: 4;
+	u64 reserved_20_30		: 11;
+	u64 swe				: 1;
+	u64 reserved_32_63		: 32;
+};
 #endif	/* _CNF10K_BPHY_HW_H_ */

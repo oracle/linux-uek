@@ -109,6 +109,30 @@ static size_t otx2_rfoe_debugfs_get_buffer_size(void);
 static void otx2_rfoe_debugfs_create(struct otx2_rfoe_drv_ctx *ctx);
 static void otx2_rfoe_debugfs_remove(struct otx2_rfoe_drv_ctx *ctx);
 
+static void otx2_rfoe_set_rx_state(struct otx2_rfoe_ndev_priv *priv,
+				   bool enabled)
+{
+	struct rfoex_rx_ctrl *rx_ctrl;
+	u64 value;
+
+	value = readq(priv->rfoe_reg_base + RFOEX_RX_CTL(priv->rfoe_num));
+
+	rx_ctrl = (struct rfoex_rx_ctrl *)&value;
+
+	if (rx_ctrl->data_pkt_rx_en == enabled)
+		return;
+
+	rx_ctrl->data_pkt_rx_en = enabled;
+
+	netdev_printk(KERN_INFO, priv->netdev,
+		      "%s RX for RFOE %u LMAC %u data_pkt_rx_en 0x%x\n",
+		      (enabled ? "Enabling" : "Disabling"),
+		      priv->rfoe_num, priv->lmac_id, rx_ctrl->data_pkt_rx_en);
+
+	writeq(value,
+	       priv->rfoe_reg_base + RFOEX_RX_CTL(priv->rfoe_num));
+}
+
 void otx2_rfoe_disable_intf(int rfoe_num)
 {
 	struct otx2_rfoe_drv_ctx *drv_ctx;
@@ -141,6 +165,7 @@ void otx2_bphy_rfoe_cleanup(void)
 			netdev = drv_ctx->netdev;
 			netif_stop_queue(netdev);
 			priv = netdev_priv(netdev);
+			otx2_rfoe_set_rx_state(priv, false);
 			--(priv->ptp_cfg->refcnt);
 			if (!priv->ptp_cfg->refcnt) {
 				del_timer_sync(&priv->ptp_cfg->ptp_timer);
