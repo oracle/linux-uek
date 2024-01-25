@@ -411,25 +411,24 @@ Requires: %{name}-modules-core-uname-r = %{KVERREL}
 #
 BuildRequires: kmod, patch >= 2.5.4, bash >= 2.03, sh-utils, tar, git
 BuildRequires: bzip2, xz, findutils, gzip, m4, perl-interpreter, perl-Carp, perl-devel, perl-generators, make >= 3.78, diffutils, gawk
-BuildRequires: gcc-toolset-11
-BuildRequires: gcc-toolset-11-annobin
-BuildRequires: gcc-toolset-11-annobin-plugin-gcc
-BuildRequires: gcc-toolset-11-binutils
-BuildRequires: gcc-toolset-11-binutils-devel
+BuildRequires: gcc-toolset-13
+BuildRequires: gcc-toolset-13-gcc-plugin-annobin
+BuildRequires: gcc-toolset-13-binutils
+BuildRequires: gcc-toolset-13-binutils-devel
 BuildRequires: redhat-rpm-config >= 130-1, hmaccalc, python3-devel
 BuildRequires: net-tools, hostname
-BuildRequires: gcc-toolset-11-elfutils-libelf-devel
+BuildRequires: elfutils-libelf-devel
 BuildRequires: python3, python3-devel
 BuildRequires: flex >= 2.5.19, bison >= 2.3
 BuildRequires: pkgconfig
 BuildRequires: glib2-devel
-BuildRequires: gcc-toolset-11-elfutils-devel
+BuildRequires: elfutils-devel
 BuildRequires: bc
 BuildRequires: hostname
 BuildRequires: openssl, openssl-devel
 BuildRequires: rsync
 BuildRequires: numactl-devel
-BuildRequires: dwarves >= 1.16
+BuildRequires: dwarves >= 1.25
 %if %{with_sparse}
 BuildRequires: sparse >= 0.4.1
 %endif
@@ -458,7 +457,7 @@ BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 
 %if %{with_debuginfo}
 BuildRequires: rpm-build
-BuildRequires: gcc-toolset-11-elfutils
+BuildRequires: elfutils
 BuildConflicts: rpm < 4.13.0.1-19
 
 ## See /usr/lib/rpm/macros on OL8 for macro descriptions.
@@ -730,11 +729,11 @@ Provides: kernel-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: installonlypkg(%{variant_name})\
 AutoReqProv: no\
 Requires(pre): /usr/bin/find\
-Requires: gcc-toolset-11-elfutils-libelf-devel\
-Requires: gcc-toolset-11-elfutils-libs\
-Requires: gcc-toolset-11\
-Requires: gcc-toolset-11-binutils\
-Requires: gcc-toolset-11-binutils-devel\
+Requires: elfutils-libelf-devel\
+Requires: elfutils-libs\
+Requires: gcc-toolset-13\
+Requires: gcc-toolset-13-binutils\
+Requires: gcc-toolset-13-binutils-devel\
 %description -n %{variant_name}-devel\
 This package provides kernel headers and makefiles sufficient to build modules\
 against the %{?2:%{2}} kernel package.\
@@ -898,8 +897,8 @@ of the operating system: memory allocation, process allocation, device
 input and output, etc.
 
 %prep
-# Enable gcc-toolset-11
-source /opt/rh/gcc-toolset-11/enable
+# Enable gcc-toolset-13
+source /opt/rh/gcc-toolset-13/enable
 gcc --version
 
 # do a few sanity-checks for --with *only builds
@@ -1070,8 +1069,8 @@ find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
 ### build
 ###
 %build
-# Enable gcc-toolset-11
-source /opt/rh/gcc-toolset-11/enable
+# Enable gcc-toolset-13
+source /opt/rh/gcc-toolset-13/enable
 gcc --version
 
 %if %{with_sparse}
@@ -1705,8 +1704,8 @@ make %{?make_opts} %{?_smp_mflags} htmldocs || %{doc_build_fail}
 ###
 
 %install
-# Enable gcc-toolset-11
-source /opt/rh/gcc-toolset-11/enable
+# Enable gcc-toolset-13
+source /opt/rh/gcc-toolset-13/enable
 gcc --version
 
 cd linux-%{version}-%{release}

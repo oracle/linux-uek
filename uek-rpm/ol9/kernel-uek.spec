@@ -385,8 +385,10 @@ Requires: %{name}-modules-core-uname-r = %{KVERREL}
 #
 BuildRequires: kmod, patch >= 2.5.4, bash >= 2.03, tar, git
 BuildRequires: bzip2, xz, findutils, gzip, m4, perl-interpreter, perl-Carp, perl-devel, perl-generators, make >= 3.78, diffutils, gawk
-BuildRequires: gcc
-BuildRequires: binutils-devel
+BuildRequires: gcc-toolset-13
+BuildRequires: gcc-toolset-13-gcc-plugin-annobin
+BuildRequires: gcc-toolset-13-binutils
+BuildRequires: gcc-toolset-13-binutils-devel
 BuildRequires: redhat-rpm-config, hmaccalc, python3-devel
 BuildRequires: net-tools, hostname
 BuildRequires: python3, python3-devel
@@ -398,7 +400,8 @@ BuildRequires: hostname
 BuildRequires: openssl, openssl-devel
 BuildRequires: rsync
 BuildRequires: numactl-devel
-BuildRequires: dwarves >= 1.16
+BuildRequires: dwarves >= 1.25
+BuildRequires: elfutils-devel
 BuildRequires: elfutils-libelf-devel
 BuildRequires: kernel-rpm-macros >= 185-11
 %if %{with_sparse}
@@ -429,6 +432,7 @@ BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 
 %if %{with_debuginfo}
 BuildRequires: rpm-build
+BuildRequires: elfutils
 BuildConflicts: rpm < 4.13.0.1-19
 
 ## See /usr/lib/rpm/macros on OL8 for macro descriptions.
@@ -697,6 +701,9 @@ Provides: kernel-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: installonlypkg(%{variant_name})\
 AutoReqProv: no\
 Requires(pre): /usr/bin/find\
+Requires: gcc-toolset-13\
+Requires: gcc-toolset-13-binutils\
+Requires: gcc-toolset-13-binutils-devel\
 %description -n %{variant_name}-devel\
 This package provides kernel headers and makefiles sufficient to build modules\
 against the %{?2:%{2}} kernel package.\
@@ -850,6 +857,11 @@ of the operating system: memory allocation, process allocation, device
 input and output, etc.
 
 %prep
+# Enable gcc-toolset-13
+source /opt/rh/gcc-toolset-13/enable
+gcc --version
+
+
 # do a few sanity-checks for --with *only builds
 %if %{with_baseonly}
 %if !%{with_up}
@@ -1019,6 +1031,10 @@ find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
 ### build
 ###
 %build
+# Enable gcc-toolset-13
+source /opt/rh/gcc-toolset-13/enable
+gcc --version
+
 %if %{with_sparse}
 %define sparse_mflags	C=1
 %endif
@@ -1622,6 +1638,11 @@ make %{?make_opts} %{?_smp_mflags} htmldocs || %{doc_build_fail}
 ###
 
 %install
+# Enable gcc-toolset-13
+source /opt/rh/gcc-toolset-13/enable
+gcc --version
+
+
 cd linux-%{version}-%{release}
 
 %if %{with_doc}
