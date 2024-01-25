@@ -115,6 +115,7 @@ struct mv64xxx_i2c_regs {
 	u8	status;
 	u8	clock;
 	u8	soft_reset;
+	u8	config_debug;
 };
 
 struct mv64xxx_i2c_data {
@@ -161,6 +162,7 @@ static struct mv64xxx_i2c_regs mv64xxx_i2c_regs_mv64xxx = {
 	.status		= 0x0c,
 	.clock		= 0x0c,
 	.soft_reset	= 0x1c,
+	.config_debug	= 0x8c,
 };
 
 static struct mv64xxx_i2c_regs mv64xxx_i2c_regs_sun4i = {
@@ -209,6 +211,14 @@ mv64xxx_i2c_prepare_for_io(struct mv64xxx_i2c_data *drv_data,
 static void
 mv64xxx_i2c_hw_init(struct mv64xxx_i2c_data *drv_data)
 {
+
+	u32 data;
+
+	/* Disable I2C slave */
+	data = readl(drv_data->reg_base + drv_data->reg_offsets.config_debug);
+	data &= ~BIT(18);
+	writel(data, drv_data->reg_base + drv_data->reg_offsets.config_debug);
+
 	if (drv_data->offload_enabled) {
 		writel(0, drv_data->reg_base + MV64XXX_I2C_REG_BRIDGE_CONTROL);
 		writel(0, drv_data->reg_base + MV64XXX_I2C_REG_BRIDGE_TIMING);
@@ -908,7 +918,7 @@ mv64xxx_of_config(struct mv64xxx_i2c_data *drv_data,
 	 * Transaction Generator support and the errata fix.
 	 */
 	if (of_device_is_compatible(np, "marvell,mv78230-i2c")) {
-		drv_data->offload_enabled = true;
+		drv_data->offload_enabled = false;
 		/* The delay is only needed in standard mode (100kHz) */
 		if (bus_freq <= I2C_MAX_STANDARD_MODE_FREQ)
 			drv_data->errata_delay = true;
