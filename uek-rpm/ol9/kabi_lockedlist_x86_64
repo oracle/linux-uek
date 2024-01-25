@@ -76,6 +76,7 @@
 	__vmalloc
 	__wake_up
 	__warn_printk
+	__write_overflow_field
 	__x86_indirect_alt_call_r10
 	__x86_indirect_alt_call_r11
 	__x86_indirect_alt_call_r12
@@ -113,6 +114,7 @@
 	__x86_indirect_thunk_rcx
 	__x86_indirect_thunk_rdx
 	__x86_indirect_thunk_rsi
+	__x86_return_thunk
 	__xa_insert
 	_bin2bcd
 	_copy_from_user
@@ -382,6 +384,7 @@
 	get_task_pid
 	get_user_pages
 	grab_cache_page_write_begin
+	hugetlb_optimize_vmemmap_key
 	iget5_locked
 	igrab
 	import_iovec

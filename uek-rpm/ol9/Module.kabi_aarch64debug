@@ -52,6 +52,7 @@
 0xae04012c	__vmalloc	vmlinux	EXPORT_SYMBOL
 0x3eeb2322	__wake_up	vmlinux	EXPORT_SYMBOL
 0x56470118	__warn_printk	vmlinux	EXPORT_SYMBOL
+0x3402dc8b	__write_overflow_field	vmlinux	EXPORT_SYMBOL
 0x8810754a	_find_first_bit	vmlinux	EXPORT_SYMBOL
 0x92997ed8	_printk	vmlinux	EXPORT_SYMBOL
 0x944375db	_totalram_pages	vmlinux	EXPORT_SYMBOL

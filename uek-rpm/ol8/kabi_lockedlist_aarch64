@@ -53,6 +53,7 @@
 	__vmalloc
 	__wake_up
 	__warn_printk
+	__write_overflow_field
 	_find_first_bit
 	_printk
 	_totalram_pages
