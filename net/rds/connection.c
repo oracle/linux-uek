@@ -1302,12 +1302,22 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err)
 		cp->cp_connection_reset = ktime_get_real_seconds();
 		/* Restart counting */
 		cp->cp_connection_attempts = 0;
-		if (conn->c_trans->t_type != RDS_TRANS_TCP)
-			printk(KERN_INFO "RDS/IB: connection <%pI6c,%pI6c,%d> dropped due to '%s'\n",
-			       &conn->c_laddr,
-			       &conn->c_faddr,
-			       conn->c_tos,
-			       conn_drop_reason_str(reason));
+		if (conn->c_trans->t_type != RDS_TRANS_TCP) {
+			if (reason == DR_USER_RESET)
+				printk(KERN_INFO "RDS/IB: connection <%pI6c,%pI6c,%d> dropped due to '%s' by PPID %u (%s)\n",
+				       &conn->c_laddr,
+				       &conn->c_faddr,
+				       conn->c_tos,
+				       conn_drop_reason_str(reason),
+				       current->real_parent->pid,
+				       current->real_parent->comm);
+			else
+				printk(KERN_INFO "RDS/IB: connection <%pI6c,%pI6c,%d> dropped due to '%s'\n",
+				       &conn->c_laddr,
+				       &conn->c_faddr,
+				       conn->c_tos,
+				       conn_drop_reason_str(reason));
+		}
 
 	} else if ((cp->cp_reconnect_warn) &&
 		   (now - cp->cp_reconnect_start > 60)) {
