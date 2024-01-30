@@ -95,6 +95,16 @@ config I2C_AMD_MP2
 	  This driver can also be built as modules.  If so, the modules will
 	  be called i2c-amd-mp2-pci and i2c-amd-mp2-plat.
 
+config I2C_ASF
+        tristate "AMD ASF controller works as SMBus master and slave"
+        depends on PCI && ACPI
+        help
+	  If you say yes to this option, support will be included for the
+	  SMBus controller found in the AMD EPIC family.
+
+	  This driver can also be built as modules.  If so, the modules will
+	  be called i2c-asf.
+
 config I2C_HIX5HD2
 	tristate "Hix5hd2 high-speed I2C driver"
 	depends on ARCH_HISI || ARCH_HIX5HD2 || COMPILE_TEST
