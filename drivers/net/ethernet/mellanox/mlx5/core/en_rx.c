@@ -500,20 +500,32 @@ err_free:
 static void
 mlx5e_add_skb_shared_info_frag(struct mlx5e_rq *rq, struct skb_shared_info *sinfo,
 			       struct xdp_buff *xdp, struct mlx5e_frag_page *frag_page,
+#ifdef WITH_XDP_FRAGS
 			       u32 frag_offset, u32 len)
+#else
+			       u32 frag_offset, u32 len, bool *has_frags)
+#endif
 {
 	skb_frag_t *frag;
 
 	dma_addr_t addr = page_pool_get_dma_addr(frag_page->page);
 
 	dma_sync_single_for_cpu(rq->pdev, addr + frag_offset, len, rq->buff.map_dir);
+#ifdef WITH_XDP_FRAGS
 	if (!xdp_buff_has_frags(xdp)) {
+#else
+	if (!*has_frags) {
+#endif
 		/* Init on the first fragment to avoid cold cache access
 		 * when possible.
 		 */
 		sinfo->nr_frags = 0;
 		sinfo->xdp_frags_size = 0;
+#ifdef WITH_XDP_FRAGS
 		xdp_buff_set_frags_flag(xdp);
+#else
+		*has_frags = true;
+#endif
 	}
 
 	frag = &sinfo->frags[sinfo->nr_frags++];
@@ -1734,6 +1746,9 @@ mlx5e_skb_from_cqe_nonlinear(struct mlx5e_rq *rq, struct mlx5e_wqe_frag_info *wi
 	dma_addr_t addr;
 	u32 truesize;
 	void *va;
+#ifndef WITH_XDP_FRAGS
+	bool has_frags = false;
+#endif
 
 	frag_page = wi->frag_page;
 
@@ -1761,7 +1776,11 @@ mlx5e_skb_from_cqe_nonlinear(struct mlx5e_rq *rq, struct mlx5e_wqe_frag_info *wi
 		frag_consumed_bytes = min_t(u32, frag_info->frag_size, cqe_bcnt);
 
 		mlx5e_add_skb_shared_info_frag(rq, sinfo, &mxbuf.xdp, frag_page,
+#ifdef WITH_XDP_FRAGS
 					       wi->offset, frag_consumed_bytes);
+#else
+					       wi->offset, frag_consumed_bytes, &has_frags);
+#endif
 		truesize += frag_info->frag_stride;
 
 		cqe_bcnt -= frag_consumed_bytes;
@@ -1790,7 +1809,11 @@ mlx5e_skb_from_cqe_nonlinear(struct mlx5e_rq *rq, struct mlx5e_wqe_frag_info *wi
 	skb_mark_for_recycle(skb);
 	head_wi->frag_page->frags++;
 
+#ifdef WITH_XDP_FRAGS
 	if (xdp_buff_has_frags(&mxbuf.xdp)) {
+#else
+	if (has_frags) {
+#endif
 		struct mlx5e_wqe_frag_info *pwi;
 
 		/* sinfo->nr_frags is reset by build_skb, calculate again. */
@@ -2013,6 +2036,9 @@ mlx5e_skb_from_cqe_mpwrq_nonlinear(struct mlx5e_rq *rq, struct mlx5e_mpw_info *w
 	u16 linear_data_len;
 	u16 linear_hr;
 	void *va;
+#ifndef WITH_XDP_FRAGS
+	bool has_frags = false;
+#endif
 
 	prog = rcu_dereference(rq->xdp_prog);
 
@@ -2065,7 +2091,11 @@ mlx5e_skb_from_cqe_mpwrq_nonlinear(struct mlx5e_rq *rq, struct mlx5e_mpw_info *w
 			truesize += ALIGN(pg_consumed_bytes, BIT(rq->mpwqe.log_stride_sz));
 
 		mlx5e_add_skb_shared_info_frag(rq, sinfo, &mxbuf.xdp, frag_page, frag_offset,
+#ifdef WITH_XDP_FRAGS
 					       pg_consumed_bytes);
+#else
+					       pg_consumed_bytes, &has_frags);
+#endif
 		byte_cnt -= pg_consumed_bytes;
 		frag_offset = 0;
 		frag_page++;
@@ -2115,7 +2145,11 @@ mlx5e_skb_from_cqe_mpwrq_nonlinear(struct mlx5e_rq *rq, struct mlx5e_mpw_info *w
 	} else {
 		dma_addr_t addr;
 
+#ifdef WITH_XDP_FRAGS
 		if (xdp_buff_has_frags(&mxbuf.xdp)) {
+#else
+		if (has_frags) {
+#endif
 			struct mlx5e_frag_page *pagep;
 
 			xdp_update_skb_shared_info(skb, sinfo->nr_frags,
