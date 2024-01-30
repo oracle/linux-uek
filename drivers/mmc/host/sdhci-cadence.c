@@ -5,7 +5,9 @@
  */
 
 #include <linux/bitfield.h>
+#include <linux/bitmap.h>
 #include <linux/bits.h>
+#include <linux/dma-direct.h>
 #include <linux/iopoll.h>
 #include <linux/module.h>
 #include <linux/mmc/host.h>
@@ -186,6 +188,26 @@ struct sdhci_cdns_sd4_phy {
 	struct sdhci_cdns_sd4_phy_param phy_params[];
 };
 
+/*
+ * Support ADMA with bounce buffers if the device tree
+ * allocates a memory region.
+ */
+#define BOUNCE_BUFSZ      SZ_64K
+#define BOUNCE_BUF_OFFSET 0x1000	/* Located after adma table */
+#define DEV_TO_SDHCI_PRIV(dev) \
+	(struct sdhci_cdns_priv *)(sdhci_pltfm_priv(sdhci_priv(dev_get_drvdata(dev))))
+
+struct sdhci_cdns_bounce {
+	dma_addr_t addr;
+	unsigned int size;
+	phys_addr_t buffers;
+	unsigned int bufcnt;
+	unsigned long *free_list;
+	void __iomem *vaddr;
+	spinlock_t io_lock;
+	unsigned long long *io_orig_addr;
+};
+
 struct sdhci_cdns_priv {
 	void __iomem *hrs_addr;
 	void __iomem *ctl_addr;	/* write control */
@@ -196,6 +218,7 @@ struct sdhci_cdns_priv {
 	void (*priv_write_l)(struct sdhci_cdns_priv *priv, u32 val,
 			     void __iomem *reg);
 	struct reset_control *rst_hw;
+	struct sdhci_cdns_bounce *bounce;
 };
 
 struct sdhci_cdns_sd4_phy_cfg {
@@ -1828,6 +1851,189 @@ static void elba_write_b(struct sdhci_host *host, u8 val, int reg)
 	spin_unlock_irqrestore(&priv->wrlock, flags);
 }
 
+static void *elba_dma_alloc(struct device *dev, size_t size,
+			    dma_addr_t *dma_handle, gfp_t flag,
+			    unsigned long attrs)
+{
+	struct sdhci_cdns_priv *priv = DEV_TO_SDHCI_PRIV(dev);
+
+	*dma_handle = priv->bounce->addr;
+
+	return priv->bounce->vaddr;
+}
+
+/*
+ * Copy the swiotlb ddr bounce buffer from or back to the original dma location
+ */
+static void elba_swiotlb_bounce(struct device *dev, phys_addr_t orig_addr,
+				phys_addr_t tlb_addr, size_t size,
+				enum dma_data_direction dir)
+{
+	struct sdhci_cdns_priv *priv = DEV_TO_SDHCI_PRIV(dev);
+	void __iomem *vaddr;
+	volatile int tmp;
+
+	mb();
+	vaddr = priv->bounce->vaddr + tlb_addr - priv->bounce->addr;
+	if (dir == DMA_TO_DEVICE) {
+		memcpy(vaddr, phys_to_virt(orig_addr), size);
+		tmp = *(int *)vaddr;
+	} else {
+		memcpy(phys_to_virt(orig_addr), vaddr, size);
+		tmp = *(int *)phys_to_virt(orig_addr);
+	}
+	mb();
+}
+
+static phys_addr_t elba_swiotlb_map_single(struct device *dev,
+			phys_addr_t orig_addr, size_t mapping_size,
+			enum dma_data_direction dir, unsigned long attrs)
+{
+	struct sdhci_cdns_priv *priv = DEV_TO_SDHCI_PRIV(dev);
+	phys_addr_t tlb_addr;
+	int index;
+
+	/*
+	 * Allocate an unused bounce buffer and save away the mapping from the
+	 * original address to the DMA address.  This is needed when we sync
+	 * the memory.  Then we sync the buffer if needed.
+	 */
+	index = find_first_zero_bit(priv->bounce->free_list,
+				    priv->bounce->bufcnt);
+	if (index < priv->bounce->bufcnt) {
+		set_bit(index, priv->bounce->free_list);
+		priv->bounce->io_orig_addr[index] = orig_addr;
+		tlb_addr = priv->bounce->buffers + BOUNCE_BUFSZ * index;
+	} else {
+		dev_WARN_ONCE(dev, 1, "No bounce buffer available\n");
+		return DMA_MAPPING_ERROR;
+	}
+	if (!(attrs & DMA_ATTR_SKIP_CPU_SYNC) &&
+	    (dir == DMA_TO_DEVICE || dir == DMA_BIDIRECTIONAL))
+		elba_swiotlb_bounce(dev, orig_addr, tlb_addr, mapping_size,
+				    DMA_TO_DEVICE);
+
+	return tlb_addr;
+}
+
+static bool elba_valid_bounce_addr(struct sdhci_cdns_priv *priv,
+				   phys_addr_t tlb_addr)
+{
+	phys_addr_t bounce_start = priv->bounce->buffers;
+	phys_addr_t bounce_end = bounce_start + priv->bounce->bufcnt * BOUNCE_BUFSZ;
+
+	if ((tlb_addr >= bounce_start) && (tlb_addr < bounce_end) &&
+	    ((tlb_addr - BOUNCE_BUF_OFFSET) % BOUNCE_BUFSZ) == 0)
+		return true;
+	return false;
+}
+
+/*
+ * tlb_addr is the physical address of the bounce buffer to unmap.
+ */
+static void elba_swiotlb_unmap_single(struct device *dev, phys_addr_t tlb_addr,
+			size_t mapping_size, enum dma_data_direction dir,
+			unsigned long attrs)
+{
+	struct sdhci_cdns_priv *priv = DEV_TO_SDHCI_PRIV(dev);
+	phys_addr_t orig_addr;
+	int index;
+
+	if (elba_valid_bounce_addr(priv, tlb_addr)) {
+		index = (tlb_addr - priv->bounce->buffers) / BOUNCE_BUFSZ;
+		orig_addr = priv->bounce->io_orig_addr[index];
+
+		/* Sync the memory before unmapping the entry */
+		if (!(attrs & DMA_ATTR_SKIP_CPU_SYNC) &&
+		    ((dir == DMA_FROM_DEVICE) || (dir == DMA_BIDIRECTIONAL)))
+			elba_swiotlb_bounce(dev, orig_addr, tlb_addr,
+					    mapping_size, DMA_FROM_DEVICE);
+
+		/* Unmap the entry */
+		clear_bit(index, priv->bounce->free_list);
+	} else {
+		dev_WARN_ONCE(dev, 1, "tlb_addr 0x%llx not found\n", tlb_addr);
+	}
+}
+
+/*
+ * Create a mapping for the buffer at @paddr, and in case of DMAing
+ * to the device copy the data into it as well.
+ */
+static dma_addr_t elba_swiotlb_map(struct device *dev, phys_addr_t paddr,
+				   size_t size, enum dma_data_direction dir,
+				   unsigned long attrs)
+{
+	dma_addr_t dma_addr;
+
+	dma_addr = elba_swiotlb_map_single(dev, paddr, size, dir, attrs);
+	if (dma_addr == (phys_addr_t)DMA_MAPPING_ERROR) {
+		dev_WARN_ONCE(dev, 1, "Error mapping physaddr 0x%llx\n", paddr);
+		return DMA_MAPPING_ERROR;
+	}
+
+	return dma_addr;
+}
+
+static void _elba_dma_unmap_sg(struct device *dev, struct scatterlist *sgl,
+			       int nents, enum dma_data_direction dir,
+			       unsigned long attrs)
+{
+	struct scatterlist *sg;
+	phys_addr_t phys;
+	int length;
+	int i;
+
+	for_each_sg(sgl, sg, nents, i) {
+		phys = dma_to_phys(dev, sg->dma_address);
+		length = sg_dma_len(sg);
+		elba_swiotlb_unmap_single(dev, phys, length, dir, attrs);
+	}
+}
+
+static void elba_dma_unmap_sg(struct device *dev, struct scatterlist *sgl,
+			      int nents, enum dma_data_direction dir,
+			      unsigned long attrs)
+{
+	struct sdhci_cdns_priv *priv = DEV_TO_SDHCI_PRIV(dev);
+	unsigned long flags;
+
+	spin_lock_irqsave(&priv->bounce->io_lock, flags);
+	_elba_dma_unmap_sg(dev, sgl, nents, dir, attrs);
+	spin_unlock_irqrestore(&priv->bounce->io_lock, flags);
+}
+
+static int elba_dma_map_sg(struct device *dev, struct scatterlist *sgl,
+			   int nents, enum dma_data_direction dir,
+			   unsigned long attrs)
+{
+	struct sdhci_cdns_priv *priv = DEV_TO_SDHCI_PRIV(dev);
+	struct scatterlist *sg;
+	unsigned long flags;
+	phys_addr_t phys;
+	int length;
+	int i;
+
+	spin_lock_irqsave(&priv->bounce->io_lock, flags);
+
+	for_each_sg(sgl, sg, nents, i) {
+		phys = page_to_phys(sg_page(sg)) + sg->offset;
+		length = sg->length;
+		sg->dma_address = elba_swiotlb_map(dev, phys, length, dir, attrs);
+		if (sg->dma_address == DMA_MAPPING_ERROR)
+			goto out_unmap;
+		sg_dma_len(sg) = sg->length;
+	}
+
+	spin_unlock_irqrestore(&priv->bounce->io_lock, flags);
+	return nents;
+
+out_unmap:
+	_elba_dma_unmap_sg(dev, sgl, i, dir, attrs | DMA_ATTR_SKIP_CPU_SYNC);
+	spin_unlock_irqrestore(&priv->bounce->io_lock, flags);
+	return 0;
+}
+
 static const struct sdhci_ops sdhci_elba_ops = {
 	.write_l = elba_write_l,
 	.write_w = elba_write_w,
@@ -1839,11 +2045,19 @@ static const struct sdhci_ops sdhci_elba_ops = {
 	.set_uhs_signaling = sdhci_cdns_set_uhs_signaling,
 };
 
+static const struct dma_map_ops elba_dma_mapping_ops = {
+	.alloc = elba_dma_alloc,
+	.map_sg = elba_dma_map_sg,
+	.unmap_sg = elba_dma_unmap_sg,
+};
+
 static int elba_phy_probe(struct platform_device *pdev, struct sdhci_cdns_priv *priv)
 {
 	struct sdhci_host *host = platform_get_drvdata(pdev);
+	struct device_node *np = pdev->dev.of_node;
 	struct resource *iomem;
 	void __iomem *ioaddr;
+	u64 val[2];
 
 	host->mmc->caps |= (MMC_CAP_1_8V_DDR | MMC_CAP_8_BIT_DATA);
 
@@ -1862,6 +2076,73 @@ static int elba_phy_probe(struct platform_device *pdev, struct sdhci_cdns_priv *
 	spin_lock_init(&priv->wrlock);
 	writel(0x78, priv->ctl_addr);
 
+	/*
+	 * Check for a pre-allocated bounce region to enable ADMA with
+	 * bounce buffers.  The bounce buffers are located after the
+	 * ADMA descriptor table.
+	 */
+	if (!of_property_read_u64_array(np, "pensando,bounce-buffer", val, 2)) {
+		dma_addr_t bounce_addr = val[0];
+		unsigned int bounce_size = val[1];
+		unsigned int buffer_count;
+
+		/*
+		 * Minimum buffer count is twice the number needed to avoid
+		 * no buffer error under stress testing.
+		 */
+		buffer_count = (bounce_size - BOUNCE_BUF_OFFSET) / BOUNCE_BUFSZ;
+		if (buffer_count < 512) {
+			dev_err(mmc_dev(host->mmc),
+				"Bounce buffer region is too small\n");
+			goto no_bounce_buffer;
+		}
+
+		priv->bounce = devm_kzalloc(&pdev->dev,
+					sizeof(struct sdhci_cdns_bounce),
+					GFP_KERNEL);
+		if (!priv->bounce)
+			return -ENOMEM;
+
+		/* Each entry holds the original dma buffer address to bounce */
+		priv->bounce->io_orig_addr = devm_kzalloc(&pdev->dev,
+			sizeof(priv->bounce->io_orig_addr) * buffer_count,
+			GFP_KERNEL);
+		if (!priv->bounce->io_orig_addr) {
+			devm_kfree(&pdev->dev, priv->bounce);
+			return -ENOMEM;
+		}
+
+		/* Each free_list bit identifies a free/allocated buffer */
+		priv->bounce->free_list = devm_kzalloc(&pdev->dev,
+			round_up(buffer_count, BITS_PER_LONG) / 8,
+			GFP_KERNEL);
+		if (!priv->bounce->free_list) {
+			devm_kfree(&pdev->dev, priv->bounce->io_orig_addr);
+			devm_kfree(&pdev->dev, priv->bounce);
+			return -ENOMEM;
+		}
+
+		/* Create a mapping once for this dedicated memory region */
+		priv->bounce->vaddr = devm_ioremap_wc(&pdev->dev, bounce_addr,
+						      bounce_size);
+		if (IS_ERR(priv->bounce->vaddr)) {
+			dev_err(&pdev->dev, "Error mapping memory: %ld\n",
+				PTR_ERR(priv->bounce->vaddr));
+			devm_kfree(&pdev->dev, priv->bounce->io_orig_addr);
+			devm_kfree(&pdev->dev, priv->bounce->free_list);
+			devm_kfree(&pdev->dev, priv->bounce);
+			goto no_bounce_buffer;
+		}
+
+		priv->bounce->addr = bounce_addr;
+		priv->bounce->size = bounce_size;
+		priv->bounce->bufcnt = buffer_count;
+		priv->bounce->buffers = bounce_addr + BOUNCE_BUF_OFFSET;
+		spin_lock_init(&priv->bounce->io_lock);
+		set_dma_ops(&pdev->dev, &elba_dma_mapping_ops);
+	}
+
+no_bounce_buffer:
 	return 0;
 }
 
