@@ -43,12 +43,13 @@ struct ddr_map_func {
 	u64 conv_mask[2];		// bus addr to ddr addr conversion masks
 };
 
+#define N_BYPASS	2
 struct elba_mcdata {
 	void __iomem *base;		// memory controller registers
 	struct ddr_map_func llc_map;	// ddr to bus address map for LLC
 	struct ddr_map_func ddrb_map; 	// ddr to bus address map for bypass
-	u64 byp_start;			// bypass region start
-	u64 byp_size;			// bypass region size
+	u64 byp_start[N_BYPASS];	// bypass region start
+	u64 byp_size[N_BYPASS];		// bypass region size
 	u32 chanmask;			// channel mask (b01, b10, or b11)
 	int map_valid;			// ddr to bus map is valid
 };
@@ -142,6 +143,19 @@ static int elba_ddr_hash_func(u64 addr, u64 hash_func)
  * Finally, linear addresses outside of 2GB..8GB range must have bit 36 set
  * to recover the original system bus address.
  */
+static int elba_ddr_is_bypass(struct elba_mcdata *mcp, u64 addr)
+{
+	int i;
+
+	for (i = 0; i < N_BYPASS; i++) {
+		if (addr >= mcp->byp_start[i] &&
+		    addr < mcp->byp_start[i] + mcp->byp_size[i]) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
 static u64 elba_ddr_addr_to_bus(struct elba_mcdata *mcp, int chan, u64 ddr_addr)
 {
 	struct ddr_map_func *map = &mcp->llc_map;
@@ -154,8 +168,7 @@ static u64 elba_ddr_addr_to_bus(struct elba_mcdata *mcp, int chan, u64 ddr_addr)
 
 	if (mcp->chanmask == 0x3) {
 		elba_ddr_addr_expand(ddr_addr, map->conv_mask, addr_e);
-		if (addr_e[0] >= mcp->byp_start &&
-		    addr_e[0] < (mcp->byp_start + mcp->byp_size)) {
+		if (elba_ddr_is_bypass(mcp, addr_e[0])) {
 			map = &mcp->ddrb_map;
 			elba_ddr_addr_expand(ddr_addr, map->conv_mask, addr_e);
 		}
@@ -301,9 +314,9 @@ static void elba_init_ddr_map(struct platform_device *pdev,
 		struct elba_mcdata *mcp)
 {
 	struct device_node *np = pdev->dev.of_node;
-	u64 val[2];
+	int nvals, chan, i;
+	u64 val[2 * N_BYPASS];
 	int r = 0;
-	int chan;
 
 	if (np == NULL)
 		return;
@@ -315,14 +328,20 @@ static void elba_init_ddr_map(struct platform_device *pdev,
 	elba_mc_conv_mask_read(mcp, chan, ELB_MC_CONV_MASK_1,
 				mcp->llc_map.conv_mask);
 
-	if (of_property_read_variable_u64_array(np,
-				"pensando,bypass", val, 2, 0) == 2) {
-		mcp->byp_start = val[0];
-		mcp->byp_size = val[1];
+	nvals = of_property_read_variable_u64_array(np,
+				"pensando,bypass", val, 2, 2 * N_BYPASS);
+	if (nvals > 0 && nvals % 2 == 0) {
+		for (i = 0; i < nvals; i += 2) {
+			mcp->byp_start[i / 2] = val[i];
+			mcp->byp_size[i / 2] = val[i + 1];
+		}
 		r += of_property_read_u64(np, "pensando,ddrbhash",
 				&mcp->ddrb_map.hash);
 		elba_mc_conv_mask_read(mcp, chan, ELB_MC_CONV_MASK_0,
 					mcp->ddrb_map.conv_mask);
+	} else if (nvals > 0) {
+		dev_warn(&pdev->dev, "invalid bypass ranges");
+		return;
 	}
 
 	if (r) {
@@ -338,8 +357,12 @@ static void elba_init_ddr_map(struct platform_device *pdev,
 		mcp->ddrb_map.hash,
 		mcp->ddrb_map.conv_mask[0],
 		mcp->ddrb_map.conv_mask[1]);
-	edac_dbg(0, "bypass = { 0x%llx, 0x%llx }\n",
-		mcp->byp_start, mcp->byp_size);
+	for (i = 0; i < N_BYPASS; i++) {
+		if (mcp->byp_size[i]) {
+			edac_dbg(0, "bypass[%d] = { 0x%llx, 0x%llx }\n",
+				i, mcp->byp_start[i], mcp->byp_size[i]);
+		}
+	}
 	edac_dbg(0, "ddr_chanmask = 0x%x\n", mcp->chanmask);
 
 	mcp->map_valid = 1;
