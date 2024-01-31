@@ -275,6 +275,21 @@ int tpm_is_tpm2(struct tpm_chip *chip)
 EXPORT_SYMBOL_GPL(tpm_is_tpm2);
 
 /**
+ * tpm_preferred_locality() - set the TPM chip preferred locality to open
+ * @chip:	a TPM chip to use
+ * @locality:   the preferred locality
+ *
+ * Return:
+ * * true      - Preferred locality set
+ * * false     - Invalid locality specified
+ */
+bool tpm_preferred_locality(struct tpm_chip *chip, int locality)
+{
+	return tpm_chip_preferred_locality(chip, locality);
+}
+EXPORT_SYMBOL_GPL(tpm_preferred_locality);
+
+/**
  * tpm_pcr_read - read a PCR value from SHA1 bank
  * @chip:	a &struct tpm_chip instance, %NULL for the default chip
  * @pcr_idx:	the PCR to be retrieved
