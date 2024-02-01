@@ -2778,6 +2778,22 @@ void rds_ib_destroy_fastreg(struct rds_ib_device *rds_ibdev)
 	}
 
 	if (rds_ibdev->fastreg_cq) {
+		/* Poll completions to avoid
+		 * rds_ib_rdma_build_fastreg() becoming stuck.
+		 *
+		 * As per IBTA C10-42: Work Requests subsequent to
+		 * that which caused the Completion Error leading to
+		 * the transition into the Error state, including
+		 * those submitted after the transition, must return
+		 * the Flush Error completion status through the
+		 * Completion Queue.
+		 *
+		 * Both the tasklet and worker thread have been
+		 * stopped/canceled above, so we can trustfully call
+		 * poll_fcq() directly.
+		 */
+		poll_fcq(rds_ibdev, rds_ibdev->fastreg_cq, rds_ibdev->fastreg_wc);
+
 		/* Destroy cq and cq_vector */
 		ib_destroy_cq(rds_ibdev->fastreg_cq);
 		rds_ibdev->fastreg_cq = NULL;
