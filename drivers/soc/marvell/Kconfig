@@ -90,6 +90,7 @@ config MRVL_PHY_DIAGNOSTICS
 
 config OCTEONTX2_GHES_BERT
 	bool "OcteonTX2 GHES Boot Error Record support"
+	depends on ARM64 && ACPI_APEI
 	help
 	  Select this option to enable reporting of fatal Marvell GHES
 	  errors on subsequent Linux boot.  Normally, fatal errors will
