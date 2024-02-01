@@ -1446,8 +1446,12 @@ void rds_ib_mr_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 {
 	struct rds_ib_mr *ibmr;
 
-	if (wc->wr_id == RDS_MR_INV_WR_ID)
+	if (wc->wr_id == RDS_MR_INV_WR_ID) {
+		if (wc->status != IB_WC_SUCCESS && rds_conn_up(ic->conn))
+			rds_conn_drop(ic->conn, DR_IB_FRWR_INV_COMP_ERR, wc->status);
 		return;
+	}
+
 	ibmr = (struct rds_ib_mr *)wc->wr_id;
 
 	WARN_ON(READ_ONCE(ibmr->fr_state) == MR_IS_STALE);
@@ -1458,6 +1462,7 @@ void rds_ib_mr_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 				"vendor_err %u, disconnecting and reconnecting\n",
 				&ic->conn->c_laddr, &ic->conn->c_faddr,
 				ic->conn->c_tos, wc->status, wc->vendor_err);
+			rds_conn_drop(ic->conn, DR_IB_FRWR_REG_COMP_ERR, wc->status);
 		}
 		WRITE_ONCE(ibmr->fr_state, MR_IS_STALE);
 	}
