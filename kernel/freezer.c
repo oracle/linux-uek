@@ -123,6 +123,13 @@ static int __set_task_frozen(struct task_struct *p, void *arg)
 	if (p != current && task_curr(p))
 		return 0;
 
+	/*
+	 * Send wake-up signal to the task even if it in the freezable
+	 * state to force unwinding the stack.
+	 */
+	if (test_tsk_thread_flag(p, TIF_KSPLICE_FREEZING))
+		return 0;
+
 	if (!(state & (TASK_FREEZABLE | __TASK_STOPPED | __TASK_TRACED)))
 		return 0;
 
