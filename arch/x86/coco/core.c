@@ -14,7 +14,7 @@
 #include <asm/processor.h>
 
 static enum cc_vendor vendor __ro_after_init;
-static u64 cc_mask __ro_after_init;
+u64 cc_mask __ro_after_init;
 
 static bool intel_cc_platform_has(enum cc_attr attr)
 {
@@ -114,7 +114,3 @@ __init void cc_set_vendor(enum cc_vendor v)
 	vendor = v;
 }
 
-__init void cc_set_mask(u64 mask)
-{
-	cc_mask = mask;
-}
