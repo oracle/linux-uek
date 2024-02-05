@@ -55,7 +55,6 @@ kernel/crypto/lz4.ko
 kernel/crypto/md4.ko
 kernel/crypto/michael_mic.ko
 kernel/crypto/nhpoly1305.ko
-kernel/crypto/ofb.ko
 kernel/crypto/pcbc.ko
 kernel/crypto/pcrypt.ko
 kernel/crypto/poly1305_generic.ko
@@ -145,8 +144,6 @@ kernel/drivers/md/dm-thin-pool.ko
 kernel/drivers/md/dm-verity.ko
 kernel/drivers/md/dm-writecache.ko
 kernel/drivers/md/dm-zero.ko
-kernel/drivers/md/faulty.ko
-kernel/drivers/md/linear.ko
 kernel/drivers/md/persistent-data/dm-persistent-data.ko
 kernel/drivers/md/raid0.ko
 kernel/drivers/md/raid10.ko
@@ -286,7 +283,6 @@ kernel/fs/dlm/dlm.ko
 kernel/fs/ext2/ext2.ko
 kernel/fs/fat/fat.ko
 kernel/fs/fat/vfat.ko
-kernel/fs/fscache/fscache.ko
 kernel/fs/fuse/cuse.ko
 kernel/fs/fuse/fuse.ko
 kernel/fs/isofs/isofs.ko
@@ -633,7 +629,6 @@ kernel/net/sched/act_bpf.ko
 kernel/net/sched/act_connmark.ko
 kernel/net/sched/act_csum.ko
 kernel/net/sched/act_gact.ko
-kernel/net/sched/act_ipt.ko
 kernel/net/sched/act_mirred.ko
 kernel/net/sched/act_nat.ko
 kernel/net/sched/act_pedit.ko
