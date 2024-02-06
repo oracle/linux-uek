@@ -18,7 +18,9 @@ struct capmem_range {
 enum {
 	CAPMEM_TYPE_DEVICE,
 	CAPMEM_TYPE_COHERENT,
-	CAPMEM_TYPE_NONCOHERENT
+	CAPMEM_TYPE_NONCOHERENT,
+	/* CAPMEM_GET_RANGES2 */
+	CAPMEM_TYPE_BYPASS,
 };
 
 struct capmem_ranges_args {
@@ -30,5 +32,6 @@ struct capmem_ranges_args {
 
 #define CAPMEM_GET_NRANGES	_IOR(CAPMEM_IOCTL_NUM, 1, int)
 #define CAPMEM_GET_RANGES	_IOWR(CAPMEM_IOCTL_NUM, 2, struct capmem_ranges_args)
+#define CAPMEM_GET_RANGES2	_IOWR(CAPMEM_IOCTL_NUM, 3, struct capmem_ranges_args)
 
 #endif
