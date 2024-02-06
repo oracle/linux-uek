@@ -420,7 +420,7 @@ BuildRequires: pesign >= 0.10-4
 %endif
 
 %if %{with_doc}
-BuildRequires: python3-sphinx >= 1.7.9
+BuildRequires: python3-sphinx >= 1.7.9, python3-pyyaml
 BuildRequires: fontconfig >= 2.13.0
 %endif
 
