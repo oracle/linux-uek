@@ -14,7 +14,9 @@
 #include <linux/fcntl.h>
 #include <linux/init.h>
 #include <linux/pagemap.h>
+#include <linux/sort.h>
 #include <linux/pfn_t.h>
+#include <dt-bindings/soc/pensando,capmem.h>
 #include "capmem_dev.h"
 
 #define DSC_MEM_ATTR_COHERENT	0x1	// Memory range is coherent
@@ -91,6 +93,7 @@ static int cap_mem_mmap(struct file *file, struct vm_area_struct *vma)
 		break;
 
 	case CAPMEM_TYPE_NONCOHERENT:
+	case CAPMEM_TYPE_BYPASS:
 		/*
 		 * An inner shareable cached mapping on a noncoherence range
 		 * is invalid, so only accept non-cached mapping requests.
@@ -127,12 +130,24 @@ static int cap_mem_mmap(struct file *file, struct vm_area_struct *vma)
 	return 0;
 }
 
+/*
+ * Map a capmem range type to a legacy type for v1 commands
+ */
+static int compat_range_type(unsigned int cmd, int type)
+{
+	if (cmd == CAPMEM_GET_RANGES && type == CAPMEM_TYPE_BYPASS)
+		return CAPMEM_TYPE_NONCOHERENT;
+	else
+		return type;
+}
+
 static long cap_mem_unlocked_ioctl(struct file *file,
 		unsigned int cmd, unsigned long arg)
 {
 	void __user *p = (void __user *)arg;
 	struct capmem_range __user *rp;
 	struct capmem_ranges_args gr;
+	struct capmem_range range;
 	int i;
 
 	switch (cmd) {
@@ -140,13 +155,16 @@ static long cap_mem_unlocked_ioctl(struct file *file,
 		return put_user(nmem_ranges, (int __user *)p);
 
 	case CAPMEM_GET_RANGES:
+	case CAPMEM_GET_RANGES2:
 		if (copy_from_user(&gr, p, sizeof(gr)))
 			return -EFAULT;
 		rp = (struct capmem_range __user *)gr.range;
 		for (i = 0; i < gr.nranges; i++) {
 			if (i >= nmem_ranges)
 				return i;
-			if (copy_to_user(rp, &mem_range[i], sizeof(*rp)))
+			range = mem_range[i];
+			range.type = compat_range_type(cmd, range.type);
+			if (copy_to_user(rp, &range, sizeof(*rp)))
 				return -EFAULT;
 			++rp;
 		}
@@ -209,53 +227,39 @@ syntax:
 }
 
 /*
- * Device space is mapped out here.
- */
-static const struct {
-	uint64_t start;
-	uint64_t len;
-} init_device_ranges[] = {
-	{ 0x00200000, 0x6fe00000 }, // 00200000...6fffffff
-};
-
-static void load_static_entries(void)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(init_device_ranges); i++) {
-		capmem_add_range(init_device_ranges[i].start,
-				 init_device_ranges[i].len,
-				 CAPMEM_TYPE_DEVICE);
-	}
-}
-
-/*
- * Load ranges from device-tree (installed by u-boot):
- * The pensando,capmem-ranges parameter is a table of 5 words per row.
- * The table format is:
+ * Load ranges from the device-tree
+ * Each range row comprises 5 words:
  *	<start_hi start_lo size_hi size_lo attr>
- *	attr is { unused:30, bypass:1, coherent:1 }
+ *	attr is { unused:29, device:1, bypass:1, coherent:1 }
  */
-static int load_of_ranges(struct platform_device *pdev)
+static int load_of_ranges(struct platform_device *pdev, const char *pname)
 {
 	u32 entries[CAPMEM_MAX_RANGES][5];
 	int r, n, i, type;
 	u64 start, len;
+	u32 attr;
 
 	n = of_property_read_variable_u32_array(pdev->dev.of_node,
-		"pensando,capmem-ranges", (u32 *)entries,
-		0, sizeof (entries) / sizeof (u32));
+			pname, (u32 *)entries, 0,
+			sizeof (entries) / sizeof (u32));
 	if (n < 0) {
 		return -ENOENT;
 	}
 	if (n % 5 != 0) {
-		dev_err(&pdev->dev, "of pensando,capmem-ranges invalid\n");
+		dev_err(&pdev->dev, "of %s invalid\n", pname);
 		return -ENODEV;
 	}
 	n /= 5;
 	for (i = 0; i < n; i++) {
-		type = (entries[i][4] & DSC_MEM_ATTR_COHERENT) ?
-			CAPMEM_TYPE_COHERENT : CAPMEM_TYPE_NONCOHERENT;
+		attr = entries[i][4];
+		if (attr & DSC_MEM_ATTR_DEVICE)
+			type = CAPMEM_TYPE_DEVICE;
+		else if (attr & DSC_MEM_ATTR_BYPASS)
+			type = CAPMEM_TYPE_BYPASS;
+		else if (attr & DSC_MEM_ATTR_COHERENT)
+			type = CAPMEM_TYPE_COHERENT;
+		else
+			type = CAPMEM_TYPE_NONCOHERENT;
 		start = ((u64)entries[i][0] << 32) | entries[i][1];
 		len   = ((u64)entries[i][2] << 32) | entries[i][3];
 		r = capmem_add_range(start, len, type);
@@ -265,19 +269,45 @@ static int load_of_ranges(struct platform_device *pdev)
 	return 0;
 }
 
+static int cmp_ranges(const void *a, const void *b)
+{
+	const struct capmem_range *r1 = a;
+	const struct capmem_range *r2 = b;
+
+	if (r1->start == r2->start)
+		return 0;
+	else
+		return (r1->start < r2->start) ? -1 : 1;
+}
+
 static int capmem_probe(struct platform_device *pdev)
 {
 	int r;
 
 	dev_info(&pdev->dev, "Loading capmem driver\n");
-	load_static_entries();
-	r = load_of_ranges(pdev);
+
+	/* load the fixed ranges from the device-tree */
+	r = load_of_ranges(pdev, "pensando,capmem-fixed-ranges");
+	if (r == -ENOENT)
+		return r;
+
+	/*
+	 * load the ranges installed by u-boot; either in the device-tree
+	 * or provided as a module parameter.
+	 */
+	r = load_of_ranges(pdev, "pensando,capmem-ranges");
 	if (r == -ENOENT) {
 		/* fallback to the capmem= variable */
 		r = parse_memory_ranges(pdev, ranges);
 		if (r)
 			return r;
 	}
+	
+	/*
+	 * Sort ranges by ascending physical address.
+	 */
+	sort(mem_range, nmem_ranges, sizeof(mem_range[0]), cmp_ranges, NULL);
+
 	return misc_register(&cap_mem_dev);
 }
 
