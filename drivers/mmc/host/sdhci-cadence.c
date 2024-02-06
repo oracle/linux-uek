@@ -15,6 +15,7 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/reset.h>
+#include <asm/barrier.h>
 #include <soc/marvell/octeontx/octeontx_smc.h>
 
 #include "sdhci-pltfm.h"
@@ -1871,17 +1872,13 @@ static void elba_swiotlb_bounce(struct device *dev, phys_addr_t orig_addr,
 {
 	struct sdhci_cdns_priv *priv = DEV_TO_SDHCI_PRIV(dev);
 	void __iomem *vaddr;
-	volatile int tmp;
 
-	mb();
 	vaddr = priv->bounce->vaddr + tlb_addr - priv->bounce->addr;
-	if (dir == DMA_TO_DEVICE) {
+
+	if (dir == DMA_TO_DEVICE)
 		memcpy(vaddr, phys_to_virt(orig_addr), size);
-		tmp = *(int *)vaddr;
-	} else {
+	else
 		memcpy(phys_to_virt(orig_addr), vaddr, size);
-		tmp = *(int *)phys_to_virt(orig_addr);
-	}
 	mb();
 }
 
@@ -2034,6 +2031,28 @@ out_unmap:
 	return 0;
 }
 
+static void elba_adma_write_desc(struct sdhci_host *host, void **desc,
+				 dma_addr_t addr, int len, unsigned int cmd)
+{
+	struct sdhci_adma2_64_desc *dma_desc = *desc;
+
+	/* 32-bit and 64-bit descriptors have these members in same position */
+	dma_desc->cmd = cpu_to_le16(cmd);
+	dma_desc->len = cpu_to_le16(len);
+	dma_desc->addr_lo = cpu_to_le32(lower_32_bits(addr));
+
+	if (host->flags & SDHCI_USE_64_BIT_DMA)
+		dma_desc->addr_hi = cpu_to_le32(upper_32_bits(addr));
+
+	*desc += host->desc_sz;
+
+	if (cmd == ADMA2_NOP_END_VALID) {
+		barrier();
+		(void)*(volatile uint32_t *)dma_desc;
+		mb();
+	}
+}
+
 static const struct sdhci_ops sdhci_elba_ops = {
 	.write_l = elba_write_l,
 	.write_w = elba_write_w,
@@ -2043,6 +2062,7 @@ static const struct sdhci_ops sdhci_elba_ops = {
 	.set_bus_width = sdhci_set_bus_width,
 	.reset = sdhci_reset,
 	.set_uhs_signaling = sdhci_cdns_set_uhs_signaling,
+	.adma_write_desc = elba_adma_write_desc,
 };
 
 static const struct dma_map_ops elba_dma_mapping_ops = {
