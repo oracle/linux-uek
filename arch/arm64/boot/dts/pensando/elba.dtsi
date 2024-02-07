@@ -3,6 +3,7 @@
 
 #include <dt-bindings/gpio/gpio.h>
 #include "dt-bindings/interrupt-controller/arm-gic.h"
+#include "dt-bindings/soc/pensando,capmem.h"
 
 / {
 	interrupt-parent = <&gic>;
@@ -62,6 +63,9 @@
 
 	capmem {
 		compatible = "pensando,capmem";
+		pensando,capmem-fixed-ranges =
+			<0x0 0x200000 0x0 0x6fe00000 DSC_MEM_ATTR_DEVICE>,
+			<0x4 0x0 0x0 0x400000 DSC_MEM_ATTR_DEVICE>;
 	};
 
 	/*
