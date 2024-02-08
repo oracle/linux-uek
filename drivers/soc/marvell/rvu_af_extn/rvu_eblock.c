@@ -404,6 +404,7 @@ void rvu_eblock_module_init(void)
 	dpi_eb_module_init();
 	cplt_eb_module_init();
 	sdp_eb_module_init();
+	ml_eb_module_init();
 }
 
 void rvu_eblock_module_exit(void)
@@ -416,4 +417,5 @@ void rvu_eblock_module_exit(void)
 	dpi_eb_module_exit();
 	cplt_eb_module_exit();
 	sdp_eb_module_exit();
+	ml_eb_module_exit();
 }
