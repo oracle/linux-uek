@@ -422,7 +422,7 @@ static void init_emmc_ddr(struct sdhci_cdns_sd6_phy_timings *t, int t_sdclk)
 {
 	*t = (struct sdhci_cdns_sd6_phy_timings){
 		.t_cmd_output_min = 3000, .t_cmd_output_max = t_sdclk - 3000,
-		.t_dat_output_min = 2500, .t_dat_output_max = t_sdclk - 2500,
+		.t_dat_output_min = 2500, .t_dat_output_max = (t_sdclk / 2) - 2500,
 		.t_cmd_input_min = 13700, .t_cmd_input_max = t_sdclk + 2500,
 		.t_dat_input_min = 7000, .t_dat_input_max = t_sdclk + 1500,
 		.t_sdclk_min = 1000000 / 50, .t_sdclk_max = 1000000 / 0.4
@@ -445,7 +445,7 @@ static void init_emmc_hs400(struct sdhci_cdns_sd6_phy_timings *t, int t_sdclk)
 {
 	*t = (struct sdhci_cdns_sd6_phy_timings){
 		.t_cmd_output_min = 800, .t_cmd_output_max = t_sdclk - 1400,
-		.t_dat_output_min = 400, .t_dat_output_max = t_sdclk - 400,
+		.t_dat_output_min = 400, .t_dat_output_max = (t_sdclk / 2) - 400,
 		.t_cmd_input_min = 1000, .t_cmd_input_max = t_sdclk + 1000,
 		.t_dat_input_min = 1000, .t_dat_input_max = t_sdclk + 1000,
 		.t_sdclk_min = 1000000 / 200, .t_sdclk_max = 1000000 / 100
