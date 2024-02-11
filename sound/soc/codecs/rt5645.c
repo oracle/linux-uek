@@ -3255,6 +3255,7 @@ static void rt5645_jack_detect_work(struct work_struct *work)
 				    report, SND_JACK_HEADPHONE);
 		snd_soc_jack_report(rt5645->mic_jack,
 				    report, SND_JACK_MICROPHONE);
+		mutex_unlock(&rt5645->jd_mutex);
 		return;
 	default: /* read rt5645 jd1_1 status */
 		val = snd_soc_read(rt5645->codec, RT5645_INT_IRQ_ST) & 0x1000;
