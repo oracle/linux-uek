@@ -1401,10 +1401,6 @@ static int rvu_af_dl_tim_adjust_timer_get(struct devlink *devlink, u32 id,
 	struct rvu *rvu = rvu_dl->rvu;
 	u64 offset, delta;
 
-	if (id == RVU_AF_DEVLINK_PARAM_ID_TIM_ADJUST_GTI &&
-	    cn10k_tim_adjust_gti_errata(rvu->pdev))
-		return -ENXIO;
-
 	offset = rvu_af_dl_tim_param_id_to_offset(id);
 	delta = rvu_read64(rvu, BLKADDR_TIM, offset);
 	snprintf(ctx->val.vstr, sizeof(ctx->val.vstr), "%llu", delta);
@@ -1421,10 +1417,6 @@ static int rvu_af_dl_tim_adjust_timer_set(struct devlink *devlink, u32 id,
 
 	if (kstrtoull(ctx->val.vstr, 10, &delta))
 		return -EINVAL;
-
-	if (id == RVU_AF_DEVLINK_PARAM_ID_TIM_ADJUST_GTI &&
-	    cn10k_tim_adjust_gti_errata(rvu->pdev))
-		return -ENXIO;
 
 	offset = rvu_af_dl_tim_param_id_to_offset(id);
 	rvu_write64(rvu, BLKADDR_TIM, offset, delta);
@@ -1714,12 +1706,6 @@ static const struct devlink_param rvu_af_dl_params[] = {
 			     rvu_af_dl_tim_adjust_timer_get,
 			     rvu_af_dl_tim_adjust_timer_set,
 			     rvu_af_dl_tim_adjust_timer_validate),
-	DEVLINK_PARAM_DRIVER(RVU_AF_DEVLINK_PARAM_ID_TIM_ADJUST_GTI,
-			     "tim_adjust_gti", DEVLINK_PARAM_TYPE_STRING,
-			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
-			     rvu_af_dl_tim_adjust_timer_get,
-			     rvu_af_dl_tim_adjust_timer_set,
-			     rvu_af_dl_tim_adjust_timer_validate),
 	DEVLINK_PARAM_DRIVER(RVU_AF_DEVLINK_PARAM_ID_TIM_ADJUST_PTP,
 			     "tim_adjust_ptp", DEVLINK_PARAM_TYPE_STRING,
 			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
@@ -1728,6 +1714,15 @@ static const struct devlink_param rvu_af_dl_params[] = {
 			     rvu_af_dl_tim_adjust_timer_validate),
 	DEVLINK_PARAM_DRIVER(RVU_AF_DEVLINK_PARAM_ID_TIM_ADJUST_BTS,
 			     "tim_adjust_bts", DEVLINK_PARAM_TYPE_STRING,
+			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
+			     rvu_af_dl_tim_adjust_timer_get,
+			     rvu_af_dl_tim_adjust_timer_set,
+			     rvu_af_dl_tim_adjust_timer_validate),
+};
+
+static const struct devlink_param rvu_af_dl_param_tim_adj_gti[] = {
+	DEVLINK_PARAM_DRIVER(RVU_AF_DEVLINK_PARAM_ID_TIM_ADJUST_GTI,
+			     "tim_adjust_gti", DEVLINK_PARAM_TYPE_STRING,
 			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
 			     rvu_af_dl_tim_adjust_timer_get,
 			     rvu_af_dl_tim_adjust_timer_set,
@@ -1819,6 +1814,16 @@ int rvu_register_dl(struct rvu *rvu)
 		goto err_dl_health;
 	}
 
+	if (!cn10k_tim_adjust_gti_errata(rvu->pdev)) {
+		err = devlink_params_register(dl, rvu_af_dl_param_tim_adj_gti,
+					      ARRAY_SIZE(rvu_af_dl_param_tim_adj_gti));
+		if (err) {
+			dev_err(rvu->dev,
+				"devlink TIM adjust GTI param register failed with error %d", err);
+			goto err_dl_tim_gti;
+		}
+	}
+
 	/* Register exact match devlink only for CN10K-B */
 	if (!rvu_npc_exact_has_match_table(rvu))
 		goto done;
@@ -1836,6 +1841,10 @@ done:
 	return 0;
 
 err_dl_exact_match:
+	if (!cn10k_tim_adjust_gti_errata(rvu->pdev))
+		devlink_params_unregister(dl, rvu_af_dl_param_tim_adj_gti,
+					  ARRAY_SIZE(rvu_af_dl_param_tim_adj_gti));
+err_dl_tim_gti:
 	devlink_params_unregister(dl, rvu_af_dl_params, ARRAY_SIZE(rvu_af_dl_params));
 
 err_dl_health:
@@ -1852,6 +1861,10 @@ void rvu_unregister_dl(struct rvu *rvu)
 	devlink_unregister(dl);
 
 	devlink_params_unregister(dl, rvu_af_dl_params, ARRAY_SIZE(rvu_af_dl_params));
+
+	if (!cn10k_tim_adjust_gti_errata(rvu->pdev))
+		devlink_params_unregister(dl, rvu_af_dl_param_tim_adj_gti,
+					  ARRAY_SIZE(rvu_af_dl_param_tim_adj_gti));
 
 	/* Unregister exact match devlink only for CN10K-B */
 	if (rvu_npc_exact_has_match_table(rvu))
