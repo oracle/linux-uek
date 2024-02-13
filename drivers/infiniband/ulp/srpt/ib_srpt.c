@@ -200,8 +200,10 @@ static const char *get_ch_state_name(enum rdma_ch_state s)
 /**
  * srpt_qp_event() - QP event callback function.
  */
-static void srpt_qp_event(struct ib_event *event, struct srpt_rdma_ch *ch)
+static void srpt_qp_event(struct ib_event *event, void *ptr)
 {
+	struct srpt_rdma_ch *ch = ptr;
+
 	pr_debug("QP event %d on cm_id=%p sess_name=%s state=%d\n",
 		 event->event, ch->cm_id, ch->sess_name, ch->state);
 
@@ -1667,8 +1669,7 @@ retry:
 	}
 
 	qp_init->qp_context = (void *)ch;
-	qp_init->event_handler
-		= (void(*)(struct ib_event *, void*))srpt_qp_event;
+	qp_init->event_handler = srpt_qp_event;
 	qp_init->send_cq = ch->cq;
 	qp_init->recv_cq = ch->cq;
 	qp_init->srq = sdev->srq;
