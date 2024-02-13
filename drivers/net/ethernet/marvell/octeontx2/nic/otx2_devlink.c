@@ -136,6 +136,12 @@ static int otx2_dl_tl1_rr_prio_validate(struct devlink *devlink, u32 id,
 		return -EOPNOTSUPP;
 	}
 
+	if (otx2_is_qos_configured(pf)) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "TL1RR PRIORITY setting not allowed after QOS config");
+		return -EOPNOTSUPP;
+	}
+
 	if (pci_num_vf(pf->pdev)) {
 		NL_SET_ERR_MSG_MOD(extack,
 				   "TL1RR PRIORITY setting not allowed as VFs are already attached");
