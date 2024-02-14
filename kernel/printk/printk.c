@@ -48,6 +48,7 @@
 #include <linux/sched/clock.h>
 #include <linux/sched/debug.h>
 #include <linux/sched/task_stack.h>
+#include <linux/kthread.h>
 
 #include <linux/uaccess.h>
 #include <asm/sections.h>
@@ -72,6 +73,9 @@ int console_printk[4] = {
  */
 int oops_in_progress;
 EXPORT_SYMBOL(oops_in_progress);
+
+struct task_struct *printk_thread;
+static bool __console_unlock(u64 start_ns, bool in_kthread);
 
 /*
  * console_sem protects the console_drivers list, and also
@@ -1917,6 +1921,7 @@ asmlinkage int vprintk_emit(int facility, int level,
 	int printed_len;
 	bool in_sched = false;
 	unsigned long flags;
+	u64 start_ns;
 
 	if (level == LOGLEVEL_SCHED) {
 		level = LOGLEVEL_DEFAULT;
@@ -1939,13 +1944,14 @@ asmlinkage int vprintk_emit(int facility, int level,
 		 * console
 		 */
 		preempt_disable();
+		start_ns = local_clock();
 		/*
 		 * Try to acquire and then immediately release the console
 		 * semaphore.  The release will print out buffers and wake up
 		 * /dev/kmsg and syslog() users.
 		 */
 		if (console_trylock_spinning())
-			console_unlock();
+			__console_unlock(start_ns, false);
 		preempt_enable();
 	}
 
@@ -2311,8 +2317,23 @@ static inline int can_use_console(void)
 	return cpu_online(raw_smp_processor_id()) || have_callable_console();
 }
 
+/*
+ * Return true if it is necessary to wake the printk thread
+ *
+ * When start_ns is zero, the caller has signalled that we should not awaken the
+ * kthread. If the kthread has not been started, we cannot delegate to it. We
+ * should only awaken the kthread if we've been printing for more than a second,
+ * and even then, only if a panic is not in progress.
+ */
+static inline bool should_wake_printk_thread(u64 start_ns)
+{
+	return (start_ns != 0 && printk_thread &&
+	    local_clock() - start_ns >= NSEC_PER_SEC &&
+	    likely(atomic_read(&panic_cpu) == PANIC_CPU_INVALID));
+}
+
 /**
- * console_unlock - unlock the console system
+ * __console_unlock - unlock the console system without undue delay
  *
  * Releases the console_lock which the caller holds on the console system
  * and the console driver list.
@@ -2324,19 +2345,30 @@ static inline int can_use_console(void)
  * If there is output waiting, we wake /dev/kmsg and syslog() users.
  *
  * console_unlock(); may be called from any context.
+ *
+ * @start_ns: if provided, the caller guarantees that preemption is disabled,
+ * and we should use this value to avoid printing to the console for longer than
+ * a threshold (1 second). If the threshold is reached, we wake a kthread to
+ * continue the flush
+ *
+ * @in_kthread: if true, the caller is the printk thread, and we should check
+ * "needs_resched()" to determine whether we should return early.
+ *
+ * @returns: true if the job was incomplete: that is, if more messages remain in
+ * the log buffer
  */
-void console_unlock(void)
+static bool __console_unlock(u64 start_ns, bool in_kthread)
 {
 	static char ext_text[CONSOLE_EXT_LOG_MAX];
 	static char text[LOG_LINE_MAX + PREFIX_MAX];
 	static u64 seen_seq;
 	unsigned long flags;
-	bool wake_klogd = false;
+	bool wake_klogd = false, incomplete = false;
 	bool do_cond_resched, retry;
 
 	if (console_suspended) {
 		up_console_sem();
-		return;
+		return false;
 	}
 
 	/*
@@ -2365,13 +2397,14 @@ again:
 	if (!can_use_console()) {
 		console_locked = 0;
 		up_console_sem();
-		return;
+		return false;
 	}
 
 	for (;;) {
 		struct printk_log *msg;
 		size_t ext_len = 0;
 		size_t len;
+		bool wake_thread;
 
 		printk_safe_enter_irqsave(flags);
 		raw_spin_lock(&logbuf_lock);
@@ -2441,6 +2474,29 @@ skip:
 
 		if (do_cond_resched)
 			cond_resched();
+
+		if ((wake_thread = should_wake_printk_thread(start_ns)) ||
+		    (in_kthread && need_resched())) {
+			/*
+			 * Terminate early, incomplete. Two possibilities:
+			 * 1. We have awakened the kthread which will come back
+			 *    and handle the rest of the messages.
+			 * 2. We *are* the kthread, but our time slice is
+			 *    expired. We drop the lock and return, but will remain
+			 *    in RUNNABLE state. By dropping the lock, we allow
+			 *    other tasks in printk() to continue the work, and
+			 *    if they run too long, they'll wake us up.
+			 */
+			console_locked = 0;
+			up_console_sem();
+			incomplete = true;
+			/* Wake the printk thread after dropping the lock so it
+			 * cannot race, fail the trylock, and go back to sleep */
+			if (wake_thread)
+				wake_up_process(printk_thread);
+			goto out;
+		}
+
 	}
 
 	console_locked = 0;
@@ -2470,8 +2526,27 @@ skip:
 out:
 	if (wake_klogd)
 		wake_up_klogd();
+	return incomplete;
+}
+
+void console_unlock(void)
+{
+	__console_unlock(0, false);
 }
 EXPORT_SYMBOL(console_unlock);
+
+static int printk_thread_fn(void *unused)
+{
+	bool more_work = false;
+	do {
+		if (!more_work)
+			set_current_state(TASK_INTERRUPTIBLE);
+		schedule();
+		if (console_trylock_spinning())
+			more_work = __console_unlock(0, true);
+	} while (1);
+	return 0;
+}
 
 /**
  * console_conditional_schedule - yield the CPU if required
@@ -2879,6 +2954,12 @@ static int __init printk_late_init(void)
 	ret = cpuhp_setup_state_nocalls(CPUHP_AP_ONLINE_DYN, "printk:online",
 					console_cpu_notify, NULL);
 	WARN_ON(ret < 0);
+
+	printk_thread = kthread_run(printk_thread_fn, NULL, "kprintkd");
+	if (IS_ERR(printk_thread)) {
+		printk_thread = NULL;
+		pr_err("printk kthread: failed to initialize\n");
+	}
 	return 0;
 }
 late_initcall(printk_late_init);
