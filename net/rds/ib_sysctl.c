@@ -115,6 +115,10 @@ unsigned int rds_ib_sysctl_ring_mid_permille = 375;
 static unsigned int rds_ib_sysctl_ring_mid_permille_min = 1;
 static unsigned int rds_ib_sysctl_ring_mid_permille_max = 1000;
 
+unsigned int rds_ib_sysctl_frwr_poll_tmout_secs = 10;
+static unsigned int rds_ib_sysctl_frwr_poll_tmout_secs_min = 1;
+static unsigned int rds_ib_sysctl_frwr_poll_tmout_secs_max = UINT_MAX;
+
 static struct ctl_table rds_ib_sysctl_table[] = {
 	{
 		.procname       = "max_send_wr",
@@ -257,6 +261,15 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.proc_handler   = proc_douintvec_minmax,
 		.extra1         = &rds_ib_sysctl_ring_mid_permille_min,
 		.extra2         = &rds_ib_sysctl_ring_mid_permille_max,
+	},
+	{
+		.procname       = "frwr_poll_timeout_secs",
+		.data           = &rds_ib_sysctl_frwr_poll_tmout_secs,
+		.maxlen         = sizeof(rds_ib_sysctl_frwr_poll_tmout_secs),
+		.mode           = 0644,
+		.proc_handler   = proc_douintvec_minmax,
+		.extra1         = &rds_ib_sysctl_frwr_poll_tmout_secs_min,
+		.extra2         = &rds_ib_sysctl_frwr_poll_tmout_secs_max,
 	},
 };
 
