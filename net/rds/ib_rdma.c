@@ -84,6 +84,7 @@ struct rds_ib_mr {
 	struct ib_mr		*mr;
 	enum rds_ib_fr_state	fr_state;
 	struct completion	wr_comp;
+	bool			conn_qp_is_stuck;
 
 	struct xlist_head	xlist;
 
@@ -902,7 +903,7 @@ static struct rds_ib_mr *rds_ib_alloc_ibmr(struct rds_ib_device *rds_ibdev,
 	spin_unlock_bh(&pool->busy_lock);
 
 	init_completion(&ibmr->wr_comp);
-
+	ibmr->conn_qp_is_stuck = false;
 	/* ibmr->fr_state is already MR_IS_INVALID due to kzalloc */
 
 	ibmr->pool = pool;
@@ -1304,6 +1305,7 @@ static int rds_ib_rdma_build_fastreg(struct rds_ib_device *rds_ibdev,
 	struct ib_reg_wr reg_wr;
 	struct ib_send_wr inv_wr, *first_wr = NULL;
 	const struct ib_send_wr *failed_wr;
+	bool use_fastreg_qp;
 	struct ib_qp *qp;
 	atomic_t *n_wrs;
 	int ret = 0;
@@ -1313,13 +1315,16 @@ static int rds_ib_rdma_build_fastreg(struct rds_ib_device *rds_ibdev,
 		return -EAGAIN;
 	}
 
-	if (ibmr->ic) {
+try_with_fastreg_qp:
+	if (ibmr->ic && rds_conn_up(ibmr->ic->conn) && !ibmr->conn_qp_is_stuck) {
 		n_wrs = &ibmr->ic->i_fastreg_wrs;
 		qp = ibmr->ic->i_cm_id->qp;
+		use_fastreg_qp = false;
 	} else {
 		down_read(&rds_ibdev->fastreg_lock);
 		n_wrs = &rds_ibdev->fastreg_wrs;
 		qp = rds_ibdev->fastreg_qp;
+		use_fastreg_qp = true;
 	}
 
 	while (atomic_sub_return(2, n_wrs) <= 0) {
@@ -1371,7 +1376,38 @@ static int rds_ib_rdma_build_fastreg(struct rds_ib_device *rds_ibdev,
 		rds_ib_stats_inc(s_ib_frwr_invalidates);
 	rds_ib_stats_inc(s_ib_frwr_registrations);
 
-	wait_for_completion(&ibmr->wr_comp);
+	if (!wait_for_completion_timeout(&ibmr->wr_comp,
+					 msecs_to_jiffies(rds_ib_sysctl_frwr_poll_tmout_secs
+							  * 1000))) {
+		struct ib_qp_attr attr;
+		int sts;
+
+		if (use_fastreg_qp) {
+			rds_ib_stats_inc(s_ib_frwr_freg_qp_timeout);
+			queue_work(rds_ibdev->rid_dev_wq, &rds_ibdev->fastreg_reset_w);
+			WRITE_ONCE(ibmr->fr_state, MR_IS_STALE);
+		} else {
+			rds_ib_stats_inc(s_ib_frwr_conn_qp_timeout);
+
+			/* Move QP state to ERROR */
+			attr.qp_state = IB_QPS_ERR;
+			sts = ib_modify_qp(ibmr->ic->i_cm_id->qp, &attr, IB_QP_STATE);
+			if (sts)
+				pr_err("%s.%d: modify qp to err gave status %d\n",
+				       __func__, __LINE__, sts);
+
+			/* Tear connection down */
+			rds_conn_drop(ibmr->ic->conn, DR_IB_FRWR_WC_TMOUT, 0);
+		}
+		reinit_completion(&ibmr->wr_comp);
+
+		if (!use_fastreg_qp) {
+			atomic_add(2, n_wrs);
+			ibmr->conn_qp_is_stuck = true;
+			goto try_with_fastreg_qp;
+		}
+	}
+
 	atomic_add(2, n_wrs);
 	if (READ_ONCE(ibmr->fr_state) == MR_IS_STALE) {
 		/* Registration request failed */
@@ -1379,8 +1415,12 @@ static int rds_ib_rdma_build_fastreg(struct rds_ib_device *rds_ibdev,
 	}
 
 out:
-	if (!ibmr->ic)
+	if (use_fastreg_qp)
 		up_read(&rds_ibdev->fastreg_lock);
+
+	if (ibmr->conn_qp_is_stuck)
+		ibmr->conn_qp_is_stuck = false;
+
 	return ret;
 }
 
