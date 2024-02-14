@@ -1250,6 +1250,7 @@ static char *conn_drop_reasons[] = {
 	[DR_IB_ACTIVE_BOND_FAILBACK]	= "active bonding failback",
 	[DR_IB_FRWR_INV_COMP_ERR]	= "FRWR invalidate completion error",
 	[DR_IB_FRWR_REG_COMP_ERR]	= "FRWR registration completion error",
+	[DR_IB_FRWR_WC_TMOUT]		= "FRWR completion timeout",
 	[DR_TCP_STATE_CLOSE]		= "sk_state to TCP_CLOSE",
 	[DR_TCP_STATE_CLOSE_KA_TIMEOUT] = "TCP_CLOSE - keepalive timeout",
 	[DR_TCP_SEND_FAIL]		= "tcp_send failure",
