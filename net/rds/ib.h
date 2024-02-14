@@ -631,6 +631,8 @@ struct rds_ib_statistics {
 	uint64_t	s_ib_cm_watchdog_triggered;
 	uint64_t        s_ib_frwr_registrations;
 	uint64_t        s_ib_frwr_invalidates;
+	uint64_t	s_ib_frwr_conn_qp_timeout;
+	uint64_t	s_ib_frwr_freg_qp_timeout;
 };
 
 extern struct workqueue_struct *rds_ib_wq;
@@ -890,5 +892,6 @@ extern int rds_ib_sysctl_check_conn_addrs;
 extern unsigned int rds_ib_sysctl_refill_from_send;
 extern unsigned int rds_ib_sysctl_ring_low_permille;
 extern unsigned int rds_ib_sysctl_ring_mid_permille;
+extern unsigned int rds_ib_sysctl_frwr_poll_tmout_secs;
 
 #endif
