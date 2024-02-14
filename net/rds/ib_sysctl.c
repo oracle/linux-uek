@@ -101,6 +101,10 @@ unsigned rds_ib_sysctl_yield_after_ms = 2000;
 
 unsigned rds_ib_sysctl_cm_watchdog_ms = 0;
 
+unsigned int rds_ib_sysctl_frwr_poll_tmout_secs = 10;
+static unsigned int rds_ib_sysctl_frwr_poll_tmout_secs_min = 1;
+static unsigned int rds_ib_sysctl_frwr_poll_tmout_secs_max = UINT_MAX;
+
 static struct ctl_table rds_ib_sysctl_table[] = {
 	{
 		.procname       = "max_send_wr",
@@ -209,6 +213,15 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.maxlen         = sizeof(rds_ib_sysctl_cm_watchdog_ms),
 		.mode           = 0644,
 		.proc_handler   = proc_douintvec,
+	},
+	{
+		.procname       = "frwr_poll_timeout_secs",
+		.data           = &rds_ib_sysctl_frwr_poll_tmout_secs,
+		.maxlen         = sizeof(rds_ib_sysctl_frwr_poll_tmout_secs),
+		.mode           = 0644,
+		.proc_handler   = proc_douintvec_minmax,
+		.extra1         = &rds_ib_sysctl_frwr_poll_tmout_secs_min,
+		.extra2         = &rds_ib_sysctl_frwr_poll_tmout_secs_max,
 	},
 	{ }
 };
