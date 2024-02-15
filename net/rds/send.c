@@ -1922,3 +1922,16 @@ rds_send_hs_ping(struct rds_connection *conn, int cp_index)
 	rds_send_probe(cp, cpu_to_be16(RDS_FLAG_PROBE_PORT), 0, 0);
 }
 EXPORT_SYMBOL_GPL(rds_send_hs_ping);
+
+int rds_get_pending_sends(struct rds_sock *rs)
+{
+	struct rds_message *rm, *tmp;
+	unsigned long flags;
+	int count = 0;
+
+	spin_lock_irqsave(&rs->rs_snd_lock, flags);
+	list_for_each_entry_safe(rm, tmp, &rs->rs_send_queue, m_sock_item)
+		count++;
+	spin_unlock_irqrestore(&rs->rs_snd_lock, flags);
+	return count;
+}
