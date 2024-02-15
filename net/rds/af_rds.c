@@ -40,6 +40,8 @@
 #include <linux/poll.h>
 #include <linux/version.h>
 #include <linux/random.h>
+#include <asm/ioctls.h>
+#include <linux/sockios.h>
 #include <net/sock.h>
 
 #include "trace.h"
@@ -435,6 +437,10 @@ static int rds_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
                 if (put_user(tos, (rds_tos_t __user *)arg))
                         return -EFAULT;
                 break;
+	case SIOCOUTQ:
+		if (put_user(rds_get_pending_sends(rs), (int __user *)arg))
+			return -EFAULT;
+		break;
 	default:
 		return -ENOIOCTLCMD;
 	}
