@@ -1430,7 +1430,7 @@ int rds_send_pong(struct rds_conn_path *cp, __be16 dport);
 void rds_send_hb(struct rds_connection *conn, int response);
 struct rds_message *rds_send_get_message(struct rds_connection *,
 					 struct rm_rdma_op *);
-
+int rds_get_pending_sends(struct rds_sock *rs);
 extern unsigned int rds_async_send_enabled;
 
 /* rdma.c */
