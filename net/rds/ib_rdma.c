@@ -1087,7 +1087,7 @@ static int rds_ib_fastreg_inv(struct rds_ib_mr *ibmr)
 	return ret;
 }
 
-void rds_ib_free_ibmr(struct rds_ib_mr *ibmr)
+static void rds_ib_free_ibmr(struct rds_ib_mr *ibmr)
 {
 	if (ibmr->pool->pool_type == RDS_IB_MR_8K_POOL)
 		rds_ib_stats_inc(s_ib_rdma_mr_8k_free);
