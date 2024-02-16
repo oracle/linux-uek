@@ -68,7 +68,7 @@
 		{ TCP_CLOSING,			"closing" })
 
 #define RDS_STRSIZE	64
-#define RDS_STRLCPY(dst, src)   strlcpy(dst, src ? src : "<none>",	\
+#define RDS_STRSCPY(dst, src)   strscpy(dst, src ? src : "<none>",	\
 					ARRAY_SIZE(dst))
 
 /*
@@ -132,7 +132,7 @@ DECLARE_EVENT_CLASS(rds_state,
 		__entry->qp_num = rds_qp_num(conn, 0);
 		__entry->remote_qp_num = rds_qp_num(conn, 1);
 		__entry->flags = cp->cp_flags;
-		RDS_STRLCPY(__entry->reason, reason);
+		RDS_STRSCPY(__entry->reason, reason);
 		__entry->err = err;
 		cgrp = rds_rs_to_cgroup(rs);
 		__entry->cgroup = cgrp;
@@ -198,7 +198,7 @@ DECLARE_EVENT_CLASS(rds_status,
 		__entry->qp_num = rds_qp_num(conn, 0);
 		__entry->remote_qp_num = rds_qp_num(conn, 1);
 		__entry->flags = cp ? cp->cp_flags : 0;
-		RDS_STRLCPY(__entry->reason, reason);
+		RDS_STRSCPY(__entry->reason, reason);
 		__entry->err = err;
 		cgrp = rds_rs_to_cgroup(rs);
 		__entry->cgroup = cgrp;
@@ -371,7 +371,7 @@ TRACE_EVENT(rds_receive,
 		__entry->remote_qp_num = rds_qp_num(conn, 1);
 		__entry->flags = inc ? inc->i_hdr.h_flags : 0;
 		__entry->err = 0;
-		RDS_STRLCPY(__entry->reason, NULL);
+		RDS_STRSCPY(__entry->reason, NULL);
 		cgrp = rds_rs_to_cgroup(rs);
 		__entry->cgroup = cgrp;
 		__entry->cgroup_id = rds_cgroup_id(cgrp);
@@ -436,7 +436,7 @@ TRACE_EVENT(rds_drop_ingress,
 		__entry->qp_num = rds_qp_num(conn, 0);
 		__entry->remote_qp_num = rds_qp_num(conn, 1);
 		__entry->flags = inc ? inc->i_hdr.h_flags : 0;
-		RDS_STRLCPY(__entry->reason, reason);
+		RDS_STRSCPY(__entry->reason, reason);
 		__entry->err = 0;
 		cgrp = rds_rs_to_cgroup(rs);
 		__entry->cgroup = cgrp;
@@ -490,7 +490,7 @@ TRACE_EVENT(rds_send,
 		__entry->remote_qp_num = rds_qp_num(conn, 1);
 		__entry->flags = rm ? rm->m_flags : 0;
 		__entry->err = 0;
-		RDS_STRLCPY(__entry->reason, NULL);
+		RDS_STRSCPY(__entry->reason, NULL);
 		cgrp = rds_rs_to_cgroup(rs);
 		__entry->cgroup = cgrp;
 		__entry->cgroup_id = rds_cgroup_id(cgrp);
@@ -537,7 +537,7 @@ TRACE_EVENT(rds_send_complete,
 		__entry->qp_num = rds_qp_num(conn, 0);
 		__entry->remote_qp_num = rds_qp_num(conn, 1);
 		__entry->flags = rm ? rm->m_flags : 0;
-		RDS_STRLCPY(__entry->reason, reason);
+		RDS_STRSCPY(__entry->reason, reason);
 		__entry->err = err;
 		cgrp = rds_rs_to_cgroup(rs);
 		__entry->cgroup = cgrp;
@@ -587,7 +587,7 @@ TRACE_EVENT(rds_drop_egress,
 		__entry->qp_num = rds_qp_num(conn, 0);
 		__entry->remote_qp_num = rds_qp_num(conn, 1);
 		__entry->flags = rm ? rm->m_flags : 0;
-		RDS_STRLCPY(__entry->reason, reason);
+		RDS_STRSCPY(__entry->reason, reason);
 		__entry->err = 0;
 		cgrp = rds_rs_to_cgroup(rs);
 		__entry->cgroup = cgrp;
@@ -646,8 +646,8 @@ DECLARE_EVENT_CLASS(rds_ib,
 		__entry->qp_num = rds_qp_num(conn, 0);
 		__entry->remote_qp_num = rds_qp_num(conn, 1);
 		__entry->flags = 0;
-		RDS_STRLCPY(__entry->dev_name, dev ? dev->name : NULL);
-		RDS_STRLCPY(__entry->reason, reason);
+		RDS_STRSCPY(__entry->dev_name, dev ? dev->name : NULL);
+		RDS_STRSCPY(__entry->reason, reason);
 		__entry->err = err;
 		cp = conn && conn->c_npaths == 1 ? &conn->c_path[0] : NULL;
 		rs = cp && cp->cp_xmit_rm ? cp->cp_xmit_rm->m_rs : NULL;
@@ -1011,7 +1011,7 @@ DECLARE_EVENT_CLASS(rds_ib_flow_cntrl,
 		__entry->remote_qp_num = rds_qp_num(conn, 1);
 		__entry->flags = 0;
 		__entry->err = 0;
-		RDS_STRLCPY(__entry->reason, NULL);
+		RDS_STRSCPY(__entry->reason, NULL);
 		cp = conn && conn->c_npaths == 1 ? &conn->c_path[0] : NULL;
 		rs = cp && cp->cp_xmit_rm ? cp->cp_xmit_rm->m_rs : NULL;
 		__entry->rs = rs;
@@ -1023,7 +1023,7 @@ DECLARE_EVENT_CLASS(rds_ib_flow_cntrl,
 		__entry->cp = cp;
 		__entry->dev = rds_ibdev ? rds_ibdev->dev : NULL;
 		__entry->rds_ibdev = rds_ibdev;
-		RDS_STRLCPY(__entry->dev_name, rds_ibdev && rds_ibdev->dev ?
+		RDS_STRSCPY(__entry->dev_name, rds_ibdev && rds_ibdev->dev ?
 					       rds_ibdev->dev->name : NULL);
 		__entry->old_send_credits = IB_GET_SEND_CREDITS(oldval);
 		__entry->old_post_credits = IB_GET_POST_CREDITS(oldval);
@@ -1097,7 +1097,7 @@ DECLARE_EVENT_CLASS(rds_queue,
 		__entry->qp_num = rds_qp_num(conn, 0);
 		__entry->remote_qp_num = rds_qp_num(conn, 1);
 		__entry->flags = 0;
-		RDS_STRLCPY(__entry->reason, reason);
+		RDS_STRSCPY(__entry->reason, reason);
 		__entry->err = 0;
 		rs = cp && cp->cp_xmit_rm ? cp->cp_xmit_rm->m_rs :
 					    NULL;
@@ -1202,7 +1202,7 @@ DECLARE_EVENT_CLASS(rds_ib_queue,
 		__entry->lport = 0;
 		__entry->fport = 0;
 		__entry->flags = 0;
-		RDS_STRLCPY(__entry->reason, reason);
+		RDS_STRSCPY(__entry->reason, reason);
 		__entry->err = 0;
 		__entry->rs = NULL;
 		__entry->cgroup = NULL;
@@ -1211,7 +1211,7 @@ DECLARE_EVENT_CLASS(rds_ib_queue,
 		__entry->cp = NULL;
 		__entry->dev = rds_ibdev ? rds_ibdev->dev : NULL;
 		__entry->rds_ibdev = rds_ibdev;
-		RDS_STRLCPY(__entry->dev_name, rds_ibdev && rds_ibdev->dev ?
+		RDS_STRSCPY(__entry->dev_name, rds_ibdev && rds_ibdev->dev ?
 					       rds_ibdev->dev->name : NULL);
 		__entry->wq = wq;
 		__entry->work = work;
@@ -1289,7 +1289,7 @@ DECLARE_EVENT_CLASS(rds_mr,
 		__entry->qp_num = rds_qp_num(conn, 0);
 		__entry->remote_qp_num = rds_qp_num(conn, 1);
 		__entry->flags = 0;
-		RDS_STRLCPY(__entry->reason, reason);
+		RDS_STRSCPY(__entry->reason, reason);
 		__entry->err = err;
 		cgrp = rds_rs_to_cgroup(rs);
 		__entry->cgroup = cgrp;
@@ -1369,7 +1369,7 @@ DECLARE_EVENT_CLASS(rds_tcp,
 		__entry->lport = 0;
 		__entry->fport = 0;
 		__entry->flags = 0;
-		RDS_STRLCPY(__entry->reason, reason);
+		RDS_STRSCPY(__entry->reason, reason);
 		__entry->err = err;
 		cgrp = sk ? sock_cgroup_ptr(&sk->sk_cgrp_data) : NULL;
 		__entry->cgroup = cgrp;
@@ -1478,7 +1478,7 @@ TRACE_EVENT(rds_ib_free_cache_one,
 	    TP_fast_assign(
 		    __entry->cpu = cpu;
 		    __entry->count = atomic_read(&chead->count);
-		    RDS_STRLCPY(__entry->type, type);
+		    RDS_STRSCPY(__entry->type, type);
 		    ),
 
 	    TP_printk("RDS/IB: Free %d %s from percpu-%d",
