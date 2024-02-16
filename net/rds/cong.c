@@ -99,7 +99,7 @@ struct rds_cong_monitor {
 
 static struct rds_cong_monitor *rds_cong_monitor;
 
-void rds_cong_notify_worker(struct work_struct *work)
+static void rds_cong_notify_worker(struct work_struct *work)
 {
 	u64 portmask;
 	bool qwork = false;
