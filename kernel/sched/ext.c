@@ -203,9 +203,9 @@ static DEFINE_PER_CPU(struct scx_dsp_ctx, scx_dsp_ctx);
 static struct kset *scx_kset;
 static struct kobject *scx_root_kobj;
 
-void scx_bpf_dispatch(struct task_struct *p, u64 dsq_id, u64 slice,
-		      u64 enq_flags);
-void scx_bpf_kick_cpu(s32 cpu, u64 flags);
+static void scx_bpf_dispatch(struct task_struct *p, u64 dsq_id, u64 slice,
+			     u64 enq_flags);
+static void scx_bpf_kick_cpu(s32 cpu, u64 flags);
 
 struct scx_task_iter {
 	struct sched_ext_entity		cursor;
@@ -2139,6 +2139,8 @@ cpu_found:
 	return cpu;
 }
 
+__bpf_kfunc_start_defs();
+
 __bpf_kfunc s32 scx_bpf_select_cpu_dfl(struct task_struct *p, s32 prev_cpu,
 				       u64 wake_flags, bool *found)
 {
@@ -2149,6 +2151,8 @@ __bpf_kfunc s32 scx_bpf_select_cpu_dfl(struct task_struct *p, s32 prev_cpu,
 
 	return scx_select_cpu_dfl(p, prev_cpu, wake_flags, found);
 }
+
+__bpf_kfunc_end_defs();
 
 static int select_task_rq_scx(struct task_struct *p, int prev_cpu, int wake_flags)
 {
@@ -3914,7 +3918,8 @@ static bool promote_dispatch_2nd_arg(int off, int size,
                                      const struct bpf_prog *prog,
                                      struct bpf_insn_access_aux *info)
 {
-	const struct bpf_struct_ops *st_ops;
+	struct btf *btf = bpf_get_btf_vmlinux();
+	const struct bpf_struct_ops_desc *st_ops_desc;
 	const struct btf_member *member;
         const struct btf_type *t;
         u32 btf_id, member_idx;
@@ -3922,12 +3927,12 @@ static bool promote_dispatch_2nd_arg(int off, int size,
 
         /* btf_id should be the type id of struct sched_ext_ops */
 	btf_id = prog->aux->attach_btf_id;
-	st_ops = bpf_struct_ops_find(btf_id);
-	if (!st_ops)
+	st_ops_desc = bpf_struct_ops_find(btf, btf_id);
+	if (!st_ops_desc)
                 return false;
 
         /* BTF type of struct sched_ext_ops */
-        t = st_ops->type;
+        t = st_ops_desc->type;
 
 	member_idx = prog->expected_attach_type;
 	if (member_idx >= btf_type_vlen(t))
@@ -4018,7 +4023,7 @@ bpf_scx_get_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
 	case BPF_FUNC_task_storage_delete:
 		return &bpf_task_storage_delete_proto;
 	default:
-		return bpf_base_func_proto(func_id);
+		return bpf_base_func_proto(func_id, prog);
 	}
 }
 
@@ -4131,10 +4136,73 @@ static int bpf_scx_validate(void *kdata)
 	return 0;
 }
 
-/* "extern" to avoid sparse warning, only used in this file */
-extern struct bpf_struct_ops bpf_sched_ext_ops;
+static s32 select_cpu_stub(struct task_struct *p, s32 prev_cpu, u64 wake_flags) { return -EINVAL; }
+static void enqueue_stub(struct task_struct *p, u64 enq_flags) {}
+static void dequeue_stub(struct task_struct *p, u64 enq_flags) {}
+static void dispatch_stub(s32 prev_cpu, struct task_struct *p) {}
+static void runnable_stub(struct task_struct *p, u64 enq_flags) {}
+static void running_stub(struct task_struct *p) {}
+static void stopping_stub(struct task_struct *p, bool runnable) {}
+static void quiescent_stub(struct task_struct *p, u64 deq_flags) {}
+static bool yield_stub(struct task_struct *from, struct task_struct *to) { return false; }
+static bool core_sched_before_stub(struct task_struct *a, struct task_struct *b) { return false; }
+static void set_weight_stub(struct task_struct *p, u32 weight) {}
+static void set_cpumask_stub(struct task_struct *p, const struct cpumask *mask) {}
+static void update_idle_stub(s32 cpu, bool idle) {}
+static void cpu_acquire_stub(s32 cpu, struct scx_cpu_acquire_args *args) {}
+static void cpu_release_stub(s32 cpu, struct scx_cpu_release_args *args) {}
+static s32 init_task_stub(struct task_struct *p, struct scx_init_task_args *args) { return -EINVAL; }
+static void exit_task_stub(struct task_struct *p, struct scx_exit_task_args *args) {}
+static void enable_stub(struct task_struct *p) {}
+static void disable_stub(struct task_struct *p) {}
+#ifdef CONFIG_EXT_GROUP_SCHED
+static s32 cgroup_init_stub(struct cgroup *cgrp, struct scx_cgroup_init_args *args) { return -EINVAL; }
+static void cgroup_exit_stub(struct cgroup *cgrp) {}
+static s32 cgroup_prep_move_stub(struct task_struct *p, struct cgroup *from, struct cgroup *to) { return -EINVAL; }
+static void cgroup_move_stub(struct task_struct *p, struct cgroup *from, struct cgroup *to) {}
+static void cgroup_cancel_move_stub(struct task_struct *p, struct cgroup *from, struct cgroup *to) {}
+static void cgroup_set_weight_stub(struct cgroup *cgrp, u32 weight) {}
+#endif
+static void cpu_online_stub(s32 cpu) {}
+static void cpu_offline_stub(s32 cpu) {}
+static s32 init_stub(void) { return -EINVAL; }
+static void exit_stub(struct scx_exit_info *info) {}
 
-struct bpf_struct_ops bpf_sched_ext_ops = {
+static struct sched_ext_ops __bpf_ops_sched_ext_ops = {
+	.select_cpu = select_cpu_stub,
+	.enqueue = enqueue_stub,
+	.dequeue = dequeue_stub,
+	.dispatch = dispatch_stub,
+	.runnable = runnable_stub,
+	.running = running_stub,
+	.stopping = stopping_stub,
+	.quiescent = quiescent_stub,
+	.yield = yield_stub,
+	.core_sched_before = core_sched_before_stub,
+	.set_weight = set_weight_stub,
+	.set_cpumask = set_cpumask_stub,
+	.update_idle = update_idle_stub,
+	.cpu_acquire = cpu_acquire_stub,
+	.cpu_release = cpu_release_stub,
+	.init_task = init_task_stub,
+	.exit_task = exit_task_stub,
+	.enable = enable_stub,
+	.disable = disable_stub,
+#ifdef CONFIG_EXT_GROUP_SCHED
+	.cgroup_init = cgroup_init_stub,
+	.cgroup_exit = cgroup_exit_stub,
+	.cgroup_prep_move = cgroup_prep_move_stub,
+	.cgroup_move = cgroup_move_stub,
+	.cgroup_cancel_move = cgroup_cancel_move_stub,
+	.cgroup_set_weight = cgroup_set_weight_stub,
+#endif
+	.cpu_online = cpu_online_stub,
+	.cpu_offline = cpu_offline_stub,
+	.init = init_stub,
+	.exit = exit_stub,
+};
+
+static struct bpf_struct_ops bpf_sched_ext_ops = {
 	.verifier_ops = &bpf_scx_verifier_ops,
 	.reg = bpf_scx_reg,
 	.unreg = bpf_scx_unreg,
@@ -4144,6 +4212,8 @@ struct bpf_struct_ops bpf_sched_ext_ops = {
 	.update = bpf_scx_update,
 	.validate = bpf_scx_validate,
 	.name = "sched_ext_ops",
+	.owner = THIS_MODULE,
+	.cfi_stubs = &__bpf_ops_sched_ext_ops
 };
 
 
@@ -4452,6 +4522,8 @@ static const struct btf_kfunc_id_set scx_kfunc_set_sleepable = {
 	.set			= &scx_kfunc_ids_sleepable,
 };
 
+__bpf_kfunc_end_defs();
+
 static bool scx_dispatch_preamble(struct task_struct *p, u64 enq_flags)
 {
 	if (!scx_kf_allowed(SCX_KF_ENQUEUE | SCX_KF_DISPATCH))
@@ -4497,6 +4569,8 @@ static void scx_dispatch_commit(struct task_struct *p, u64 dsq_id, u64 enq_flags
 	};
 	__this_cpu_inc(scx_dsp_ctx.buf_cursor);
 }
+
+__bpf_kfunc_start_defs();
 
 /**
  * scx_bpf_dispatch - Dispatch a task into the FIFO queue of a DSQ
@@ -5160,6 +5234,12 @@ static int __init scx_init(void)
 	    (ret = register_btf_kfunc_id_set(BPF_PROG_TYPE_TRACING,
 					     &scx_kfunc_set_any))) {
 		pr_err("sched_ext: Failed to register kfunc sets (%d)\n", ret);
+		return ret;
+	}
+
+	ret = register_bpf_struct_ops(&bpf_sched_ext_ops, sched_ext_ops);
+	if (ret) {
+		pr_err("sched_ext: Failed to register struct_ops (%d)\n", ret);
 		return ret;
 	}
 
