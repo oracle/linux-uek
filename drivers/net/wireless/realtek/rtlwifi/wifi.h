@@ -1316,7 +1316,6 @@ struct rtl_phy {
 	u8 sw_chnl_stage;
 	u8 sw_chnl_step;
 	u8 current_channel;
-	u8 h2c_box_num;
 	u8 set_io_inprogress;
 	u8 lck_inprogress;
 
@@ -1329,9 +1328,6 @@ struct rtl_phy {
 	s32 reg_ebc;
 	s32 reg_ec4;
 	s32 reg_ecc;
-	u8 rfpienable;
-	u8 reserve_0;
-	u16 reserve_1;
 	u32 reg_c04, reg_c08, reg_874;
 	u32 adda_backup[16];
 	u32 iqk_mac_backup[IQK_MAC_REG_NUM];
@@ -1345,7 +1341,6 @@ struct rtl_phy {
 	struct iqk_matrix_regs iqk_matrix[IQK_MATRIX_SETTINGS_NUM];
 
 	bool rfpi_enable;
-	bool iqk_in_progress;
 
 	u8 pwrgroup_cnt;
 	u8 cck_high_power;
@@ -1383,7 +1378,6 @@ struct rtl_phy {
 			 [MAX_RF_PATH_NUM];
 
 	u32 rfreg_chnlval[2];
-	bool apk_done;
 	u32 reg_rf3c[2];	/* pathA / pathB  */
 
 	u32 backup_rf_0x1a;/*92ee*/
@@ -1395,7 +1389,6 @@ struct rtl_phy {
 	struct phy_parameters hwparam_tables[MAX_TAB];
 	u16 rf_pathmap;
 
-	u8 hw_rof_enable; /*Enable GPIO[9] as WL RF HW PDn source*/
 	enum rt_polarity_ctl polarity_ctl;
 };
 
@@ -1454,13 +1447,15 @@ struct rtl_io {
 	/*PCI IO map */
 	unsigned long pci_base_addr;	/*device I/O address */
 
-	void (*write8_async)(struct rtl_priv *rtlpriv, u32 addr, u8 val);
-	void (*write16_async)(struct rtl_priv *rtlpriv, u32 addr, u16 val);
-	void (*write32_async)(struct rtl_priv *rtlpriv, u32 addr, u32 val);
+	void (*write8)(struct rtl_priv *rtlpriv, u32 addr, u8 val);
+	void (*write16)(struct rtl_priv *rtlpriv, u32 addr, u16 val);
+	void (*write32)(struct rtl_priv *rtlpriv, u32 addr, u32 val);
+	void (*write_chunk)(struct rtl_priv *rtlpriv, u32 addr, u32 length,
+			    u8 *data);
 
-	u8 (*read8_sync)(struct rtl_priv *rtlpriv, u32 addr);
-	u16 (*read16_sync)(struct rtl_priv *rtlpriv, u32 addr);
-	u32 (*read32_sync)(struct rtl_priv *rtlpriv, u32 addr);
+	u8 (*read8)(struct rtl_priv *rtlpriv, u32 addr);
+	u16 (*read16)(struct rtl_priv *rtlpriv, u32 addr);
+	u32 (*read32)(struct rtl_priv *rtlpriv, u32 addr);
 
 };
 
@@ -1610,7 +1605,6 @@ struct rtl_hal {
 	bool up_first_time;
 	bool first_init;
 	bool being_init_adapter;
-	bool bbrf_ready;
 	bool mac_func_enable;
 	bool pre_edcca_enable;
 	struct bt_coexist_8723 hal_coex_8723;
@@ -1623,9 +1617,7 @@ struct rtl_hal {
 	u8 state;		/*stop 0, start 1 */
 	u8 board_type;
 	u8 package_type;
-	u8 external_pa;
 
-	u8 pa_mode;
 	u8 pa_type_2g;
 	u8 pa_type_5g;
 	u8 lna_type_2g;
@@ -1691,14 +1683,9 @@ struct rtl_hal {
 	bool master_of_dmsp;
 	bool slave_of_dmsp;
 
-	u16 rx_tag;/*for 92ee*/
-	u8 rts_en;
-
 	/*for wowlan*/
-	bool wow_enable;
 	bool enter_pnp_sleep;
 	bool wake_from_pnp_sleep;
-	bool wow_enabled;
 	time64_t last_suspend_sec;
 	u32 wowlan_fwsize;
 	u8 *wowlan_firmware;
@@ -2023,8 +2010,6 @@ struct rtl_ps_ctl {
 	u32 cur_ps_level;
 	u32 reg_rfps_level;
 
-	/*just for PCIE ASPM */
-	u8 const_amdpci_aspm;
 	bool pwrdown_mode;
 
 	enum rf_pwrstate inactive_pwrstate;
@@ -2933,25 +2918,25 @@ extern u8 channel5g_80m[CHANNEL_MAX_NUMBER_5G_80M];
 
 static inline u8 rtl_read_byte(struct rtl_priv *rtlpriv, u32 addr)
 {
-	return rtlpriv->io.read8_sync(rtlpriv, addr);
+	return rtlpriv->io.read8(rtlpriv, addr);
 }
 
 static inline u16 rtl_read_word(struct rtl_priv *rtlpriv, u32 addr)
 {
-	return rtlpriv->io.read16_sync(rtlpriv, addr);
+	return rtlpriv->io.read16(rtlpriv, addr);
 }
 
 static inline u32 rtl_read_dword(struct rtl_priv *rtlpriv, u32 addr)
 {
-	return rtlpriv->io.read32_sync(rtlpriv, addr);
+	return rtlpriv->io.read32(rtlpriv, addr);
 }
 
 static inline void rtl_write_byte(struct rtl_priv *rtlpriv, u32 addr, u8 val8)
 {
-	rtlpriv->io.write8_async(rtlpriv, addr, val8);
+	rtlpriv->io.write8(rtlpriv, addr, val8);
 
 	if (rtlpriv->cfg->write_readback)
-		rtlpriv->io.read8_sync(rtlpriv, addr);
+		rtlpriv->io.read8(rtlpriv, addr);
 }
 
 static inline void rtl_write_byte_with_val32(struct ieee80211_hw *hw,
@@ -2964,19 +2949,25 @@ static inline void rtl_write_byte_with_val32(struct ieee80211_hw *hw,
 
 static inline void rtl_write_word(struct rtl_priv *rtlpriv, u32 addr, u16 val16)
 {
-	rtlpriv->io.write16_async(rtlpriv, addr, val16);
+	rtlpriv->io.write16(rtlpriv, addr, val16);
 
 	if (rtlpriv->cfg->write_readback)
-		rtlpriv->io.read16_sync(rtlpriv, addr);
+		rtlpriv->io.read16(rtlpriv, addr);
 }
 
 static inline void rtl_write_dword(struct rtl_priv *rtlpriv,
 				   u32 addr, u32 val32)
 {
-	rtlpriv->io.write32_async(rtlpriv, addr, val32);
+	rtlpriv->io.write32(rtlpriv, addr, val32);
 
 	if (rtlpriv->cfg->write_readback)
-		rtlpriv->io.read32_sync(rtlpriv, addr);
+		rtlpriv->io.read32(rtlpriv, addr);
+}
+
+static inline void rtl_write_chunk(struct rtl_priv *rtlpriv,
+				   u32 addr, u32 length, u8 *data)
+{
+	rtlpriv->io.write_chunk(rtlpriv, addr, length, data);
 }
 
 static inline u32 rtl_get_bbreg(struct ieee80211_hw *hw,
@@ -3069,4 +3060,11 @@ static inline struct ieee80211_sta *rtl_find_sta(struct ieee80211_hw *hw,
 	return ieee80211_find_sta(mac->vif, mac_addr);
 }
 
+static inline u32 calculate_bit_shift(u32 bitmask)
+{
+	if (WARN_ON_ONCE(!bitmask))
+		return 0;
+
+	return __ffs(bitmask);
+}
 #endif
