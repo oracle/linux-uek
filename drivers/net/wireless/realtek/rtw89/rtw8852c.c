@@ -167,6 +167,20 @@ static const struct rtw89_dig_regs rtw8852c_dig_regs = {
 			      B_PATH1_S20_FOLLOW_BY_PAGCUGC_EN_MSK},
 };
 
+static const struct rtw89_edcca_regs rtw8852c_edcca_regs = {
+	.edcca_level			= R_SEG0R_EDCCA_LVL,
+	.edcca_mask			= B_EDCCA_LVL_MSK0,
+	.edcca_p_mask			= B_EDCCA_LVL_MSK1,
+	.ppdu_level			= R_SEG0R_EDCCA_LVL,
+	.ppdu_mask			= B_EDCCA_LVL_MSK3,
+	.rpt_a				= R_EDCCA_RPT_A,
+	.rpt_b				= R_EDCCA_RPT_B,
+	.rpt_sel			= R_EDCCA_RPT_SEL,
+	.rpt_sel_mask			= B_EDCCA_RPT_SEL_MSK,
+	.tx_collision_t2r_st		= R_TX_COLLISION_T2R_ST,
+	.tx_collision_t2r_st_mask	= B_TX_COLLISION_T2R_ST_M,
+};
+
 static void rtw8852c_ctrl_btg_bt_rx(struct rtw89_dev *rtwdev, bool en,
 				    enum rtw89_phy_idx phy_idx);
 
@@ -426,11 +440,36 @@ static void rtw8852c_efuse_parsing_gain_offset(struct rtw89_dev *rtwdev,
 	valid |= _decode_efuse_gain(map->rx_gain_5g_high,
 				    &gain->offset[RF_PATH_A][RTW89_GAIN_OFFSET_5G_HIGH],
 				    &gain->offset[RF_PATH_B][RTW89_GAIN_OFFSET_5G_HIGH]);
+	valid |= _decode_efuse_gain(map->rx_gain_6g_l0,
+				    &gain->offset[RF_PATH_A][RTW89_GAIN_OFFSET_6G_L0],
+				    &gain->offset[RF_PATH_B][RTW89_GAIN_OFFSET_6G_L0]);
+	valid |= _decode_efuse_gain(map->rx_gain_6g_l1,
+				    &gain->offset[RF_PATH_A][RTW89_GAIN_OFFSET_6G_L1],
+				    &gain->offset[RF_PATH_B][RTW89_GAIN_OFFSET_6G_L1]);
+	valid |= _decode_efuse_gain(map->rx_gain_6g_m0,
+				    &gain->offset[RF_PATH_A][RTW89_GAIN_OFFSET_6G_M0],
+				    &gain->offset[RF_PATH_B][RTW89_GAIN_OFFSET_6G_M0]);
+	valid |= _decode_efuse_gain(map->rx_gain_6g_m1,
+				    &gain->offset[RF_PATH_A][RTW89_GAIN_OFFSET_6G_M1],
+				    &gain->offset[RF_PATH_B][RTW89_GAIN_OFFSET_6G_M1]);
+	valid |= _decode_efuse_gain(map->rx_gain_6g_h0,
+				    &gain->offset[RF_PATH_A][RTW89_GAIN_OFFSET_6G_H0],
+				    &gain->offset[RF_PATH_B][RTW89_GAIN_OFFSET_6G_H0]);
+	valid |= _decode_efuse_gain(map->rx_gain_6g_h1,
+				    &gain->offset[RF_PATH_A][RTW89_GAIN_OFFSET_6G_H1],
+				    &gain->offset[RF_PATH_B][RTW89_GAIN_OFFSET_6G_H1]);
+	valid |= _decode_efuse_gain(map->rx_gain_6g_uh0,
+				    &gain->offset[RF_PATH_A][RTW89_GAIN_OFFSET_6G_UH0],
+				    &gain->offset[RF_PATH_B][RTW89_GAIN_OFFSET_6G_UH0]);
+	valid |= _decode_efuse_gain(map->rx_gain_6g_uh1,
+				    &gain->offset[RF_PATH_A][RTW89_GAIN_OFFSET_6G_UH1],
+				    &gain->offset[RF_PATH_B][RTW89_GAIN_OFFSET_6G_UH1]);
 
 	gain->offset_valid = valid;
 }
 
-static int rtw8852c_read_efuse(struct rtw89_dev *rtwdev, u8 *log_map)
+static int rtw8852c_read_efuse(struct rtw89_dev *rtwdev, u8 *log_map,
+			       enum rtw89_efuse_block block)
 {
 	struct rtw89_efuse *efuse = &rtwdev->efuse;
 	struct rtw8852c_efuse *map;
@@ -803,7 +842,7 @@ static void rtw8852c_set_gain_error(struct rtw89_dev *rtwdev,
 				    enum rtw89_subband subband,
 				    enum rtw89_rf_path path)
 {
-	const struct rtw89_phy_bb_gain_info *gain = &rtwdev->bb_gain;
+	const struct rtw89_phy_bb_gain_info *gain = &rtwdev->bb_gain.ax;
 	u8 gain_band = rtw89_subband_to_bb_gain_band(subband);
 	s32 val;
 	u32 reg;
@@ -2774,6 +2813,7 @@ static const struct rtw89_chip_ops rtw8852c_chip_ops = {
 	.enable_bb_rf		= rtw8852c_mac_enable_bb_rf,
 	.disable_bb_rf		= rtw8852c_mac_disable_bb_rf,
 	.bb_preinit		= NULL,
+	.bb_postinit		= NULL,
 	.bb_reset		= rtw8852c_bb_reset,
 	.bb_sethw		= rtw8852c_bb_sethw,
 	.read_rf		= rtw89_phy_read_rf_v1,
@@ -2809,6 +2849,12 @@ static const struct rtw89_chip_ops rtw8852c_chip_ops = {
 	.stop_sch_tx		= rtw89_mac_stop_sch_tx_v1,
 	.resume_sch_tx		= rtw89_mac_resume_sch_tx_v1,
 	.h2c_dctl_sec_cam	= rtw89_fw_h2c_dctl_sec_cam_v1,
+	.h2c_default_cmac_tbl	= rtw89_fw_h2c_default_cmac_tbl,
+	.h2c_assoc_cmac_tbl	= rtw89_fw_h2c_assoc_cmac_tbl,
+	.h2c_ampdu_cmac_tbl	= NULL,
+	.h2c_default_dmac_tbl	= NULL,
+	.h2c_update_beacon	= rtw89_fw_h2c_update_beacon,
+	.h2c_ba_cam		= rtw89_fw_h2c_ba_cam,
 
 	.btc_set_rfe		= rtw8852c_btc_set_rfe,
 	.btc_init_cfg		= rtw8852c_btc_init_cfg,
@@ -2840,8 +2886,8 @@ const struct rtw89_chip_info rtw8852c_chip_info = {
 	.rsvd_ple_ofst		= 0x6f800,
 	.hfc_param_ini		= rtw8852c_hfc_param_ini_pcie,
 	.dle_mem		= rtw8852c_dle_mem_pcie,
-	.wde_qempty_acq_num     = 16,
-	.wde_qempty_mgq_sel     = 16,
+	.wde_qempty_acq_grpnum	= 16,
+	.wde_qempty_mgq_grpsel	= 16,
 	.rf_base_addr		= {0xe000, 0xf000},
 	.pwr_on_seq		= NULL,
 	.pwr_off_seq		= NULL,
@@ -2863,7 +2909,10 @@ const struct rtw89_chip_info rtw8852c_chip_info = {
 	.support_bands		= BIT(NL80211_BAND_2GHZ) |
 				  BIT(NL80211_BAND_5GHZ) |
 				  BIT(NL80211_BAND_6GHZ),
-	.support_bw160		= true,
+	.support_bandwidths	= BIT(NL80211_CHAN_WIDTH_20) |
+				  BIT(NL80211_CHAN_WIDTH_40) |
+				  BIT(NL80211_CHAN_WIDTH_80) |
+				  BIT(NL80211_CHAN_WIDTH_160),
 	.support_unii4		= true,
 	.ul_tb_waveform_ctrl	= false,
 	.ul_tb_pwr_diff		= true,
@@ -2877,12 +2926,14 @@ const struct rtw89_chip_info rtw8852c_chip_info = {
 	.bacam_num		= 8,
 	.bacam_dynamic_num	= 8,
 	.bacam_ver		= RTW89_BACAM_V0_EXT,
+	.ppdu_max_usr		= 8,
 	.sec_ctrl_efuse_size	= 4,
 	.physical_efuse_size	= 1216,
 	.logical_efuse_size	= 2048,
 	.limit_efuse_size	= 1280,
 	.dav_phy_efuse_size	= 96,
 	.dav_log_efuse_size	= 16,
+	.efuse_blocks		= NULL,
 	.phycap_addr		= 0x590,
 	.phycap_size		= 0x60,
 	.para_ver		= 0x1,
@@ -2923,11 +2974,13 @@ const struct rtw89_chip_info rtw8852c_chip_info = {
 	.dcfo_comp		= &rtw8852c_dcfo_comp,
 	.dcfo_comp_sft		= 12,
 	.imr_info		= &rtw8852c_imr_info,
+	.imr_dmac_table		= NULL,
+	.imr_cmac_table		= NULL,
 	.rrsr_cfgs		= &rtw8852c_rrsr_cfgs,
 	.bss_clr_vld		= {R_BSS_CLR_MAP, B_BSS_CLR_MAP_VLD0},
 	.bss_clr_map_reg	= R_BSS_CLR_MAP,
 	.dma_ch_mask		= 0,
-	.edcca_lvl_reg		= R_SEG0R_EDCCA_LVL,
+	.edcca_regs		= &rtw8852c_edcca_regs,
 #ifdef CONFIG_PM
 	.wowlan_stub		= &rtw_wowlan_stub_8852c,
 #endif

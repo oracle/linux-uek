@@ -1,11 +1,11 @@
 .. contents::
 .. sectnum::
 
-=======================================
-BPF Instruction Set Specification, v1.0
-=======================================
+======================================
+BPF Instruction Set Architecture (ISA)
+======================================
 
-This document specifies version 1.0 of the BPF instruction set.
+This document specifies the BPF instruction set architecture (ISA).
 
 Documentation conventions
 =========================
@@ -97,6 +97,38 @@ Definitions
     A:          10000110
     B: 11111111 10000110
 
+Conformance groups
+------------------
+
+An implementation does not need to support all instructions specified in this
+document (e.g., deprecated instructions).  Instead, a number of conformance
+groups are specified.  An implementation must support the base32 conformance
+group and may support additional conformance groups, where supporting a
+conformance group means it must support all instructions in that conformance
+group.
+
+The use of named conformance groups enables interoperability between a runtime
+that executes instructions, and tools as such compilers that generate
+instructions for the runtime.  Thus, capability discovery in terms of
+conformance groups might be done manually by users or automatically by tools.
+
+Each conformance group has a short ASCII label (e.g., "base32") that
+corresponds to a set of instructions that are mandatory.  That is, each
+instruction has one or more conformance groups of which it is a member.
+
+This document defines the following conformance groups:
+
+* base32: includes all instructions defined in this
+  specification unless otherwise noted.
+* base64: includes base32, plus instructions explicitly noted
+  as being in the base64 conformance group.
+* atomic32: includes 32-bit atomic operation instructions (see `Atomic operations`_).
+* atomic64: includes atomic32, plus 64-bit atomic operation instructions.
+* divmul32: includes 32-bit division, multiplication, and modulo instructions.
+* divmul64: includes divmul32, plus 64-bit division, multiplication,
+  and modulo instructions.
+* legacy: deprecated packet access instructions.
+
 Instruction encoding
 ====================
 
@@ -144,7 +176,7 @@ Note that most instructions do not use all of the fields.
 Unused fields shall be cleared to zero.
 
 As discussed below in `64-bit immediate instructions`_, a 64-bit immediate
-instruction uses a 64-bit immediate value that is constructed as follows.
+instruction uses two 32-bit immediate values that are constructed as follows.
 The 64 bits following the basic instruction contain a pseudo instruction
 using the same format but with opcode, dst_reg, src_reg, and offset all set to zero,
 and imm containing the high 32 bits of the immediate value.
@@ -152,20 +184,15 @@ and imm containing the high 32 bits of the immediate value.
 This is depicted in the following figure::
 
         basic_instruction
-  .-----------------------------.
-  |                             |
-  code:8 regs:8 offset:16 imm:32 unused:32 imm:32
-                                 |              |
-                                 '--------------'
-                                pseudo instruction
+  .------------------------------.
+  |                              |
+  opcode:8 regs:8 offset:16 imm:32 unused:32 imm:32
+                                   |              |
+                                   '--------------'
+                                  pseudo instruction
 
-Thus the 64-bit immediate value is constructed as follows:
-
-  imm64 = (next_imm << 32) | imm
-
-where 'next_imm' refers to the imm value of the pseudo instruction
-following the basic instruction.  The unused bytes in the pseudo
-instruction are reserved and shall be cleared to zero.
+Here, the imm value of the pseudo instruction is called 'next_imm'. The unused
+bytes in the pseudo instruction are reserved and shall be cleared to zero.
 
 Instruction classes
 -------------------
@@ -217,7 +244,8 @@ Arithmetic instructions
 -----------------------
 
 ``BPF_ALU`` uses 32-bit wide operands while ``BPF_ALU64`` uses 64-bit wide operands for
-otherwise identical operations.
+otherwise identical operations. ``BPF_ALU64`` instructions belong to the
+base64 conformance group unless noted otherwise.
 The 'code' field encodes the operation as below, where 'src' and 'dst' refer
 to the values of the source and destination registers, respectively.
 
@@ -262,15 +290,19 @@ where '(u32)' indicates that the upper 32 bits are zeroed.
 
 ``BPF_XOR | BPF_K | BPF_ALU`` means::
 
-  dst = (u32) dst ^ (u32) imm32
+  dst = (u32) dst ^ (u32) imm
 
 ``BPF_XOR | BPF_K | BPF_ALU64`` means::
 
-  dst = dst ^ imm32
+  dst = dst ^ imm
 
 Note that most instructions have instruction offset of 0. Only three instructions
 (``BPF_SDIV``, ``BPF_SMOD``, ``BPF_MOVSX``) have a non-zero offset.
 
+Division, multiplication, and modulo operations for ``BPF_ALU`` are part
+of the "divmul32" conformance group, and division, multiplication, and
+modulo operations for ``BPF_ALU64`` are part of the "divmul64" conformance
+group.
 The division and modulo operations support both unsigned and signed flavors.
 
 For unsigned operations (``BPF_DIV`` and ``BPF_MOD``), for ``BPF_ALU``,
@@ -295,7 +327,11 @@ The ``BPF_MOVSX`` instruction does a move operation with sign extension.
 ``BPF_ALU | BPF_MOVSX`` :term:`sign extends<Sign Extend>` 8-bit and 16-bit operands into 32
 bit operands, and zeroes the remaining upper 32 bits.
 ``BPF_ALU64 | BPF_MOVSX`` :term:`sign extends<Sign Extend>` 8-bit, 16-bit, and 32-bit
-operands into 64 bit operands.
+operands into 64 bit operands.  Unlike other arithmetic instructions,
+``BPF_MOVSX`` is only defined for register source operands (``BPF_X``).
+
+The ``BPF_NEG`` instruction is only defined when the source bit is clear
+(``BPF_K``).
 
 Shift operations use a mask of 0x3F (63) for 64-bit operations and 0x1F (31)
 for 32-bit operations.
@@ -323,7 +359,9 @@ BPF_ALU64  Reserved   0x00   do byte swap unconditionally
 =========  =========  =====  =================================================
 
 The 'imm' field encodes the width of the swap operations.  The following widths
-are supported: 16, 32 and 64.
+are supported: 16, 32 and 64.  Width 64 operations belong to the base64
+conformance group and other swap operations belong to the base32
+conformance group.
 
 Examples:
 
@@ -348,31 +386,33 @@ Examples:
 Jump instructions
 -----------------
 
-``BPF_JMP32`` uses 32-bit wide operands while ``BPF_JMP`` uses 64-bit wide operands for
-otherwise identical operations.
+``BPF_JMP32`` uses 32-bit wide operands and indicates the base32
+conformance group, while ``BPF_JMP`` uses 64-bit wide operands for
+otherwise identical operations, and indicates the base64 conformance
+group unless otherwise specified.
 The 'code' field encodes the operation as below:
 
-========  =====  ===  ===========================================  =========================================
-code      value  src  description                                  notes
-========  =====  ===  ===========================================  =========================================
-BPF_JA    0x0    0x0  PC += offset                                 BPF_JMP class
-BPF_JA    0x0    0x0  PC += imm                                    BPF_JMP32 class
+========  =====  ===  ===============================  =============================================
+code      value  src  description                      notes
+========  =====  ===  ===============================  =============================================
+BPF_JA    0x0    0x0  PC += offset                     BPF_JMP | BPF_K only
+BPF_JA    0x0    0x0  PC += imm                        BPF_JMP32 | BPF_K only
 BPF_JEQ   0x1    any  PC += offset if dst == src
-BPF_JGT   0x2    any  PC += offset if dst > src                    unsigned
-BPF_JGE   0x3    any  PC += offset if dst >= src                   unsigned
+BPF_JGT   0x2    any  PC += offset if dst > src        unsigned
+BPF_JGE   0x3    any  PC += offset if dst >= src       unsigned
 BPF_JSET  0x4    any  PC += offset if dst & src
 BPF_JNE   0x5    any  PC += offset if dst != src
-BPF_JSGT  0x6    any  PC += offset if dst > src                    signed
-BPF_JSGE  0x7    any  PC += offset if dst >= src                   signed
-BPF_CALL  0x8    0x0  call helper function by address              see `Helper functions`_
-BPF_CALL  0x8    0x1  call PC += imm                               see `Program-local functions`_
-BPF_CALL  0x8    0x2  call helper function by BTF ID               see `Helper functions`_
-BPF_EXIT  0x9    0x0  return                                       BPF_JMP only
-BPF_JLT   0xa    any  PC += offset if dst < src                    unsigned
-BPF_JLE   0xb    any  PC += offset if dst <= src                   unsigned
-BPF_JSLT  0xc    any  PC += offset if dst < src                    signed
-BPF_JSLE  0xd    any  PC += offset if dst <= src                   signed
-========  =====  ===  ===========================================  =========================================
+BPF_JSGT  0x6    any  PC += offset if dst > src        signed
+BPF_JSGE  0x7    any  PC += offset if dst >= src       signed
+BPF_CALL  0x8    0x0  call helper function by address  BPF_JMP | BPF_K only, see `Helper functions`_
+BPF_CALL  0x8    0x1  call PC += imm                   BPF_JMP | BPF_K only, see `Program-local functions`_
+BPF_CALL  0x8    0x2  call helper function by BTF ID   BPF_JMP | BPF_K only, see `Helper functions`_
+BPF_EXIT  0x9    0x0  return                           BPF_JMP | BPF_K only
+BPF_JLT   0xa    any  PC += offset if dst < src        unsigned
+BPF_JLE   0xb    any  PC += offset if dst <= src       unsigned
+BPF_JSLT  0xc    any  PC += offset if dst < src        signed
+BPF_JSLE  0xd    any  PC += offset if dst <= src       signed
+========  =====  ===  ===============================  =============================================
 
 The BPF program needs to store the return value into register R0 before doing a
 ``BPF_EXIT``.
@@ -397,6 +437,9 @@ field, whereas the ``BPF_JMP32`` class permits a 32-bit jump offset
 specified by the 'imm' field. A > 16-bit conditional jump may be
 converted to a < 16-bit conditional jump plus a 32-bit unconditional
 jump.
+
+All ``BPF_CALL`` and ``BPF_JA`` instructions belong to the
+base32 conformance group.
 
 Helper functions
 ~~~~~~~~~~~~~~~~
@@ -455,6 +498,8 @@ The size modifier is one of:
   BPF_DW         0x18   double word (8 bytes)
   =============  =====  =====================
 
+Instructions using ``BPF_DW`` belong to the base64 conformance group.
+
 Regular load and store operations
 ---------------------------------
 
@@ -467,7 +512,7 @@ instructions that transfer data between a register and memory.
 
 ``BPF_MEM | <size> | BPF_ST`` means::
 
-  *(size *) (dst + offset) = imm32
+  *(size *) (dst + offset) = imm
 
 ``BPF_MEM | <size> | BPF_LDX`` means::
 
@@ -499,8 +544,10 @@ by other BPF programs or means outside of this specification.
 All atomic operations supported by BPF are encoded as store operations
 that use the ``BPF_ATOMIC`` mode modifier as follows:
 
-* ``BPF_ATOMIC | BPF_W | BPF_STX`` for 32-bit operations
-* ``BPF_ATOMIC | BPF_DW | BPF_STX`` for 64-bit operations
+* ``BPF_ATOMIC | BPF_W | BPF_STX`` for 32-bit operations, which are
+  part of the "atomic32" conformance group.
+* ``BPF_ATOMIC | BPF_DW | BPF_STX`` for 64-bit operations, which are
+  part of the "atomic64" conformance group.
 * 8-bit and 16-bit wide atomic operations are not supported.
 
 The 'imm' field is used to encode the actual atomic operation.
@@ -564,7 +611,7 @@ defined further below:
 =========================  ======  ===  =========================================  ===========  ==============
 opcode construction        opcode  src  pseudocode                                 imm type     dst type
 =========================  ======  ===  =========================================  ===========  ==============
-BPF_IMM | BPF_DW | BPF_LD  0x18    0x0  dst = imm64                                integer      integer
+BPF_IMM | BPF_DW | BPF_LD  0x18    0x0  dst = (next_imm << 32) | imm               integer      integer
 BPF_IMM | BPF_DW | BPF_LD  0x18    0x1  dst = map_by_fd(imm)                       map fd       map
 BPF_IMM | BPF_DW | BPF_LD  0x18    0x2  dst = map_val(map_by_fd(imm)) + next_imm   map fd       data pointer
 BPF_IMM | BPF_DW | BPF_LD  0x18    0x3  dst = var_addr(imm)                        variable id  data pointer
@@ -609,5 +656,8 @@ Legacy BPF Packet access instructions
 -------------------------------------
 
 BPF previously introduced special instructions for access to packet data that were
-carried over from classic BPF. However, these instructions are
-deprecated and should no longer be used.
+carried over from classic BPF. These instructions used an instruction
+class of BPF_LD, a size modifier of BPF_W, BPF_H, or BPF_B, and a
+mode modifier of BPF_ABS or BPF_IND.  However, these instructions are
+deprecated and should no longer be used.  All legacy packet access
+instructions belong to the "legacy" conformance group.
