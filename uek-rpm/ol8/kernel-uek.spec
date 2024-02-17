@@ -1955,10 +1955,6 @@ fi\
 %define kernel_variant_preun(o) \
 %{expand:%%preun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-core}\
 /bin/kernel-install remove %{KVERREL}%{?1:.%{1}} /lib/modules/%{KVERREL}%{?1:.%{1}}/vmlinuz || exit $?\
-if [ -x /sbin/weak-modules ]\
-then\
-    /sbin/weak-modules --remove-kernel %{KVERREL}%{?1:.%{1}} || exit $?\
-fi\
 %{nil}
 
 #
