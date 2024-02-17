@@ -4485,9 +4485,9 @@ __bpf_kfunc void scx_bpf_switch_all(void)
 	scx_switch_all_req = true;
 }
 
-BTF_SET8_START(scx_kfunc_ids_init)
+BTF_KFUNCS_START(scx_kfunc_ids_init)
 BTF_ID_FLAGS(func, scx_bpf_switch_all)
-BTF_SET8_END(scx_kfunc_ids_init)
+BTF_KFUNCS_END(scx_kfunc_ids_init)
 
 static const struct btf_kfunc_id_set scx_kfunc_set_init = {
 	.owner			= THIS_MODULE,
@@ -4513,9 +4513,9 @@ __bpf_kfunc s32 scx_bpf_create_dsq(u64 dsq_id, s32 node)
 	return PTR_ERR_OR_ZERO(create_dsq(dsq_id, node));
 }
 
-BTF_SET8_START(scx_kfunc_ids_sleepable)
+BTF_KFUNCS_START(scx_kfunc_ids_sleepable)
 BTF_ID_FLAGS(func, scx_bpf_create_dsq, KF_SLEEPABLE)
-BTF_SET8_END(scx_kfunc_ids_sleepable)
+BTF_KFUNCS_END(scx_kfunc_ids_sleepable)
 
 static const struct btf_kfunc_id_set scx_kfunc_set_sleepable = {
 	.owner			= THIS_MODULE,
@@ -4655,10 +4655,10 @@ __bpf_kfunc void scx_bpf_dispatch_vtime(struct task_struct *p, u64 dsq_id, u64 s
 	scx_dispatch_commit(p, dsq_id, enq_flags | SCX_ENQ_DSQ_PRIQ);
 }
 
-BTF_SET8_START(scx_kfunc_ids_enqueue_dispatch)
+BTF_KFUNCS_START(scx_kfunc_ids_enqueue_dispatch)
 BTF_ID_FLAGS(func, scx_bpf_dispatch, KF_RCU)
 BTF_ID_FLAGS(func, scx_bpf_dispatch_vtime, KF_RCU)
-BTF_SET8_END(scx_kfunc_ids_enqueue_dispatch)
+BTF_KFUNCS_END(scx_kfunc_ids_enqueue_dispatch)
 
 static const struct btf_kfunc_id_set scx_kfunc_set_enqueue_dispatch = {
 	.owner			= THIS_MODULE,
@@ -4742,11 +4742,11 @@ __bpf_kfunc bool scx_bpf_consume(u64 dsq_id)
 	}
 }
 
-BTF_SET8_START(scx_kfunc_ids_dispatch)
+BTF_KFUNCS_START(scx_kfunc_ids_dispatch)
 BTF_ID_FLAGS(func, scx_bpf_dispatch_nr_slots)
 BTF_ID_FLAGS(func, scx_bpf_dispatch_cancel)
 BTF_ID_FLAGS(func, scx_bpf_consume)
-BTF_SET8_END(scx_kfunc_ids_dispatch)
+BTF_KFUNCS_END(scx_kfunc_ids_dispatch)
 
 static const struct btf_kfunc_id_set scx_kfunc_set_dispatch = {
 	.owner			= THIS_MODULE,
@@ -4795,9 +4795,9 @@ __bpf_kfunc u32 scx_bpf_reenqueue_local(void)
 	return nr_enqueued;
 }
 
-BTF_SET8_START(scx_kfunc_ids_cpu_release)
+BTF_KFUNCS_START(scx_kfunc_ids_cpu_release)
 BTF_ID_FLAGS(func, scx_bpf_reenqueue_local)
-BTF_SET8_END(scx_kfunc_ids_cpu_release)
+BTF_KFUNCS_END(scx_kfunc_ids_cpu_release)
 
 static const struct btf_kfunc_id_set scx_kfunc_set_cpu_release = {
 	.owner			= THIS_MODULE,
@@ -5168,7 +5168,7 @@ out:
 }
 #endif
 
-BTF_SET8_START(scx_kfunc_ids_ops_only)
+BTF_KFUNCS_START(scx_kfunc_ids_ops_only)
 BTF_ID_FLAGS(func, scx_bpf_kick_cpu)
 BTF_ID_FLAGS(func, scx_bpf_dsq_nr_queued)
 BTF_ID_FLAGS(func, scx_bpf_test_and_clear_cpu_idle)
@@ -5176,14 +5176,14 @@ BTF_ID_FLAGS(func, scx_bpf_pick_idle_cpu, KF_RCU)
 BTF_ID_FLAGS(func, scx_bpf_pick_any_cpu, KF_RCU)
 BTF_ID_FLAGS(func, scx_bpf_destroy_dsq)
 BTF_ID_FLAGS(func, scx_bpf_select_cpu_dfl, KF_RCU)
-BTF_SET8_END(scx_kfunc_ids_ops_only)
+BTF_KFUNCS_END(scx_kfunc_ids_ops_only)
 
 static const struct btf_kfunc_id_set scx_kfunc_set_ops_only = {
 	.owner			= THIS_MODULE,
 	.set			= &scx_kfunc_ids_ops_only,
 };
 
-BTF_SET8_START(scx_kfunc_ids_any)
+BTF_KFUNCS_START(scx_kfunc_ids_any)
 BTF_ID_FLAGS(func, scx_bpf_get_idle_cpumask, KF_ACQUIRE)
 BTF_ID_FLAGS(func, scx_bpf_get_idle_smtmask, KF_ACQUIRE)
 BTF_ID_FLAGS(func, scx_bpf_put_idle_cpumask, KF_RELEASE)
@@ -5193,7 +5193,7 @@ BTF_ID_FLAGS(func, scx_bpf_task_cpu, KF_RCU)
 #ifdef CONFIG_CGROUP_SCHED
 BTF_ID_FLAGS(func, scx_bpf_task_cgroup, KF_RCU | KF_ACQUIRE)
 #endif
-BTF_SET8_END(scx_kfunc_ids_any)
+BTF_KFUNCS_END(scx_kfunc_ids_any)
 
 static const struct btf_kfunc_id_set scx_kfunc_set_any = {
 	.owner			= THIS_MODULE,
