@@ -2127,6 +2127,7 @@ fi
 %{expand:%%files -n %{variant_name}}\
 %{expand:%%files -n %{variant_name}-core}\
 %defattr(-,root,root)\
+%dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/%{?-k:%{-k*}}%{!?-k:vmlinuz}\
 %ghost /%{image_install_path}/%{?-k:%{-k*}}%{!?-k:vmlinuz}-%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/.vmlinuz.hmac \
@@ -2144,7 +2145,6 @@ fi
 %ghost /boot/initramfs-%{KVERREL}%{?2:.%{2}}.img\
 %ghost /boot/config-%{KVERREL}%{?2:.%{2}}\
 %{expand:%%files -f %{variant_name}-modules-core.list -n %{variant_name}-modules-core}\
-%dir /lib/modules/%{KVERREL}%{?2:.%{2}}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/build\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/source\
