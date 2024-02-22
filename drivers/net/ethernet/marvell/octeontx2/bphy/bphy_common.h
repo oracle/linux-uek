@@ -32,6 +32,7 @@
 
 /* eCPRI ethertype */
 #define ETH_P_ECPRI			0xAEFE
+#define ECPRI_MSG_TYPE_5		0x5
 
 /* max ptp tx requests */
 extern int max_ptp_req;
