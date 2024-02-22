@@ -18,6 +18,8 @@
  */
 #define PTP_SYNC_SEC_OFFSET    34
 #define PTP_SYNC_NSEC_OFFSET   40
+#define ECPRI_REQ_SEC_OFFSET    2
+#define PACKET_ECPRI5_NO_TS  0xff
 
 #define BPHY_NDEV_NUM_TXQ	2
 #define BPHY_NDEV_NUM_RXQ	1
@@ -294,9 +296,12 @@ static bool cnf10k_validate_network_transport(struct sk_buff *skb)
 	return false;
 }
 
-static bool cnf10k_ptp_is_sync(struct sk_buff *skb, int *offset, int *udp_csum)
+static bool cnf10k_is_ptp_sync_ecpri_req(struct sk_buff *skb, int *offset,
+					 int *udp_csum, int *pkt_type)
 {
 	struct ethhdr *eth = (struct ethhdr *)(skb->data);
+	struct roe_ecpri_msg_5_hdr_s *ecpri_t5_hdr;
+	struct roe_ecpri_cmn_hdr_s *ecpri_hdr;
 	u8 *data = skb->data, *msgtype;
 	__be16 proto = eth->h_proto;
 	int network_depth = 0;
@@ -306,6 +311,7 @@ static bool cnf10k_ptp_is_sync(struct sk_buff *skb, int *offset, int *udp_csum)
 
 	switch (ntohs(proto)) {
 	case ETH_P_1588:
+	case ETH_P_ECPRI:
 		if (network_depth)
 			*offset = network_depth;
 		else
@@ -320,8 +326,36 @@ static bool cnf10k_ptp_is_sync(struct sk_buff *skb, int *offset, int *udp_csum)
 		*offset = skb_transport_offset(skb) + sizeof(struct udphdr);
 	}
 
-	msgtype = data + *offset;
+	if (ntohs(proto) == ETH_P_ECPRI) {
+		ecpri_hdr = (struct roe_ecpri_cmn_hdr_s *)(skb->data + sizeof(*eth));
+		ecpri_t5_hdr = (struct roe_ecpri_msg_5_hdr_s *)(skb->data + sizeof(*eth) +
+				sizeof(*ecpri_hdr));
+		if (ecpri_hdr->msg_type == ECPRI_MSG_TYPE_5) {
+			*pkt_type = PACKET_TYPE_ECPRI;
+			switch (ecpri_t5_hdr->action_type) {
+			case ACTION_REQ:
+			case ACTION_RESP:
+				*offset = *offset + sizeof(*ecpri_hdr);
+				return true;
+			case ACTION_REQ_WITH_FOLLOWUP:
+			case ACTION_REMOTE_REQ:
+			case ACTION_REMOTE_REQ_WITH_FOLLOWUP:
+			default:
+				/* eCPRI action types which dont need timestamping,
+				 * compensation fields.
+				 */
+				*pkt_type = PACKET_ECPRI5_NO_TS;
+				return false;
+			}
+		} else {
+			pr_err("Unsupported eCPRI msg type %x\n", ecpri_hdr->msg_type);
+			return false;
+		}
+	} else {
+		msgtype = data + *offset;
+	}
 
+	*pkt_type = PACKET_TYPE_PTP;
 	/* Check PTP messageId is SYNC or not */
 	return (*msgtype & 0xf) == 0;
 }
@@ -329,8 +363,10 @@ static bool cnf10k_ptp_is_sync(struct sk_buff *skb, int *offset, int *udp_csum)
 static void cnf10k_rfoe_prepare_onestep_ptp_header(struct cnf10k_rfoe_ndev_priv *priv,
 						   struct cnf10k_tx_action_s *tx_mem,
 						   struct sk_buff *skb,
-						   int ptp_offset, int udp_csum)
+						   int proto_data_offset, int udp_csum,
+						   int pkt_type)
 {
+	struct ecpri_t5_tstamp *ecpri_tstamp;
 	struct ptpv2_tstamp *origin_tstamp;
 	struct timespec64 ts;
 	u64 tstamp, tsns;
@@ -344,14 +380,25 @@ static void cnf10k_rfoe_prepare_onestep_ptp_header(struct cnf10k_rfoe_ndev_priv 
 
 	ts = ns_to_timespec64(tsns);
 
-	origin_tstamp = (struct ptpv2_tstamp *)((u8 *)skb->data + ptp_offset +
-						PTP_SYNC_SEC_OFFSET);
-	origin_tstamp->seconds_msb = htons((ts.tv_sec >> 32) & 0xffff);
-	origin_tstamp->seconds_lsb = htonl(ts.tv_sec & 0xffffffff);
-	origin_tstamp->nanoseconds = htonl(ts.tv_nsec);
+	if (pkt_type == PACKET_TYPE_PTP) {
+		origin_tstamp = (struct ptpv2_tstamp *)((u8 *)skb->data + proto_data_offset +
+							PTP_SYNC_SEC_OFFSET);
+		origin_tstamp->seconds_msb = htons((ts.tv_sec >> 32) & 0xffff);
+		origin_tstamp->seconds_lsb = htonl(ts.tv_sec & 0xffffffff);
+		origin_tstamp->nanoseconds = htonl(ts.tv_nsec);
 
-	/* Point to correction field in PTP packet */
-	tx_mem->start_offset = ptp_offset + 8;
+		/* Point to correction field in PTP packet */
+		tx_mem->start_offset = proto_data_offset + 8;
+	} else if (pkt_type == PACKET_TYPE_ECPRI) {
+		ecpri_tstamp = (struct ecpri_t5_tstamp *)((u8 *)skb->data + proto_data_offset +
+						ECPRI_REQ_SEC_OFFSET);
+		ecpri_tstamp->seconds_msb = htons((ts.tv_sec >> 32) & 0xffff);
+		ecpri_tstamp->seconds_lsb = htonl(ts.tv_sec & 0xffffffff);
+		ecpri_tstamp->nanoseconds = htonl(ts.tv_nsec);
+
+		/* Point to correction field in ecpri packet */
+		tx_mem->start_offset = proto_data_offset + 12;
+	}
 	tx_mem->udp_csum_crt = udp_csum;
 	tx_mem->base_ns  = tstamp % NSEC_PER_SEC;
 	tx_mem->step_type = 1;
@@ -1005,12 +1052,14 @@ static netdev_tx_t cnf10k_rfoe_ptp_xmit(struct sk_buff *skb,
 	struct rfoe_tx_ptp_tstmp_s *tx_tstmp;
 	struct cnf10k_tx_action_s tx_mem;
 	struct tx_job_queue_cfg *job_cfg;
-	int ptp_offset = 0, udp_csum = 0;
+	int proto_data_offset = 0, udp_csum = 0;
 	struct tx_job_entry *job_entry;
 	int pkt_type = PACKET_TYPE_PTP;
+	int pkt_stats_type = PACKET_TYPE_PTP;
 	struct netdev_queue *txq;
 	unsigned int pkt_len = 0;
 	unsigned long flags;
+	struct ethhdr *eth;
 	int psm_queue_id;
 
 	job_cfg = &priv->tx_ptp_job_cfg;
@@ -1018,9 +1067,13 @@ static netdev_tx_t cnf10k_rfoe_ptp_xmit(struct sk_buff *skb,
 
 	txq = netdev_get_tx_queue(netdev, skb_get_queue_mapping(skb));
 
+	eth = (struct ethhdr *)skb->data;
+	if (htons(eth->h_proto) == ETH_P_ECPRI)
+		pkt_stats_type = PACKET_TYPE_ECPRI;
+
 	spin_lock_irqsave(&job_cfg->lock, flags);
 
-	if (cnf10k_rfoe_check_update_tx_stats(priv, pkt_type))
+	if (cnf10k_rfoe_check_update_tx_stats(priv, pkt_stats_type))
 		goto exit;
 
 	/* get psm queue number */
@@ -1038,7 +1091,7 @@ static netdev_tx_t cnf10k_rfoe_ptp_xmit(struct sk_buff *skb,
 			  "no space in psm queue %d, dropping pkt\n",
 			   psm_queue_id);
 		netif_tx_stop_queue(txq);
-		cnf10k_rfoe_update_tx_drop_stats(priv, pkt_type);
+		cnf10k_rfoe_update_tx_drop_stats(priv, pkt_stats_type);
 		mod_timer(&priv->tx_timer, jiffies + msecs_to_jiffies(100));
 		spin_unlock_irqrestore(&job_cfg->lock, flags);
 		return NETDEV_TX_BUSY;
@@ -1066,11 +1119,11 @@ static netdev_tx_t cnf10k_rfoe_ptp_xmit(struct sk_buff *skb,
 
 	/* check if one-step is enabled */
 	if (priv->ptp_onestep_sync) {
-		if (cnf10k_ptp_is_sync(skb, &ptp_offset, &udp_csum)) {
+		if (cnf10k_is_ptp_sync_ecpri_req(skb, &proto_data_offset, &udp_csum, &pkt_type)) {
 			cnf10k_rfoe_prepare_onestep_ptp_header(priv,
 							       &tx_mem, skb,
-							       ptp_offset,
-							       udp_csum);
+							       proto_data_offset,
+							       udp_csum, pkt_type);
 			/* recalculate UDP hdr checksum as RFOE block has no checksum
 			 * offload support and checksum field is left with stale data
 			 */
@@ -1078,7 +1131,9 @@ static netdev_tx_t cnf10k_rfoe_ptp_xmit(struct sk_buff *skb,
 				cnf10k_rfoe_compute_udp_csum(skb);
 		}
 
-		if ((*(skb->data + ptp_offset) & 0xF) != DELAY_REQUEST_MSG_ID)
+		if ((pkt_type == PACKET_TYPE_PTP && ((*(skb->data + proto_data_offset) & 0xF) !=
+				    DELAY_REQUEST_MSG_ID)) || pkt_type == PACKET_TYPE_ECPRI)
+
 			goto ptp_one_step_out;
 	}
 
@@ -1113,7 +1168,7 @@ ptp_one_step_out:
 	cnf10k_rfoe_submit_job(priv, job_entry, job_cfg->q_idx, psm_queue_id,
 			       pkt_len, false, 0);
 
-	cnf10k_rfoe_update_tx_stats(priv, pkt_type, skb->len);
+	cnf10k_rfoe_update_tx_stats(priv, pkt_stats_type, skb->len);
 
 	/* increment queue index */
 	job_cfg->q_idx++;

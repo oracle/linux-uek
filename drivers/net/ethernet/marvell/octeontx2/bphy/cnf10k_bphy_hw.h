@@ -336,6 +336,42 @@ struct ecpri_hdr_s {
 	u64 version		: 4;
 };
 
+/* eCPRI payload Timestamp structure */
+struct ecpri_t5_tstamp {
+	__be16 seconds_msb;
+	__be32 seconds_lsb;
+	__be32 nanoseconds;
+} __packed;
+
+/* eCPRI Compensation value */
+struct ecpri_comp_value {
+	__be32 comp_msb;
+	__be32 comp_lsb;
+} __packed;
+
+/* Structure for ECPRI Common Header */
+struct roe_ecpri_cmn_hdr_s {
+	u32 ver			: 4;
+	u32 rsvd		: 3;
+	u32 concatenation_ind	: 1;
+	u32 msg_type		: 8;
+	u32 payload_size	: 16;
+} __packed;
+
+/* Structure for ECPRI MSG5 Header */
+struct roe_ecpri_msg_5_hdr_s {
+	u8 measure_id;
+	u8 action_type;
+#define ACTION_REQ			0
+#define ACTION_REQ_WITH_FOLLOWUP	1
+#define ACTION_RESP			2
+#define ACTION_REMOTE_REQ		3
+#define ACTION_REMOTE_REQ_WITH_FOLLOWUP	4
+#define ACTION_FOLLOWUP			5
+	struct ecpri_t5_tstamp time_stamp;
+	struct ecpri_comp_value comp_value;
+} __packed;
+
 struct rfoe_ab_cfg_w3_s {
 	u64 pkt_len		: 16;
 	u64 lmac_id		: 2;
