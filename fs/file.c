@@ -1427,3 +1427,14 @@ int iterate_fd(struct files_struct *files, unsigned n,
 	return res;
 }
 EXPORT_SYMBOL(iterate_fd);
+
+/*
+ * These two symbols are added for ACFS/EDV to break kABI, if needed.
+ */
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+void acfs_only_symbol(char arg[ACFS_SYM_VERSION]) {}
+EXPORT_SYMBOL(acfs_only_symbol);
+
+void edv_only_symbol(char arg[EDV_SYM_VERSION]) {}
+EXPORT_SYMBOL(edv_only_symbol);
+#endif
