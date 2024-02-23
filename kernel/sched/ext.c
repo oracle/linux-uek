@@ -2470,6 +2470,7 @@ static void scx_ops_exit_task(struct task_struct *p)
 	};
 
 	lockdep_assert_rq_held(task_rq(p));
+
 	switch (scx_get_task_state(p)) {
 	case SCX_TASK_NONE:
 		return;
@@ -2516,6 +2517,7 @@ void scx_post_fork(struct task_struct *p)
 {
 	if (scx_enabled()) {
 		scx_set_task_state(p, SCX_TASK_READY);
+
 		/*
 		 * Enable the task immediately if it's running on sched_ext.
 		 * Otherwise, it'll be enabled in switching_to_scx() if and
