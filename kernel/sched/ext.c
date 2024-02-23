@@ -3541,6 +3541,9 @@ static void scx_dump_state(struct scx_exit_info *ei)
 		if (!cpumask_empty(rq->scx.cpus_to_kick))
 			seq_buf_printf(&s, "  cpus_to_kick   : %*pb\n",
 				       cpumask_pr_args(rq->scx.cpus_to_kick));
+		if (!cpumask_empty(rq->scx.cpus_to_kick_if_idle))
+			seq_buf_printf(&s, "  idle_to_kick   : %*pb\n",
+				       cpumask_pr_args(rq->scx.cpus_to_kick_if_idle));
 		if (!cpumask_empty(rq->scx.cpus_to_preempt))
 			seq_buf_printf(&s, "  cpus_to_preempt: %*pb\n",
 				       cpumask_pr_args(rq->scx.cpus_to_preempt));
