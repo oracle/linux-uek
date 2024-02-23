@@ -1031,11 +1031,13 @@ static void rds_ib_free_ibmr(struct rds_ib_mr *ibmr)
 static void rds_frwr_clean(struct rds_ib_mr_pool *pool, bool clean_all)
 {
 	struct rds_ib_mr *ibmr, *tmp_ibmr;
+	bool condemned = pool->condemned;
 	LIST_HEAD(free_list);
 	LIST_HEAD(drop_list);
 	unsigned long flags;
 	u64 now, gc_time, qrtn_time;
 	u32 cnt = 0, drop_cnt = 0;
+
 
 	gc_time = msecs_to_jiffies(rds_frwr_ibmr_gc_time);
 	qrtn_time = msecs_to_jiffies(rds_frwr_ibmr_qrtn_time);
@@ -1087,7 +1089,7 @@ static void rds_frwr_clean(struct rds_ib_mr_pool *pool, bool clean_all)
 			ibmr->free_time = get_jiffies_64();
 			atomic_dec(&pool->item_count);
 			xlist_add(&ibmr->xlist, &ibmr->xlist, &pool->drop_list);
-		} else if (pool->condemned) {
+		} else if (condemned) {
 			cnt++;
 			rds_ib_free_ibmr(ibmr);
 		}
@@ -1097,7 +1099,7 @@ static void rds_frwr_clean(struct rds_ib_mr_pool *pool, bool clean_all)
 	/* add it back to clean list for re-use if not given to device.
 	 * also maintain LIFO behavior of clean_list.
 	 */
-	if (!pool->condemned && !list_empty(&free_list)) {
+	if (!condemned && !list_empty(&free_list)) {
 		spin_lock_irqsave(&pool->clean_lock, flags);
 		list_splice(&free_list, &pool->clean_list);
 		spin_unlock_irqrestore(&pool->clean_lock, flags);
