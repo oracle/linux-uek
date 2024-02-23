@@ -2834,7 +2834,7 @@ DEFINE_SCHED_CLASS(ext) = {
 	.pick_next_task		= pick_next_task_scx,
 
 	.put_prev_task		= put_prev_task_scx,
-	.set_next_task          = set_next_task_scx,
+	.set_next_task		= set_next_task_scx,
 
 #ifdef CONFIG_SMP
 	.balance		= balance_scx,
@@ -3914,47 +3914,47 @@ static u32 task_struct_type_id;
 
 /* Make the 2nd argument of .dispatch a pointer that can be NULL. */
 static bool promote_dispatch_2nd_arg(int off, int size,
-                                     enum bpf_access_type type,
-                                     const struct bpf_prog *prog,
-                                     struct bpf_insn_access_aux *info)
+				     enum bpf_access_type type,
+				     const struct bpf_prog *prog,
+				     struct bpf_insn_access_aux *info)
 {
 	struct btf *btf = bpf_get_btf_vmlinux();
 	const struct bpf_struct_ops_desc *st_ops_desc;
 	const struct btf_member *member;
-        const struct btf_type *t;
-        u32 btf_id, member_idx;
+	const struct btf_type *t;
+	u32 btf_id, member_idx;
 	const char *mname;
 
-        /* btf_id should be the type id of struct sched_ext_ops */
+	/* btf_id should be the type id of struct sched_ext_ops */
 	btf_id = prog->aux->attach_btf_id;
 	st_ops_desc = bpf_struct_ops_find(btf, btf_id);
 	if (!st_ops_desc)
-                return false;
+		return false;
 
-        /* BTF type of struct sched_ext_ops */
-        t = st_ops_desc->type;
+	/* BTF type of struct sched_ext_ops */
+	t = st_ops_desc->type;
 
 	member_idx = prog->expected_attach_type;
 	if (member_idx >= btf_type_vlen(t))
-                return false;
+		return false;
 
-        /*
+	/*
 	 * Get the member name of this struct_ops program, which corresponds to
 	 * a field in struct sched_ext_ops. For example, the member name of the
 	 * dispatch struct_ops program (callback) is "dispatch".
-         */
+	 */
 	member = &btf_type_member(t)[member_idx];
 	mname = btf_name_by_offset(btf_vmlinux, member->name_off);
 
-        /*
+	/*
 	 * Check if it is the second argument of the function pointer at
 	 * "dispatch" in struct sched_ext_ops. The arguments of struct_ops
 	 * operators are sequential and 64-bit, so the second argument is at
 	 * offset sizeof(__u64).
-         */
-        if (strcmp(mname, "dispatch") == 0 &&
-            off == sizeof(__u64)) {
-                /*
+	 */
+	if (strcmp(mname, "dispatch") == 0 &&
+	    off == sizeof(__u64)) {
+		/*
 		 * The value is a pointer to a type (struct task_struct) given
 		 * by a BTF ID (PTR_TO_BTF_ID). It is trusted (PTR_TRUSTED),
 		 * however, can be a NULL (PTR_MAYBE_NULL). The BPF program
@@ -3963,16 +3963,16 @@ static bool promote_dispatch_2nd_arg(int off, int size,
 		 *
 		 * Longer term, this is something that should be addressed by
 		 * BTF, and be fully contained within the verifier.
-                 */
-                info->reg_type = PTR_MAYBE_NULL | PTR_TO_BTF_ID |
-                  PTR_TRUSTED;
-                info->btf = btf_vmlinux;
-                info->btf_id = task_struct_type_id;
+		 */
+		info->reg_type = PTR_MAYBE_NULL | PTR_TO_BTF_ID |
+		  PTR_TRUSTED;
+		info->btf = btf_vmlinux;
+		info->btf_id = task_struct_type_id;
 
-                return true;
-        }
+		return true;
+	}
 
-        return false;
+	return false;
 }
 
 static bool bpf_scx_is_valid_access(int off, int size,
@@ -3982,8 +3982,8 @@ static bool bpf_scx_is_valid_access(int off, int size,
 {
 	if (type != BPF_READ)
 		return false;
-        if (promote_dispatch_2nd_arg(off, size, type, prog, info))
-                return true;
+	if (promote_dispatch_2nd_arg(off, size, type, prog, info))
+		return true;
 	if (off < 0 || off >= sizeof(__u64) * MAX_BPF_FUNC_ARGS)
 		return false;
 	if (off % size != 0)
