@@ -3905,9 +3905,9 @@ err_disable:
 /********************************************************************************
  * bpf_struct_ops plumbing.
  */
-#include <linux/btf.h>
 #include <linux/bpf_verifier.h>
 #include <linux/bpf.h>
+#include <linux/btf.h>
 
 extern struct btf *btf_vmlinux;
 static const struct btf_type *task_struct_type;
@@ -3965,8 +3965,7 @@ static bool promote_dispatch_2nd_arg(int off, int size,
 		 * Longer term, this is something that should be addressed by
 		 * BTF, and be fully contained within the verifier.
 		 */
-		info->reg_type = PTR_MAYBE_NULL | PTR_TO_BTF_ID |
-		  PTR_TRUSTED;
+		info->reg_type = PTR_MAYBE_NULL | PTR_TO_BTF_ID | PTR_TRUSTED;
 		info->btf = btf_vmlinux;
 		info->btf_id = task_struct_type_id;
 
@@ -4115,7 +4114,7 @@ static int bpf_scx_init(struct btf *btf)
 	if (type_id < 0)
 		return -EINVAL;
 	task_struct_type = btf_type_by_id(btf, type_id);
-        task_struct_type_id = type_id;
+	task_struct_type_id = type_id;
 
 	return 0;
 }
@@ -4640,8 +4639,8 @@ __bpf_kfunc void scx_bpf_dispatch(struct task_struct *p, u64 dsq_id, u64 slice,
  * numerically larger vtime may indicate an earlier position in the ordering and
  * vice-versa.
  */
-__bpf_kfunc void scx_bpf_dispatch_vtime(struct task_struct *p, u64 dsq_id, u64 slice,
-					u64 vtime, u64 enq_flags)
+__bpf_kfunc void scx_bpf_dispatch_vtime(struct task_struct *p, u64 dsq_id,
+					u64 slice, u64 vtime, u64 enq_flags)
 {
 	if (!scx_dispatch_preamble(p, enq_flags))
 		return;
