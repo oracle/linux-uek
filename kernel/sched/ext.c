@@ -6,8 +6,6 @@
  * Copyright (c) 2022 Tejun Heo <tj@kernel.org>
  * Copyright (c) 2022 David Vernet <dvernet@meta.com>
  */
-#include <linux/btf.h>
-
 #define SCX_OP_IDX(op)		(offsetof(struct sched_ext_ops, op) / sizeof(void (*)(void)))
 
 enum scx_internal_consts {
@@ -559,8 +557,8 @@ static bool ops_cpu_valid(s32 cpu)
  * @err: -errno value to sanitize
  *
  * Verify @err is a valid -errno. If not, trigger scx_ops_error() and return
- * -%EPROTO. This is necessary because returning a rogue -errno up the chain
- * can cause misbehaviors. For an example, a large negative return from
+ * -%EPROTO. This is necessary because returning a rogue -errno up the chain can
+ * cause misbehaviors. For an example, a large negative return from
  * ops.init_task() triggers an oops when passed up the call chain because the
  * value fails IS_ERR() test after being encoded with ERR_PTR() and then is
  * handled as a pointer.
@@ -1629,7 +1627,7 @@ static int balance_one(struct rq *rq, struct task_struct *prev,
 		 * implement ->cpu_released().
 		 *
 		 * See scx_ops_disable_workfn() for the explanation on the
-		 * disabling() test.
+		 * bypassing test.
 		 *
 		 * When balancing a remote CPU for core-sched, there won't be a
 		 * following put_prev_task_scx() call and we don't own
@@ -2472,6 +2470,7 @@ static void scx_ops_exit_task(struct task_struct *p)
 	};
 
 	lockdep_assert_rq_held(task_rq(p));
+
 	switch (scx_get_task_state(p)) {
 	case SCX_TASK_NONE:
 		return;
@@ -2518,6 +2517,7 @@ void scx_post_fork(struct task_struct *p)
 {
 	if (scx_enabled()) {
 		scx_set_task_state(p, SCX_TASK_READY);
+
 		/*
 		 * Enable the task immediately if it's running on sched_ext.
 		 * Otherwise, it'll be enabled in switching_to_scx() if and
@@ -2551,6 +2551,7 @@ void scx_cancel_fork(struct task_struct *p)
 		scx_ops_exit_task(p);
 		task_rq_unlock(rq, p, &rf);
 	}
+
 	percpu_up_read(&scx_fork_rwsem);
 }
 
@@ -2834,7 +2835,7 @@ DEFINE_SCHED_CLASS(ext) = {
 	.pick_next_task		= pick_next_task_scx,
 
 	.put_prev_task		= put_prev_task_scx,
-	.set_next_task          = set_next_task_scx,
+	.set_next_task		= set_next_task_scx,
 
 #ifdef CONFIG_SMP
 	.balance		= balance_scx,
@@ -3183,10 +3184,10 @@ bool task_should_scx(struct task_struct *p)
  *
  * d. pick_next_task() suppresses zero slice warning.
  *
- * e. scx_prio_less() reverts to the default core_sched_at order.
- *
- * f. scx_bpf_kick_cpu() is disabled to avoid irq_work malfunction during PM
+ * e. scx_bpf_kick_cpu() is disabled to avoid irq_work malfunction during PM
  *    operations.
+ *
+ * f. scx_prio_less() reverts to the default core_sched_at order.
  */
 static void scx_ops_bypass(bool bypass)
 {
@@ -3399,6 +3400,7 @@ static void scx_ops_disable_workfn(struct kthread_work *work)
 		SCX_CALL_OP(SCX_KF_UNLOCKED, exit, ei);
 
 	cancel_delayed_work_sync(&scx_watchdog_work);
+
 	/*
 	 * Delete the kobject from the hierarchy eagerly in addition to just
 	 * dropping a reference. Otherwise, if the object is deleted
@@ -3541,6 +3543,9 @@ static void scx_dump_state(struct scx_exit_info *ei)
 		if (!cpumask_empty(rq->scx.cpus_to_kick))
 			seq_buf_printf(&s, "  cpus_to_kick   : %*pb\n",
 				       cpumask_pr_args(rq->scx.cpus_to_kick));
+		if (!cpumask_empty(rq->scx.cpus_to_kick_if_idle))
+			seq_buf_printf(&s, "  idle_to_kick   : %*pb\n",
+				       cpumask_pr_args(rq->scx.cpus_to_kick_if_idle));
 		if (!cpumask_empty(rq->scx.cpus_to_preempt))
 			seq_buf_printf(&s, "  cpus_to_preempt: %*pb\n",
 				       cpumask_pr_args(rq->scx.cpus_to_preempt));
@@ -3907,6 +3912,7 @@ err_disable:
  */
 #include <linux/bpf_verifier.h>
 #include <linux/bpf.h>
+#include <linux/btf.h>
 
 extern struct btf *btf_vmlinux;
 static const struct btf_type *task_struct_type;
@@ -3914,47 +3920,47 @@ static u32 task_struct_type_id;
 
 /* Make the 2nd argument of .dispatch a pointer that can be NULL. */
 static bool promote_dispatch_2nd_arg(int off, int size,
-                                     enum bpf_access_type type,
-                                     const struct bpf_prog *prog,
-                                     struct bpf_insn_access_aux *info)
+				     enum bpf_access_type type,
+				     const struct bpf_prog *prog,
+				     struct bpf_insn_access_aux *info)
 {
 	struct btf *btf = bpf_get_btf_vmlinux();
 	const struct bpf_struct_ops_desc *st_ops_desc;
 	const struct btf_member *member;
-        const struct btf_type *t;
-        u32 btf_id, member_idx;
+	const struct btf_type *t;
+	u32 btf_id, member_idx;
 	const char *mname;
 
-        /* btf_id should be the type id of struct sched_ext_ops */
+	/* btf_id should be the type id of struct sched_ext_ops */
 	btf_id = prog->aux->attach_btf_id;
 	st_ops_desc = bpf_struct_ops_find(btf, btf_id);
 	if (!st_ops_desc)
-                return false;
+		return false;
 
-        /* BTF type of struct sched_ext_ops */
-        t = st_ops_desc->type;
+	/* BTF type of struct sched_ext_ops */
+	t = st_ops_desc->type;
 
 	member_idx = prog->expected_attach_type;
 	if (member_idx >= btf_type_vlen(t))
-                return false;
+		return false;
 
-        /*
+	/*
 	 * Get the member name of this struct_ops program, which corresponds to
 	 * a field in struct sched_ext_ops. For example, the member name of the
 	 * dispatch struct_ops program (callback) is "dispatch".
-         */
+	 */
 	member = &btf_type_member(t)[member_idx];
 	mname = btf_name_by_offset(btf_vmlinux, member->name_off);
 
-        /*
+	/*
 	 * Check if it is the second argument of the function pointer at
 	 * "dispatch" in struct sched_ext_ops. The arguments of struct_ops
 	 * operators are sequential and 64-bit, so the second argument is at
 	 * offset sizeof(__u64).
-         */
-        if (strcmp(mname, "dispatch") == 0 &&
-            off == sizeof(__u64)) {
-                /*
+	 */
+	if (strcmp(mname, "dispatch") == 0 &&
+	    off == sizeof(__u64)) {
+		/*
 		 * The value is a pointer to a type (struct task_struct) given
 		 * by a BTF ID (PTR_TO_BTF_ID). It is trusted (PTR_TRUSTED),
 		 * however, can be a NULL (PTR_MAYBE_NULL). The BPF program
@@ -3963,16 +3969,15 @@ static bool promote_dispatch_2nd_arg(int off, int size,
 		 *
 		 * Longer term, this is something that should be addressed by
 		 * BTF, and be fully contained within the verifier.
-                 */
-                info->reg_type = PTR_MAYBE_NULL | PTR_TO_BTF_ID |
-                  PTR_TRUSTED;
-                info->btf = btf_vmlinux;
-                info->btf_id = task_struct_type_id;
+		 */
+		info->reg_type = PTR_MAYBE_NULL | PTR_TO_BTF_ID | PTR_TRUSTED;
+		info->btf = btf_vmlinux;
+		info->btf_id = task_struct_type_id;
 
-                return true;
-        }
+		return true;
+	}
 
-        return false;
+	return false;
 }
 
 static bool bpf_scx_is_valid_access(int off, int size,
@@ -3982,8 +3987,8 @@ static bool bpf_scx_is_valid_access(int off, int size,
 {
 	if (type != BPF_READ)
 		return false;
-        if (promote_dispatch_2nd_arg(off, size, type, prog, info))
-                return true;
+	if (promote_dispatch_2nd_arg(off, size, type, prog, info))
+		return true;
 	if (off < 0 || off >= sizeof(__u64) * MAX_BPF_FUNC_ARGS)
 		return false;
 	if (off % size != 0)
@@ -4114,7 +4119,7 @@ static int bpf_scx_init(struct btf *btf)
 	if (type_id < 0)
 		return -EINVAL;
 	task_struct_type = btf_type_by_id(btf, type_id);
-        task_struct_type_id = type_id;
+	task_struct_type_id = type_id;
 
 	return 0;
 }
@@ -4124,9 +4129,9 @@ static int bpf_scx_update(void *kdata, void *old_kdata)
 	/*
 	 * sched_ext does not support updating the actively-loaded BPF
 	 * scheduler, as registering a BPF scheduler can always fail if the
-	 * scheduler returns an error code for e.g. ops.init(),
-	 * ops.init_task(), etc. Similarly, we can always race with
-	 * unregistration happening elsewhere, such as with sysrq.
+	 * scheduler returns an error code for e.g. ops.init(), ops.init_task(),
+	 * etc. Similarly, we can always race with unregistration happening
+	 * elsewhere, such as with sysrq.
 	 */
 	return -EOPNOTSUPP;
 }
@@ -4609,7 +4614,7 @@ __bpf_kfunc_start_defs();
  * scx_bpf_kick_cpu() to trigger scheduling.
  */
 __bpf_kfunc void scx_bpf_dispatch(struct task_struct *p, u64 dsq_id, u64 slice,
-		      u64 enq_flags)
+				  u64 enq_flags)
 {
 	if (!scx_dispatch_preamble(p, enq_flags))
 		return;
@@ -4639,8 +4644,8 @@ __bpf_kfunc void scx_bpf_dispatch(struct task_struct *p, u64 dsq_id, u64 slice,
  * numerically larger vtime may indicate an earlier position in the ordering and
  * vice-versa.
  */
-__bpf_kfunc void scx_bpf_dispatch_vtime(struct task_struct *p, u64 dsq_id, u64 slice,
-			    u64 vtime, u64 enq_flags)
+__bpf_kfunc void scx_bpf_dispatch_vtime(struct task_struct *p, u64 dsq_id,
+					u64 slice, u64 vtime, u64 enq_flags)
 {
 	if (!scx_dispatch_preamble(p, enq_flags))
 		return;
@@ -4940,7 +4945,8 @@ __bpf_kfunc bool scx_bpf_test_and_clear_cpu_idle(s32 cpu)
  * Unavailable if ops.update_idle() is implemented and
  * %SCX_OPS_KEEP_BUILTIN_IDLE is not set.
  */
-__bpf_kfunc s32 scx_bpf_pick_idle_cpu(const struct cpumask *cpus_allowed, u64 flags)
+__bpf_kfunc s32 scx_bpf_pick_idle_cpu(const struct cpumask *cpus_allowed,
+				      u64 flags)
 {
 	if (!static_branch_likely(&scx_builtin_idle_enabled)) {
 		scx_ops_error("built-in idle tracking is disabled");
@@ -4964,7 +4970,8 @@ __bpf_kfunc s32 scx_bpf_pick_idle_cpu(const struct cpumask *cpus_allowed, u64 fl
  * set, this function can't tell which CPUs are idle and will always pick any
  * CPU.
  */
-__bpf_kfunc s32 scx_bpf_pick_any_cpu(const struct cpumask *cpus_allowed, u64 flags)
+__bpf_kfunc s32 scx_bpf_pick_any_cpu(const struct cpumask *cpus_allowed,
+				     u64 flags)
 {
 	s32 cpu;
 

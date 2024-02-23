@@ -4,8 +4,8 @@
  * Copyright (c) 2022 Tejun Heo <tj@kernel.org>
  * Copyright (c) 2022 David Vernet <dvernet@meta.com>
  */
-#ifndef __SCHED_EXT_COMMON_BPF_H
-#define __SCHED_EXT_COMMON_BPF_H
+#ifndef __SCX_COMMON_BPF_H
+#define __SCX_COMMON_BPF_H
 
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
@@ -56,9 +56,10 @@ void ___scx_bpf_error_format_checker(const char *fmt, ...) {}
 void scx_bpf_switch_all(void) __ksym;
 s32 scx_bpf_create_dsq(u64 dsq_id, s32 node) __ksym;
 bool scx_bpf_consume(u64 dsq_id) __ksym;
-u32 scx_bpf_dispatch_nr_slots(void) __ksym;
 void scx_bpf_dispatch(struct task_struct *p, u64 dsq_id, u64 slice, u64 enq_flags) __ksym;
 void scx_bpf_dispatch_vtime(struct task_struct *p, u64 dsq_id, u64 slice, u64 vtime, u64 enq_flags) __ksym;
+u32 scx_bpf_dispatch_nr_slots(void) __ksym;
+void scx_bpf_dispatch_cancel(void) __ksym;
 void scx_bpf_kick_cpu(s32 cpu, u64 flags) __ksym;
 s32 scx_bpf_dsq_nr_queued(u64 dsq_id) __ksym;
 bool scx_bpf_test_and_clear_cpu_idle(s32 cpu) __ksym;
@@ -242,4 +243,6 @@ u32 bpf_cpumask_any_and_distribute(const struct cpumask *src1,
 void bpf_rcu_read_lock(void) __ksym;
 void bpf_rcu_read_unlock(void) __ksym;
 
-#endif	/* __SCHED_EXT_COMMON_BPF_H */
+#include "compat.bpf.h"
+
+#endif	/* __SCX_COMMON_BPF_H */

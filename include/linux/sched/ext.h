@@ -127,15 +127,15 @@ enum scx_ops_flags {
 
 /* argument container for ops.init_task() */
 struct scx_init_task_args {
-#ifdef CONFIG_EXT_GROUP_SCHED
-	/* the cgroup the task is joining */
-	struct cgroup		*cgroup;
-#endif
 	/*
 	 * Set if ops.init_task() is being invoked on the fork path, as opposed
 	 * to the scheduler transition path.
 	 */
 	bool			fork;
+#ifdef CONFIG_EXT_GROUP_SCHED
+	/* the cgroup the task is joining */
+	struct cgroup		*cgroup;
+#endif
 };
 
 /* argument container for ops.exit_task() */
@@ -432,8 +432,7 @@ struct sched_ext_ops {
 	 * loading will abort loading of the BPF scheduler. During a fork, it
 	 * will abort that specific fork.
 	 */
-	s32 (*init_task)(struct task_struct *p,
-			 struct scx_init_task_args *args);
+	s32 (*init_task)(struct task_struct *p, struct scx_init_task_args *args);
 
 	/**
 	 * exit_task - Exit a previously-running task from the system
@@ -442,16 +441,14 @@ struct sched_ext_ops {
 	 * @p is exiting or the BPF scheduler is being unloaded. Perform any
 	 * necessary cleanup for @p.
 	 */
-	void (*exit_task)(struct task_struct *p,
-			  struct scx_exit_task_args *args);
+	void (*exit_task)(struct task_struct *p, struct scx_exit_task_args *args);
 
 	/**
 	 * enable - Enable BPF scheduling for a task
 	 * @p: task to enable BPF scheduling for
 	 *
-	 * Enable @p for BPF scheduling. @p is now in the cgroup specified in
-	 * @args. enable() is called on @p any time it enters SCX, and is
-	 * always paired with a matching disable().
+	 * Enable @p for BPF scheduling. enable() is called on @p any time it
+	 * enters SCX, and is always paired with a matching disable().
 	 */
 	void (*enable)(struct task_struct *p);
 

@@ -93,11 +93,6 @@ CFLAGS += -g -O2 -rdynamic -pthread -Wall -Werror $(GENFLAGS)			\
 	  -I$(INCLUDE_DIR) -I$(GENDIR) -I$(LIBDIR)				\
 	  -I$(TOOLSINCDIR) -I$(APIDIR) -I$(CURDIR)/include
 
-CARGOFLAGS := --release --target-dir $(OUTPUT_DIR)
-ifneq ($(CARGO_OFFLINE),)
-CARGOFLAGS += --offline
-endif
-
 # Silence some warnings when compiled with clang
 ifneq ($(LLVM),)
 CFLAGS += -Wno-unused-command-line-argument

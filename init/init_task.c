@@ -102,15 +102,15 @@ struct task_struct init_task __aligned(L1_CACHE_BYTES) = {
 #ifdef CONFIG_SCHED_CLASS_EXT
 	.scx		= {
 		.dsq_node.fifo	= LIST_HEAD_INIT(init_task.scx.dsq_node.fifo),
-		.runnable_node	= LIST_HEAD_INIT(init_task.scx.runnable_node),
 		.flags		= 0,
 		.sticky_cpu	= -1,
 		.holding_cpu	= -1,
 		.ops_state	= ATOMIC_INIT(0),
+		.runnable_node	= LIST_HEAD_INIT(init_task.scx.runnable_node),
 		.runnable_at	= INITIAL_JIFFIES,
-		.slice		= SCX_SLICE_DFL,
 		.ddsp_dsq_id	= SCX_DSQ_INVALID,
 		.ddsp_enq_flags	= 0,
+		.slice		= SCX_SLICE_DFL,
 	},
 #endif
 	.ptraced	= LIST_HEAD_INIT(init_task.ptraced),
