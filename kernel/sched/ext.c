@@ -6,8 +6,6 @@
  * Copyright (c) 2022 Tejun Heo <tj@kernel.org>
  * Copyright (c) 2022 David Vernet <dvernet@meta.com>
  */
-#include <linux/btf.h>
-
 #define SCX_OP_IDX(op)		(offsetof(struct sched_ext_ops, op) / sizeof(void (*)(void)))
 
 enum scx_internal_consts {
@@ -559,8 +557,8 @@ static bool ops_cpu_valid(s32 cpu)
  * @err: -errno value to sanitize
  *
  * Verify @err is a valid -errno. If not, trigger scx_ops_error() and return
- * -%EPROTO. This is necessary because returning a rogue -errno up the chain
- * can cause misbehaviors. For an example, a large negative return from
+ * -%EPROTO. This is necessary because returning a rogue -errno up the chain can
+ * cause misbehaviors. For an example, a large negative return from
  * ops.init_task() triggers an oops when passed up the call chain because the
  * value fails IS_ERR() test after being encoded with ERR_PTR() and then is
  * handled as a pointer.
@@ -1629,7 +1627,7 @@ static int balance_one(struct rq *rq, struct task_struct *prev,
 		 * implement ->cpu_released().
 		 *
 		 * See scx_ops_disable_workfn() for the explanation on the
-		 * disabling() test.
+		 * bypassing test.
 		 *
 		 * When balancing a remote CPU for core-sched, there won't be a
 		 * following put_prev_task_scx() call and we don't own
@@ -2551,6 +2549,7 @@ void scx_cancel_fork(struct task_struct *p)
 		scx_ops_exit_task(p);
 		task_rq_unlock(rq, p, &rf);
 	}
+
 	percpu_up_read(&scx_fork_rwsem);
 }
 
@@ -3183,10 +3182,10 @@ bool task_should_scx(struct task_struct *p)
  *
  * d. pick_next_task() suppresses zero slice warning.
  *
- * e. scx_prio_less() reverts to the default core_sched_at order.
- *
- * f. scx_bpf_kick_cpu() is disabled to avoid irq_work malfunction during PM
+ * e. scx_bpf_kick_cpu() is disabled to avoid irq_work malfunction during PM
  *    operations.
+ *
+ * f. scx_prio_less() reverts to the default core_sched_at order.
  */
 static void scx_ops_bypass(bool bypass)
 {
@@ -3399,6 +3398,7 @@ static void scx_ops_disable_workfn(struct kthread_work *work)
 		SCX_CALL_OP(SCX_KF_UNLOCKED, exit, ei);
 
 	cancel_delayed_work_sync(&scx_watchdog_work);
+
 	/*
 	 * Delete the kobject from the hierarchy eagerly in addition to just
 	 * dropping a reference. Otherwise, if the object is deleted
@@ -3905,6 +3905,7 @@ err_disable:
 /********************************************************************************
  * bpf_struct_ops plumbing.
  */
+#include <linux/btf.h>
 #include <linux/bpf_verifier.h>
 #include <linux/bpf.h>
 
@@ -4124,9 +4125,9 @@ static int bpf_scx_update(void *kdata, void *old_kdata)
 	/*
 	 * sched_ext does not support updating the actively-loaded BPF
 	 * scheduler, as registering a BPF scheduler can always fail if the
-	 * scheduler returns an error code for e.g. ops.init(),
-	 * ops.init_task(), etc. Similarly, we can always race with
-	 * unregistration happening elsewhere, such as with sysrq.
+	 * scheduler returns an error code for e.g. ops.init(), ops.init_task(),
+	 * etc. Similarly, we can always race with unregistration happening
+	 * elsewhere, such as with sysrq.
 	 */
 	return -EOPNOTSUPP;
 }
@@ -4609,7 +4610,7 @@ __bpf_kfunc_start_defs();
  * scx_bpf_kick_cpu() to trigger scheduling.
  */
 __bpf_kfunc void scx_bpf_dispatch(struct task_struct *p, u64 dsq_id, u64 slice,
-		      u64 enq_flags)
+				  u64 enq_flags)
 {
 	if (!scx_dispatch_preamble(p, enq_flags))
 		return;
@@ -4640,7 +4641,7 @@ __bpf_kfunc void scx_bpf_dispatch(struct task_struct *p, u64 dsq_id, u64 slice,
  * vice-versa.
  */
 __bpf_kfunc void scx_bpf_dispatch_vtime(struct task_struct *p, u64 dsq_id, u64 slice,
-			    u64 vtime, u64 enq_flags)
+					u64 vtime, u64 enq_flags)
 {
 	if (!scx_dispatch_preamble(p, enq_flags))
 		return;
@@ -4940,7 +4941,8 @@ __bpf_kfunc bool scx_bpf_test_and_clear_cpu_idle(s32 cpu)
  * Unavailable if ops.update_idle() is implemented and
  * %SCX_OPS_KEEP_BUILTIN_IDLE is not set.
  */
-__bpf_kfunc s32 scx_bpf_pick_idle_cpu(const struct cpumask *cpus_allowed, u64 flags)
+__bpf_kfunc s32 scx_bpf_pick_idle_cpu(const struct cpumask *cpus_allowed,
+				      u64 flags)
 {
 	if (!static_branch_likely(&scx_builtin_idle_enabled)) {
 		scx_ops_error("built-in idle tracking is disabled");
@@ -4964,7 +4966,8 @@ __bpf_kfunc s32 scx_bpf_pick_idle_cpu(const struct cpumask *cpus_allowed, u64 fl
  * set, this function can't tell which CPUs are idle and will always pick any
  * CPU.
  */
-__bpf_kfunc s32 scx_bpf_pick_any_cpu(const struct cpumask *cpus_allowed, u64 flags)
+__bpf_kfunc s32 scx_bpf_pick_any_cpu(const struct cpumask *cpus_allowed,
+				     u64 flags)
 {
 	s32 cpu;
 
