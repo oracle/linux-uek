@@ -131,4 +131,12 @@ extern void __fput_sync(struct file *);
 
 extern unsigned int sysctl_nr_open_min, sysctl_nr_open_max;
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+#define ACFS_SYM_VERSION 1
+void acfs_only_symbol(char arg[ACFS_SYM_VERSION]);
+
+#define EDV_SYM_VERSION 1
+void edv_only_symbol(char arg[EDV_SYM_VERSION]);
+#endif
+
 #endif /* __LINUX_FILE_H */
