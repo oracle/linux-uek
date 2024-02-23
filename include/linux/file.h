@@ -251,5 +251,12 @@ static inline int class_fd_prepare_lock_err(const struct fd_prepare *fdf)
  */
 #define FD_ADD(_fd_flags, _file_owned) \
 	__FD_ADD(__UNIQUE_ID(fd_prepare), _fd_flags, _file_owned)
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+#define ACFS_SYM_VERSION 1
+void acfs_only_symbol(char arg[ACFS_SYM_VERSION]);
+
+#define EDV_SYM_VERSION 1
+void edv_only_symbol(char arg[EDV_SYM_VERSION]);
+#endif
 
 #endif /* __LINUX_FILE_H */
