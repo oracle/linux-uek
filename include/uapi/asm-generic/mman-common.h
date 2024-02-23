@@ -52,8 +52,8 @@
 					   overrides the coredump filter bits */
 #define MADV_DODUMP	17		/* Clear the MADV_DONTDUMP flag */
 
-#define MADV_DOEXEC	22		/* do inherit across exec */
-#define MADV_DONTEXEC	23		/* don't inherit across exec */
+#define MADV_DOEXEC	201		/* do inherit across exec */
+#define MADV_DONTEXEC	202		/* don't inherit across exec */
 
 /* compatibility flags */
 #define MAP_FILE	0
