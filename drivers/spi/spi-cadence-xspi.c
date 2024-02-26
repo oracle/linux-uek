@@ -1654,8 +1654,9 @@ static int cdns_xspi_probe(struct platform_device *pdev)
 
 #if IS_ENABLED(CONFIG_SPI_CADENCE_MRVL_XSPI)
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 3);
-	cdns_xspi->xferbase = devm_ioremap_resource(dev, res);
-	if (IS_ERR(cdns_xspi->xferbase)) {
+	if (res)
+		cdns_xspi->xferbase = devm_ioremap_resource(dev, res);
+	if (!res || IS_ERR(cdns_xspi->xferbase)) {
 		dev_info(dev, "XFER register base not found, set it\n");
 		// For compatibility with older firmware
 		cdns_xspi->xferbase = cdns_xspi->iobase + 0x8000;
