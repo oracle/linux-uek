@@ -146,6 +146,7 @@
 	_raw_write_unlock_bh
 	_raw_write_unlock_irqrestore
 	_totalram_pages
+	acfs_only_symbol
 	add_timer
 	add_to_page_cache_locked
 	add_wait_queue
@@ -318,6 +319,7 @@
 	dput
 	drop_nlink
 	dump_stack
+	edv_only_symbol
 	elfcorehdr_addr
 	emergency_restart
 	empty_zero_page

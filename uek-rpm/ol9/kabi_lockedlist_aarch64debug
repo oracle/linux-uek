@@ -57,6 +57,7 @@
 	_find_first_bit
 	_printk
 	_totalram_pages
+	acfs_only_symbol
 	aes_encrypt
 	aes_expandkey
 	arm64_const_caps_ready
@@ -138,6 +139,7 @@
 	dput
 	drop_nlink
 	dump_stack
+	edv_only_symbol
 	end_page_writeback
 	fget
 	fiemap_fill_next_extent
