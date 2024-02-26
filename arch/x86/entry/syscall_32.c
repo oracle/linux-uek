@@ -129,6 +129,10 @@ static __always_inline bool int80_is_external(void)
 __visible noinstr void do_int80_emulation(struct pt_regs *regs)
 {
 	int nr;
+#ifdef CONFIG_RANDOMIZE_KSTACK_OFFSET
+	u32 stack_offset;
+	u8 *stack_ptr;
+#endif
 
 	/* Kernel does not use INT $0x80! */
 	if (unlikely(!user_mode(regs))) {
@@ -145,7 +149,7 @@ __visible noinstr void do_int80_emulation(struct pt_regs *regs)
 	enter_from_user_mode(regs);
 
 	instrumentation_begin();
-	add_random_kstack_offset();
+	add_random_kstack_offset_save(stack_offset, stack_ptr);
 
 	/* Validate that this is a soft interrupt to the extent possible */
 	if (unlikely(int80_is_external()))
@@ -172,6 +176,13 @@ __visible noinstr void do_int80_emulation(struct pt_regs *regs)
 	do_syscall_32_irqs_on(regs, nr);
 
 	instrumentation_end();
+#ifdef CONFIG_RANDOMIZE_KSTACK_OFFSET
+	if (static_branch_maybe(CONFIG_RANDOMIZE_KSTACK_OFFSET_DEFAULT,
+				&randomize_kstack_offset)) {
+		if (read_thread_flags() & _TIF_KSPLICE_FREEZING)
+			memset(stack_ptr, 0, stack_offset);
+	}
+#endif
 	syscall_exit_to_user_mode(regs);
 }
 
@@ -209,11 +220,15 @@ __visible noinstr void do_int80_emulation(struct pt_regs *regs)
 DEFINE_FREDENTRY_RAW(int80_emulation)
 {
 	int nr;
+#ifdef CONFIG_RANDOMIZE_KSTACK_OFFSET
+	u32 stack_offset;
+	u8 *stack_ptr;
+#endif
 
 	enter_from_user_mode(regs);
 
 	instrumentation_begin();
-	add_random_kstack_offset();
+	add_random_kstack_offset_save(stack_offset, stack_ptr);
 
 	/*
 	 * FRED pushed 0 into regs::orig_ax and regs::ax contains the
@@ -236,6 +251,13 @@ DEFINE_FREDENTRY_RAW(int80_emulation)
 	do_syscall_32_irqs_on(regs, nr);
 
 	instrumentation_end();
+#ifdef CONFIG_RANDOMIZE_KSTACK_OFFSET
+	if (static_branch_maybe(CONFIG_RANDOMIZE_KSTACK_OFFSET_DEFAULT,
+				&randomize_kstack_offset)) {
+		if (read_thread_flags() & _TIF_KSPLICE_FREEZING)
+			memset(stack_ptr, 0, stack_offset);
+	}
+#endif
 	syscall_exit_to_user_mode(regs);
 }
 #endif /* CONFIG_X86_FRED */
@@ -246,6 +268,10 @@ DEFINE_FREDENTRY_RAW(int80_emulation)
 __visible noinstr void do_int80_syscall_32(struct pt_regs *regs)
 {
 	int nr = syscall_32_enter(regs);
+#ifdef CONFIG_RANDOMIZE_KSTACK_OFFSET
+	u32 stack_offset;
+	u8 *stack_ptr;
+#endif
 
 	/*
 	 * Subtlety here: if ptrace pokes something larger than 2^31-1 into
@@ -255,10 +281,17 @@ __visible noinstr void do_int80_syscall_32(struct pt_regs *regs)
 	nr = syscall_enter_from_user_mode(regs, nr);
 	instrumentation_begin();
 
-	add_random_kstack_offset();
+	add_random_kstack_offset_save(stack_offset, stack_ptr);
 	do_syscall_32_irqs_on(regs, nr);
 
 	instrumentation_end();
+#ifdef CONFIG_RANDOMIZE_KSTACK_OFFSET
+	if (static_branch_maybe(CONFIG_RANDOMIZE_KSTACK_OFFSET_DEFAULT,
+				&randomize_kstack_offset)) {
+		if (read_thread_flags() & _TIF_KSPLICE_FREEZING)
+			memset(stack_ptr, 0, stack_offset);
+	}
+#endif
 	syscall_exit_to_user_mode(regs);
 }
 #endif /* !CONFIG_IA32_EMULATION */
@@ -267,6 +300,10 @@ static noinstr bool __do_fast_syscall_32(struct pt_regs *regs)
 {
 	int nr = syscall_32_enter(regs);
 	int res;
+#ifdef CONFIG_RANDOMIZE_KSTACK_OFFSET
+	u32 stack_offset;
+	u8 *stack_ptr;
+#endif
 
 	/*
 	 * This cannot use syscall_enter_from_user_mode() as it has to
@@ -276,7 +313,7 @@ static noinstr bool __do_fast_syscall_32(struct pt_regs *regs)
 	enter_from_user_mode(regs);
 
 	instrumentation_begin();
-	add_random_kstack_offset();
+	add_random_kstack_offset_save(stack_offset, stack_ptr);
 	local_irq_enable();
 	/* Fetch EBP from where the vDSO stashed it. */
 	if (IS_ENABLED(CONFIG_X86_64)) {
@@ -307,6 +344,13 @@ static noinstr bool __do_fast_syscall_32(struct pt_regs *regs)
 	do_syscall_32_irqs_on(regs, nr);
 
 	instrumentation_end();
+#ifdef CONFIG_RANDOMIZE_KSTACK_OFFSET
+	if (static_branch_maybe(CONFIG_RANDOMIZE_KSTACK_OFFSET_DEFAULT,
+				&randomize_kstack_offset)) {
+		if (read_thread_flags() & _TIF_KSPLICE_FREEZING)
+			memset(stack_ptr, 0, stack_offset);
+	}
+#endif
 	syscall_exit_to_user_mode(regs);
 	return true;
 }

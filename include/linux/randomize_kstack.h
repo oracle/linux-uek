@@ -77,8 +77,18 @@ static __always_inline u32 get_kstack_offset(void)
 	}								\
 } while (0)
 
+#define add_random_kstack_offset_save(offset, ptr) do {			\
+	if (static_branch_maybe(CONFIG_RANDOMIZE_KSTACK_OFFSET_DEFAULT,	\
+				&randomize_kstack_offset)) {		\
+		offset = KSTACK_OFFSET_MAX(get_kstack_offset());	\
+		ptr = __kstack_alloca(offset);				\
+		asm volatile("" :: "r"(ptr) : "memory");		\
+	}								\
+} while (0)
+
 #else /* CONFIG_RANDOMIZE_KSTACK_OFFSET */
 #define add_random_kstack_offset()		do { } while (0)
+#define add_random_kstack_offset_save(offset, ptr)	do { } while (0)
 #endif /* CONFIG_RANDOMIZE_KSTACK_OFFSET */
 
 #endif
