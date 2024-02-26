@@ -65,6 +65,15 @@ DECLARE_PER_CPU(u32, kstack_offset);
 	}								\
 } while (0)
 
+#define add_random_kstack_offset_save(offset, ptr) do {			\
+	if (static_branch_maybe(CONFIG_RANDOMIZE_KSTACK_OFFSET_DEFAULT,	\
+				&randomize_kstack_offset)) {		\
+		offset = KSTACK_OFFSET_MAX(raw_cpu_read(kstack_offset));\
+		ptr = __kstack_alloca(offset);				\
+		asm volatile("" :: "r"(ptr) : "memory");		\
+	}								\
+} while (0)
+
 /**
  * choose_random_kstack_offset - Choose the random offset for the next
  *				 add_random_kstack_offset()
@@ -92,6 +101,7 @@ DECLARE_PER_CPU(u32, kstack_offset);
 } while (0)
 #else /* CONFIG_RANDOMIZE_KSTACK_OFFSET */
 #define add_random_kstack_offset()		do { } while (0)
+#define add_random_kstack_offset_save(offset, ptr)	do { } while (0)
 #define choose_random_kstack_offset(rand)	do { } while (0)
 #endif /* CONFIG_RANDOMIZE_KSTACK_OFFSET */
 
