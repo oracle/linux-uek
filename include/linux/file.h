@@ -92,4 +92,12 @@ extern void fd_install(unsigned int fd, struct file *file);
 extern void flush_delayed_fput(void);
 extern void __fput_sync(struct file *);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+#define ACFS_SYM_VERSION 1
+void acfs_only_symbol(char arg[ACFS_SYM_VERSION]);
+
+#define EDV_SYM_VERSION 1
+void edv_only_symbol(char arg[EDV_SYM_VERSION]);
+#endif
+
 #endif /* __LINUX_FILE_H */

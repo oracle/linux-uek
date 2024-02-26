@@ -138,6 +138,7 @@
 	_raw_write_unlock_bh
 	_raw_write_unlock_irqrestore
 	_totalram_pages
+	acfs_only_symbol
 	acpi_gbl_FADT
 	acpi_os_map_memory
 	acpi_os_unmap_memory
@@ -399,6 +400,7 @@
 	drop_nlink
 	drop_super
 	dump_stack
+	edv_only_symbol
 	elfcorehdr_addr
 	emergency_restart
 	empty_zero_page
