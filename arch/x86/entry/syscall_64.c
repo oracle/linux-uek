@@ -86,7 +86,13 @@ static __always_inline bool do_syscall_x32(struct pt_regs *regs, int nr)
 /* Returns true to return using SYSRET, or false to use IRET */
 __visible noinstr bool do_syscall_64(struct pt_regs *regs, int nr)
 {
-	add_random_kstack_offset();
+#ifdef CONFIG_RANDOMIZE_KSTACK_OFFSET
+	u32 stack_offset;
+	u8 *stack_ptr;
+#endif
+
+	add_random_kstack_offset_save(stack_offset, stack_ptr);
+
 	nr = syscall_enter_from_user_mode(regs, nr);
 
 	instrumentation_begin();
@@ -97,6 +103,13 @@ __visible noinstr bool do_syscall_64(struct pt_regs *regs, int nr)
 	}
 
 	instrumentation_end();
+#ifdef CONFIG_RANDOMIZE_KSTACK_OFFSET
+	if (static_branch_maybe(CONFIG_RANDOMIZE_KSTACK_OFFSET_DEFAULT,
+				&randomize_kstack_offset)) {
+		if (read_thread_flags() & _TIF_KSPLICE_FREEZING)
+			memset(stack_ptr, 0, stack_offset);
+	}
+#endif
 	syscall_exit_to_user_mode(regs);
 
 	/*
