@@ -40,8 +40,12 @@ static void invoke_syscall(struct pt_regs *regs, unsigned int scno,
 			   const syscall_fn_t syscall_table[])
 {
 	long ret;
+#ifdef CONFIG_RANDOMIZE_KSTACK_OFFSET
+	u32 stack_offset;
+	u8 *stack_ptr;
+#endif
 
-	add_random_kstack_offset();
+	add_random_kstack_offset_save(stack_offset, stack_ptr);
 
 	if (scno < sc_nr) {
 		syscall_fn_t syscall_fn;
@@ -53,6 +57,13 @@ static void invoke_syscall(struct pt_regs *regs, unsigned int scno,
 
 	syscall_set_return_value(current, regs, 0, ret);
 
+#ifdef CONFIG_RANDOMIZE_KSTACK_OFFSET
+	if (static_branch_maybe(CONFIG_RANDOMIZE_KSTACK_OFFSET_DEFAULT,
+				&randomize_kstack_offset)) {
+		if (read_thread_flags() & _TIF_KSPLICE_FREEZING)
+			memset(stack_ptr, 0, stack_offset);
+	}
+#endif
 	/*
 	 * This value will get limited by KSTACK_OFFSET_MAX(), which is 10
 	 * bits. The actual entropy will be further reduced by the compiler
