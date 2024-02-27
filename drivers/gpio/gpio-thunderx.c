@@ -15,6 +15,7 @@
 #include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/spinlock.h>
+#include <linux/acpi.h>
 #include <asm-generic/msi.h>
 
 
@@ -429,26 +430,33 @@ static void *thunderx_gpio_populate_parent_alloc_info(struct gpio_chip *chip,
 static void thunderx_gpio_pinsel(struct device *dev,
 				 struct thunderx_gpio *txgpio)
 {
-	struct device_node *node;
-	const __be32 *pinsel;
+	u32 *pinsel;
 	int npins, rlen, i;
 	u32 pin, sel;
 
-	node = dev_of_node(dev);
-	if (!node)
+	rlen = device_property_count_u32(dev, "pin-cfg");
+	if (rlen <= 0 || rlen % 2)
 		return;
 
-	pinsel = of_get_property(node, "pin-cfg", &rlen);
-	if (!pinsel || rlen % 2)
+	pinsel = kmalloc_array(rlen, sizeof(*pinsel), GFP_KERNEL);
+	if (!pinsel)
 		return;
-	npins = rlen / sizeof(__be32) / 2;
+
+	if (device_property_read_u32_array(dev, "pin-cfg", pinsel, rlen)) {
+		dev_err(dev, "failed to read \"pin-cfg\" property\n");
+		goto out;
+	}
+
+	npins = rlen / 2;
 
 	for (i = 0; i < npins; i++) {
-		pin = of_read_number(pinsel++, 1);
-		sel = of_read_number(pinsel++, 1);
+		pin = pinsel++;
+		sel = pinsel++;
 		dev_info(dev, "Set GPIO pin %d CFG register to %x\n", pin, sel);
 		writeq(sel, txgpio->register_base + bit_cfg_reg(pin));
 	}
+out:
+	kfree(pinsel);
 }
 
 static int thunderx_gpio_probe(struct pci_dev *pdev,
@@ -561,7 +569,7 @@ static int thunderx_gpio_probe(struct pci_dev *pdev,
 	chip->set_config = thunderx_gpio_set_config;
 	girq = &chip->irq;
 	girq->chip = &thunderx_gpio_irq_chip;
-	girq->fwnode = of_node_to_fwnode(dev->of_node);
+	girq->fwnode = dev_fwnode(dev);
 	girq->parent_domain =
 		irq_get_irq_data(txgpio->msix_entries[0].vector)->domain;
 	girq->child_to_parent_hwirq = thunderx_gpio_child_to_parent_hwirq;
@@ -577,10 +585,15 @@ static int thunderx_gpio_probe(struct pci_dev *pdev,
 	for (i = 0; i < ngpio; i++) {
 		struct irq_fwspec fwspec;
 
-		fwspec.fwnode = of_node_to_fwnode(dev->of_node);
+		if (has_acpi_companion(dev))
+			fwspec.fwnode = irq_domain_alloc_fwnode(NULL);
+		else
+			fwspec.fwnode = of_node_to_fwnode(dev->of_node);
+
 		fwspec.param_count = 2;
 		fwspec.param[0] = i;
-		fwspec.param[1] = IRQ_TYPE_NONE;
+		fwspec.param[1] = IRQ_TYPE_EDGE_RISING;
+
 		err = irq_domain_push_irq(girq->domain,
 					  txgpio->msix_entries[i].vector,
 					  &fwspec);
