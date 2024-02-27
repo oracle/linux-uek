@@ -215,14 +215,13 @@ struct kernfs_node {
 		struct kernfs_elem_attr		attr;
 	};
 
-	void			*priv;
-
 	/*
 	 * 64bit unique ID.  On 64bit ino setups, id is the ino.  On 32bit,
 	 * the low 32bits are ino and upper generation.
 	 */
 	u64			id;
 
+	void			*priv;
 	struct kernfs_iattrs	*iattr;
 
 	struct rcu_head		rcu;
