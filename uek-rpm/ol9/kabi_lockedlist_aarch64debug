@@ -193,6 +193,7 @@
 	iov_iter_kvec
 	iov_iter_npages
 	iput
+	iter_file_splice_write
 	jiffies
 	jiffies_to_msecs
 	jiffies_to_timespec64

@@ -192,6 +192,7 @@
 0x3a9b6975	iov_iter_kvec	vmlinux	EXPORT_SYMBOL
 0xee787839	iov_iter_npages	vmlinux	EXPORT_SYMBOL
 0x042f4ba3	iput	vmlinux	EXPORT_SYMBOL
+0x558eac36	iter_file_splice_write	vmlinux	EXPORT_SYMBOL
 0x15ba50a6	jiffies	vmlinux	EXPORT_SYMBOL
 0x37befc70	jiffies_to_msecs	vmlinux	EXPORT_SYMBOL
 0x188ea314	jiffies_to_timespec64	vmlinux	EXPORT_SYMBOL
