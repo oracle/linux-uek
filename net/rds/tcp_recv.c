@@ -426,6 +426,19 @@ static int rds_tcp_read_sock(struct rds_conn_path *cp, gfp_t gfp)
 	return desc.error;
 }
 
+int rds_tcp_recv_path_lock(struct rds_conn_path *cp)
+{
+	struct rds_tcp_connection *tc = cp->cp_transport_data;
+	int ret = 0;
+
+	mutex_lock(&tc->t_conn_path_lock);
+	if (rds_conn_path_state(cp) == RDS_CONN_UP)
+		ret = rds_tcp_recv_path(cp);
+	mutex_unlock(&tc->t_conn_path_lock);
+
+	return ret;
+}
+
 /*
  * We hold the sock lock to serialize our rds_tcp_recv->tcp_read_sock from
  * data_ready.
