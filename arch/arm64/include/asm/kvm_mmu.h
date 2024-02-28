@@ -317,8 +317,14 @@ static __always_inline u64 kvm_get_vttbr(struct kvm_s2_mmu *mmu)
 static __always_inline void __load_stage2(struct kvm_s2_mmu *mmu,
 					  struct kvm_arch *arch)
 {
+	u64 vttbr;
+
 	write_sysreg(mmu->vtcr, vtcr_el2);
-	write_sysreg(kvm_get_vttbr(mmu), vttbr_el2);
+
+	/* UEK-only test, upstream writes unconditionally */
+	vttbr = kvm_get_vttbr(mmu);
+	if (read_sysreg(vttbr_el2) != vttbr)
+		write_sysreg(kvm_get_vttbr(mmu), vttbr_el2);
 
 	/*
 	 * ARM errata 1165522 and 1530923 require the actual execution of the
