@@ -37,6 +37,7 @@
 #include <linux/netfilter.h>
 #include <linux/time.h>
 #include <linux/rds.h>
+#include <linux/sched/mm.h>
 
 #include "rds.h"
 #include "loop.h"
@@ -993,6 +994,10 @@ int rds_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 	struct sockaddr_in6 *sin6;
 	struct sockaddr_in *sin;
 	struct rds_incoming *inc = NULL;
+	unsigned int noio_flags;
+
+	if (rds_force_noio)
+		noio_flags = memalloc_noio_save();
 
 	/* udp_recvmsg()->sock_recvtimeo() gets away without locking too.. */
 	timeo = sock_rcvtimeo(sk, nonblock);
@@ -1101,6 +1106,8 @@ int rds_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 		rds_inc_put(inc);
 
 out:
+	if (rds_force_noio)
+		memalloc_noio_restore(noio_flags);
 	return ret;
 }
 

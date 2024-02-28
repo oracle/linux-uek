@@ -36,6 +36,7 @@
 #include <net/addrconf.h>
 #include <net/inet_common.h>
 #include <linux/debugfs.h>
+#include <linux/sched/mm.h>
 
 #include "trace.h"
 
@@ -819,13 +820,17 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 {
 	DECLARE_COMPLETION_ONSTACK(rem_complete);
 	struct rds_ib_device *rds_ibdev;
+	unsigned int noio_flags;
+
+	if (rds_force_noio)
+		noio_flags = memalloc_noio_save();
 
 	rds_ibdev = (struct rds_ib_device *)client_data;
 	/* The device is already removed. */
 	if (!rds_ibdev) {
 		trace_rds_ib_remove_device_err(device, NULL, NULL, NULL,
 					       "rds_ibdev is NULL", 0);
-		return;
+		goto out;
 	}
 	trace_rds_ib_remove_device(device, rds_ibdev, NULL, NULL,
 				   "removing IB device", 0);
@@ -864,6 +869,9 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 	 */
 	rds_ib_dev_put(rds_ibdev);
 	wait_for_completion(&rem_complete);
+out:
+	if (rds_force_noio)
+		memalloc_noio_restore(noio_flags);
 }
 
 struct ib_client rds_ib_client = {
@@ -1190,13 +1198,17 @@ void rds_ib_add_one(struct ib_device *device)
 {
 	struct rds_ib_device *rds_ibdev;
 	struct ib_device_attr *dev_attr;
+	unsigned int noio_flags;
 	bool has_frwr, has_fmr;
 	struct ib_udata uhw;
 	char *reason = NULL;
 
+	if (rds_force_noio)
+		noio_flags = memalloc_noio_save();
+
 	/* Only handle IB (no iWARP) devices */
 	if (device->node_type != RDMA_NODE_IB_CA)
-		return;
+		goto out;
 
 	trace_rds_ib_add_device(device, NULL, NULL, NULL,
 				"adding IB device", 0);
@@ -1374,6 +1386,9 @@ trace_err:
 	if (reason)
 		trace_rds_ib_add_device_err(device, NULL, NULL, NULL,
 					    reason, 0);
+out:
+	if (rds_force_noio)
+		memalloc_noio_restore(noio_flags);
 }
 
 static void rds_ib_unregister_client(void)
