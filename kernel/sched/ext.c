@@ -3693,17 +3693,6 @@ static int scx_ops_enable(struct sched_ext_ops *ops)
 			ret = ops_sanitize_err("init", ret);
 			goto err_disable_unlock_cpus;
 		}
-
-		/*
-		 * Exit early if ops.init() triggered scx_bpf_error(). Not
-		 * strictly necessary as we'll fail transitioning into ENABLING
-		 * later but that'd be after calling ops.init_task() on all
-		 * tasks and with -EBUSY which isn't very intuitive. Let's exit
-		 * early with success so that the condition is notified through
-		 * ops.exit() like other scx_bpf_error() invocations.
-		 */
-		if (atomic_read(&scx_exit_kind) != SCX_EXIT_NONE)
-			goto err_disable_unlock_cpus;
 	}
 
 	for (i = SCX_OPI_CPU_HOTPLUG_BEGIN; i < SCX_OPI_CPU_HOTPLUG_END; i++)
@@ -3827,11 +3816,17 @@ static int scx_ops_enable(struct sched_ext_ops *ops)
 	/*
 	 * From here on, the disable path must assume that tasks have ops
 	 * enabled and need to be recovered.
+	 *
+	 * Transition to ENABLING fails iff the BPF scheduler has already
+	 * triggered scx_bpf_error(). Returning an error code here would lose
+	 * the recorded error information. Exit indicating success so that the
+	 * error is notified through ops.exit() with all the details.
 	 */
 	if (!scx_ops_tryset_enable_state(SCX_OPS_ENABLING, SCX_OPS_PREPPING)) {
 		preempt_enable();
 		spin_unlock_irq(&scx_tasks_lock);
-		ret = -EBUSY;
+		WARN_ON_ONCE(atomic_read(&scx_exit_kind) == SCX_EXIT_NONE);
+		ret = 0;
 		goto err_disable_unlock_all;
 	}
 
@@ -3865,8 +3860,10 @@ static int scx_ops_enable(struct sched_ext_ops *ops)
 	cpus_read_unlock();
 	percpu_up_write(&scx_fork_rwsem);
 
+	/* see above ENABLING transition for the explanation on exiting with 0 */
 	if (!scx_ops_tryset_enable_state(SCX_OPS_ENABLED, SCX_OPS_ENABLING)) {
-		ret = -EBUSY;
+		WARN_ON_ONCE(atomic_read(&scx_exit_kind) == SCX_EXIT_NONE);
+		ret = 0;
 		goto err_disable;
 	}
 
