@@ -4,6 +4,7 @@
  */
 
 #include <linux/acpi.h>
+#include <linux/acpi_mdio.h>
 #include <linux/gfp.h>
 #include <linux/io.h>
 #include <linux/module.h>
@@ -60,24 +61,50 @@ static int thunder_mdiobus_pci_probe(struct pci_dev *pdev,
 		struct cavium_mdiobus *bus;
 		union cvmx_smix_en smi_en;
 
-		/* If it is not an OF node we cannot handle it yet, so
-		 * exit the loop.
-		 */
-		node = to_of_node(fwn);
-		if (!node)
-			break;
+		if (is_of_node(fwn)) { // DT case
+			node = to_of_node(fwn);
+			if (!node) {
+				fwnode_handle_put(fwn);
+				break;
+			}
 
-		err = of_address_to_resource(node, 0, &r);
-		if (err) {
-			dev_err(&pdev->dev,
-				"Couldn't translate address for \"%pOFn\"\n",
-				node);
+			err = of_address_to_resource(node, 0, &r);
+			if (err) {
+				dev_err(&pdev->dev,
+					"Couldn't translate address for \"%pOFn\"\n",
+					node);
+				fwnode_handle_put(fwn);
+				break;
+			}
+		} // ACPI case
+		else if (is_acpi_node(fwn)) {
+			LIST_HEAD(resource_list);
+			struct resource_entry *entry;
+
+			err = acpi_dev_get_resources(to_acpi_device_node(fwn),
+						     &resource_list, NULL, NULL);
+			if (err <= 0) {
+				dev_err(&pdev->dev, "failed to get resources from _CRS\n");
+				fwnode_handle_put(fwn);
+				break;
+			}
+
+			entry = list_first_entry(&resource_list, struct resource_entry, node);
+			memcpy(&r, entry->res, sizeof(r));
+
+			acpi_dev_free_resource_list(&resource_list);
+		} else {
+			fwnode_handle_put(fwn);
 			break;
 		}
 
+		dev_dbg(&pdev->dev, "r.start: %llx\n", r.start);
+
 		mii_bus = devm_mdiobus_alloc_size(&pdev->dev, sizeof(*bus));
-		if (!mii_bus)
+		if (!mii_bus) {
+			fwnode_handle_put(fwn);
 			break;
+		}
 		bus = mii_bus->priv;
 		bus->mii_bus = mii_bus;
 
@@ -96,13 +123,24 @@ static int thunder_mdiobus_pci_probe(struct pci_dev *pdev,
 		bus->mii_bus->read = cavium_mdiobus_read;
 		bus->mii_bus->write = cavium_mdiobus_write;
 
-		err = of_mdiobus_register(bus->mii_bus, node);
-		if (err)
-			dev_err(&pdev->dev, "of_mdiobus_register failed\n");
+		if (is_of_node(fwn))
+			err = of_mdiobus_register(bus->mii_bus, to_of_node(fwn));
+		else if (is_acpi_node(fwn))
+			err = acpi_mdiobus_register(bus->mii_bus, fwn);
+		else
+			err = -EINVAL;
+
+		if (err) {
+			dev_err(&pdev->dev, "cannot register MDIO bus\n");
+			fwnode_handle_put(fwn);
+			goto err_release_regions;
+		}
 
 		dev_info(&pdev->dev, "Added bus at %llx\n", r.start);
-		if (i >= ARRAY_SIZE(nexus->buses))
+		if (i >= ARRAY_SIZE(nexus->buses)) {
+			fwnode_handle_put(fwn);
 			break;
+		}
 	}
 	fwnode_handle_put(fwn);
 	return 0;
