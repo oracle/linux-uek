@@ -22,7 +22,20 @@ Switching to and from sched_ext
 ===============================
 
 ``CONFIG_SCHED_CLASS_EXT`` is the config option to enable sched_ext and
-``tools/sched_ext`` contains the example schedulers.
+``tools/sched_ext`` contains the example schedulers. The following config
+options should be enabled to use sched_ext:
+
+.. code-block:: none
+
+    CONFIG_BPF=y
+    CONFIG_SCHED_CLASS_EXT=y
+    CONFIG_BPF_SYSCALL=y
+    CONFIG_BPF_JIT=y
+    CONFIG_DEBUG_INFO_BTF=y
+    CONFIG_BPF_JIT_ALWAYS_ON=y
+    CONFIG_BPF_JIT_DEFAULT_ON=y
+    CONFIG_PAHOLE_HAS_SPLIT_BTF=y
+    CONFIG_PAHOLE_HAS_BTF_TAG=y
 
 sched_ext is used only when the BPF scheduler is loaded and running.
 
