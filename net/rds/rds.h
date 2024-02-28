@@ -93,6 +93,8 @@ enum {
 	RDS_RTD_ALL			= 1 << 31,	/* Enable All */
 };
 
+extern bool rds_force_noio;
+
 /* XXX is there one of these somewhere? */
 #define ceil(x, y) \
 	({ unsigned long __x = (x), __y = (y); (__x + __y - 1) / __y; })

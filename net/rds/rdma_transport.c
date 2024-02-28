@@ -41,6 +41,7 @@
 #include <net/inet_common.h>
 #include <net/netevent.h>
 #include <linux/version.h>
+#include <linux/sched/mm.h>
 
 #include "trace.h"
 
@@ -571,6 +572,11 @@ static int rds_rdma_nb_cb(struct notifier_block *self,
 			  unsigned long event,
 			  void *ctx)
 {
+	unsigned int noio_flags;
+
+	if (rds_force_noio)
+		noio_flags = memalloc_noio_save();
+
 	if (event == NETEVENT_NEIGH_UPDATE) {
 		struct neighbour *neigh = ctx;
 		struct in6_addr faddr;
@@ -592,6 +598,8 @@ static int rds_rdma_nb_cb(struct notifier_block *self,
 		read_unlock_bh(&neigh->lock);
 	}
 
+	if (rds_force_noio)
+		memalloc_noio_restore(noio_flags);
 	return 0;
 }
 
@@ -603,7 +611,11 @@ static struct notifier_block rds_rdma_nb = {
 
 int __init rds_rdma_init(void)
 {
+	unsigned int noio_flags;
 	int ret;
+
+	if (rds_force_noio)
+		noio_flags = memalloc_noio_save();
 
 	rds_rt_debug_tp_enable();
 
@@ -628,6 +640,8 @@ out:
 	/* Either nothing is done successfully or everything succeeds at
 	 * this point.
 	 */
+	if (rds_force_noio)
+		memalloc_noio_restore(noio_flags);
 	return ret;
 }
 module_init(rds_rdma_init);
