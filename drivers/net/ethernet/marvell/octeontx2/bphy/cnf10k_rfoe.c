@@ -28,6 +28,13 @@
 /* global driver ctx */
 struct cnf10k_rfoe_drv_ctx cnf10k_rfoe_drv_ctx[CNF10K_RFOE_MAX_INTF];
 
+static inline bool is_mcs_err(struct rfoe_psw_s *psw)
+{
+	u8 err = psw->mcs_err_sts >> 2 & 0x1f;
+
+	return err != 0x0 && err != 0x1 && err != 0x6;
+}
+
 static uint8_t cnf10k_rfoe_get_ptp_ts_index(struct cnf10k_rfoe_ndev_priv *priv)
 {
 	struct rfoe_link_tx_ptp_ring_ctl *ctrl;
@@ -573,8 +580,7 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 		return;
 	}
 
-	if (unlikely(psw->mac_err_sts || (psw->mcs_err_sts &&
-					  ((psw->mcs_err_sts >> 2) != 0x1)))) {
+	if (unlikely(psw->mac_err_sts || is_mcs_err(psw))) {
 		if (netif_msg_rx_err(priv2))
 			net_warn_ratelimited("%s: psw mac_err_sts = 0x%x, mcs_err_sts=0x%x\n",
 					     priv2->netdev->name,
