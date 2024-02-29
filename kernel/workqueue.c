@@ -49,6 +49,7 @@
 #include <linux/moduleparam.h>
 #include <linux/uaccess.h>
 #include <linux/sched/isolation.h>
+#include <linux/sched/mm.h>
 #include <linux/nmi.h>
 #include <linux/kvm_para.h>
 
@@ -2181,6 +2182,10 @@ __acquires(&pool->lock)
 	struct pool_workqueue *pwq = get_work_pwq(work);
 	struct worker_pool *pool = worker->pool;
 	bool cpu_intensive = pwq->wq->flags & WQ_CPU_INTENSIVE;
+	bool use_noio_allocs = pwq->wq->flags & __WQ_NOIO;
+	bool use_nofs_allocs = pwq->wq->flags & __WQ_NOFS;
+	unsigned long noio_flags;
+	unsigned long nofs_flags;
 	int work_color;
 	struct worker *collision;
 #ifdef CONFIG_LOCKDEP
@@ -2210,6 +2215,12 @@ __acquires(&pool->lock)
 		move_linked_works(work, &collision->scheduled, NULL);
 		return;
 	}
+
+	/* Set inherited alloc flags */
+	if (use_noio_allocs)
+		noio_flags = memalloc_noio_save();
+	if (use_nofs_allocs)
+		nofs_flags = memalloc_nofs_save();
 
 	/* claim and dequeue */
 	debug_work_deactivate(work);
@@ -2324,6 +2335,13 @@ __acquires(&pool->lock)
 	worker->current_func = NULL;
 	worker->current_pwq = NULL;
 	pwq_dec_nr_in_flight(pwq, work_color);
+
+	/* Restore alloc flags */
+	if (use_nofs_allocs)
+		memalloc_nofs_restore(nofs_flags);
+	if (use_noio_allocs)
+		memalloc_noio_restore(noio_flags);
+
 }
 
 /**
@@ -4295,6 +4313,10 @@ struct workqueue_struct *alloc_workqueue(const char *fmt,
 
 	/* init wq */
 	wq->flags = flags;
+	if (current->flags & PF_MEMALLOC_NOIO)
+		wq->flags |= __WQ_NOIO;
+	if (current->flags & PF_MEMALLOC_NOFS)
+		wq->flags |= __WQ_NOFS;
 	wq->saved_max_active = max_active;
 	mutex_init(&wq->mutex);
 	atomic_set(&wq->nr_pwqs_to_flush, 0);
