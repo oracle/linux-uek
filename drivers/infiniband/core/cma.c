@@ -43,6 +43,7 @@
 #include <linux/inetdevice.h>
 #include <linux/slab.h>
 #include <linux/module.h>
+#include <linux/sched/mm.h>
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 #include <linux/sysctl.h>
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
@@ -124,6 +125,12 @@ static struct ctl_table cma_ctl_table[] = {
 
 static bool match_net_dev_ignore_port = true;
 module_param(match_net_dev_ignore_port, bool, 0644);
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+static bool cma_force_noio;
+module_param_named(force_noio, cma_force_noio, bool, 0444);
+MODULE_PARM_DESC(force_noio, "Force the use of GFP_NOIO (Y/N)");
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 static const char * const cma_events[] = {
 	[RDMA_CM_EVENT_ADDR_RESOLVED]	 = "address resolved",
@@ -5203,6 +5210,10 @@ static int __init cma_init(void)
 	int ret;
 #else
 	int ret = -ENOMEM;
+	unsigned int noio_flags;
+
+	if (cma_force_noio)
+		noio_flags = memalloc_noio_save();
 #endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 	/*
@@ -5219,8 +5230,10 @@ static int __init cma_init(void)
 	}
 
 	cma_wq = alloc_ordered_workqueue("rdma_cm", WQ_MEM_RECLAIM);
-	if (!cma_wq)
-		return -ENOMEM;
+	if (!cma_wq) {
+		ret = -ENOMEM;
+		goto out;
+	}
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 	cma_free_wq = alloc_ordered_workqueue("rdma_cm_fr", WQ_MEM_RECLAIM);
@@ -5252,8 +5265,8 @@ static int __init cma_init(void)
 	if (!cma_ctl_table_hdr)
 		pr_warn("rdma_cm: couldn't register sysctl path, using default values\n");
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
-
-	return 0;
+	ret = 0;
+	goto out;
 
 err_ib:
 	ib_unregister_client(&cma_client);
@@ -5267,6 +5280,11 @@ err_free_wq:
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 err_wq:
 	destroy_workqueue(cma_wq);
+out:
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (cma_force_noio)
+		memalloc_noio_restore(noio_flags);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	return ret;
 }
 
