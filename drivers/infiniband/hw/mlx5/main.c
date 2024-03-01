@@ -76,6 +76,12 @@ MODULE_AUTHOR("Eli Cohen <eli@mellanox.com>");
 MODULE_DESCRIPTION("Mellanox Connect-IB HCA IB driver");
 MODULE_LICENSE("Dual BSD/GPL");
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+static bool mlx5_ib_force_noio;
+module_param_named(force_noio, mlx5_ib_force_noio, bool, 0444);
+MODULE_PARM_DESC(force_noio, "Force the use of GFP_NOIO (Y/N)");
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static char mlx5_version[] =
 	DRIVER_NAME ": Mellanox Connect-IB Infiniband driver v"
 	DRIVER_VERSION "\n";
@@ -7668,18 +7674,28 @@ void mlx5_ib_put_xlt_emergency_page(void)
 
 static int __init mlx5_ib_init(void)
 {
-	int ret;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	unsigned int noio_flags;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+	int ret = 0;
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (mlx5_ib_force_noio)
+		noio_flags = memalloc_noio_save();
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	xlt_emergency_page = __get_free_page(GFP_KERNEL);
-	if (!xlt_emergency_page)
-		return -ENOMEM;
-
+	if (!xlt_emergency_page) {
+		ret = -ENOMEM;
+		goto out;
+	}
 	mutex_init(&xlt_emergency_page_mutex);
 
 	mlx5_ib_event_wq = alloc_ordered_workqueue("mlx5_ib_event_wq", 0);
 	if (!mlx5_ib_event_wq) {
 		free_page(xlt_emergency_page);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto out;
 	}
 
 	mlx5_ib_odp_init();
@@ -7692,7 +7708,7 @@ static int __init mlx5_ib_init(void)
 	ret = auxiliary_driver_register(&mlx5r_driver);
 	if (ret)
 		goto drv_err;
-	return 0;
+	goto out;
 
 drv_err:
 	auxiliary_driver_unregister(&mlx5r_mp_driver);
@@ -7701,6 +7717,11 @@ mp_err:
 rep_err:
 	destroy_workqueue(mlx5_ib_event_wq);
 	free_page((unsigned long)xlt_emergency_page);
+out:
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (mlx5_ib_force_noio)
+		memalloc_noio_restore(noio_flags);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	return ret;
 }
 
