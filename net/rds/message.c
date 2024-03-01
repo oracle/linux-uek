@@ -87,11 +87,13 @@ static void rds_cfu_cache_do_gc(void)
 		unsigned int nmbr_cleaned = 0;
 		struct lfstack_el *el;
 
-		while ((el = lfstack_pop(stack))) {
+		el = lfstack_pop_all(stack);
+		while (el) {
 			struct rds_cfu_cache_entry *entry =
 				container_of(el, struct rds_cfu_cache_entry, list);
 
 			++nmbr_cleaned;
+			el = lfstack_next(el);
 			rds_page_free(entry->pg);
 		}
 
