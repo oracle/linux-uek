@@ -64,8 +64,8 @@ struct netns_ipv6 {
 	struct dst_ops		ip6_dst_ops;
 	rwlock_t		fib6_walker_lock;
 	spinlock_t		fib6_gc_lock;
-	unsigned int		 ip6_rt_gc_expire;
-	unsigned long		 ip6_rt_last_gc;
+	UEK_KABI_REPLACE(unsigned int ip6_rt_gc_expire, atomic_t ip6_rt_gc_expire)
+	unsigned long		ip6_rt_last_gc;
 #ifdef CONFIG_IPV6_MULTIPLE_TABLES
 	bool			 fib6_has_custom_rules;
 	struct rt6_info         *ip6_prohibit_entry;
