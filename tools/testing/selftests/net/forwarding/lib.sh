@@ -29,23 +29,20 @@ STABLE_MAC_ADDRS=${STABLE_MAC_ADDRS:=no}
 TCPDUMP_EXTRA_FLAGS=${TCPDUMP_EXTRA_FLAGS:=}
 TROUTE6=${TROUTE6:=traceroute6}
 
-relative_path="${BASH_SOURCE%/*}"
-if [[ "$relative_path" == "${BASH_SOURCE}" ]]; then
-	relative_path="."
+net_forwarding_dir=$(dirname "$(readlink -e "${BASH_SOURCE[0]}")")
+
+if [[ -f $net_forwarding_dir/forwarding.config ]]; then
+	source "$net_forwarding_dir/forwarding.config"
 fi
 
-if [[ -f $relative_path/forwarding.config ]]; then
-	source "$relative_path/forwarding.config"
-fi
+source "$net_forwarding_dir/../lib.sh"
 
-# Kselftest framework requirement - SKIP code is 4.
-ksft_skip=4
-
-busywait()
+# timeout in seconds
+slowwait()
 {
 	local timeout=$1; shift
 
-	local start_time="$(date -u +%s%3N)"
+	local start_time="$(date -u +%s)"
 	while true
 	do
 		local out
@@ -56,11 +53,13 @@ busywait()
 			return 0
 		fi
 
-		local current_time="$(date -u +%s%3N)"
+		local current_time="$(date -u +%s)"
 		if ((current_time - start_time > timeout)); then
 			echo -n "$out"
 			return 1
 		fi
+
+		sleep 0.1
 	done
 }
 
@@ -503,6 +502,15 @@ busywait_for_counter()
 
 	local base=$("$@")
 	busywait "$timeout" until_counter_is ">= $((base + delta))" "$@"
+}
+
+slowwait_for_counter()
+{
+	local timeout=$1; shift
+	local delta=$1; shift
+
+	local base=$("$@")
+	slowwait "$timeout" until_counter_is ">= $((base + delta))" "$@"
 }
 
 setup_wait_dev()
