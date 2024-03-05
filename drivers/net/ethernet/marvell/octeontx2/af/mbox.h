@@ -1561,6 +1561,7 @@ struct flow_msg {
 	u32 mpls_lse[4];
 	u8 icmp_type;
 	u8 icmp_code;
+	__be16 tcp_flags;
 };
 
 struct npc_install_flow_req {
