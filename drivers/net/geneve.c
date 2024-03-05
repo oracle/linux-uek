@@ -335,6 +335,7 @@ static int geneve_init(struct net_device *dev)
 		gro_cells_destroy(&geneve->gro_cells);
 		return err;
 	}
+	netdev_lockdep_set_classes(dev);
 	return 0;
 }
 
@@ -1141,7 +1142,7 @@ static const struct ethtool_ops geneve_ethtool_ops = {
 };
 
 /* Info for udev, that this is a virtual tunnel endpoint */
-static struct device_type geneve_type = {
+static const struct device_type geneve_type = {
 	.name = "geneve",
 };
 
@@ -1900,29 +1901,26 @@ static void geneve_destroy_tunnels(struct net *net, struct list_head *head)
 	}
 }
 
-static void __net_exit geneve_exit_batch_net(struct list_head *net_list)
+static void __net_exit geneve_exit_batch_rtnl(struct list_head *net_list,
+					      struct list_head *dev_to_kill)
 {
 	struct net *net;
-	LIST_HEAD(list);
 
-	rtnl_lock();
 	list_for_each_entry(net, net_list, exit_list)
-		geneve_destroy_tunnels(net, &list);
+		geneve_destroy_tunnels(net, dev_to_kill);
+}
 
-	/* unregister the devices gathered above */
-	unregister_netdevice_many(&list);
-	rtnl_unlock();
+static void __net_exit geneve_exit_net(struct net *net)
+{
+	const struct geneve_net *gn = net_generic(net, geneve_net_id);
 
-	list_for_each_entry(net, net_list, exit_list) {
-		const struct geneve_net *gn = net_generic(net, geneve_net_id);
-
-		WARN_ON_ONCE(!list_empty(&gn->sock_list));
-	}
+	WARN_ON_ONCE(!list_empty(&gn->sock_list));
 }
 
 static struct pernet_operations geneve_net_ops = {
 	.init = geneve_init_net,
-	.exit_batch = geneve_exit_batch_net,
+	.exit_batch_rtnl = geneve_exit_batch_rtnl,
+	.exit = geneve_exit_net,
 	.id   = &geneve_net_id,
 	.size = sizeof(struct geneve_net),
 };

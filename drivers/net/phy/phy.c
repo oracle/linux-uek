@@ -1290,7 +1290,6 @@ int phy_disable_interrupts(struct phy_device *phydev)
 static irqreturn_t phy_interrupt(int irq, void *phy_dat)
 {
 	struct phy_device *phydev = phy_dat;
-	struct phy_driver *drv = phydev->drv;
 	irqreturn_t ret;
 
 	/* Wakeup interrupts may occur during a system sleep transition.
@@ -1316,7 +1315,7 @@ static irqreturn_t phy_interrupt(int irq, void *phy_dat)
 	}
 
 	mutex_lock(&phydev->lock);
-	ret = drv->handle_interrupt(phydev);
+	ret = phydev->drv->handle_interrupt(phydev);
 	mutex_unlock(&phydev->lock);
 
 	return ret;
@@ -1632,12 +1631,12 @@ EXPORT_SYMBOL(phy_get_eee_err);
 /**
  * phy_ethtool_get_eee - get EEE supported and status
  * @phydev: target phy_device struct
- * @data: ethtool_eee data
+ * @data: ethtool_keee data
  *
  * Description: it reportes the Supported/Advertisement/LP Advertisement
  * capabilities.
  */
-int phy_ethtool_get_eee(struct phy_device *phydev, struct ethtool_eee *data)
+int phy_ethtool_get_eee(struct phy_device *phydev, struct ethtool_keee *data)
 {
 	int ret;
 
@@ -1655,11 +1654,11 @@ EXPORT_SYMBOL(phy_ethtool_get_eee);
 /**
  * phy_ethtool_set_eee - set EEE supported and status
  * @phydev: target phy_device struct
- * @data: ethtool_eee data
+ * @data: ethtool_keee data
  *
  * Description: it is to program the Advertisement EEE register.
  */
-int phy_ethtool_set_eee(struct phy_device *phydev, struct ethtool_eee *data)
+int phy_ethtool_set_eee(struct phy_device *phydev, struct ethtool_keee *data)
 {
 	int ret;
 

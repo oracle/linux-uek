@@ -144,7 +144,7 @@ class SpecEnumSet(SpecElement):
 
 
 class SpecAttr(SpecElement):
-    """ Single Netlink atttribute type
+    """ Single Netlink attribute type
 
     Represents a single attribute type within an attr space.
 
@@ -248,6 +248,7 @@ class SpecStructMember(SpecElement):
         len         integer, optional byte length of binary types
         display_hint  string, hint to help choose format specifier
                       when displaying the value
+        struct      string, name of nested struct type
     """
     def __init__(self, family, yaml):
         super().__init__(family, yaml)
@@ -256,6 +257,7 @@ class SpecStructMember(SpecElement):
         self.enum = yaml.get('enum')
         self.len = yaml.get('len')
         self.display_hint = yaml.get('display-hint')
+        self.struct = yaml.get('struct')
 
 
 class SpecStruct(SpecElement):
@@ -306,10 +308,9 @@ class SpecSubMessage(SpecElement):
 
 
 class SpecSubMessageFormat(SpecElement):
-    """ Netlink sub-message definition
+    """ Netlink sub-message format definition
 
-    Represents a set of sub-message formats for polymorphic nlattrs
-    that contain type-specific sub messages.
+    Represents a single format for a sub-message.
 
     Attributes:
         value         attribute value to match against type selector
