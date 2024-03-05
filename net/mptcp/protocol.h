@@ -260,8 +260,10 @@ struct mptcp_data_frag {
 struct mptcp_sock {
 	/* inet_connection_sock must be the first member */
 	struct inet_connection_sock sk;
-	u64		local_key;
-	u64		remote_key;
+	u64		local_key;		/* protected by the first subflow socket lock
+						 * lockless access read
+						 */
+	u64		remote_key;		/* same as above */
 	u64		write_seq;
 	u64		bytes_sent;
 	u64		snd_nxt;
@@ -346,7 +348,23 @@ static inline void msk_owned_by_me(const struct mptcp_sock *msk)
 	sock_owned_by_me((const struct sock *)msk);
 }
 
+#ifdef CONFIG_DEBUG_NET
+/* MPTCP-specific: we might (indirectly) call this helper with the wrong sk */
+#undef tcp_sk
+#define tcp_sk(ptr) ({								\
+	typeof(ptr) _ptr = (ptr);						\
+	WARN_ON(_ptr->sk_protocol != IPPROTO_TCP);				\
+	container_of_const(_ptr, struct tcp_sock, inet_conn.icsk_inet.sk);	\
+})
+#define mptcp_sk(ptr) ({						\
+	typeof(ptr) _ptr = (ptr);					\
+	WARN_ON(_ptr->sk_protocol != IPPROTO_MPTCP);			\
+	container_of_const(_ptr, struct mptcp_sock, sk.icsk_inet.sk);	\
+})
+
+#else /* !CONFIG_DEBUG_NET */
 #define mptcp_sk(ptr) container_of_const(ptr, struct mptcp_sock, sk.icsk_inet.sk)
+#endif
 
 /* the msk socket don't use the backlog, also account for the bulk
  * free memory
@@ -400,7 +418,7 @@ static inline struct mptcp_data_frag *mptcp_rtx_head(struct sock *sk)
 {
 	struct mptcp_sock *msk = mptcp_sk(sk);
 
-	if (msk->snd_una == READ_ONCE(msk->snd_nxt))
+	if (msk->snd_una == msk->snd_nxt)
 		return NULL;
 
 	return list_first_entry_or_null(&msk->rtx_queue, struct mptcp_data_frag, list);
@@ -790,6 +808,16 @@ static inline bool mptcp_data_fin_enabled(const struct mptcp_sock *msk)
 	       READ_ONCE(msk->write_seq) == READ_ONCE(msk->snd_nxt);
 }
 
+static inline void mptcp_write_space(struct sock *sk)
+{
+	if (sk_stream_is_writeable(sk)) {
+		/* pairs with memory barrier in mptcp_poll */
+		smp_mb();
+		if (test_and_clear_bit(MPTCP_NOSPACE, &mptcp_sk(sk)->flags))
+			sk_stream_write_space(sk);
+	}
+}
+
 static inline void __mptcp_sync_sndbuf(struct sock *sk)
 {
 	struct mptcp_subflow_context *subflow;
@@ -808,6 +836,7 @@ static inline void __mptcp_sync_sndbuf(struct sock *sk)
 
 	/* the msk max wmem limit is <nr_subflows> * tcp wmem[2] */
 	WRITE_ONCE(sk->sk_sndbuf, new_sndbuf);
+	mptcp_write_space(sk);
 }
 
 /* The called held both the msk socket and the subflow socket locks,
@@ -836,16 +865,6 @@ static inline void mptcp_propagate_sndbuf(struct sock *sk, struct sock *ssk)
 	local_bh_disable();
 	mptcp_subflow_delegate(subflow, MPTCP_DELEGATE_SNDBUF);
 	local_bh_enable();
-}
-
-static inline void mptcp_write_space(struct sock *sk)
-{
-	if (sk_stream_is_writeable(sk)) {
-		/* pairs with memory barrier in mptcp_poll */
-		smp_mb();
-		if (test_and_clear_bit(MPTCP_NOSPACE, &mptcp_sk(sk)->flags))
-			sk_stream_write_space(sk);
-	}
 }
 
 void mptcp_destroy_common(struct mptcp_sock *msk, unsigned int flags);

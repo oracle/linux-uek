@@ -115,6 +115,24 @@ static struct kmem_cache *skb_small_head_cache __ro_after_init;
 int sysctl_max_skb_frags __read_mostly = MAX_SKB_FRAGS;
 EXPORT_SYMBOL(sysctl_max_skb_frags);
 
+/* kcm_write_msgs() relies on casting paged frags to bio_vec to use
+ * iov_iter_bvec(). These static asserts ensure the cast is valid is long as the
+ * netmem is a page.
+ */
+static_assert(offsetof(struct bio_vec, bv_page) ==
+	      offsetof(skb_frag_t, netmem));
+static_assert(sizeof_field(struct bio_vec, bv_page) ==
+	      sizeof_field(skb_frag_t, netmem));
+
+static_assert(offsetof(struct bio_vec, bv_len) == offsetof(skb_frag_t, len));
+static_assert(sizeof_field(struct bio_vec, bv_len) ==
+	      sizeof_field(skb_frag_t, len));
+
+static_assert(offsetof(struct bio_vec, bv_offset) ==
+	      offsetof(skb_frag_t, offset));
+static_assert(sizeof_field(struct bio_vec, bv_offset) ==
+	      sizeof_field(skb_frag_t, offset));
+
 #undef FN
 #define FN(reason) [SKB_DROP_REASON_##reason] = #reason,
 static const char * const drop_reasons[] = {
@@ -845,17 +863,17 @@ skb_fail:
 }
 EXPORT_SYMBOL(__napi_alloc_skb);
 
-void skb_add_rx_frag(struct sk_buff *skb, int i, struct page *page, int off,
-		     int size, unsigned int truesize)
+void skb_add_rx_frag_netmem(struct sk_buff *skb, int i, netmem_ref netmem,
+			    int off, int size, unsigned int truesize)
 {
 	DEBUG_NET_WARN_ON_ONCE(size > truesize);
 
-	skb_fill_page_desc(skb, i, page, off, size);
+	skb_fill_netmem_desc(skb, i, netmem, off, size);
 	skb->len += size;
 	skb->data_len += size;
 	skb->truesize += truesize;
 }
-EXPORT_SYMBOL(skb_add_rx_frag);
+EXPORT_SYMBOL(skb_add_rx_frag_netmem);
 
 void skb_coalesce_rx_frag(struct sk_buff *skb, int i, int size,
 			  unsigned int truesize)
@@ -895,6 +913,98 @@ static bool is_pp_page(struct page *page)
 	return (page->pp_magic & ~0x3UL) == PP_SIGNATURE;
 }
 
+int skb_pp_cow_data(struct page_pool *pool, struct sk_buff **pskb,
+		    unsigned int headroom)
+{
+#if IS_ENABLED(CONFIG_PAGE_POOL)
+	u32 size, truesize, len, max_head_size, off;
+	struct sk_buff *skb = *pskb, *nskb;
+	int err, i, head_off;
+	void *data;
+
+	/* XDP does not support fraglist so we need to linearize
+	 * the skb.
+	 */
+	if (skb_has_frag_list(skb))
+		return -EOPNOTSUPP;
+
+	max_head_size = SKB_WITH_OVERHEAD(PAGE_SIZE - headroom);
+	if (skb->len > max_head_size + MAX_SKB_FRAGS * PAGE_SIZE)
+		return -ENOMEM;
+
+	size = min_t(u32, skb->len, max_head_size);
+	truesize = SKB_HEAD_ALIGN(size) + headroom;
+	data = page_pool_dev_alloc_va(pool, &truesize);
+	if (!data)
+		return -ENOMEM;
+
+	nskb = napi_build_skb(data, truesize);
+	if (!nskb) {
+		page_pool_free_va(pool, data, true);
+		return -ENOMEM;
+	}
+
+	skb_reserve(nskb, headroom);
+	skb_copy_header(nskb, skb);
+	skb_mark_for_recycle(nskb);
+
+	err = skb_copy_bits(skb, 0, nskb->data, size);
+	if (err) {
+		consume_skb(nskb);
+		return err;
+	}
+	skb_put(nskb, size);
+
+	head_off = skb_headroom(nskb) - skb_headroom(skb);
+	skb_headers_offset_update(nskb, head_off);
+
+	off = size;
+	len = skb->len - off;
+	for (i = 0; i < MAX_SKB_FRAGS && off < skb->len; i++) {
+		struct page *page;
+		u32 page_off;
+
+		size = min_t(u32, len, PAGE_SIZE);
+		truesize = size;
+
+		page = page_pool_dev_alloc(pool, &page_off, &truesize);
+		if (!page) {
+			consume_skb(nskb);
+			return -ENOMEM;
+		}
+
+		skb_add_rx_frag(nskb, i, page, page_off, size, truesize);
+		err = skb_copy_bits(skb, off, page_address(page) + page_off,
+				    size);
+		if (err) {
+			consume_skb(nskb);
+			return err;
+		}
+
+		len -= size;
+		off += size;
+	}
+
+	consume_skb(skb);
+	*pskb = nskb;
+
+	return 0;
+#else
+	return -EOPNOTSUPP;
+#endif
+}
+EXPORT_SYMBOL(skb_pp_cow_data);
+
+int skb_cow_data_for_xdp(struct page_pool *pool, struct sk_buff **pskb,
+			 struct bpf_prog *prog)
+{
+	if (!prog->aux->xdp_has_frags)
+		return -EINVAL;
+
+	return skb_pp_cow_data(pool, pskb, XDP_PACKET_HEADROOM);
+}
+EXPORT_SYMBOL(skb_cow_data_for_xdp);
+
 #if IS_ENABLED(CONFIG_PAGE_POOL)
 bool napi_pp_put_page(struct page *page, bool napi_safe)
 {
@@ -923,9 +1033,10 @@ bool napi_pp_put_page(struct page *page, bool napi_safe)
 	 */
 	if (napi_safe || in_softirq()) {
 		const struct napi_struct *napi = READ_ONCE(pp->p.napi);
+		unsigned int cpuid = smp_processor_id();
 
-		allow_direct = napi &&
-			READ_ONCE(napi->list_owner) == smp_processor_id();
+		allow_direct = napi && READ_ONCE(napi->list_owner) == cpuid;
+		allow_direct |= READ_ONCE(pp->cpuid) == cpuid;
 	}
 
 	/* Driver set this to memory recycling info. Reset it on recycle.
@@ -1906,10 +2017,11 @@ int skb_copy_ubufs(struct sk_buff *skb, gfp_t gfp_mask)
 
 	/* skb frags point to kernel buffers */
 	for (i = 0; i < new_frags - 1; i++) {
-		__skb_fill_page_desc(skb, i, head, 0, psize);
+		__skb_fill_netmem_desc(skb, i, page_to_netmem(head), 0, psize);
 		head = (struct page *)page_private(head);
 	}
-	__skb_fill_page_desc(skb, new_frags - 1, head, 0, d_off);
+	__skb_fill_netmem_desc(skb, new_frags - 1, page_to_netmem(head), 0,
+			       d_off);
 	skb_shinfo(skb)->nr_frags = new_frags;
 
 release:
@@ -3647,7 +3759,8 @@ skb_zerocopy(struct sk_buff *to, struct sk_buff *from, int len, int hlen)
 		if (plen) {
 			page = virt_to_head_page(from->head);
 			offset = from->data - (unsigned char *)page_address(page);
-			__skb_fill_page_desc(to, 0, page, offset, plen);
+			__skb_fill_netmem_desc(to, 0, page_to_netmem(page),
+					       offset, plen);
 			get_page(page);
 			j = 1;
 			len -= plen;
@@ -6735,6 +6848,14 @@ static struct skb_ext *skb_ext_maybe_cow(struct skb_ext *old,
 
 		for (i = 0; i < sp->len; i++)
 			xfrm_state_hold(sp->xvec[i]);
+	}
+#endif
+#ifdef CONFIG_MCTP_FLOWS
+	if (old_active & (1 << SKB_EXT_MCTP)) {
+		struct mctp_flow *flow = skb_ext_get_ptr(old, SKB_EXT_MCTP);
+
+		if (flow->key)
+			refcount_inc(&flow->key->refs);
 	}
 #endif
 	__skb_ext_put(old);
