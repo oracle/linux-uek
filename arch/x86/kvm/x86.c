@@ -8352,7 +8352,28 @@ void kvm_vcpu_update_apicv(struct kvm_vcpu *vcpu)
 	if (!lapic_in_kernel(vcpu))
 		return;
 
+	/*
+	 * Avoid waiting on the apicv_update_lock while holding kvm->srcu.
+	 * A vCPU updating the APICV inhibitions will acquire the write lock,
+	 * and will then proceed to update the APICV memslot, which invokes
+	 * synchronize_srcu(&kvm->srcu). This call blocks until all ongoing
+	 * kvm->srcu read-side critical sections complete, which cannot happen
+	 * if at least one other vCPU thread is blocking here waiting to acquire
+	 * the apicv_update_lock on the read side while also holding kvm->srcu.
+	 *
+	 * To avoid this deadlock, temporarily release the kvm->srcu lock which
+	 * allows synchronize_srcu() call to complete in the updater/writer
+	 * vCPU thread, and eventually release the apicv_update_lock, which can
+	 * then be acquired for reading here. Then reacquire the kvm->srcu lock
+	 * immediately after, to ensure that the rest of the operations are
+	 * still under SRCU protection.
+	 */
+	srcu_read_unlock(&vcpu->kvm->srcu, vcpu->srcu_idx);
+
 	down_read(&vcpu->kvm->arch.apicv_update_lock);
+
+	vcpu->srcu_idx = srcu_read_lock(&vcpu->kvm->srcu);
+
 	preempt_disable();
 
 	/* Do not activate APICV when APIC is disabled */
