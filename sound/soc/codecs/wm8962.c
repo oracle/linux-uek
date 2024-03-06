@@ -2866,7 +2866,7 @@ static int wm8962_set_fll(struct snd_soc_codec *codec, int fll_id, int source,
 				    WM8962_FLL_FRC_NCO, WM8962_FLL_FRC_NCO);
 		break;
 	default:
-		dev_err(codec->dev, "Unknown FLL source %d\n", ret);
+		dev_err(codec->dev, "Unknown FLL source %d\n", source);
 		return -EINVAL;
 	}
 
