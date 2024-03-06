@@ -101,7 +101,6 @@ DEFINE_STATIC_KEY_FALSE(__scx_ops_enabled);
 DEFINE_STATIC_PERCPU_RWSEM(scx_fork_rwsem);
 static atomic_t scx_ops_enable_state_var = ATOMIC_INIT(SCX_OPS_DISABLED);
 static atomic_t scx_ops_bypass_depth = ATOMIC_INIT(0);
-static bool scx_switch_all_req;
 static bool scx_switching_all;
 DEFINE_STATIC_KEY_FALSE(__scx_switched_all);
 
@@ -331,8 +330,7 @@ static __always_inline bool scx_kf_allowed(u32 mask)
 		return false;
 	}
 
-	if (unlikely((mask & (SCX_KF_INIT | SCX_KF_SLEEPABLE)) &&
-		     in_interrupt())) {
+	if (unlikely((mask & SCX_KF_SLEEPABLE) && in_interrupt())) {
 		scx_ops_error("sleepable kfunc called from non-sleepable context");
 		return false;
 	}
@@ -3706,9 +3704,8 @@ static int scx_ops_enable(struct sched_ext_ops *ops)
 	 */
 	cpus_read_lock();
 
-	scx_switch_all_req = false;
 	if (scx_ops.init) {
-		ret = SCX_CALL_OP_RET(SCX_KF_INIT, init);
+		ret = SCX_CALL_OP_RET(SCX_KF_SLEEPABLE, init);
 		if (ret) {
 			ret = ops_sanitize_err("init", ret);
 			goto err_disable_unlock_cpus;
@@ -3855,7 +3852,7 @@ static int scx_ops_enable(struct sched_ext_ops *ops)
 	 * transitions here are synchronized against sched_ext_free() through
 	 * scx_tasks_lock.
 	 */
-	WRITE_ONCE(scx_switching_all, scx_switch_all_req);
+	WRITE_ONCE(scx_switching_all, !(ops->flags & SCX_OPS_SWITCH_PARTIAL));
 
 	scx_task_iter_init(&sti);
 	while ((p = scx_task_iter_next_filtered_locked(&sti))) {
@@ -3887,7 +3884,7 @@ static int scx_ops_enable(struct sched_ext_ops *ops)
 		goto err_disable;
 	}
 
-	if (scx_switch_all_req)
+	if (!(ops->flags & SCX_OPS_SWITCH_PARTIAL))
 		static_branch_enable(&__scx_switched_all);
 
 	kobject_uevent(scx_root_kobj, KOBJ_ADD);
@@ -4492,29 +4489,6 @@ void __init init_sched_ext_class(void)
 __bpf_kfunc_start_defs();
 
 /**
- * scx_bpf_switch_all - Switch all tasks into SCX
- *
- * Switch all existing and future non-dl/rt tasks to SCX. This can only be
- * called from ops.init(), and actual switching is performed asynchronously.
- */
-__bpf_kfunc void scx_bpf_switch_all(void)
-{
-	if (!scx_kf_allowed(SCX_KF_INIT))
-		return;
-
-	scx_switch_all_req = true;
-}
-
-BTF_KFUNCS_START(scx_kfunc_ids_init)
-BTF_ID_FLAGS(func, scx_bpf_switch_all)
-BTF_KFUNCS_END(scx_kfunc_ids_init)
-
-static const struct btf_kfunc_id_set scx_kfunc_set_init = {
-	.owner			= THIS_MODULE,
-	.set			= &scx_kfunc_ids_init,
-};
-
-/**
  * scx_bpf_create_dsq - Create a custom DSQ
  * @dsq_id: DSQ to create
  * @node: NUMA node to allocate from
@@ -4524,7 +4498,7 @@ static const struct btf_kfunc_id_set scx_kfunc_set_init = {
  */
 __bpf_kfunc s32 scx_bpf_create_dsq(u64 dsq_id, s32 node)
 {
-	if (!scx_kf_allowed(SCX_KF_INIT | SCX_KF_SLEEPABLE))
+	if (!scx_kf_allowed(SCX_KF_SLEEPABLE))
 		return -EINVAL;
 
 	if (unlikely(node >= (int)nr_node_ids ||
@@ -5240,8 +5214,6 @@ static int __init scx_init(void)
 	 * check using scx_kf_allowed().
 	 */
 	if ((ret = register_btf_kfunc_id_set(BPF_PROG_TYPE_STRUCT_OPS,
-					     &scx_kfunc_set_init)) ||
-	    (ret = register_btf_kfunc_id_set(BPF_PROG_TYPE_STRUCT_OPS,
 					     &scx_kfunc_set_sleepable)) ||
 	    (ret = register_btf_kfunc_id_set(BPF_PROG_TYPE_STRUCT_OPS,
 					     &scx_kfunc_set_enqueue_dispatch)) ||

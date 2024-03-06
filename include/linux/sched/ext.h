@@ -89,9 +89,15 @@ struct scx_exit_info {
 /* sched_ext_ops.flags */
 enum scx_ops_flags {
 	/*
+	 * If set, only tasks with policy set to SCHED_EXT are attached to
+	 * sched_ext. If clear, SCHED_NORMAL tasks are also included.
+	 */
+	SCX_OPS_SWITCH_PARTIAL	= 1LLU << 0,
+
+	/*
 	 * Keep built-in idle tracking even if ops.update_idle() is implemented.
 	 */
-	SCX_OPS_KEEP_BUILTIN_IDLE = 1LLU << 0,
+	SCX_OPS_KEEP_BUILTIN_IDLE = 1LLU << 1,
 
 	/*
 	 * By default, if there are no other task to run on the CPU, ext core
@@ -99,7 +105,7 @@ enum scx_ops_flags {
 	 * flag is specified, such tasks are passed to ops.enqueue() with
 	 * %SCX_ENQ_LAST. See the comment above %SCX_ENQ_LAST for more info.
 	 */
-	SCX_OPS_ENQ_LAST	= 1LLU << 1,
+	SCX_OPS_ENQ_LAST	= 1LLU << 2,
 
 	/*
 	 * An exiting task may schedule after PF_EXITING is set. In such cases,
@@ -112,7 +118,7 @@ enum scx_ops_flags {
 	 * depend on pid lookups and wants to handle these tasks directly, the
 	 * following flag can be used.
 	 */
-	SCX_OPS_ENQ_EXITING	= 1LLU << 2,
+	SCX_OPS_ENQ_EXITING	= 1LLU << 3,
 
 	/*
 	 * CPU cgroup knob enable flags
@@ -655,16 +661,15 @@ enum scx_ent_dsq_flags {
  */
 enum scx_kf_mask {
 	SCX_KF_UNLOCKED		= 0,	  /* not sleepable, not rq locked */
-	/* all non-sleepables may be nested inside INIT and SLEEPABLE */
-	SCX_KF_INIT		= 1 << 0, /* running ops.init() */
-	SCX_KF_SLEEPABLE	= 1 << 1, /* other sleepable init operations */
+	/* all non-sleepables may be nested inside SLEEPABLE */
+	SCX_KF_SLEEPABLE	= 1 << 0, /* sleepable init operations */
 	/* ENQUEUE and DISPATCH may be nested inside CPU_RELEASE */
-	SCX_KF_CPU_RELEASE	= 1 << 2, /* ops.cpu_release() */
+	SCX_KF_CPU_RELEASE	= 1 << 1, /* ops.cpu_release() */
 	/* ops.dequeue (in REST) may be nested inside DISPATCH */
-	SCX_KF_DISPATCH		= 1 << 3, /* ops.dispatch() */
-	SCX_KF_ENQUEUE		= 1 << 4, /* ops.enqueue() and ops.select_cpu() */
-	SCX_KF_SELECT_CPU	= 1 << 5, /* ops.select_cpu() */
-	SCX_KF_REST		= 1 << 6, /* other rq-locked operations */
+	SCX_KF_DISPATCH		= 1 << 2, /* ops.dispatch() */
+	SCX_KF_ENQUEUE		= 1 << 3, /* ops.enqueue() and ops.select_cpu() */
+	SCX_KF_SELECT_CPU	= 1 << 4, /* ops.select_cpu() */
+	SCX_KF_REST		= 1 << 5, /* other rq-locked operations */
 
 	__SCX_KF_RQ_LOCKED	= SCX_KF_CPU_RELEASE | SCX_KF_DISPATCH |
 				  SCX_KF_ENQUEUE | SCX_KF_SELECT_CPU | SCX_KF_REST,
