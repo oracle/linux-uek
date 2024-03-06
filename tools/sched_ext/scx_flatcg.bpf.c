@@ -930,7 +930,7 @@ void BPF_STRUCT_OPS(fcg_cgroup_move, struct task_struct *p,
 s32 BPF_STRUCT_OPS(fcg_init)
 {
 	if (!switch_partial)
-		scx_bpf_switch_all();
+		__COMPAT_scx_bpf_switch_all();
 	return 0;
 }
 

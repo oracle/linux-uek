@@ -34,18 +34,10 @@ void BPF_STRUCT_OPS(enq_select_cpu_fails_enqueue, struct task_struct *p,
 	scx_bpf_dispatch(p, SCX_DSQ_GLOBAL, SCX_SLICE_DFL, enq_flags);
 }
 
-s32 BPF_STRUCT_OPS(enq_select_cpu_fails_init)
-{
-	scx_bpf_switch_all();
-
-	return 0;
-}
-
 SEC(".struct_ops.link")
 struct sched_ext_ops enq_select_cpu_fails_ops = {
 	.select_cpu		= enq_select_cpu_fails_select_cpu,
 	.enqueue		= enq_select_cpu_fails_enqueue,
-	.init			= enq_select_cpu_fails_init,
 	.name			= "enq_select_cpu_fails",
 	.timeout_ms		= 1000U,
 };

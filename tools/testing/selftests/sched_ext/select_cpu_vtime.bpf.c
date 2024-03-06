@@ -76,8 +76,6 @@ void BPF_STRUCT_OPS(select_cpu_vtime_enable, struct task_struct *p)
 
 s32 BPF_STRUCT_OPS_SLEEPABLE(select_cpu_vtime_init)
 {
-	scx_bpf_switch_all();
-
 	return scx_bpf_create_dsq(VTIME_DSQ, -1);
 }
 

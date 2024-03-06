@@ -307,7 +307,7 @@ int BPF_STRUCT_OPS_SLEEPABLE(central_init)
 	int ret;
 
 	if (!switch_partial)
-		scx_bpf_switch_all();
+		__COMPAT_scx_bpf_switch_all();
 
 	ret = scx_bpf_create_dsq(FALLBACK_DSQ_ID, -1);
 	if (ret)

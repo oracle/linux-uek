@@ -374,7 +374,7 @@ s32 BPF_STRUCT_OPS(qmap_init_task, struct task_struct *p,
 s32 BPF_STRUCT_OPS(qmap_init)
 {
 	if (!switch_partial)
-		scx_bpf_switch_all();
+		__COMPAT_scx_bpf_switch_all();
 	return 0;
 }
 

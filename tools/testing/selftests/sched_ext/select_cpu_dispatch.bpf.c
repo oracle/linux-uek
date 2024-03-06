@@ -33,17 +33,9 @@ dispatch:
 	return cpu;
 }
 
-s32 BPF_STRUCT_OPS(select_cpu_dispatch_init)
-{
-	scx_bpf_switch_all();
-
-	return 0;
-}
-
 SEC(".struct_ops.link")
 struct sched_ext_ops select_cpu_dispatch_ops = {
 	.select_cpu		= select_cpu_dispatch_select_cpu,
-	.init			= select_cpu_dispatch_init,
 	.name			= "select_cpu_dispatch",
 	.timeout_ms		= 1000U,
 };
