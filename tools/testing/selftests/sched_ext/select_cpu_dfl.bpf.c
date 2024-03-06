@@ -33,16 +33,8 @@ void BPF_STRUCT_OPS(select_cpu_dfl_enqueue, struct task_struct *p,
 	scx_bpf_dispatch(p, SCX_DSQ_GLOBAL, SCX_SLICE_DFL, enq_flags);
 }
 
-s32 BPF_STRUCT_OPS(select_cpu_dfl_init)
-{
-	scx_bpf_switch_all();
-
-	return 0;
-}
-
 SEC(".struct_ops.link")
 struct sched_ext_ops select_cpu_dfl_ops = {
 	.enqueue		= select_cpu_dfl_enqueue,
-	.init			= select_cpu_dfl_init,
 	.name			= "select_cpu_dfl",
 };

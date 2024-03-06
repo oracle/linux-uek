@@ -25,7 +25,6 @@
 char _license[] SEC("license") = "GPL";
 
 const volatile bool fifo_sched;
-const volatile bool switch_partial;
 
 static u64 vtime_now;
 struct user_exit_info uei;
@@ -130,9 +129,6 @@ void BPF_STRUCT_OPS(simple_enable, struct task_struct *p)
 
 s32 BPF_STRUCT_OPS_SLEEPABLE(simple_init)
 {
-	if (!switch_partial)
-		scx_bpf_switch_all();
-
 	return scx_bpf_create_dsq(SHARED_DSQ, -1);
 }
 

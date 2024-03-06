@@ -80,18 +80,10 @@ s32 BPF_STRUCT_OPS(select_cpu_dfl_nodispatch_init_task,
 		return -ENOMEM;
 }
 
-s32 BPF_STRUCT_OPS(select_cpu_dfl_nodispatch_init)
-{
-	scx_bpf_switch_all();
-
-	return 0;
-}
-
 SEC(".struct_ops.link")
 struct sched_ext_ops select_cpu_dfl_nodispatch_ops = {
 	.select_cpu		= select_cpu_dfl_nodispatch_select_cpu,
 	.enqueue		= select_cpu_dfl_nodispatch_enqueue,
 	.init_task		= select_cpu_dfl_nodispatch_init_task,
-	.init			= select_cpu_dfl_nodispatch_init,
 	.name			= "select_cpu_dfl_nodispatch",
 };

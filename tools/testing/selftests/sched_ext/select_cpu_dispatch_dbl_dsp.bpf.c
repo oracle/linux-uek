@@ -24,13 +24,6 @@ s32 BPF_STRUCT_OPS(select_cpu_dispatch_dbl_dsp_select_cpu, struct task_struct *p
 	return prev_cpu;
 }
 
-s32 BPF_STRUCT_OPS(select_cpu_dispatch_dbl_dsp_init)
-{
-	scx_bpf_switch_all();
-
-	return 0;
-}
-
 void BPF_STRUCT_OPS(select_cpu_dispatch_dbl_dsp_exit, struct scx_exit_info *ei)
 {
 	uei_record(&uei, ei);
@@ -39,7 +32,6 @@ void BPF_STRUCT_OPS(select_cpu_dispatch_dbl_dsp_exit, struct scx_exit_info *ei)
 SEC(".struct_ops.link")
 struct sched_ext_ops select_cpu_dispatch_dbl_dsp_ops = {
 	.select_cpu		= select_cpu_dispatch_dbl_dsp_select_cpu,
-	.init			= select_cpu_dispatch_dbl_dsp_init,
 	.exit			= select_cpu_dispatch_dbl_dsp_exit,
 	.name			= "select_cpu_dispatch_dbl_dsp",
 	.timeout_ms		= 1000U,

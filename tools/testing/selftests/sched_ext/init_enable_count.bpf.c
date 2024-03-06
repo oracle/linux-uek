@@ -44,20 +44,11 @@ void BPF_STRUCT_OPS(cnt_disable, struct task_struct *p)
 	__sync_fetch_and_add(&disable_cnt, 1);
 }
 
-s32 BPF_STRUCT_OPS(cnt_init)
-{
-	if (switch_all)
-		scx_bpf_switch_all();
-
-	return 0;
-}
-
 SEC(".struct_ops.link")
 struct sched_ext_ops init_enable_count_ops = {
 	.init_task	= cnt_init_task,
 	.exit_task	= cnt_exit_task,
 	.enable		= cnt_enable,
 	.disable	= cnt_disable,
-	.init		= cnt_init,
 	.name		= "init_enable_count",
 };

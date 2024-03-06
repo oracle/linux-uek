@@ -192,7 +192,7 @@ void BPF_STRUCT_OPS(qmap_enqueue, struct task_struct *p, u64 enq_flags)
 		scx_bpf_dispatch(p, SCX_DSQ_GLOBAL, 0, enq_flags);
 		cpu = scx_bpf_pick_idle_cpu(p->cpus_ptr, 0);
 		if (cpu >= 0)
-			__COMPAT_scx_bpf_kick_cpu_IDLE(cpu);
+			scx_bpf_kick_cpu(cpu, __COMPAT_SCX_KICK_IDLE);
 		return;
 	}
 
@@ -374,7 +374,7 @@ s32 BPF_STRUCT_OPS(qmap_init_task, struct task_struct *p,
 s32 BPF_STRUCT_OPS(qmap_init)
 {
 	if (!switch_partial)
-		scx_bpf_switch_all();
+		__COMPAT_scx_bpf_switch_all();
 	return 0;
 }
 

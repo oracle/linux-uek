@@ -75,6 +75,7 @@ int main(int argc, char **argv)
 			break;
 		case 'p':
 			skel->rodata->switch_partial = true;
+			skel->struct_ops.qmap_ops->flags |= __COMPAT_SCX_OPS_SWITCH_PARTIAL;
 			break;
 		default:
 			fprintf(stderr, help_fmt, basename(argv[0]));

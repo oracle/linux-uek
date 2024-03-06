@@ -24,7 +24,6 @@ const char help_fmt[] =
 "\n"
 "  -s SLICE_US   Override slice duration\n"
 "  -c CPU        Override the central CPU (default: 0)\n"
-"  -p            Switch only tasks on SCHED_EXT policy intead of all\n"
 "  -h            Display this help and exit\n";
 
 static volatile int exit_req;
@@ -60,9 +59,6 @@ int main(int argc, char **argv)
 			break;
 		case 'c':
 			skel->rodata->central_cpu = strtoul(optarg, NULL, 0);
-			break;
-		case 'p':
-			skel->rodata->switch_partial = true;
 			break;
 		default:
 			fprintf(stderr, help_fmt, basename(argv[0]));
