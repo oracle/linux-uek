@@ -7,14 +7,19 @@
 #ifndef __SCX_COMPAT_BPF_H
 #define __SCX_COMPAT_BPF_H
 
-/* SCX_KICK_IDLE is a later addition, use if available */
-static inline void __COMPAT_scx_bpf_kick_cpu_IDLE(s32 cpu)
+static inline u64 __COMPAT_SCX_KICK_IDLE(void)
 {
 	if (bpf_core_enum_value_exists(enum scx_kick_flags, SCX_KICK_IDLE))
-		scx_bpf_kick_cpu(cpu, SCX_KICK_IDLE);
+		return SCX_KICK_IDLE;
 	else
-		scx_bpf_kick_cpu(cpu, 0);
+		return 0;
 }
+
+/*
+ * %SCX_KICK_IDLE is a later addition. To support both before and after, use
+ * %__COMPAT_SCX_KICK_IDLE which becomes 0 on kernels which don't support it.
+ */
+#define __COMPAT_SCX_KICK_IDLE __COMPAT_SCX_KICK_IDLE()
 
 /*
  * scx_switch_all() was replaced by %SCX_OPS_SWITCH_PARTIAL. See
