@@ -7,19 +7,20 @@
 #ifndef __SCX_COMPAT_BPF_H
 #define __SCX_COMPAT_BPF_H
 
-static inline u64 __COMPAT_SCX_KICK_IDLE(void)
-{
-	if (bpf_core_enum_value_exists(enum scx_kick_flags, SCX_KICK_IDLE))
-		return SCX_KICK_IDLE;
-	else
-		return 0;
-}
+#define __COMPAT_ENUM_OR_ZERO(__type, __ent)					\
+({										\
+	__type __ret = 0;							\
+	if (bpf_core_enum_value_exists(__type, __ent))				\
+		__ret = __ent;							\
+	__ret;									\
+})
 
 /*
  * %SCX_KICK_IDLE is a later addition. To support both before and after, use
  * %__COMPAT_SCX_KICK_IDLE which becomes 0 on kernels which don't support it.
  */
-#define __COMPAT_SCX_KICK_IDLE __COMPAT_SCX_KICK_IDLE()
+#define __COMPAT_SCX_KICK_IDLE							\
+	__COMPAT_ENUM_OR_ZERO(enum scx_kick_flags, SCX_KICK_IDLE)
 
 /*
  * scx_switch_all() was replaced by %SCX_OPS_SWITCH_PARTIAL. See

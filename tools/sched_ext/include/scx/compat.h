@@ -8,7 +8,6 @@
 #define __SCX_COMPAT_H
 
 #include <bpf/btf.h>
-#include <errno.h>
 
 struct btf *__COMPAT_vmlinux_btf __attribute__((weak));
 
@@ -16,8 +15,7 @@ static inline void __COMPAT_load_vmlinux_btf(void)
 {
 	if (!__COMPAT_vmlinux_btf) {
 		__COMPAT_vmlinux_btf = btf__load_vmlinux_btf();
-		SCX_BUG_ON(!__COMPAT_vmlinux_btf, "btf__load_vmlinux_btf() (%s)",
-			   strerror(errno));
+		SCX_BUG_ON(!__COMPAT_vmlinux_btf, "btf__load_vmlinux_btf()");
 	}
 }
 
@@ -35,14 +33,14 @@ static inline bool __COMPAT_read_enum(const char *type, const char *name, u64 *v
 		return false;
 
 	t = btf__type_by_id(__COMPAT_vmlinux_btf, tid);
-	SCX_BUG_ON(!t, "btf__type_by_id(%d) (%s)", tid, strerror(errno));
+	SCX_BUG_ON(!t, "btf__type_by_id(%d)", tid);
 
 	if (btf_is_enum(t)) {
 		struct btf_enum *e = btf_enum(t);
 
 		for (i = 0; i < BTF_INFO_VLEN(t->info); i++) {
 			n = btf__name_by_offset(__COMPAT_vmlinux_btf, e[i].name_off);
-			SCX_BUG_ON(!n, "btf__name_by_offset() (%s)", strerror(errno));
+			SCX_BUG_ON(!n, "btf__name_by_offset()");
 			if (!strcmp(n, name)) {
 				*v = e[i].val;
 				return true;
@@ -53,7 +51,7 @@ static inline bool __COMPAT_read_enum(const char *type, const char *name, u64 *v
 
 		for (i = 0; i < BTF_INFO_VLEN(t->info); i++) {
 			n = btf__name_by_offset(__COMPAT_vmlinux_btf, e[i].name_off);
-			SCX_BUG_ON(!n, "btf__name_by_offset() (%s)", strerror(errno));
+			SCX_BUG_ON(!n, "btf__name_by_offset()");
 			if (!strcmp(n, name)) {
 				*v = btf_enum64_value(&e[i]);
 				return true;
@@ -64,13 +62,12 @@ static inline bool __COMPAT_read_enum(const char *type, const char *name, u64 *v
 	return false;
 }
 
-static inline u64 __COMPAT_SCX_OPS_SWITCH_PARTIAL(void)
-{
-	u64 v = 0;
-
-	__COMPAT_read_enum("scx_ops_flags", "SCX_OPS_SWITCH_PARTIAL", &v);
-	return v;
-}
+#define __COMPAT_ENUM_OR_ZERO(__type, __ent)					\
+({										\
+	u64 __val = 0;								\
+	__COMPAT_read_enum(__type, __ent, &__val);				\
+	__val;									\
+})
 
 /*
  * An ops flag, %SCX_OPS_SWITCH_PARTIAL, replaced scx_bpf_switch_all() which had
@@ -78,6 +75,7 @@ static inline u64 __COMPAT_SCX_OPS_SWITCH_PARTIAL(void)
  * %__COMPAT_SCX_OPS_SWITCH_PARTIAL and %__COMPAT_scx_bpf_switch_all() defined
  * in compat.bpf.h.
  */
-#define __COMPAT_SCX_OPS_SWITCH_PARTIAL __COMPAT_SCX_OPS_SWITCH_PARTIAL()
+#define __COMPAT_SCX_OPS_SWITCH_PARTIAL						\
+	__COMPAT_ENUM_OR_ZERO("scx_ops_flags", "SCX_OPS_SWITCH_PARTIAL")
 
 #endif
