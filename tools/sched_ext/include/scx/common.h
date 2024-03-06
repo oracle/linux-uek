@@ -66,4 +66,6 @@ typedef int64_t s64;
 			bpf_map__initial_value(skel->maps.elfsec##_##arr, &__sz); \
 	} while (0)
 
+#include "compat.h"
+
 #endif	/* __SCHED_EXT_COMMON_H */

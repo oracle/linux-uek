@@ -16,7 +16,10 @@ static inline void __COMPAT_scx_bpf_kick_cpu_IDLE(s32 cpu)
 		scx_bpf_kick_cpu(cpu, 0);
 }
 
-/* scx_switch_all() was replaced by SCX_OPS_SWITCH_PARTIAL */
+/*
+ * scx_switch_all() was replaced by %SCX_OPS_SWITCH_PARTIAL. See
+ * %__COMPAT_SCX_OPS_SWITCH_PARTIAL in compat.h.
+ */
 void scx_bpf_switch_all(void) __ksym __weak;
 
 static inline void __COMPAT_scx_bpf_switch_all(void)
