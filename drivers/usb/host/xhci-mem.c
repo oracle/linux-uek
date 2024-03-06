@@ -2413,6 +2413,7 @@ int xhci_mem_init(struct xhci_hcd *xhci, gfp_t flags)
 	u64		val_64;
 	u32		page_size, temp;
 	int		i, ret;
+	unsigned int num_segs;
 
 	INIT_LIST_HEAD(&xhci->cmd_list);
 
@@ -2544,8 +2545,11 @@ int xhci_mem_init(struct xhci_hcd *xhci, gfp_t flags)
 	 * the event ring segment table (ERST).  Section 4.9.3.
 	 */
 	xhci_dbg_trace(xhci, trace_xhci_dbg_init, "// Allocating event ring");
-	xhci->event_ring = xhci_ring_alloc(xhci, ERST_NUM_SEGS, 1, TYPE_EVENT,
-					0, flags);
+	num_segs = min_t(unsigned int, 1 << HCS_ERST_MAX(xhci->hcs_params2),
+			 ERST_MAX_SEGS);
+
+	xhci->event_ring = xhci_ring_alloc(xhci, num_segs, 1, TYPE_EVENT,
+					   0, flags);
 	if (!xhci->event_ring)
 		goto fail;
 	if (xhci_check_trb_in_td_math(xhci) < 0)
@@ -2558,7 +2562,7 @@ int xhci_mem_init(struct xhci_hcd *xhci, gfp_t flags)
 	/* set ERST count with the number of entries in the segment table */
 	val = readl(&xhci->ir_set->erst_size);
 	val &= ERST_SIZE_MASK;
-	val |= ERST_NUM_SEGS;
+	val |= xhci->event_ring->num_segs;
 	xhci_dbg_trace(xhci, trace_xhci_dbg_init,
 			"// Write ERST size = %i to ir_set 0 (some bits preserved)",
 			val);
