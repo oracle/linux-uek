@@ -4086,6 +4086,9 @@ static int bpf_scx_init_member(const struct btf_type *t,
 			return -E2BIG;
 		ops->timeout_ms = *(u32 *)(udata + moff);
 		return 1;
+	case offsetof(struct sched_ext_ops, exit_dump_len):
+		ops->exit_dump_len = *(u32 *)(udata + moff);
+		return 1;
 	}
 
 	return 0;

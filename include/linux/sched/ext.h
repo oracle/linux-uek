@@ -599,6 +599,12 @@ struct sched_ext_ops {
 	u32 timeout_ms;
 
 	/**
+	 * exit_dump_len - scx_exit_info.dump buffer length. If 0, the default
+	 * value of 32768 is used.
+	 */
+	u32 exit_dump_len;
+
+	/**
 	 * name - BPF scheduler's name
 	 *
 	 * Must be a non-zero valid BPF object name including only isalnum(),

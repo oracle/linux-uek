@@ -383,18 +383,27 @@ void BPF_STRUCT_OPS(qmap_exit, struct scx_exit_info *ei)
 	uei_record(&uei, ei);
 }
 
+#define QMAP_OPS_INIT_COMMON							\
+	.select_cpu		= (void *)qmap_select_cpu,			\
+	.enqueue		= (void *)qmap_enqueue,				\
+	.dequeue		= (void *)qmap_dequeue,				\
+	.dispatch		= (void *)qmap_dispatch,			\
+	.core_sched_before	= (void *)qmap_core_sched_before,		\
+	.cpu_release		= (void *)qmap_cpu_release,			\
+	.init_task		= (void *)qmap_init_task,			\
+	.init			= (void *)qmap_init,				\
+	.exit			= (void *)qmap_exit,				\
+	.flags			= SCX_OPS_ENQ_LAST,				\
+	.timeout_ms		= 5000U,					\
+	.name			= "qmap",
+
 SEC(".struct_ops.link")
 struct sched_ext_ops qmap_ops = {
-	.select_cpu		= (void *)qmap_select_cpu,
-	.enqueue		= (void *)qmap_enqueue,
-	.dequeue		= (void *)qmap_dequeue,
-	.dispatch		= (void *)qmap_dispatch,
-	.core_sched_before	= (void *)qmap_core_sched_before,
-	.cpu_release		= (void *)qmap_cpu_release,
-	.init_task		= (void *)qmap_init_task,
-	.init			= (void *)qmap_init,
-	.exit			= (void *)qmap_exit,
-	.flags			= SCX_OPS_ENQ_LAST,
-	.timeout_ms		= 5000U,
-	.name			= "qmap",
+	QMAP_OPS_INIT_COMMON
+	/* .exit_dump_len will be set while loading */
+};
+
+SEC(".struct_ops.link")
+struct sched_ext_ops___no_exit_dump_len qmap_ops___no_exit_dump_len = {
+	QMAP_OPS_INIT_COMMON
 };

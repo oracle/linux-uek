@@ -69,6 +69,34 @@ static inline bool __COMPAT_read_enum(const char *type, const char *name, u64 *v
 	__val;									\
 })
 
+static inline bool __COMPAT_struct_has_field(const char *type, const char *field)
+{
+	const struct btf_type *t;
+	const struct btf_member *m;
+	const char *n;
+	s32 tid;
+	int i;
+
+	__COMPAT_load_vmlinux_btf();
+	tid = btf__find_by_name_kind(__COMPAT_vmlinux_btf, type, BTF_KIND_STRUCT);
+	if (tid < 0)
+		return false;
+
+	t = btf__type_by_id(__COMPAT_vmlinux_btf, tid);
+	SCX_BUG_ON(!t, "btf__type_by_id(%d)", tid);
+
+	m = btf_members(t);
+
+	for (i = 0; i < BTF_INFO_VLEN(t->info); i++) {
+		n = btf__name_by_offset(__COMPAT_vmlinux_btf, m[i].name_off);
+		SCX_BUG_ON(!n, "btf__name_by_offset()");
+			if (!strcmp(n, field))
+				return true;
+	}
+
+	return false;
+}
+
 /*
  * An ops flag, %SCX_OPS_SWITCH_PARTIAL, replaced scx_bpf_switch_all() which had
  * to be called from ops.init(). To support both before and after, use both
@@ -78,4 +106,7 @@ static inline bool __COMPAT_read_enum(const char *type, const char *name, u64 *v
 #define __COMPAT_SCX_OPS_SWITCH_PARTIAL						\
 	__COMPAT_ENUM_OR_ZERO("scx_ops_flags", "SCX_OPS_SWITCH_PARTIAL")
 
-#endif
+#define __COMPAT_KERNEL_HAS_OPS_EXIT_DUMP_LEN					\
+	__COMPAT_struct_has_field("sched_ext_ops", "exit_dump_len")
+
+#endif	/* __SCX_COMPAT_H */
