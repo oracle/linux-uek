@@ -55,7 +55,6 @@ enum {
 	TIMER_INTERVAL_NS	= 1 * MS_TO_NS,
 };
 
-const volatile bool switch_partial;
 const volatile s32 central_cpu;
 const volatile u32 nr_cpu_ids = 1;	/* !0 for veristat, set during init */
 const volatile u64 slice_ns = SCX_SLICE_DFL;
@@ -305,9 +304,6 @@ int BPF_STRUCT_OPS_SLEEPABLE(central_init)
 	u32 key = 0;
 	struct bpf_timer *timer;
 	int ret;
-
-	if (!switch_partial)
-		__COMPAT_scx_bpf_switch_all();
 
 	ret = scx_bpf_create_dsq(FALLBACK_DSQ_ID, -1);
 	if (ret)

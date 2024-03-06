@@ -31,7 +31,6 @@ const char help_fmt[] =
 "  -s SLICE_US   Override slice duration\n"
 "  -i INTERVAL   Report interval\n"
 "  -f            Use FIFO scheduling instead of weighted vtime scheduling\n"
-"  -p            Switch only tasks on SCHED_EXT policy intead of all\n"
 "  -h            Display this help and exit\n";
 
 static volatile int exit_req;
@@ -149,9 +148,6 @@ int main(int argc, char **argv)
 			break;
 		case 'f':
 			skel->rodata->fifo_sched = true;
-			break;
-		case 'p':
-			skel->rodata->switch_partial = true;
 			break;
 		case 'h':
 		default:
