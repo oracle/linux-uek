@@ -1230,7 +1230,7 @@ static void ddebug_attach_module_classes(struct ddebug_table *dt,
  * Allocate a new ddebug_table for the given module
  * and add it to the global list.
  */
-static int ddebug_add_module(struct _ddebug_info *di, const char *modname)
+int ddebug_add_module(struct _ddebug_info *di, const char *modname)
 {
 	struct ddebug_table *dt;
 
@@ -1268,6 +1268,7 @@ static int ddebug_add_module(struct _ddebug_info *di, const char *modname)
 	vpr_info("%3u debug prints in module %s\n", di->num_descs, modname);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(ddebug_add_module);
 
 /* helper for ddebug_dyndbg_(boot|module)_param_cb */
 static int ddebug_dyndbg_param_cb(char *param, char *val,
@@ -1321,7 +1322,7 @@ static void ddebug_table_free(struct ddebug_table *dt)
  * Called in response to a module being unloaded.  Removes
  * any ddebug_table's which point at the module.
  */
-static int ddebug_remove_module(const char *mod_name)
+int ddebug_remove_module(const char *mod_name)
 {
 	struct ddebug_table *dt, *nextdt;
 	int ret = -ENOENT;
@@ -1339,6 +1340,7 @@ static int ddebug_remove_module(const char *mod_name)
 		v2pr_info("removed module \"%s\"\n", mod_name);
 	return ret;
 }
+EXPORT_SYMBOL_GPL(ddebug_remove_module);
 
 static int ddebug_module_notify(struct notifier_block *self, unsigned long val,
 				void *data)
