@@ -74,10 +74,10 @@ int main(int argc, char **argv)
 		}
 	}
 
-	SCX_OPS_LOAD(skel, simple_ops, scx_simple);
+	SCX_OPS_LOAD(skel, simple_ops, scx_simple, uei);
 	link = SCX_OPS_ATTACH(skel, simple_ops);
 
-	while (!exit_req && !uei_exited(&skel->bss->uei)) {
+	while (!exit_req && !UEI_EXITED(skel, uei)) {
 		__u64 stats[2];
 
 		read_stats(skel, stats);
@@ -87,7 +87,7 @@ int main(int argc, char **argv)
 	}
 
 	bpf_link__destroy(link);
-	uei_print(&skel->bss->uei);
+	UEI_REPORT(skel, uei);
 	scx_simple__destroy(skel);
 	return 0;
 }

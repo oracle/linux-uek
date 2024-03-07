@@ -70,7 +70,7 @@ int main(int argc, char **argv)
 	RESIZE_ARRAY(data, cpu_gimme_task, skel->rodata->nr_cpu_ids);
 	RESIZE_ARRAY(data, cpu_started_at, skel->rodata->nr_cpu_ids);
 
-	SCX_OPS_LOAD(skel, central_ops, scx_central);
+	SCX_OPS_LOAD(skel, central_ops, scx_central, uei);
 
 	/*
 	 * Affinitize the loading thread to the central CPU, as:
@@ -97,7 +97,7 @@ int main(int argc, char **argv)
 	if (!skel->data->timer_pinned)
 		printf("WARNING : BPF_F_TIMER_CPU_PIN not available, timer not pinned to central\n");
 
-	while (!exit_req && !uei_exited(&skel->bss->uei)) {
+	while (!exit_req && !UEI_EXITED(skel, uei)) {
 		printf("[SEQ %llu]\n", seq++);
 		printf("total   :%10" PRIu64 "    local:%10" PRIu64 "   queued:%10" PRIu64 "  lost:%10" PRIu64 "\n",
 		       skel->bss->nr_total,
@@ -116,7 +116,7 @@ int main(int argc, char **argv)
 	}
 
 	bpf_link__destroy(link);
-	uei_print(&skel->bss->uei);
+	UEI_REPORT(skel, uei);
 	scx_central__destroy(skel);
 	return 0;
 }

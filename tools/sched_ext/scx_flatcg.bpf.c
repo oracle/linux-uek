@@ -58,7 +58,7 @@ const volatile u64 cgrp_slice_ns = SCX_SLICE_DFL;
 const volatile bool fifo_sched;
 
 u64 cvtime_now;
-struct user_exit_info uei;
+UEI_DEFINE(uei);
 
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
@@ -928,7 +928,7 @@ void BPF_STRUCT_OPS(fcg_cgroup_move, struct task_struct *p,
 
 void BPF_STRUCT_OPS(fcg_exit, struct scx_exit_info *ei)
 {
-	uei_record(&uei, ei);
+	UEI_RECORD(uei, ei);
 }
 
 SCX_OPS_DEFINE(flatcg_ops,

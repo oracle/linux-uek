@@ -27,7 +27,7 @@ char _license[] SEC("license") = "GPL";
 const volatile bool fifo_sched;
 
 static u64 vtime_now;
-struct user_exit_info uei;
+UEI_DEFINE(uei);
 
 #define SHARED_DSQ 0
 
@@ -134,7 +134,7 @@ s32 BPF_STRUCT_OPS_SLEEPABLE(simple_init)
 
 void BPF_STRUCT_OPS(simple_exit, struct scx_exit_info *ei)
 {
-	uei_record(&uei, ei);
+	UEI_RECORD(uei, ei);
 }
 
 SCX_OPS_DEFINE(simple_ops,

@@ -35,7 +35,7 @@ const volatile s32 disallow_tgid;
 
 u32 test_error_cnt;
 
-struct user_exit_info uei;
+UEI_DEFINE(uei);
 
 struct qmap {
 	__uint(type, BPF_MAP_TYPE_QUEUE);
@@ -380,7 +380,7 @@ s32 BPF_STRUCT_OPS(qmap_init)
 
 void BPF_STRUCT_OPS(qmap_exit, struct scx_exit_info *ei)
 {
-	uei_record(&uei, ei);
+	UEI_RECORD(uei, ei);
 }
 
 SCX_OPS_DEFINE(qmap_ops,

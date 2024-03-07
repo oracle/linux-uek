@@ -116,7 +116,8 @@ static inline bool __COMPAT_struct_has_field(const char *type, const char *field
  *   it, the value is ignored and a warning is triggered if the value is
  *   requested to be non-zero.
  */
-#define SCX_OPS_LOAD(__skel, __ops_name, __scx_name) ({				\
+#define SCX_OPS_LOAD(__skel, __ops_name, __scx_name, __uei_name) ({		\
+	UEI_SET_SIZE(__skel, __ops_name, __uei_name);				\
 	if (__COMPAT_struct_has_field("sched_ext_ops", "exit_dump_len")) {	\
 		bpf_map__set_autocreate((__skel)->maps.__ops_name, true);	\
 		bpf_map__set_autocreate((__skel)->maps.__ops_name##___no_exit_dump_len, false); \

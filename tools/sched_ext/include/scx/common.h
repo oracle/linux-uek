@@ -17,8 +17,6 @@
 #include <stdint.h>
 #include <errno.h>
 
-#include "user_exit_info.h"
-
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -67,6 +65,7 @@ typedef int64_t s64;
 			bpf_map__initial_value(skel->maps.elfsec##_##arr, &__sz); \
 	} while (0)
 
+#include "user_exit_info.h"
 #include "compat.h"
 
 #endif	/* __SCHED_EXT_COMMON_H */

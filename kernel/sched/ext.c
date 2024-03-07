@@ -21,7 +21,7 @@ enum scx_internal_consts {
 
 	SCX_EXIT_BT_LEN			= 64,
 	SCX_EXIT_MSG_LEN		= 1024,
-	SCX_EXIT_DUMP_LEN		= 32768,
+	SCX_EXIT_DUMP_DFL_LEN		= 32768,
 };
 
 enum scx_ops_enable_state {
@@ -3270,7 +3270,7 @@ static void free_exit_info(struct scx_exit_info *ei)
 	kfree(ei);
 }
 
-static struct scx_exit_info *alloc_exit_info(void)
+static struct scx_exit_info *alloc_exit_info(size_t exit_dump_len)
 {
 	struct scx_exit_info *ei;
 
@@ -3280,7 +3280,7 @@ static struct scx_exit_info *alloc_exit_info(void)
 
 	ei->bt = kcalloc(sizeof(ei->bt[0]), SCX_EXIT_BT_LEN, GFP_KERNEL);
 	ei->msg = kzalloc(SCX_EXIT_MSG_LEN, GFP_KERNEL);
-	ei->dump = kzalloc(SCX_EXIT_DUMP_LEN, GFP_KERNEL);
+	ei->dump = kzalloc(exit_dump_len, GFP_KERNEL);
 
 	if (!ei->bt || !ei->msg || !ei->dump) {
 		free_exit_info(ei);
@@ -3519,7 +3519,7 @@ static void scx_dump_task(struct seq_buf *s, struct task_struct *p, char marker,
 	seq_buf_commit(s, used < avail ? used : -1);
 }
 
-static void scx_dump_state(struct scx_exit_info *ei)
+static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 {
 	const char trunc_marker[] = "\n\n~~~~ TRUNCATED ~~~~\n";
 	unsigned long now = jiffies;
@@ -3528,7 +3528,10 @@ static void scx_dump_state(struct scx_exit_info *ei)
 	char *buf;
 	int cpu;
 
-	seq_buf_init(&s, ei->dump, SCX_EXIT_DUMP_LEN - sizeof(trunc_marker));
+	if (dump_len <= sizeof(trunc_marker))
+		return;
+
+	seq_buf_init(&s, ei->dump, dump_len - sizeof(trunc_marker));
 
 	seq_buf_printf(&s, "%s[%d] triggered exit kind %d:\n  %s (%s)\n\n",
 		       current->comm, current->pid, ei->kind, ei->reason, ei->msg);
@@ -3580,15 +3583,14 @@ static void scx_dump_state(struct scx_exit_info *ei)
 		rq_unlock(rq, &rf);
 	}
 
-	if (seq_buf_has_overflowed(&s)) {
-		used = strlen(seq_buf_str(&s));
-		memcpy(ei->dump + used, trunc_marker, sizeof(trunc_marker));
-	}
+	if (seq_buf_has_overflowed(&s))
+		memcpy(ei->dump + seq_buf_used(&s) - 1, trunc_marker,
+		       sizeof(trunc_marker));
 }
 
 static void scx_ops_error_irq_workfn(struct irq_work *irq_work)
 {
-	scx_dump_state(scx_exit_info);
+	scx_dump_state(scx_exit_info, scx_ops.exit_dump_len);
 	schedule_scx_ops_disable_work();
 }
 
@@ -3678,7 +3680,7 @@ static int scx_ops_enable(struct sched_ext_ops *ops)
 	if (ret < 0)
 		goto err;
 
-	scx_exit_info = alloc_exit_info();
+	scx_exit_info = alloc_exit_info(ops->exit_dump_len);
 	if (!scx_exit_info) {
 		ret = -ENOMEM;
 		goto err_del;
@@ -4087,7 +4089,8 @@ static int bpf_scx_init_member(const struct btf_type *t,
 		ops->timeout_ms = *(u32 *)(udata + moff);
 		return 1;
 	case offsetof(struct sched_ext_ops, exit_dump_len):
-		ops->exit_dump_len = *(u32 *)(udata + moff);
+		ops->exit_dump_len =
+			*(u32 *)(udata + moff) ?: SCX_EXIT_DUMP_DFL_LEN;
 		return 1;
 	}
 
