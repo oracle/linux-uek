@@ -76,6 +76,7 @@ static int thunder_mdiobus_pci_probe(struct pci_dev *pdev,
 				fwnode_handle_put(fwn);
 				break;
 			}
+#if IS_ENABLED(CONFIG_ACPI)
 		} // ACPI case
 		else if (is_acpi_node(fwn)) {
 			LIST_HEAD(resource_list);
@@ -93,6 +94,7 @@ static int thunder_mdiobus_pci_probe(struct pci_dev *pdev,
 			memcpy(&r, entry->res, sizeof(r));
 
 			acpi_dev_free_resource_list(&resource_list);
+ #endif	/* !CONFIG_ACPI */
 		} else {
 			fwnode_handle_put(fwn);
 			break;
@@ -125,8 +127,10 @@ static int thunder_mdiobus_pci_probe(struct pci_dev *pdev,
 
 		if (is_of_node(fwn))
 			err = of_mdiobus_register(bus->mii_bus, to_of_node(fwn));
+#if IS_ENABLED(CONFIG_ACPI_MDIO)
 		else if (is_acpi_node(fwn))
 			err = acpi_mdiobus_register(bus->mii_bus, fwn);
+#endif
 		else
 			err = -EINVAL;
 
