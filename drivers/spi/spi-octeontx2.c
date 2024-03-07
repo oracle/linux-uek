@@ -240,7 +240,7 @@ err:
 static int octeontx2_spi_exec_op(struct spi_mem *mem,
 				 const struct spi_mem_op *op)
 {
-	return -EOPNOTSUPP;
+	return -ENOTSUPP;
 }
 
 static bool octeontx2_spi_supports_op(struct spi_mem *mem,
