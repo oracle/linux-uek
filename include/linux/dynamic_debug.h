@@ -326,6 +326,11 @@ struct kernel_param;
 int param_set_dyndbg_classes(const char *instr, const struct kernel_param *kp);
 int param_get_dyndbg_classes(char *buffer, const struct kernel_param *kp);
 
+int ddebug_add_module(struct _ddebug_info *di, const char *modname);
+#ifdef CONFIG_MODULES
+int ddebug_remove_module(const char *mod_name);
+#endif /* CONFIG_MODULES */
+
 #else
 
 static inline int ddebug_dyndbg_module_param_cb(char *param, char *val,
