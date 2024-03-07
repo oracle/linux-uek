@@ -383,7 +383,7 @@ void BPF_STRUCT_OPS(qmap_exit, struct scx_exit_info *ei)
 	uei_record(&uei, ei);
 }
 
-DEFINE_SCX_OPS(qmap_ops,
+SCX_OPS_DEFINE(qmap_ops,
 	       .select_cpu		= (void *)qmap_select_cpu,
 	       .enqueue			= (void *)qmap_enqueue,
 	       .dequeue			= (void *)qmap_dequeue,

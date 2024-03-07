@@ -41,7 +41,6 @@ static void sigint_handler(int dummy)
 
 int main(int argc, char **argv)
 {
-	bool has_ops_exit_dump_len = __COMPAT_KERNEL_HAS_OPS_EXIT_DUMP_LEN;
 	struct scx_qmap *skel;
 	struct bpf_link *link;
 	int opt;
@@ -53,14 +52,6 @@ int main(int argc, char **argv)
 
 	skel = scx_qmap__open();
 	SCX_BUG_ON(!skel, "Failed to open skel");
-
-	if (has_ops_exit_dump_len) {
-		bpf_map__set_autocreate(skel->maps.qmap_ops, true);
-		bpf_map__set_autocreate(skel->maps.qmap_ops___no_exit_dump_len, false);
-	} else {
-		bpf_map__set_autocreate(skel->maps.qmap_ops, false);
-		bpf_map__set_autocreate(skel->maps.qmap_ops___no_exit_dump_len, true);
-	}
 
 	while ((opt = getopt(argc, argv, "s:e:t:T:l:d:D:ph")) != -1) {
 		switch (opt) {
@@ -85,8 +76,6 @@ int main(int argc, char **argv)
 				skel->rodata->disallow_tgid = getpid();
 			break;
 		case 'D':
-			if (!has_ops_exit_dump_len)
-				fprintf(stderr, "WARNING: kernel doesn't support setting exit dump len\n");
 			skel->struct_ops.qmap_ops->exit_dump_len = strtoul(optarg, NULL, 0);
 			break;
 		case 'p':
@@ -99,14 +88,8 @@ int main(int argc, char **argv)
 		}
 	}
 
-	SCX_BUG_ON(scx_qmap__load(skel), "Failed to load skel");
-
-	if (has_ops_exit_dump_len)
-		link = bpf_map__attach_struct_ops(skel->maps.qmap_ops);
-	else
-		link = bpf_map__attach_struct_ops(skel->maps.qmap_ops___no_exit_dump_len);
-
-	SCX_BUG_ON(!link, "Failed to attach struct_ops");
+	SCX_OPS_LOAD(skel, qmap_ops, scx_qmap);
+	link = SCX_OPS_ATTACH(skel, qmap_ops);
 
 	while (!exit_req && !uei_exited(&skel->bss->uei)) {
 		long nr_enqueued = skel->bss->nr_enqueued;

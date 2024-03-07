@@ -931,21 +931,19 @@ void BPF_STRUCT_OPS(fcg_exit, struct scx_exit_info *ei)
 	uei_record(&uei, ei);
 }
 
-SEC(".struct_ops.link")
-struct sched_ext_ops flatcg_ops = {
-	.select_cpu		= (void *)fcg_select_cpu,
-	.enqueue		= (void *)fcg_enqueue,
-	.dispatch		= (void *)fcg_dispatch,
-	.runnable		= (void *)fcg_runnable,
-	.running		= (void *)fcg_running,
-	.stopping		= (void *)fcg_stopping,
-	.quiescent		= (void *)fcg_quiescent,
-	.init_task		= (void *)fcg_init_task,
-	.cgroup_set_weight	= (void *)fcg_cgroup_set_weight,
-	.cgroup_init		= (void *)fcg_cgroup_init,
-	.cgroup_exit		= (void *)fcg_cgroup_exit,
-	.cgroup_move		= (void *)fcg_cgroup_move,
-	.exit			= (void *)fcg_exit,
-	.flags			= SCX_OPS_CGROUP_KNOB_WEIGHT | SCX_OPS_ENQ_EXITING,
-	.name			= "flatcg",
-};
+SCX_OPS_DEFINE(flatcg_ops,
+	       .select_cpu		= (void *)fcg_select_cpu,
+	       .enqueue			= (void *)fcg_enqueue,
+	       .dispatch		= (void *)fcg_dispatch,
+	       .runnable		= (void *)fcg_runnable,
+	       .running			= (void *)fcg_running,
+	       .stopping		= (void *)fcg_stopping,
+	       .quiescent		= (void *)fcg_quiescent,
+	       .init_task		= (void *)fcg_init_task,
+	       .cgroup_set_weight	= (void *)fcg_cgroup_set_weight,
+	       .cgroup_init		= (void *)fcg_cgroup_init,
+	       .cgroup_exit		= (void *)fcg_cgroup_exit,
+	       .cgroup_move		= (void *)fcg_cgroup_move,
+	       .exit			= (void *)fcg_exit,
+	       .flags			= SCX_OPS_CGROUP_KNOB_WEIGHT | SCX_OPS_ENQ_EXITING,
+	       .name			= "flatcg");

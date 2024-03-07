@@ -343,21 +343,19 @@ void BPF_STRUCT_OPS(central_exit, struct scx_exit_info *ei)
 	uei_record(&uei, ei);
 }
 
-SEC(".struct_ops.link")
-struct sched_ext_ops central_ops = {
-	/*
-	 * We are offloading all scheduling decisions to the central CPU and
-	 * thus being the last task on a given CPU doesn't mean anything
-	 * special. Enqueue the last tasks like any other tasks.
-	 */
-	.flags			= SCX_OPS_ENQ_LAST,
+SCX_OPS_DEFINE(central_ops,
+	       /*
+		* We are offloading all scheduling decisions to the central CPU
+		* and thus being the last task on a given CPU doesn't mean
+		* anything special. Enqueue the last tasks like any other tasks.
+		*/
+	       .flags			= SCX_OPS_ENQ_LAST,
 
-	.select_cpu		= (void *)central_select_cpu,
-	.enqueue		= (void *)central_enqueue,
-	.dispatch		= (void *)central_dispatch,
-	.running		= (void *)central_running,
-	.stopping		= (void *)central_stopping,
-	.init			= (void *)central_init,
-	.exit			= (void *)central_exit,
-	.name			= "central",
-};
+	       .select_cpu		= (void *)central_select_cpu,
+	       .enqueue			= (void *)central_enqueue,
+	       .dispatch		= (void *)central_dispatch,
+	       .running			= (void *)central_running,
+	       .stopping		= (void *)central_stopping,
+	       .init			= (void *)central_init,
+	       .exit			= (void *)central_exit,
+	       .name			= "central");

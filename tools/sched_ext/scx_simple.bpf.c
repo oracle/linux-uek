@@ -137,15 +137,13 @@ void BPF_STRUCT_OPS(simple_exit, struct scx_exit_info *ei)
 	uei_record(&uei, ei);
 }
 
-SEC(".struct_ops.link")
-struct sched_ext_ops simple_ops = {
-	.select_cpu		= (void *)simple_select_cpu,
-	.enqueue		= (void *)simple_enqueue,
-	.dispatch		= (void *)simple_dispatch,
-	.running		= (void *)simple_running,
-	.stopping		= (void *)simple_stopping,
-	.enable			= (void *)simple_enable,
-	.init			= (void *)simple_init,
-	.exit			= (void *)simple_exit,
-	.name			= "simple",
-};
+SCX_OPS_DEFINE(simple_ops,
+	       .select_cpu		= (void *)simple_select_cpu,
+	       .enqueue			= (void *)simple_enqueue,
+	       .dispatch		= (void *)simple_dispatch,
+	       .running			= (void *)simple_running,
+	       .stopping		= (void *)simple_stopping,
+	       .enable			= (void *)simple_enable,
+	       .init			= (void *)simple_init,
+	       .exit			= (void *)simple_exit,
+	       .name			= "simple");

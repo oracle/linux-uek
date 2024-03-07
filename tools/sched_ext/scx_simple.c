@@ -74,10 +74,8 @@ int main(int argc, char **argv)
 		}
 	}
 
-	SCX_BUG_ON(scx_simple__load(skel), "Failed to load skel");
-
-	link = bpf_map__attach_struct_ops(skel->maps.simple_ops);
-	SCX_BUG_ON(!link, "Failed to attach struct_ops");
+	SCX_OPS_LOAD(skel, simple_ops, scx_simple);
+	link = SCX_OPS_ATTACH(skel, simple_ops);
 
 	while (!exit_req && !uei_exited(&skel->bss->uei)) {
 		__u64 stats[2];

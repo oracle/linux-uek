@@ -70,7 +70,7 @@ int main(int argc, char **argv)
 	RESIZE_ARRAY(data, cpu_gimme_task, skel->rodata->nr_cpu_ids);
 	RESIZE_ARRAY(data, cpu_started_at, skel->rodata->nr_cpu_ids);
 
-	SCX_BUG_ON(scx_central__load(skel), "Failed to load skel");
+	SCX_OPS_LOAD(skel, central_ops, scx_central);
 
 	/*
 	 * Affinitize the loading thread to the central CPU, as:
@@ -92,8 +92,7 @@ int main(int argc, char **argv)
 		   skel->rodata->central_cpu, skel->rodata->nr_cpu_ids - 1);
 	CPU_FREE(cpuset);
 
-	link = bpf_map__attach_struct_ops(skel->maps.central_ops);
-	SCX_BUG_ON(!link, "Failed to attach struct_ops");
+	link = SCX_OPS_ATTACH(skel, central_ops);
 
 	if (!skel->data->timer_pinned)
 		printf("WARNING : BPF_F_TIMER_CPU_PIN not available, timer not pinned to central\n");

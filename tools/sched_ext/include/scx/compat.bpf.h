@@ -76,7 +76,8 @@ struct sched_ext_ops___no_exit_dump_len {
 	char name[128];
 };
 
-#define DEFINE_SCX_OPS(__name, ...)						\
+/* define sched_ext_ops, see compat.h::SCX_OPS_LOAD/ATTACH() */
+#define SCX_OPS_DEFINE(__name, ...)						\
 	SEC(".struct_ops.link")							\
 	struct sched_ext_ops __name = {						\
 		__VA_ARGS__,							\
