@@ -26,7 +26,7 @@ const char help_fmt[] =
 "\n"
 "See the top-level comment in .bpf.c for more details.\n"
 "\n"
-"Usage: %s [-s SLICE_US] [-i INTERVAL] [-f] [-p]\n"
+"Usage: %s [-s SLICE_US] [-i INTERVAL] [-f]\n"
 "\n"
 "  -s SLICE_US   Override slice duration\n"
 "  -i INTERVAL   Report interval\n"
@@ -161,12 +161,10 @@ int main(int argc, char **argv)
 	       (double)intv_ts.tv_sec + (double)intv_ts.tv_nsec / 1000000000.0,
 	       dump_cgrps);
 
-	SCX_BUG_ON(scx_flatcg__load(skel), "Failed to load skel");
+	SCX_OPS_LOAD(skel, flatcg_ops, scx_flatcg, uei);
+	link = SCX_OPS_ATTACH(skel, flatcg_ops);
 
-	link = bpf_map__attach_struct_ops(skel->maps.flatcg_ops);
-	SCX_BUG_ON(!link, "Failed to attach struct_ops");
-
-	while (!exit_req && !uei_exited(&skel->bss->uei)) {
+	while (!exit_req && !UEI_EXITED(skel, uei)) {
 		__u64 acc_stats[FCG_NR_STATS];
 		__u64 stats[FCG_NR_STATS];
 		float cpu_util;
@@ -215,7 +213,7 @@ int main(int argc, char **argv)
 	}
 
 	bpf_link__destroy(link);
-	uei_print(&skel->bss->uei);
+	UEI_REPORT(skel, uei);
 	scx_flatcg__destroy(skel);
 	return 0;
 }
