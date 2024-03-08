@@ -438,7 +438,7 @@ hw_access_link_info(struct rvu *rvu, unsigned long arg)
 {
 	struct hw_link_info linfo;
 	struct lmac *lmac;
-	void *cgxd;
+	struct cgx *cgxd;
 
 	if (copy_from_user(&linfo, (void __user *)arg,
 			   sizeof(struct hw_link_info))) {
@@ -446,11 +446,17 @@ hw_access_link_info(struct rvu *rvu, unsigned long arg)
 		return -EFAULT;
 	}
 
-	cgxd = rvu_cgx_pdata(linfo.cgx_id, rvu);
+	if (linfo.cgx_id >= rvu->cgx_cnt_max)
+		return -ENODEV;
+
+	cgxd = rvu->cgx_idmap[linfo.cgx_id];
 	if (!cgxd)
 		return -ENODEV;
 
-	lmac = lmac_pdata(linfo.lmac_id, cgxd);
+	if (linfo.lmac_id >= cgxd->max_lmac_per_mac)
+		return -ENODEV;
+
+	lmac = cgxd->lmac_idmap[linfo.lmac_id];
 	if (!lmac)
 		return -ENODEV;
 
