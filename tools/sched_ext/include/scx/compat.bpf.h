@@ -34,8 +34,6 @@ static inline void __COMPAT_scx_bpf_switch_all(void)
 		scx_bpf_switch_all();
 }
 
-#endif
-
 /*
  * sched_ext_ops.exit_dump_len is a recent addition. Use the following
  * definition to support older kernels. See scx_qmap for usage example.
@@ -86,3 +84,5 @@ struct sched_ext_ops___no_exit_dump_len {
 	struct sched_ext_ops___no_exit_dump_len __name##___no_exit_dump_len = {	\
 		__VA_ARGS__							\
 	};									\
+
+#endif	/* __SCX_COMPAT_BPF_H */
