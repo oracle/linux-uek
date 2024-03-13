@@ -41,6 +41,7 @@
 #include "blk-rq-qos.h"
 
 static DEFINE_PER_CPU(struct list_head, blk_cpu_done);
+static enum cpuhp_state blkmq_cpuhp_state;
 
 static void blk_mq_poll_stats_start(struct request_queue *q);
 static void blk_mq_poll_stats_fn(struct blk_stat_callback *cb);
@@ -2545,6 +2546,9 @@ static int blk_mq_hctx_notify_dead(unsigned int cpu, struct hlist_node *node)
 
 static void blk_mq_remove_cpuhp(struct blk_mq_hw_ctx *hctx)
 {
+	if (!(hctx->flags & BLK_MQ_F_STACKING))
+		cpuhp_state_remove_instance_nocalls(blkmq_cpuhp_state,
+						    &hctx->cpuhp_online);
 	cpuhp_state_remove_instance_nocalls(CPUHP_BLK_MQ_DEAD,
 					    &hctx->cpuhp_dead);
 }
@@ -2604,6 +2608,9 @@ static int blk_mq_init_hctx(struct request_queue *q,
 {
 	hctx->queue_num = hctx_idx;
 
+	if (!(hctx->flags & BLK_MQ_F_STACKING))
+		cpuhp_state_add_instance_nocalls(blkmq_cpuhp_state,
+						 &hctx->cpuhp_online);
 	cpuhp_state_add_instance_nocalls(CPUHP_BLK_MQ_DEAD, &hctx->cpuhp_dead);
 
 	hctx->tags = set->tags[hctx_idx];
@@ -3841,7 +3848,7 @@ EXPORT_SYMBOL(blk_mq_rq_cpu);
 
 static int __init blk_mq_init(void)
 {
-	int i;
+	int i, ret;
 
 	for_each_possible_cpu(i)
 		INIT_LIST_HEAD(&per_cpu(blk_cpu_done, i));
@@ -3852,9 +3859,14 @@ static int __init blk_mq_init(void)
 				  blk_softirq_cpu_dead);
 	cpuhp_setup_state_multi(CPUHP_BLK_MQ_DEAD, "block/mq:dead", NULL,
 				blk_mq_hctx_notify_dead);
-	cpuhp_setup_state_multi(CPUHP_AP_ONLINE_DYN, "block/mq:online",
+	ret = cpuhp_setup_state_multi(CPUHP_AP_ONLINE_DYN, "block/mq:online",
 				blk_mq_hctx_notify_online,
 				blk_mq_hctx_notify_offline);
+	if (ret < 0)
+		return ret;
+
+	blkmq_cpuhp_state = ret;
+
 	return 0;
 }
 subsys_initcall(blk_mq_init);
