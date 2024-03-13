@@ -2215,9 +2215,12 @@ static void set_cpus_allowed_scx(struct task_struct *p,
 
 static void reset_idle_masks(void)
 {
-	/* consider all cpus idle, should converge to the actual state quickly */
-	cpumask_setall(idle_masks.cpu);
-	cpumask_setall(idle_masks.smt);
+	/*
+	 * Consider all online cpus idle. Should converge to the actual state
+	 * quickly.
+	 */
+	cpumask_copy(idle_masks.cpu, cpu_online_mask);
+	cpumask_copy(idle_masks.smt, cpu_online_mask);
 }
 
 void __scx_update_idle(struct rq *rq, bool idle)
