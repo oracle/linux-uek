@@ -12,7 +12,7 @@
 
 char _license[] SEC("license") = "GPL";
 
-struct user_exit_info uei;
+UEI_DEFINE(uei);
 
 s32 BPF_STRUCT_OPS(select_cpu_dispatch_dbl_dsp_select_cpu, struct task_struct *p,
 		   s32 prev_cpu, u64 wake_flags)
@@ -26,7 +26,7 @@ s32 BPF_STRUCT_OPS(select_cpu_dispatch_dbl_dsp_select_cpu, struct task_struct *p
 
 void BPF_STRUCT_OPS(select_cpu_dispatch_dbl_dsp_exit, struct scx_exit_info *ei)
 {
-	uei_record(&uei, ei);
+	UEI_RECORD(uei, ei);
 }
 
 SEC(".struct_ops.link")

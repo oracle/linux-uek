@@ -92,7 +92,7 @@ void scx_test_register(struct scx_test *test);
 #define SCX_ERR(__fmt, ...)						\
 	do {								\
 		fprintf(stderr, "ERR: %s:%d\n", __FILE__, __LINE__);	\
-		fprintf(stderr, __fmt, ##__VA_ARGS__);			\
+		fprintf(stderr, __fmt"\n", ##__VA_ARGS__);			\
 	} while (0)
 
 #define SCX_FAIL(__fmt, ...)						\
