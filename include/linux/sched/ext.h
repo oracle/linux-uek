@@ -56,7 +56,8 @@ enum scx_exit_kind {
 	SCX_EXIT_NONE,
 	SCX_EXIT_DONE,
 
-	SCX_EXIT_UNREG = 64,	/* BPF unregistration */
+	SCX_EXIT_UNREG = 64,	/* User-space initiated unregistration */
+	SCX_EXIT_UNREG_BPF,	/* BPF-initiated unregistration */
 	SCX_EXIT_SYSRQ,		/* requested by 'S' sysrq */
 
 	SCX_EXIT_ERROR = 1024,	/* runtime error, error msg contains details */
@@ -71,6 +72,9 @@ enum scx_exit_kind {
 struct scx_exit_info {
 	/* %SCX_EXIT_* - broad category of the exit reason */
 	enum scx_exit_kind	kind;
+
+	/* exit code if gracefully exiting from BPF */
+	s64			exit_code;
 
 	/* textual representation of the above */
 	const char		*reason;
