@@ -82,6 +82,29 @@ static struct net_device *cnf10k_cpri_get_netdev(int mhab_id, int lmac_id)
 	return netdev;
 }
 
+static void cnf10k_cpri_set_rx_state(struct cnf10k_cpri_ndev_priv *priv,
+				     bool enabled)
+{
+	u64 value;
+
+	value = readq(priv->cpri_reg_base +
+		      CNF10K_CPRIX_RXD_GMII_UL_CBUF_CFG1(priv->cpri_num));
+
+	if (enabled)
+		value |= BIT_ULL(63);
+	else
+		value &= ~BIT_ULL(63);
+
+	netdev_printk(KERN_INFO, priv->netdev,
+		      "%s RX for CPRI %u LMAC %u 0x%llx\n",
+		      (enabled ? "Enabling" : "Disabling"),
+		      priv->cpri_num, priv->lmac_id, value);
+
+	writeq(value,
+	       priv->cpri_reg_base +
+	       CNF10K_CPRIX_RXD_GMII_UL_CBUF_CFG1(priv->cpri_num));
+}
+
 void cnf10k_cpri_enable_intf(int cpri_num)
 {
 	struct cnf10k_cpri_drv_ctx *drv_ctx;
@@ -112,6 +135,7 @@ void cnf10k_bphy_cpri_cleanup(void)
 			cnf10k_cpri_debugfs_remove(drv_ctx);
 			netdev = drv_ctx->netdev;
 			priv = netdev_priv(netdev);
+			cnf10k_cpri_set_rx_state(priv, false);
 			unregister_netdev(netdev);
 			netif_napi_del(&priv->napi);
 			--(priv->cpri_common->refcnt);
