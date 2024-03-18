@@ -1387,6 +1387,7 @@ static int sdhci_cdns_sd6_phy_update_timings(struct sdhci_host *host)
 
 	phy->mode = host->mmc->ios.timing;
 	phy->strobe_dat = false;
+	phy->strobe_cmd = false;
 
 	switch (phy->mode) {
 	case MMC_TIMING_UHS_SDR104:
@@ -1407,11 +1408,10 @@ static int sdhci_cdns_sd6_phy_update_timings(struct sdhci_host *host)
 		phy->tune_cmd = true;
 		phy->ddr = true;
 		phy->strobe_dat = true;
+		if (priv->enhanced_strobe)
+			phy->strobe_cmd = true;
 		break;
 	}
-
-	if (priv->enhanced_strobe)
-		phy->strobe_cmd = true;
 
 	phy->d.phy_sdclk_delay = 2 * t_sdmclk;
 	phy->d.phy_cmd_o_delay = 2 * t_sdmclk + t_sdmclk / 2;
