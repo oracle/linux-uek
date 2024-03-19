@@ -2713,6 +2713,17 @@ int scx_cgroup_can_attach(struct cgroup_taskset *tset)
 
 	cgroup_taskset_for_each(p, css, tset) {
 		struct cgroup *from = tg_cgrp(task_group(p));
+		struct cgroup *to = tg_cgrp(css_tg(css));
+
+		WARN_ON_ONCE(p->scx.cgrp_moving_from);
+
+		/*
+		 * sched_move_task() omits identity migrations. Let's match the
+		 * behavior so that ops.cgroup_prep_move() and ops.cgroup_move()
+		 * always match one-to-one.
+		 */
+		if (from == to)
+			continue;
 
 		if (SCX_HAS_OP(cgroup_prep_move)) {
 			ret = SCX_CALL_OP_RET(SCX_KF_SLEEPABLE, cgroup_prep_move,
@@ -2721,7 +2732,6 @@ int scx_cgroup_can_attach(struct cgroup_taskset *tset)
 				goto err;
 		}
 
-		WARN_ON_ONCE(p->scx.cgrp_moving_from);
 		p->scx.cgrp_moving_from = from;
 	}
 
@@ -2729,9 +2739,7 @@ int scx_cgroup_can_attach(struct cgroup_taskset *tset)
 
 err:
 	cgroup_taskset_for_each(p, css, tset) {
-		if (!p->scx.cgrp_moving_from)
-			break;
-		if (SCX_HAS_OP(cgroup_cancel_move))
+		if (SCX_HAS_OP(cgroup_cancel_move) && p->scx.cgrp_moving_from)
 			SCX_CALL_OP(SCX_KF_SLEEPABLE, cgroup_cancel_move, p,
 				    p->scx.cgrp_moving_from, css->cgroup);
 		p->scx.cgrp_moving_from = NULL;
@@ -2759,12 +2767,13 @@ void scx_move_task(struct task_struct *p)
 	if (!scx_enabled())
 		return;
 
-	if (SCX_HAS_OP(cgroup_move)) {
-		if (WARN_ON_ONCE(!p->scx.cgrp_moving_from))
-			return;
+	/*
+	 * @p must have ops.cgroup_prep_move() called on it and thus
+	 * cgrp_moving_from set.
+	 */
+	if (SCX_HAS_OP(cgroup_move) && !WARN_ON_ONCE(!p->scx.cgrp_moving_from))
 		SCX_CALL_OP_TASK(SCX_KF_UNLOCKED, cgroup_move, p,
 			p->scx.cgrp_moving_from, tg_cgrp(task_group(p)));
-	}
 	p->scx.cgrp_moving_from = NULL;
 }
 
@@ -2782,11 +2791,9 @@ void scx_cgroup_cancel_attach(struct cgroup_taskset *tset)
 		goto out_unlock;
 
 	cgroup_taskset_for_each(p, css, tset) {
-		if (SCX_HAS_OP(cgroup_cancel_move)) {
-			WARN_ON_ONCE(!p->scx.cgrp_moving_from);
+		if (SCX_HAS_OP(cgroup_cancel_move) && p->scx.cgrp_moving_from)
 			SCX_CALL_OP(SCX_KF_SLEEPABLE, cgroup_cancel_move, p,
 				    p->scx.cgrp_moving_from, css->cgroup);
-		}
 		p->scx.cgrp_moving_from = NULL;
 	}
 out_unlock:
