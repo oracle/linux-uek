@@ -28,6 +28,7 @@
 #define SDHCI_CDNS_TUNE_START		16
 #define SDHCI_CDNS_TUNE_STEP		6
 #define SDHCI_CDNS_TUNE_ITERATIONS	40
+#define SDHCI_CDNS_SD6_DEFAULT_DELAY_ELEMENT	8
 
 #define SDHCI_CDNS_HRS00			0x00
 #define SDHCI_CDNS_HRS00_SWR			BIT(0)
@@ -123,6 +124,11 @@
 #define	SDHCI_CDNS_SD6_PHY_DLL_SLAVE_READ_DQS_DELAY		GENMASK(7, 0)
 
 #define SDHCI_CDNS_SD6_PHY_DLL_OBS_REG0				0x201C
+#define SDHCI_CDNS_SD6_PHY_DLL_OBS_REG0_DLL_LOCK		BIT(0)
+#define SDHCI_CDNS_SD6_PHY_DLL_OBS_REG0_DLL_LOCK_MODE		GENMASK(2, 1)
+#define SDHCI_CDNS_SD6_PHY_DLL_OBS_REG0_DLL_UNLOCK_CNT		GENMASK(7, 3)
+#define SDHCI_CDNS_SD6_PHY_DLL_OBS_REG0_DLL_LOCK_VALUE		GENMASK(15, 8)
+
 #define SDHCI_CDNS_SD6_PHY_DLL_OBS_REG1				0x2020
 #define SDHCI_CDNS_SD6_PHY_DLL_OBS_REG2				0x2024
 
@@ -220,6 +226,7 @@ enum sdhci_cdns_sd6_phy_lock_mode {
 	SDHCI_CDNS_SD6_PHY_LOCK_MODE_FULL_CLK = 0,
 	SDHCI_CDNS_SD6_PHY_LOCK_MODE_HALF_CLK = 2,
 	SDHCI_CDNS_SD6_PHY_LOCK_MODE_SATURATION = 3,
+	SDHCI_CDNS_SD6_PHY_LOCK_MODE_UNITIALIZED = 0xff,
 };
 
 struct sdhci_cdns_sd6_phy_timings {
@@ -329,6 +336,11 @@ struct sdhci_cdns_sd6_phy {
 	int mode;
 	int t_sdclk;
 };
+
+static int sdhci_cdns_sd6_get_dll_parameters(struct sdhci_cdns_priv *priv,
+					     enum sdhci_cdns_sd6_phy_lock_mode *lock_mode,
+					     bool *locked,
+					     u8 *dll_lock_value);
 
 static void init_hs(struct sdhci_cdns_sd6_phy_timings *t, int t_sdclk)
 {
@@ -516,12 +528,80 @@ static void sdhci_cdns_sd6_writeb(struct sdhci_host *host, u8 val, int reg)
 	writeb(val, host->ioaddr + reg);
 }
 
-static int sdhci_cdns_sd6_phy_lock_dll(struct sdhci_cdns_sd6_phy *phy)
+static void *sdhci_cdns_priv(struct sdhci_host *host)
 {
-	u32 delay_element = phy->d.delay_element_org;
-	u32 delay_elements_in_sdmclk;
-	enum sdhci_cdns_sd6_phy_lock_mode mode;
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 
+	return sdhci_pltfm_priv(pltfm_host);
+}
+
+static int sdhci_cdns_sd6_phy_lock_dll(struct sdhci_cdns_priv *priv)
+{
+	struct sdhci_cdns_sd6_phy *phy = priv->phy;
+	u32 delay_element = phy->d.delay_element;
+	u32 delay_elements_in_sdmclk;
+	int ret;
+	enum sdhci_cdns_sd6_phy_lock_mode mode;
+	bool locked = false;
+	uint8_t dll_lock_value = 0xff;
+
+	ret = sdhci_cdns_sd6_get_dll_parameters(priv, &mode, &locked,
+						&dll_lock_value);
+	if (ret) {
+		pr_err("%s: Could not get DLL parameters\n", __func__);
+		return ret;
+	}
+
+	if (locked) {
+		/*
+		 * If we have lock then we use units of 1/256 or 1/128
+		 * depending if we're in full or half clock mode.
+		 * For now, saturation mode is treated like full clock mode
+		 * though this may be incorrect.
+		 */
+		if (mode == SDHCI_CDNS_SD6_PHY_LOCK_MODE_FULL_CLK) {
+			delay_elements_in_sdmclk = 256;
+			phy->vars.dll_max_value = 255;
+			tune_val_step = SDHCI_CDNS_TUNE_STEP;
+		} else if (mode == SDHCI_CDNS_SD6_PHY_LOCK_MODE_HALF_CLK) {
+			delay_elements_in_sdmclk = 128;
+			phy->vars.dll_max_value = 127;
+			tune_val_step = SDHCI_CDNS_TUNE_STEP / 2;
+		} else {
+			delay_elements_in_sdmclk = 256;
+			phy->vars.dll_max_value = 255;
+			tune_val_step = SDHCI_CDNS_TUNE_STEP;
+		}
+		/* No bypass if we're locked */
+		phy->settings.cp_dll_bypass_mode = 0;
+		phy->vars.t_sdmclk_calc = phy->t_sdmclk;
+	} else {
+		/*
+		 * Since we do not have a DLL lock we must use delay elements.
+		 * The delay element count for a 250MHz clock period was
+		 * determined earlier, so we calculate the delay in terms of
+		 * the number of delay elements.
+		 */
+		delay_elements_in_sdmclk = DIV_ROUND_UP(phy->t_sdmclk, delay_element);
+		if (delay_elements_in_sdmclk > 256) {
+			delay_element *= 2;
+			delay_elements_in_sdmclk = DIV_ROUND_UP(phy->t_sdmclk,
+								delay_element);
+
+			if (delay_elements_in_sdmclk > 256) {
+				delay_elements_in_sdmclk = 256;
+			}
+			mode = SDHCI_CDNS_SD6_PHY_LOCK_MODE_HALF_CLK;
+			phy->vars.dll_max_value = 127;
+		} else {
+			mode = SDHCI_CDNS_SD6_PHY_LOCK_MODE_FULL_CLK;
+			phy->vars.dll_max_value = 255;
+		}
+		/* Bypass if no lock */
+		phy->settings.cp_dll_bypass_mode = 1;
+		phy->vars.t_sdmclk_calc = delay_element * delay_elements_in_sdmclk;
+		phy->d.delay_element = delay_element;
+	}
 	delay_elements_in_sdmclk = DIV_ROUND_UP(phy->t_sdmclk, delay_element);
 	if (delay_elements_in_sdmclk > 256) {
 		delay_element *= 2;
@@ -554,10 +634,12 @@ static void sdhci_cdns_sd6_phy_dll_bypass(struct sdhci_cdns_sd6_phy *phy)
 		SDHCI_CDNS_SD6_PHY_LOCK_MODE_SATURATION;
 }
 
-static void sdhci_cdns_sd6_phy_configure_dll(struct sdhci_cdns_sd6_phy *phy)
+static void sdhci_cdns_sd6_phy_configure_dll(struct sdhci_cdns_priv *priv)
 {
+	struct sdhci_cdns_sd6_phy *phy = priv->phy;
+
 	if (phy->settings.sdhc_extended_wr_mode == 0) {
-		if (sdhci_cdns_sd6_phy_lock_dll(phy) == 0)
+		if (sdhci_cdns_sd6_phy_lock_dll(priv) == 0)
 			return;
 	}
 	sdhci_cdns_sd6_phy_dll_bypass(phy);
@@ -1138,6 +1220,121 @@ static inline void sdhci_cdns_sd6_dump(struct sdhci_cdns_priv *priv,
 
 #endif
 
+static int sdhci_cdns_sd6_get_dll_parameters(struct sdhci_cdns_priv *priv,
+					     enum sdhci_cdns_sd6_phy_lock_mode *lock_mode,
+					     bool *locked,
+					     u8 *dll_lock_value)
+{
+	int timeout_value = 1000;
+	int reg;
+	u8 tmp_lock_value = 0;
+
+	*dll_lock_value = 0xff;
+
+	do {
+		reg = sdhci_cdns_sd6_read_phy_reg(priv, SDHCI_CDNS_SD6_PHY_DLL_OBS_REG0);
+		*locked = !!FIELD_GET(SDHCI_CDNS_SD6_PHY_DLL_OBS_REG0_DLL_LOCK, reg);
+		*lock_mode = FIELD_GET(SDHCI_CDNS_SD6_PHY_DLL_OBS_REG0_DLL_LOCK_MODE, reg);
+		tmp_lock_value = FIELD_GET(SDHCI_CDNS_SD6_PHY_DLL_OBS_REG0_DLL_LOCK_VALUE, reg);
+
+		if (*dll_lock_value != tmp_lock_value)
+			*dll_lock_value = tmp_lock_value;
+		else
+			return 0;
+	} while (timeout_value-- > 0);
+
+	return -1;
+}
+
+/*
+ * Determine the number of delay elements to calculate timing delays when
+ * the DLL is not able to be locked.  The DLL should always lock at
+ * 250MHz so we count the number of delay elements within the clock
+ * period.  If for some reason there is no lock then we return a default
+ * value.
+ *
+ * The delay element value should only be used when cp_dll_bypass_mode=1,
+ * otherwise units of 1/256 clock period are used.
+ */
+static int sdhci_cdns_sd6_get_delay_element(struct sdhci_host *host)
+{
+	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
+	struct sdhci_cdns_sd6_phy *phy = priv->phy;
+	int timeout_counter = 1000;
+	u32 delay_element = 0xff;
+	enum sdhci_cdns_sd6_phy_lock_mode lock_mode = SDHCI_CDNS_SD6_PHY_LOCK_MODE_UNITIALIZED;
+	bool locked = false;
+	u32 reg = 0;
+	u8 dll_lock_value = 0xff;
+
+	phy->settings.cp_dll_bypass_mode = 0;
+
+	/* Setup the registers for 250Mhz clock at HS400 and wait for the DLL lock value */
+	sdhci_cdns_sd6_write_phy_reg(priv, SDHCI_CDNS_SD6_PHY_DQS_TIMING, 0x780000);
+	sdhci_cdns_sd6_write_phy_reg(priv, SDHCI_CDNS_SD6_PHY_GATE_LPBK, 0x81a00040);
+	sdhci_cdns_sd6_write_phy_reg(priv, SDHCI_CDNS_SD6_PHY_DLL_MASTER, 0x200004);
+	sdhci_cdns_sd6_write_phy_reg(priv, SDHCI_CDNS_SD6_PHY_DLL_SLAVE, 0x404000);
+	sdhci_cdns_sd6_write_phy_reg(priv, SDHCI_CDNS_SD6_PHY_CTRL, 0x4000);
+	sdhci_cdns_sd6_write_phy_reg(priv, SDHCI_CDNS_SD6_PHY_DQ_TIMING, 0x1);
+
+	/* turn on internal clock */
+	reg = sdhci_cdns_sd6_readw(host, SDHCI_CLOCK_CONTROL);
+	reg |= SDHCI_CLOCK_INT_EN;
+	sdhci_cdns_sd6_writew(host, reg, SDHCI_CLOCK_CONTROL);
+	/* wait for it to stabilize */
+	do {
+		reg = sdhci_cdns_sd6_readw(host, SDHCI_CLOCK_CONTROL);
+		udelay(1);
+	} while (!(reg & SDHCI_CLOCK_INT_STABLE) && (timeout_counter-- > 0));
+
+	if (!timeout_counter) {	/* should never happen */
+		pr_err("SDHCI internal clock unstable\n");
+		return -1;
+	}
+	reg = sdhci_cdns_sd6_readw(host, SDHCI_CLOCK_CONTROL);
+	reg &= ~0xffc0;
+	reg |= 0x100;	/* Set SDCFSL clock divider to 1 */
+	sdhci_cdns_sd6_writew(host, reg, SDHCI_CLOCK_CONTROL);
+
+	/* 8-bit burst, 4 transfers */
+	writel(0x30004,  priv->hrs_addr + SDHCI_CDNS_HRS02);
+	/* HS400 mode */
+	writel(SDHCI_CDNS_HRS06_MODE_MMC_HS400, priv->hrs_addr + SDHCI_CDNS_HRS06);
+
+	/* Reset PHY */
+	writel(0xf1c00003, priv->hrs_addr + SDHCI_CDNS_HRS09);
+	/* Wait for init to complete */
+	do {
+		reg = readl(priv->hrs_addr + SDHCI_CDNS_HRS09);
+	} while (!(reg & SDHCI_CDNS_HRS09_PHY_INIT_COMPLETE));
+
+	mdelay(1);
+	if (sdhci_cdns_sd6_get_dll_parameters(priv, &lock_mode, &locked,
+					      &dll_lock_value)) {
+		pr_err("%s: Error getting DLL parameters\n", __func__);
+		return -1;
+	}
+
+	if (locked) {
+		if (lock_mode == SDHCI_CDNS_SD6_PHY_LOCK_MODE_FULL_CLK) {
+			delay_element = DIV_ROUND_UP(4000, dll_lock_value + 1);
+			tune_val_step = SDHCI_CDNS_TUNE_STEP;
+		} else if (lock_mode == SDHCI_CDNS_SD6_PHY_LOCK_MODE_HALF_CLK) {
+			delay_element = DIV_ROUND_UP(2000, dll_lock_value + 1);
+			tune_val_step = SDHCI_CDNS_TUNE_STEP / 2;
+		} else {
+			delay_element = SDHCI_CDNS_SD6_DEFAULT_DELAY_ELEMENT;
+			tune_val_step = SDHCI_CDNS_TUNE_STEP;
+			phy->settings.cp_dll_bypass_mode = 1;
+		}
+	} else {
+		delay_element = SDHCI_CDNS_SD6_DEFAULT_DELAY_ELEMENT;
+		tune_val_step = SDHCI_CDNS_TUNE_STEP;
+		phy->settings.cp_dll_bypass_mode = 1;
+	}
+	return delay_element;
+}
+
 static
 int sdhci_cdns_sd6_get_delay_params(struct device *dev,
 				    struct sdhci_cdns_priv *priv)
@@ -1145,9 +1342,6 @@ int sdhci_cdns_sd6_get_delay_params(struct device *dev,
 	struct sdhci_cdns_sd6_phy *phy = priv->phy;
 	int ret;
 
-	device_property_read_u32(dev, "cdns,iocell_input_delay", &phy->d.iocell_input_delay);
-	device_property_read_u32(dev, "cdns,iocell_output_delay", &phy->d.iocell_output_delay);
-	device_property_read_u32(dev, "cdns,delay_element", &phy->d.delay_element);
 	ret = device_property_read_u32(dev, "cdns,read_dqs_cmd_delay",
 				       &phy->settings.cp_read_dqs_cmd_delay);
 	if (ret)
@@ -1321,13 +1515,6 @@ static int sdhci_cdns_sd6_phy_init(struct sdhci_cdns_priv *priv)
 	return 0;
 }
 
-static void *sdhci_cdns_priv(struct sdhci_host *host)
-{
-	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-
-	return sdhci_pltfm_priv(pltfm_host);
-}
-
 static int sdhci_cdns_sd6_set_tune_val(struct sdhci_host *host,
 				       unsigned int val)
 {
@@ -1427,7 +1614,7 @@ static int sdhci_cdns_sd6_phy_update_timings(struct sdhci_host *host)
 
 	phy->settings.cp_gate_cfg_always_on = 1;
 
-	sdhci_cdns_sd6_phy_configure_dll(phy);
+	sdhci_cdns_sd6_phy_configure_dll(priv);
 
 	sdhci_cdns_sd6_phy_calc_settings(phy);
 
@@ -1513,6 +1700,7 @@ static int sdhci_cdns_sd6_phy_probe(struct platform_device *pdev,
 				    struct sdhci_cdns_priv *priv)
 {
 	struct device *dev = &pdev->dev;
+	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_cdns_sd6_phy *phy;
 	u32 val;
 	struct clk *clk;
@@ -1522,6 +1710,8 @@ static int sdhci_cdns_sd6_phy_probe(struct platform_device *pdev,
 	phy = devm_kzalloc(dev, sizeof(*phy), GFP_KERNEL);
 	if (!phy)
 		return -ENOMEM;
+
+	priv->phy = phy;
 
 	if (!has_acpi_companion(dev)) {
 		clk = devm_clk_get(dev, "sdmclk");
@@ -1560,11 +1750,15 @@ static int sdhci_cdns_sd6_phy_probe(struct platform_device *pdev,
 
 	ret = device_property_read_u32(dev, "cdns,delay_element",
 				       &phy->d.delay_element);
-	if (ret)
-		phy->d.delay_element = 24;
+	if (ret) {
+		ret = sdhci_cdns_sd6_get_delay_element(host);
+		if (ret < 0)
+			return ret;
+		else
+			phy->d.delay_element = ret;
+	}
 
-	ret = device_property_read_string(dev, "cdns,mode",
-					  &mode_name);
+	ret = device_property_read_string(dev, "cdns,mode", &mode_name);
 	if (!ret) {
 		if (!strcmp("emmc_sdr", mode_name))
 			phy->mode = MMC_TIMING_MMC_HS;
@@ -1606,8 +1800,6 @@ static int sdhci_cdns_sd6_phy_probe(struct platform_device *pdev,
 		phy->t_sdclk = 10000;
 		break;
 	}
-
-	priv->phy = phy;
 
 	sdhci_cdns_sd6_get_delay_params(dev, priv);
 
