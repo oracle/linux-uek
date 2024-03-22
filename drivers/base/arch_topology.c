@@ -716,8 +716,12 @@ const struct cpumask *cpu_coregroup_mask(int cpu)
 	 * then remove MC as redundant with CLS if SCHED_CLUSTER is enabled.
 	 */
 	if (IS_ENABLED(CONFIG_SCHED_CLUSTER) &&
-	    cpumask_subset(core_mask, &cpu_topology[cpu].cluster_sibling))
-		core_mask = &cpu_topology[cpu].cluster_sibling;
+	    cpumask_subset(core_mask, &cpu_topology[cpu].cluster_sibling)) {
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		if (static_branch_unlikely(&cls_enabled))
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+			core_mask = &cpu_topology[cpu].cluster_sibling;
+	}
 
 	return core_mask;
 }

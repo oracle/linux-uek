@@ -14,6 +14,7 @@
 #include <linux/sched/mm.h>
 #include <linux/sched/hotplug.h>
 #include <linux/sched/task_stack.h>
+#include <linux/sched/topology.h>
 #include <linux/interrupt.h>
 #include <linux/cache.h>
 #include <linux/profile.h>
@@ -435,6 +436,20 @@ static void __init hyp_mode_check(void)
 	}
 }
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+static struct sched_domain_topology_level default_nocls_topology[] = {
+#ifdef CONFIG_SCHED_SMT
+	SDTL_INIT(cpu_smt_mask, cpu_smt_flags, SMT),
+#endif
+
+#ifdef CONFIG_SCHED_MC
+	SDTL_INIT(cpu_coregroup_mask, cpu_core_flags, MC),
+#endif
+	SDTL_INIT(cpu_cpu_mask, NULL, PKG),
+	{ NULL, },
+};
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 void __init smp_cpus_done(unsigned int max_cpus)
 {
 	pr_info("SMP: Total of %d processors activated.\n", num_online_cpus());
@@ -442,6 +457,12 @@ void __init smp_cpus_done(unsigned int max_cpus)
 	setup_system_features();
 	setup_user_features();
 	mark_linear_text_alias_ro();
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	/* Disable CLS by default, enable it only via uek=cls */
+	if (!static_branch_unlikely(&cls_enabled))
+		set_sched_topology(default_nocls_topology);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 }
 
 void __init smp_prepare_boot_cpu(void)
