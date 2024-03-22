@@ -20,7 +20,9 @@ MODULE_LICENSE("GPL");
 MODULE_VERSION(UEK_MISC_VER);
 
 DEFINE_STATIC_KEY_FALSE(on_exadata);
+DEFINE_STATIC_KEY_FALSE(cls_enabled);
 EXPORT_SYMBOL_GPL(on_exadata);
+EXPORT_SYMBOL_GPL(cls_enabled);
 
 /* Override to disable optimizations on Exadata systems. */
 static bool exadata_disable;
@@ -35,6 +37,9 @@ static int __init uek_params(char *str)
 		return 1;
 	} else if ((strncmp(str, "noexadata", 9) == 0)) {
 		exadata_disable = true;
+		return 1;
+	} else if (strncmp(str, "cls", 3) == 0) {
+		static_branch_enable(&cls_enabled);
 		return 1;
 	}
 
