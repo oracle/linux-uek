@@ -747,7 +747,7 @@ const struct cpumask *cpu_coregroup_mask(int cpu)
 	 * extend core_mask to cluster_siblings. The sched domain builder will
 	 * then remove MC as redundant with CLS if SCHED_CLUSTER is enabled.
 	 */
-	if (IS_ENABLED(CONFIG_SCHED_CLUSTER) &&
+	if (IS_ENABLED(CONFIG_SCHED_CLUSTER) && static_branch_unlikely(&cls_enabled) &&
 	    cpumask_subset(core_mask, &cpu_topology[cpu].cluster_sibling))
 		core_mask = &cpu_topology[cpu].cluster_sibling;
 
