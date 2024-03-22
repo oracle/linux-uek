@@ -10,6 +10,7 @@
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 DECLARE_STATIC_KEY_FALSE(on_exadata);
+DECLARE_STATIC_KEY_FALSE(cls_enabled);
 extern bool uek_runs_in_kvm(void);
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
