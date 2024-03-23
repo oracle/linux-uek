@@ -463,6 +463,13 @@ loop:
 	memcpy_fromio(&rec, ring->records + tail, sizeof(rec));
 
 	type = octeontx_edac_severity(rec.error_severity);
+	if (type == HW_EVENT_ERR_FATAL || type == HW_EVENT_ERR_UNCORRECTED) {
+		if (IS_ENABLED(CONFIG_MEMORY_FAILURE))
+			memory_failure(PHYS_PFN(rec.mem.physical_addr), 0);
+		else
+			otx_printk(KERN_ALERT, "PFN 0x%lx not offlined/poisoned, kernel might crash!\n",
+				 PHYS_PFN(rec.mem.physical_addr));
+	}
 
 	octeontx_edac_make_error_desc(&rec.mem, msg, sizeof(msg));
 
