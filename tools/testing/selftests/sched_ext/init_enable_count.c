@@ -23,8 +23,8 @@ open_load_prog(bool global)
 	skel = init_enable_count__open();
 	SCX_BUG_ON(!skel, "Failed to open skel");
 
-	if (global)
-		skel->rodata->switch_all = global;
+	if (!global)
+		skel->struct_ops.init_enable_count_ops->flags |= __COMPAT_SCX_OPS_SWITCH_PARTIAL;
 
 	SCX_BUG_ON(init_enable_count__load(skel), "Failed to load skel");
 
@@ -67,6 +67,13 @@ static enum scx_test_status run_test(bool global)
 		SCX_FAIL_IF(status != 0, "Pre-forked child %d exited with status %d\n", i,
 			    status);
 	}
+
+	bpf_link__destroy(link);
+	SCX_GE(skel->bss->init_task_cnt, num_pre_forks);
+	SCX_GE(skel->bss->exit_task_cnt, num_pre_forks);
+
+	link = bpf_map__attach_struct_ops(skel->maps.init_enable_count_ops);
+	SCX_FAIL_IF(!link, "Failed to attach struct_ops");
 
 	/* SCHED_EXT children */
 	for (i = 0; i < num_children; i++) {
@@ -113,7 +120,7 @@ static enum scx_test_status run_test(bool global)
 			    status);
 	}
 
-	sleep(1);
+	bpf_link__destroy(link);
 
 	SCX_GE(skel->bss->init_task_cnt, 2 * num_children);
 	SCX_GE(skel->bss->exit_task_cnt, 2 * num_children);
@@ -134,7 +141,6 @@ static enum scx_test_status run_test(bool global)
 	SCX_GT(skel->bss->init_transition_cnt, skel->bss->init_fork_cnt);
 	SCX_GE(skel->bss->init_fork_cnt, 2 * num_children);
 
-	bpf_link__destroy(link);
 	init_enable_count__destroy(skel);
 
 	return SCX_TEST_PASS;

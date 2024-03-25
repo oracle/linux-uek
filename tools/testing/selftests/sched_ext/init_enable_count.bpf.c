@@ -14,7 +14,6 @@ char _license[] SEC("license") = "GPL";
 
 u64 init_task_cnt, exit_task_cnt, enable_cnt, disable_cnt;
 u64 init_fork_cnt, init_transition_cnt;
-volatile const bool switch_all;
 
 s32 BPF_STRUCT_OPS_SLEEPABLE(cnt_init_task, struct task_struct *p,
 			     struct scx_init_task_args *args)
