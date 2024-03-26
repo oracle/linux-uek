@@ -706,10 +706,14 @@ struct sk_buff {
 		struct list_head	list;
 	};
 
+#ifdef __GENKSYMS__
 	union {
 		struct sock		*sk;
 		int			ip_defrag_offset;
 	};
+#else
+	struct sock		*sk;
+#endif
 
 	union {
 		ktime_t		tstamp;
