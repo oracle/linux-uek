@@ -326,6 +326,7 @@ kernel/drivers/vdpa/virtio_pci/vp_vdpa.ko
 kernel/drivers/vfio/pci/mlx5/mlx5-vfio-pci.ko
 kernel/drivers/vfio/pci/vfio-pci-core.ko
 kernel/drivers/vfio/pci/vfio-pci.ko
+kernel/drivers/vfio/pci/virtio/virtio-vfio-pci.ko
 kernel/drivers/vhost/vhost_iotlb.ko
 kernel/drivers/vhost/vhost.ko
 kernel/drivers/vhost/vhost_net.ko
