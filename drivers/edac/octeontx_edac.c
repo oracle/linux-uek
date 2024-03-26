@@ -616,6 +616,69 @@ exit:
 	mutex_unlock(&ghes->lock);
 }
 
+static void octeontx_edac_gic_wq(struct work_struct *work)
+{
+	struct delayed_work *dw = to_delayed_work(work);
+	struct edac_device_ctl_info *edac_dev =
+			container_of(dw, struct edac_device_ctl_info, work);
+	struct octeontx_edac_pvt *pvt = edac_dev->pvt_info;
+	struct octeontx_edac *ghes = pvt->ghes;
+	struct octeontx_ghes_ring *ring = ghes->ring;
+	struct octeontx_ghes_record rec;
+	struct cper_sec_platform_err *plat_err;
+	struct cper_sec_plat_gic *gicerr;
+	enum hw_event_mc_err_type type;
+	u32 head = 0;
+	u32 tail = 0;
+	char msg[SIZE];
+	char *p = NULL;
+
+	mutex_lock(&ghes->lock);
+
+loop:
+	head = ring->head;
+	tail = ring->tail;
+
+	/*Ensure that head updated*/
+	rmb();
+
+	if (head == tail)
+		goto exit;
+
+	memcpy_fromio(&rec, ring->records + tail, sizeof(rec));
+
+	type = octeontx_edac_severity(rec.error_severity);
+
+	p = msg;
+	plat_err = &rec.gic;
+	gicerr = &plat_err->perr.gic;
+
+	p += snprintf(p, SIZE - (p - msg), "vbits=0x%x ", gicerr->validation_bits);
+	p += snprintf(p, SIZE - (p - msg), "type 0x%x sev %d code 0x%x ",
+			gicerr->error_type, gicerr->error_sev, gicerr->error_code);
+	p += snprintf(p, SIZE - (p - msg), "misc0=0x%llx misc1 0x%llx addr 0x%llx ",
+			gicerr->misc0, gicerr->misc1, gicerr->erraddr);
+
+	if (p < msg + SIZE)
+		*p = '\0';
+
+	++tail;
+	ring->tail = tail % ring->size;
+
+	/*Ensure that tail updated*/
+	wmb();
+
+	if (type == HW_EVENT_ERR_FATAL || type == HW_EVENT_ERR_UNCORRECTED)
+		edac_device_handle_ue(edac_dev, 0, 0, msg);
+	else
+		edac_device_handle_ce(edac_dev, 0, 0, msg);
+
+	if (head != tail)
+		goto loop;
+
+exit:
+	mutex_unlock(&ghes->lock);
+}
 
 static void octeontx_edac_enable_msix(struct pci_dev *pdev)
 {
@@ -881,7 +944,11 @@ static int octeontx_edac_device_init(struct platform_device *pdev,
 	if (edac_device_add_device(edac_dev))
 		goto err0;
 
-	INIT_DELAYED_WORK(&edac_dev->work, octeontx_edac_device_wq);
+	if (strcmp(ghes->name, "gic") == 0)
+		INIT_DELAYED_WORK(&edac_dev->work, octeontx_edac_gic_wq);
+	else
+		INIT_DELAYED_WORK(&edac_dev->work, octeontx_edac_device_wq);
+
 	edac_stop_work(&edac_dev->work);
 
 	ret = octeontx_sdei_register(ghes, octeontx_device_sdei_callback);

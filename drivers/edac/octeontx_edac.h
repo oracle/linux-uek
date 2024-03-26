@@ -23,6 +23,26 @@
 #define SIZE	256
 #define NAME_SZ	8
 
+struct cper_sec_plat_gic {
+	uint8_t validation_bits;
+	uint8_t error_type;
+	uint8_t error_sev;
+	uint8_t reserved0;
+	uint32_t error_code;
+	uint64_t misc0;
+	uint64_t misc1;
+	uint64_t erraddr;
+};
+
+struct cper_sec_platform_err {
+	struct cper_sec_fw_err_rec_ref fwrec;
+	uint32_t module_id;
+	uint32_t reserved0;
+	union {
+		struct cper_sec_plat_gic gic;
+	} perr;
+};
+
 struct processor_error {
 	struct cper_sec_proc_arm desc;
 	struct cper_arm_err_info info;
@@ -32,6 +52,7 @@ struct octeontx_ghes_record {
 	union {
 		struct processor_error  core;
 		struct cper_sec_mem_err mem;
+		struct cper_sec_platform_err gic;
 	};
 	u32 error_severity;
 	char msg[32];
