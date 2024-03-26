@@ -450,8 +450,8 @@ static void thunderx_gpio_pinsel(struct device *dev,
 	npins = rlen / 2;
 
 	for (i = 0; i < npins; i++) {
-		pin = pinsel++;
-		sel = pinsel++;
+		pin = *pinsel++;
+		sel = *pinsel++;
 		dev_info(dev, "Set GPIO pin %d CFG register to %x\n", pin, sel);
 		writeq(sel, txgpio->register_base + bit_cfg_reg(pin));
 	}
