@@ -3310,7 +3310,9 @@ static const char *scx_exit_reason(enum scx_exit_kind kind)
 {
 	switch (kind) {
 	case SCX_EXIT_UNREG:
-		return "BPF scheduler unregistered";
+		return "Scheduler unregistered from user space";
+	case SCX_EXIT_UNREG_BPF:
+		return "Scheduler unregistered from BPF";
 	case SCX_EXIT_SYSRQ:
 		return "disabled by sysrq-S";
 	case SCX_EXIT_ERROR:
@@ -3612,8 +3614,9 @@ static void scx_ops_error_irq_workfn(struct irq_work *irq_work)
 
 static DEFINE_IRQ_WORK(scx_ops_error_irq_work, scx_ops_error_irq_workfn);
 
-__printf(2, 3) void scx_ops_error_kind(enum scx_exit_kind kind,
-				       const char *fmt, ...)
+__printf(3, 4) void scx_ops_exit_kind(enum scx_exit_kind kind,
+				      s64 exit_code,
+				      const char *fmt, ...)
 {
 	struct scx_exit_info *ei = scx_exit_info;
 	int none = SCX_EXIT_NONE;
@@ -3622,11 +3625,14 @@ __printf(2, 3) void scx_ops_error_kind(enum scx_exit_kind kind,
 	if (!atomic_try_cmpxchg(&scx_exit_kind, &none, kind))
 		return;
 
-	ei->bt_len = stack_trace_save(ei->bt, SCX_EXIT_BT_LEN, 1);
+	if (kind >= SCX_EXIT_ERROR)
+		ei->bt_len = stack_trace_save(ei->bt, SCX_EXIT_BT_LEN, 1);
 
 	va_start(args, fmt);
 	vscnprintf(ei->msg, SCX_EXIT_MSG_LEN, fmt, args);
 	va_end(args);
+
+	ei->exit_code = exit_code;
 
 	/*
 	 * Set ei->kind and ->reason for scx_dump_state(). They'll be set again
@@ -5065,17 +5071,9 @@ struct scx_bpf_error_bstr_bufs {
 
 static DEFINE_PER_CPU(struct scx_bpf_error_bstr_bufs, scx_bpf_error_bstr_bufs);
 
-/**
- * scx_bpf_error_bstr - Indicate fatal error
- * @fmt: error message format string
- * @data: format string parameters packaged using ___bpf_fill() macro
- * @data__sz: @data len, must end in '__sz' for the verifier
- *
- * Indicate that the BPF scheduler encountered a fatal error and initiate ops
- * disabling.
- */
-__bpf_kfunc void scx_bpf_error_bstr(char *fmt, unsigned long long *data,
-				    u32 data__sz)
+static void bpf_exit_bstr_common(enum scx_exit_kind kind, s64 exit_code,
+				 char *fmt, unsigned long long *data,
+				 u32 data__sz)
 {
 	struct bpf_bprintf_data bprintf_data = { .get_bin_args = true };
 	struct scx_bpf_error_bstr_bufs *bufs;
@@ -5114,9 +5112,44 @@ __bpf_kfunc void scx_bpf_error_bstr(char *fmt, unsigned long long *data,
 		goto out_restore;
 	}
 
-	scx_ops_error_kind(SCX_EXIT_ERROR_BPF, "%s", bufs->msg);
+	scx_ops_exit_kind(kind, exit_code, "%s", bufs->msg);
 out_restore:
 	local_irq_restore(flags);
+
+}
+
+/**
+ * scx_bpf_exit_bstr - Gracefully exit the BPF scheduler.
+ * @exit_code: Exit value to pass to user space via struct scx_exit_info.
+ * @fmt: error message format string
+ * @data: format string parameters packaged using ___bpf_fill() macro
+ * @data__sz: @data len, must end in '__sz' for the verifier
+ *
+ * Indicate that the BPF scheduler wants to exit gracefully, and initiate ops
+ * disabling.
+ */
+__bpf_kfunc void scx_bpf_exit_bstr(s64 exit_code, char *fmt,
+				   unsigned long long *data, u32 data__sz)
+{
+	bpf_exit_bstr_common(SCX_EXIT_UNREG_BPF, exit_code, fmt, data,
+			     data__sz);
+}
+
+/**
+ * scx_bpf_error_bstr - Indicate fatal error
+ * @fmt: error message format string
+ * @data: format string parameters packaged using ___bpf_fill() macro
+ * @data__sz: @data len, must end in '__sz' for the verifier
+ *
+ * Indicate that the BPF scheduler encountered a fatal error and initiate ops
+ * disabling.
+ */
+__bpf_kfunc void scx_bpf_error_bstr(char *fmt, unsigned long long *data,
+				    u32 data__sz)
+{
+
+	bpf_exit_bstr_common(SCX_EXIT_ERROR_BPF, 0, fmt, data,
+			     data__sz);
 }
 
 /**
@@ -5206,6 +5239,7 @@ BTF_ID_FLAGS(func, scx_bpf_get_idle_cpumask, KF_ACQUIRE)
 BTF_ID_FLAGS(func, scx_bpf_get_idle_smtmask, KF_ACQUIRE)
 BTF_ID_FLAGS(func, scx_bpf_put_idle_cpumask, KF_RELEASE)
 BTF_ID_FLAGS(func, scx_bpf_error_bstr, KF_TRUSTED_ARGS)
+BTF_ID_FLAGS(func, scx_bpf_exit_bstr, KF_TRUSTED_ARGS)
 BTF_ID_FLAGS(func, scx_bpf_task_running, KF_RCU)
 BTF_ID_FLAGS(func, scx_bpf_task_cpu, KF_RCU)
 #ifdef CONFIG_CGROUP_SCHED

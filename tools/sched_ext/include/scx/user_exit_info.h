@@ -18,6 +18,7 @@ enum uei_sizes {
 
 struct user_exit_info {
 	int		kind;
+	s64		exit_code;
 	char		reason[UEI_REASON_LEN];
 	char		msg[UEI_MSG_LEN];
 };
@@ -39,6 +40,8 @@ struct user_exit_info {
 				  sizeof(__uei_name.msg), (__ei)->msg);		\
 	bpf_probe_read_kernel_str(__uei_name##_dump,				\
 				  __uei_name##_dump_len, (__ei)->dump);		\
+	if (bpf_core_field_exists((__ei)->exit_code))				\
+		__uei_name.exit_code = (__ei)->exit_code;			\
 	/* use __sync to force memory barrier */				\
 	__sync_val_compare_and_swap(&__uei_name.kind, __uei_name.kind,		\
 				    (__ei)->kind);				\

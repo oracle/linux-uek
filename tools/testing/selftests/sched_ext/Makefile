@@ -165,6 +165,7 @@ auto-test-targets :=			\
 	enq_select_cpu_fails		\
 	ddsp_bogus_dsq_fail		\
 	ddsp_vtimelocal_fail		\
+	exit				\
 	init_enable_count		\
 	maximal				\
 	maybe_null			\

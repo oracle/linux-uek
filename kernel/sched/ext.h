@@ -145,8 +145,12 @@ int scx_check_setscheduler(struct task_struct *p, int policy);
 bool scx_can_stop_tick(struct rq *rq);
 void init_sched_ext_class(void);
 
-__printf(2, 3) void scx_ops_error_kind(enum scx_exit_kind kind,
-				       const char *fmt, ...);
+__printf(3, 4) void scx_ops_exit_kind(enum scx_exit_kind kind,
+				      s64 exit_code,
+				      const char *fmt, ...);
+#define scx_ops_error_kind(__err, fmt, args...)					\
+	scx_ops_exit_kind(__err, 0, fmt, ##args)
+
 #define scx_ops_error(fmt, args...)						\
 	scx_ops_error_kind(SCX_EXIT_ERROR, fmt, ##args)
 
