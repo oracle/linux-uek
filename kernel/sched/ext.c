@@ -2084,12 +2084,18 @@ static s32 scx_select_cpu_dfl(struct task_struct *p, s32 prev_cpu,
 	}
 
 	/*
-	 * If WAKE_SYNC and the machine isn't fully saturated, wake up @p to the
-	 * local DSQ of the waker.
+	 * If WAKE_SYNC, the waker's local DSQ is empty, and the system is
+	 * under utilized, wake up @p to the local DSQ of the waker. Checking
+	 * only for an empty local DSQ is insufficient as it could give the
+	 * wakee an unfair advantage when the system is oversaturated.
+	 * Checking only for the presence of idle CPUs is also insufficient as
+	 * the local DSQ of the waker could have tasks piled up on it even if
+	 * there is an idle core elsewhere on the system.
 	 */
+	cpu = smp_processor_id();
 	if ((wake_flags & SCX_WAKE_SYNC) && p->nr_cpus_allowed > 1 &&
-	    !cpumask_empty(idle_masks.cpu) && !(current->flags & PF_EXITING)) {
-		cpu = smp_processor_id();
+	    !cpumask_empty(idle_masks.cpu) && !(current->flags & PF_EXITING) &&
+	    cpu_rq(cpu)->scx.local_dsq.nr == 0) {
 		if (cpumask_test_cpu(cpu, p->cpus_ptr))
 			goto cpu_found;
 	}
