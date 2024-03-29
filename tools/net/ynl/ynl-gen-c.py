@@ -80,6 +80,8 @@ class Type(SpecAttr):
         value = self.checks.get(limit, default)
         if value is None:
             return value
+        elif value in self.family.consts:
+            return c_upper(f"{self.family['name']}-{value}")
         if not isinstance(value, int):
             value = limit_to_number(value)
         return value
@@ -226,8 +228,11 @@ class Type(SpecAttr):
         presence = ''
         for i in range(0, len(ref)):
             presence = f"{var}->{'.'.join(ref[:i] + [''])}_present.{ref[i]}"
-            if self.presence_type() == 'bit':
-                code.append(presence + ' = 1;')
+            # Every layer below last is a nest, so we know it uses bit presence
+            # last layer is "self" and may be a complex type
+            if i == len(ref) - 1 and self.presence_type() != 'bit':
+                continue
+            code.append(presence + ' = 1;')
         code += self._setter_lines(ri, member, presence)
 
         func_name = f"{op_prefix(ri, direction, deref=deref)}_set_{'_'.join(ref)}"
@@ -1667,7 +1672,7 @@ def _multi_parse(ri, struct, init_lines, local_vars):
         aspec = struct[anest]
 
         ri.cw.block_start(line=f"if (n_{aspec.c_name})")
-        ri.cw.p(f"dst->{aspec.c_name} = calloc({aspec.c_name}, sizeof(*dst->{aspec.c_name}));")
+        ri.cw.p(f"dst->{aspec.c_name} = calloc(n_{aspec.c_name}, sizeof(*dst->{aspec.c_name}));")
         ri.cw.p(f"dst->n_{aspec.c_name} = n_{aspec.c_name};")
         ri.cw.p('i = 0;')
         ri.cw.p(f"parg.rsp_policy = &{aspec.nested_render_name}_nest;")
@@ -2340,6 +2345,10 @@ def print_kernel_family_struct_hdr(family, cw):
 
     cw.p(f"extern struct genl_family {family.c_name}_nl_family;")
     cw.nl()
+    if 'sock-priv' in family.kernel_family:
+        cw.p(f'void {family.c_name}_nl_sock_priv_init({family.kernel_family["sock-priv"]} *priv);')
+        cw.p(f'void {family.c_name}_nl_sock_priv_destroy({family.kernel_family["sock-priv"]} *priv);')
+        cw.nl()
 
 
 def print_kernel_family_struct_src(family, cw):
@@ -2361,6 +2370,11 @@ def print_kernel_family_struct_src(family, cw):
     if family.mcgrps['list']:
         cw.p(f'.mcgrps\t\t= {family.c_name}_nl_mcgrps,')
         cw.p(f'.n_mcgrps\t= ARRAY_SIZE({family.c_name}_nl_mcgrps),')
+    if 'sock-priv' in family.kernel_family:
+        cw.p(f'.sock_priv_size\t= sizeof({family.kernel_family["sock-priv"]}),')
+        # Force cast here, actual helpers take pointer to the real type.
+        cw.p(f'.sock_priv_init\t= (void *){family.c_name}_nl_sock_priv_init,')
+        cw.p(f'.sock_priv_destroy = (void *){family.c_name}_nl_sock_priv_destroy,')
     cw.block_end(';')
 
 
@@ -2657,6 +2671,7 @@ def main():
                 cw.p(f'#include "{os.path.basename(args.out_file[:-2])}.h"')
             cw.nl()
         headers = ['uapi/' + parsed.uapi_header]
+        headers += parsed.kernel_family.get('headers', [])
     else:
         cw.p('#include <stdlib.h>')
         cw.p('#include <string.h>')

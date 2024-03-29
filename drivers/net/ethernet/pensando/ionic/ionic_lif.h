@@ -71,25 +71,25 @@ struct ionic_qcq {
 	void *q_base;
 	dma_addr_t q_base_pa;
 	u32 q_size;
+	u32 cq_size;
 	void *cq_base;
 	dma_addr_t cq_base_pa;
-	u32 cq_size;
 	void *sg_base;
 	dma_addr_t sg_base_pa;
 	u32 sg_size;
+	unsigned int flags;
 	void __iomem *cmb_q_base;
 	phys_addr_t cmb_q_base_pa;
 	u32 cmb_q_size;
 	u32 cmb_pgid;
 	u32 cmb_order;
 	struct dim dim;
+	struct timer_list napi_deadline;
 	struct ionic_queue q;
 	struct ionic_cq cq;
-	struct ionic_intr_info intr;
-	struct timer_list napi_deadline;
 	struct napi_struct napi;
-	unsigned int flags;
 	struct ionic_qcq *napi_qcq;
+	struct ionic_intr_info intr;
 	struct dentry *dentry;
 };
 
@@ -327,7 +327,7 @@ static inline u32 ionic_coal_usec_to_hw(struct ionic *ionic, u32 usecs)
 
 static inline bool ionic_txq_hwstamp_enabled(struct ionic_queue *q)
 {
-	return unlikely(q->features & IONIC_TXQ_F_HWSTAMP);
+	return q->features & IONIC_TXQ_F_HWSTAMP;
 }
 
 void ionic_link_status_check_request(struct ionic_lif *lif, bool can_sleep);
