@@ -23,12 +23,6 @@
 
 #define PCI_DEVID_OCTEON_PEM	0xA06C
 
-#define DTX_PEM_BASE(x)		(0x87E0FE9C0000 + 0x2000 * (x))
-#define DTX_PEM_SIZE		0x1000
-#define DTX_PEM_SEL(x)		(0x0 + 0x8 * (x))
-#define DTX_PEM_ENA(x)		(0x20 + 0x8 * (x))
-#define DTX_PEM_DAT(x)		(0x40 + 0x8 * (x))
-
 #define ID_SHIFT		36
 #define DOMAIN_OFFSET		0x3
 #define ON_OFFSET		0xE0
@@ -42,7 +36,6 @@ struct pem_ctlr {
 	int			index;
 	char			irq_name[32];
 	void __iomem		*base;
-	void __iomem		*dtx_base;
 	struct pci_dev		*pdev;
 	struct work_struct	recover_rc_work;
 };
@@ -66,7 +59,7 @@ static void pem_recover_rc_link(struct work_struct *ws)
 	struct pci_bus *bus;
 	struct controller *ctrl;
 	int rc_domain, timeout = 100;
-	u64 pem_reg, dtx_reg;
+	u64 pem_reg;
 
 	rc_domain = pem->index + DOMAIN_OFFSET;
 
@@ -184,7 +177,6 @@ static int pem_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	struct device *dev = &pdev->dev;
 	struct pem_ctlr *pem;
 	int err;
-	resource_size_t addr, size;
 
 	pem = devm_kzalloc(dev, sizeof(struct pem_ctlr), GFP_KERNEL);
 	if (pem == NULL)
@@ -215,16 +207,6 @@ static int pem_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto bar0_map_failed;
 	}
 	pem->index = ((u64)pci_resource_start(pdev, 0) >> ID_SHIFT) & 0xf;
-
-	/* DTX register space mapping */
-	addr = DTX_PEM_BASE(pem->index);
-	size = DTX_PEM_SIZE;
-	pem->dtx_base = ioremap(addr, size);
-	if (IS_ERR(pem->dtx_base)) {
-		dev_err(&pdev->dev, "Unable to map DTX region\n");
-		err = -ENODEV;
-		goto bar0_map_failed;
-	}
 
 	err = pem_register_interrupts(pdev);
 	if (err < 0) {
