@@ -118,24 +118,17 @@ static inline bool __COMPAT_struct_has_field(const char *type, const char *field
  */
 #define SCX_OPS_LOAD(__skel, __ops_name, __scx_name, __uei_name) ({		\
 	UEI_SET_SIZE(__skel, __ops_name, __uei_name);				\
-	if (__COMPAT_struct_has_field("sched_ext_ops", "exit_dump_len")) {	\
-		bpf_map__set_autocreate((__skel)->maps.__ops_name, true);	\
-		bpf_map__set_autocreate((__skel)->maps.__ops_name##___no_exit_dump_len, false); \
-	} else {								\
-		if ((__skel)->struct_ops.__ops_name->exit_dump_len)		\
-			fprintf(stderr, "WARNING: kernel doesn't support setting exit dump len\n"); \
-		bpf_map__set_autocreate((__skel)->maps.__ops_name, false);	\
-		bpf_map__set_autocreate((__skel)->maps.__ops_name##___no_exit_dump_len, true); \
+	if (__COMPAT_struct_has_field("sched_ext_ops", "exit_dump_len") &&	\
+	    (__skel)->struct_ops.__ops_name->exit_dump_len) {			\
+		fprintf(stderr, "WARNING: kernel doesn't support setting exit dump len\n"); \
+		(__skel)->struct_ops.__ops_name->exit_dump_len = 0;	\
 	}									\
 	SCX_BUG_ON(__scx_name##__load((__skel)), "Failed to load skel");	\
 })
 
 #define SCX_OPS_ATTACH(__skel, __ops_name) ({					\
 	struct bpf_link *__link;						\
-	if (__COMPAT_struct_has_field("sched_ext_ops", "exit_dump_len"))	\
-		__link = bpf_map__attach_struct_ops((__skel)->maps.__ops_name);	\
-	else									\
-		__link = bpf_map__attach_struct_ops((__skel)->maps.__ops_name##___no_exit_dump_len); \
+	__link = bpf_map__attach_struct_ops((__skel)->maps.__ops_name);		\
 	SCX_BUG_ON(!__link, "Failed to attach struct_ops");			\
 	__link;									\
 })
