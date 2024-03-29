@@ -133,7 +133,9 @@ int bpf_struct_ops_test_run(struct bpf_prog *prog, const union bpf_attr *kattr,
 	if (err < 0)
 		goto out;
 
-	arch_protect_bpf_trampoline(image, PAGE_SIZE);
+	err = arch_protect_bpf_trampoline(image, PAGE_SIZE);
+	if (err)
+		goto out;
 	prog_ret = dummy_ops_call_op(image, args);
 
 	err = dummy_ops_copy_args(args);
@@ -174,7 +176,7 @@ static int bpf_dummy_ops_check_member(const struct btf_type *t,
 	case offsetof(struct bpf_dummy_ops, test_sleepable):
 		break;
 	default:
-		if (prog->aux->sleepable)
+		if (prog->sleepable)
 			return -EINVAL;
 	}
 

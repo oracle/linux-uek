@@ -360,7 +360,7 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
 	if (mvm->mld_api_is_used && mvm->nvm_data->sku_cap_11be_enable &&
 	    !iwlwifi_mod_params.disable_11ax &&
 	    !iwlwifi_mod_params.disable_11be)
-		hw->wiphy->flags |= WIPHY_FLAG_SUPPORTS_MLO;
+		hw->wiphy->flags |= WIPHY_FLAG_DISABLE_WEXT;
 
 	/* With MLD FW API, it tracks timing by itself,
 	 * no need for any timing from the host
@@ -1470,7 +1470,8 @@ out_unlock:
 }
 
 void iwl_mvm_abort_channel_switch(struct ieee80211_hw *hw,
-				  struct ieee80211_vif *vif)
+				  struct ieee80211_vif *vif,
+				  struct ieee80211_bss_conf *link_conf)
 {
 	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
@@ -1576,7 +1577,13 @@ static int iwl_mvm_mac_add_interface(struct ieee80211_hw *hw,
 	mvmvif->mvm = mvm;
 
 	/* the first link always points to the default one */
+	mvmvif->deflink.fw_link_id = IWL_MVM_FW_LINK_ID_INVALID;
+	mvmvif->deflink.active = 0;
 	mvmvif->link[0] = &mvmvif->deflink;
+
+	ret = iwl_mvm_set_link_mapping(mvm, vif, &vif->bss_conf);
+	if (ret)
+		goto out;
 
 	/*
 	 * Not much to do here. The stack will not allow interface
@@ -1782,6 +1789,7 @@ static void iwl_mvm_mac_remove_interface(struct ieee80211_hw *hw,
 		mvm->p2p_device_vif = NULL;
 	}
 
+	iwl_mvm_unset_link_mapping(mvm, vif, &vif->bss_conf);
 	iwl_mvm_mac_ctxt_remove(mvm, vif);
 
 	RCU_INIT_POINTER(mvm->vif_id_to_mac[mvmvif->id], NULL);
@@ -5551,8 +5559,16 @@ void iwl_mvm_channel_switch_rx_beacon(struct ieee80211_hw *hw,
 
 	if (chsw->count >= mvmvif->csa_count && chsw->block_tx) {
 		if (mvmvif->csa_misbehave) {
+			struct ieee80211_bss_conf *link_conf;
+
 			/* Second time, give up on this AP*/
-			iwl_mvm_abort_channel_switch(hw, vif);
+
+			link_conf = wiphy_dereference(hw->wiphy,
+						      vif->link_conf[chsw->link_id]);
+			if (WARN_ON(!link_conf))
+				return;
+
+			iwl_mvm_abort_channel_switch(hw, vif, link_conf);
 			ieee80211_chswitch_done(vif, false, 0);
 			mvmvif->csa_misbehave = false;
 			return;

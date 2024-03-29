@@ -1260,15 +1260,15 @@ static int __iwl_mvm_suspend(struct ieee80211_hw *hw,
 	if (IS_ERR_OR_NULL(vif))
 		return 1;
 
-	if (ieee80211_vif_is_mld(vif) && vif->cfg.assoc) {
+	if (hweight16(vif->active_links) > 1) {
 		/*
-		 * Select the 'best' link. May need to revisit, it seems
-		 * better to not optimize for throughput but rather range,
-		 * reliability and power here - and select 2.4 GHz ...
+		 * Select the 'best' link.
+		 * May need to revisit, it seems better to not optimize
+		 * for throughput but rather range, reliability and
+		 * power here - and select 2.4 GHz ...
 		 */
-		primary_link =
-			iwl_mvm_mld_get_primary_link(mvm, vif,
-						     vif->active_links);
+		primary_link = iwl_mvm_mld_get_primary_link(mvm, vif,
+							    vif->active_links);
 
 		if (WARN_ONCE(primary_link < 0, "no primary link in 0x%x\n",
 			      vif->active_links))
@@ -1277,6 +1277,8 @@ static int __iwl_mvm_suspend(struct ieee80211_hw *hw,
 		ret = ieee80211_set_active_links(vif, BIT(primary_link));
 		if (ret)
 			return ret;
+	} else if (vif->active_links) {
+		primary_link = __ffs(vif->active_links);
 	} else {
 		primary_link = 0;
 	}
@@ -1983,6 +1985,7 @@ static bool iwl_mvm_gtk_rekey(struct iwl_wowlan_status_data *status,
 	} conf = {
 		.conf.cipher = gtk_cipher,
 	};
+	int link_id = vif->active_links ? __ffs(vif->active_links) : -1;
 
 	BUILD_BUG_ON(WLAN_KEY_LEN_CCMP != WLAN_KEY_LEN_GCMP);
 	BUILD_BUG_ON(sizeof(conf.key) < WLAN_KEY_LEN_CCMP);
@@ -2016,7 +2019,7 @@ static bool iwl_mvm_gtk_rekey(struct iwl_wowlan_status_data *status,
 		memcpy(conf.conf.key, status->gtk[i].key,
 		       sizeof(status->gtk[i].key));
 
-		key = ieee80211_gtk_rekey_add(vif, &conf.conf);
+		key = ieee80211_gtk_rekey_add(vif, &conf.conf, link_id);
 		if (IS_ERR(key))
 			return false;
 
@@ -2047,6 +2050,7 @@ iwl_mvm_d3_igtk_bigtk_rekey_add(struct iwl_wowlan_status_data *status,
 		.conf.keyidx = key_data->id,
 	};
 	struct ieee80211_key_seq seq;
+	int link_id = vif->active_links ? __ffs(vif->active_links) : -1;
 
 	if (!key_data->len)
 		return true;
@@ -2072,17 +2076,17 @@ iwl_mvm_d3_igtk_bigtk_rekey_add(struct iwl_wowlan_status_data *status,
 	BUILD_BUG_ON(sizeof(conf.key) < sizeof(key_data->key));
 	memcpy(conf.conf.key, key_data->key, conf.conf.keylen);
 
-	key_config = ieee80211_gtk_rekey_add(vif, &conf.conf);
+	key_config = ieee80211_gtk_rekey_add(vif, &conf.conf, link_id);
 	if (IS_ERR(key_config))
 		return false;
 	ieee80211_set_key_rx_seq(key_config, 0, &seq);
 
 	if (key_config->keyidx == 4 || key_config->keyidx == 5) {
 		struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
-		int link_id = vif->active_links ? __ffs(vif->active_links) : 0;
-		struct iwl_mvm_vif_link_info *mvm_link =
-			mvmvif->link[link_id];
+		struct iwl_mvm_vif_link_info *mvm_link;
 
+		link_id = link_id < 0 ? 0 : link_id;
+		mvm_link = mvmvif->link[link_id];
 		mvm_link->igtk = key_config;
 	}
 

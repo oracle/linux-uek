@@ -13,6 +13,7 @@
 #include "tcp_ca_write_sk_pacing.skel.h"
 #include "tcp_ca_incompl_cong_ops.skel.h"
 #include "tcp_ca_unsupp_cong_op.skel.h"
+#include "tcp_ca_kfunc.skel.h"
 
 #ifndef ENOTSUPP
 #define ENOTSUPP 524
@@ -89,7 +90,7 @@ static void do_test(const char *tcp_ca, const struct bpf_map *sk_stg_map)
 
 	WRITE_ONCE(stop, 0);
 
-	lfd = socket(AF_INET6, SOCK_STREAM, 0);
+	lfd = start_server(AF_INET6, SOCK_STREAM, NULL, 0, 0);
 	if (!ASSERT_NEQ(lfd, -1, "socket"))
 		return;
 
@@ -103,19 +104,8 @@ static void do_test(const char *tcp_ca, const struct bpf_map *sk_stg_map)
 	    settimeo(lfd, 0) || settimeo(fd, 0))
 		goto done;
 
-	/* bind, listen and start server thread to accept */
-	sa6.sin6_family = AF_INET6;
-	sa6.sin6_addr = in6addr_loopback;
-	err = bind(lfd, (struct sockaddr *)&sa6, addrlen);
-	if (!ASSERT_NEQ(err, -1, "bind"))
-		goto done;
-
 	err = getsockname(lfd, (struct sockaddr *)&sa6, &addrlen);
 	if (!ASSERT_NEQ(err, -1, "getsockname"))
-		goto done;
-
-	err = listen(lfd, 1);
-	if (!ASSERT_NEQ(err, -1, "listen"))
 		goto done;
 
 	if (sk_stg_map) {
@@ -315,7 +305,7 @@ static void test_rel_setsockopt(void)
 	struct bpf_dctcp_release *rel_skel;
 	libbpf_print_fn_t old_print_fn;
 
-	err_str = "unknown func bpf_setsockopt";
+	err_str = "program of this type cannot use helper bpf_setsockopt";
 	found = false;
 
 	old_print_fn = libbpf_set_print(libbpf_debug_print);
@@ -529,6 +519,15 @@ static void test_link_replace(void)
 	tcp_ca_update__destroy(skel);
 }
 
+static void test_tcp_ca_kfunc(void)
+{
+	struct tcp_ca_kfunc *skel;
+
+	skel = tcp_ca_kfunc__open_and_load();
+	ASSERT_OK_PTR(skel, "tcp_ca_kfunc__open_and_load");
+	tcp_ca_kfunc__destroy(skel);
+}
+
 void test_bpf_tcp_ca(void)
 {
 	if (test__start_subtest("dctcp"))
@@ -557,4 +556,6 @@ void test_bpf_tcp_ca(void)
 		test_multi_links();
 	if (test__start_subtest("link_replace"))
 		test_link_replace();
+	if (test__start_subtest("tcp_ca_kfunc"))
+		test_tcp_ca_kfunc();
 }

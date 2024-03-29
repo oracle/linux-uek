@@ -760,9 +760,20 @@ bpf_program__attach_tracepoint_opts(const struct bpf_program *prog,
 				    const char *tp_name,
 				    const struct bpf_tracepoint_opts *opts);
 
+struct bpf_raw_tracepoint_opts {
+	size_t sz; /* size of this struct for forward/backward compatibility */
+	__u64 cookie;
+	size_t :0;
+};
+#define bpf_raw_tracepoint_opts__last_field cookie
+
 LIBBPF_API struct bpf_link *
 bpf_program__attach_raw_tracepoint(const struct bpf_program *prog,
 				   const char *tp_name);
+LIBBPF_API struct bpf_link *
+bpf_program__attach_raw_tracepoint_opts(const struct bpf_program *prog,
+					const char *tp_name,
+					struct bpf_raw_tracepoint_opts *opts);
 
 struct bpf_trace_opts {
 	/* size of this struct, for forward/backward compatibility */
@@ -1014,7 +1025,7 @@ LIBBPF_API int bpf_map__set_map_extra(struct bpf_map *map, __u64 map_extra);
 
 LIBBPF_API int bpf_map__set_initial_value(struct bpf_map *map,
 					  const void *data, size_t size);
-LIBBPF_API void *bpf_map__initial_value(struct bpf_map *map, size_t *psize);
+LIBBPF_API void *bpf_map__initial_value(const struct bpf_map *map, size_t *psize);
 
 /**
  * @brief **bpf_map__is_internal()** tells the caller whether or not the
