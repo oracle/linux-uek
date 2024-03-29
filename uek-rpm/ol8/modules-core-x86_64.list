@@ -761,4 +761,3 @@ kernel/net/wireless/cfg80211.ko
 kernel/net/wireless/lib80211.ko
 kernel/net/xfrm/xfrm_interface.ko
 kernel/net/xfrm/xfrm_ipcomp.ko
-kernel/virt/lib/irqbypass.ko
