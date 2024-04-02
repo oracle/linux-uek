@@ -93,15 +93,9 @@ struct scx_exit_info {
 /* sched_ext_ops.flags */
 enum scx_ops_flags {
 	/*
-	 * If set, only tasks with policy set to SCHED_EXT are attached to
-	 * sched_ext. If clear, SCHED_NORMAL tasks are also included.
-	 */
-	SCX_OPS_SWITCH_PARTIAL	= 1LLU << 0,
-
-	/*
 	 * Keep built-in idle tracking even if ops.update_idle() is implemented.
 	 */
-	SCX_OPS_KEEP_BUILTIN_IDLE = 1LLU << 1,
+	SCX_OPS_KEEP_BUILTIN_IDLE = 1LLU << 0,
 
 	/*
 	 * By default, if there are no other task to run on the CPU, ext core
@@ -109,7 +103,7 @@ enum scx_ops_flags {
 	 * flag is specified, such tasks are passed to ops.enqueue() with
 	 * %SCX_ENQ_LAST. See the comment above %SCX_ENQ_LAST for more info.
 	 */
-	SCX_OPS_ENQ_LAST	= 1LLU << 2,
+	SCX_OPS_ENQ_LAST	= 1LLU << 1,
 
 	/*
 	 * An exiting task may schedule after PF_EXITING is set. In such cases,
@@ -122,7 +116,13 @@ enum scx_ops_flags {
 	 * depend on pid lookups and wants to handle these tasks directly, the
 	 * following flag can be used.
 	 */
-	SCX_OPS_ENQ_EXITING	= 1LLU << 3,
+	SCX_OPS_ENQ_EXITING	= 1LLU << 2,
+
+	/*
+	 * If set, only tasks with policy set to SCHED_EXT are attached to
+	 * sched_ext. If clear, SCHED_NORMAL tasks are also included.
+	 */
+	SCX_OPS_SWITCH_PARTIAL	= 1LLU << 3,
 
 	/*
 	 * CPU cgroup knob enable flags
