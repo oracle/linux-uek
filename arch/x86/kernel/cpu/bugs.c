@@ -1905,6 +1905,69 @@ static void spectre_v2_determine_rsb_fill_type_at_vmexit(enum spectre_v2_mitigat
 	dump_stack();
 }
 
+/*
+ * Set BHI_DIS_S to prevent indirect branches in kernel to be influenced by
+ * branch history in userspace. Not needed if BHI_NO is set.
+ */
+static bool __init spec_ctrl_bhi_dis(void)
+{
+	if (!boot_cpu_has(X86_FEATURE_BHI_CTRL))
+		return false;
+
+	x86_spec_ctrl_base |= SPEC_CTRL_BHI_DIS_S;
+	update_spec_ctrl(x86_spec_ctrl_base);
+	setup_force_cpu_cap(X86_FEATURE_CLEAR_BHB_HW);
+
+	return true;
+}
+
+enum bhi_mitigations {
+	BHI_MITIGATION_OFF,
+	BHI_MITIGATION_ON,
+	BHI_MITIGATION_AUTO,
+};
+
+static enum bhi_mitigations bhi_mitigation __ro_after_init =
+	IS_ENABLED(CONFIG_SPECTRE_BHI_ON)  ? BHI_MITIGATION_ON  :
+	IS_ENABLED(CONFIG_SPECTRE_BHI_OFF) ? BHI_MITIGATION_OFF :
+					     BHI_MITIGATION_AUTO;
+
+static int __init spectre_bhi_parse_cmdline(char *str)
+{
+	if (!str)
+		return -EINVAL;
+
+	if (!strcmp(str, "off"))
+		bhi_mitigation = BHI_MITIGATION_OFF;
+	else if (!strcmp(str, "on"))
+		bhi_mitigation = BHI_MITIGATION_ON;
+	else if (!strcmp(str, "auto"))
+		bhi_mitigation = BHI_MITIGATION_AUTO;
+	else
+		pr_err("Ignoring unknown spectre_bhi option (%s)", str);
+
+	return 0;
+}
+early_param("spectre_bhi", spectre_bhi_parse_cmdline);
+
+static void __init bhi_select_mitigation(void)
+{
+	if (bhi_mitigation == BHI_MITIGATION_OFF)
+		return;
+
+	if (spec_ctrl_bhi_dis())
+		return;
+
+	if (!IS_ENABLED(CONFIG_X86_64))
+		return;
+
+	if (bhi_mitigation == BHI_MITIGATION_AUTO)
+		return;
+
+	setup_force_cpu_cap(X86_FEATURE_CLEAR_BHB_LOOP);
+	pr_info("Spectre BHI mitigation: SW BHB clearing on syscall\n");
+}
+
 static void ibrs_select(enum spectre_v2_mitigation *mode)
 {
 	/* Turn it on (if possible) */
@@ -2109,6 +2172,9 @@ static void activate_spectre_v2_mitigation(enum spectre_v2_mitigation mode, enum
 	    mode == SPECTRE_V2_EIBRS_RETPOLINE ||
 	    mode == SPECTRE_V2_RETPOLINE)
 		spec_ctrl_disable_kernel_rrsba();
+
+	if (boot_cpu_has(X86_BUG_BHI))
+		bhi_select_mitigation();
 
 	if (spectre_v2_in_eibrs_mode(spectre_v2_enabled)) {
 		/* If enhanced IBRS mode is selected, enable it in all cpus */
@@ -3159,6 +3225,25 @@ static char *pbrsb_eibrs_state(void)
 	}
 }
 
+static const char * const spectre_bhi_state(void)
+{
+	if (!boot_cpu_has_bug(X86_BUG_BHI))
+		return ", BHI: Not affected";
+	else if  (boot_cpu_has(X86_FEATURE_CLEAR_BHB_HW))
+		return ", BHI: BHI_DIS_S";
+	else if  (boot_cpu_has(X86_FEATURE_CLEAR_BHB_LOOP))
+		return ", BHI: SW loop";
+	else if (spectre_v2_enabled == SPECTRE_V2_IBRS &&
+		 !boot_cpu_has(X86_FEATURE_IBRS_ENHANCED) &&
+		 !boot_cpu_has(X86_FEATURE_HYPERVISOR))
+		return ", BHI: IBRS";
+	else if (retpoline_enabled() &&
+		 !(x86_read_arch_cap_msr() & ARCH_CAP_RRSBA))
+		return ", BHI: Retpoline";
+
+	return ", BHI: Vulnerable";
+}
+
 static ssize_t spectre_v2_show_state(char *buf)
 {
 	if (spectre_v2_enabled == SPECTRE_V2_LFENCE)
@@ -3171,14 +3256,15 @@ static ssize_t spectre_v2_show_state(char *buf)
 	    spectre_v2_enabled == SPECTRE_V2_EIBRS_LFENCE)
 		return sysfs_emit(buf, "Vulnerable: eIBRS+LFENCE with unprivileged eBPF and SMT\n");
 
-	return sysfs_emit(buf, "%s%s%s%s%s%s%s\n",
+	return sysfs_emit(buf, "%s%s%s%s%s%s%s%s\n",
 			  spectre_v2_strings[spectre_v2_enabled],
 			  ibpb_state(),
 			  ibrs_firmware_enabled() ? ", IBRS_FW" : "",
 			  stibp_state(),
 			  boot_cpu_has(X86_FEATURE_RSB_CTXSW) ? ", RSB filling" : "",
 			  pbrsb_eibrs_state(),
-			  spectre_v2_module_string());
+			  spectre_v2_module_string(),
+			  spectre_bhi_state());
 }
 
 static ssize_t srbds_show_state(char *buf)
