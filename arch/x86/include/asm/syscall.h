@@ -17,6 +17,7 @@
 #include <asm/thread_info.h>	/* for TS_COMPAT */
 #include <asm/unistd.h>
 
+/* This is used purely for kernel/trace/trace_syscalls.c */
 #ifdef CONFIG_X86_64
 typedef asmlinkage long (*sys_call_ptr_t)(const struct pt_regs *);
 #else
@@ -27,18 +28,19 @@ typedef asmlinkage long (*sys_call_ptr_t)(unsigned long, unsigned long,
 extern const sys_call_ptr_t sys_call_table[];
 
 #if defined(CONFIG_X86_32)
-#define ia32_sys_call_table sys_call_table
 #define __NR_syscall_compat_max __NR_syscall_max
 #define IA32_NR_syscalls NR_syscalls
 #endif
 
-#if defined(CONFIG_IA32_EMULATION)
-extern const sys_call_ptr_t ia32_sys_call_table[];
+#ifdef CONFIG_IA32_EMULATION
+extern long ia32_sys_call(const struct pt_regs *, unsigned int nr);
+#else
+long ia32_sys_call(unsigned long bx, unsigned long cx, unsigned long dx,
+		   unsigned long si, unsigned long di, unsigned long bp,
+		   int nr);
 #endif
-
-#ifdef CONFIG_X86_X32_ABI
-extern const sys_call_ptr_t x32_sys_call_table[];
-#endif
+extern long x32_sys_call(const struct pt_regs *, unsigned int nr);
+extern long x64_sys_call(const struct pt_regs *, unsigned int nr);
 
 /*
  * Only the low 32 bits of orig_ax are meaningful, so we return int.

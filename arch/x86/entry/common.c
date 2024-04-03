@@ -297,13 +297,13 @@ __visible void do_syscall_64(unsigned long nr, struct pt_regs *regs)
 
 	if (likely(nr < NR_syscalls)) {
 		nr = array_index_nospec(nr, NR_syscalls);
-		regs->ax = sys_call_table[nr](regs);
+		regs->ax = x64_sys_call(regs, nr);
 #ifdef CONFIG_X86_X32_ABI
 	} else if (likely((nr & __X32_SYSCALL_BIT) &&
 			  (nr & ~__X32_SYSCALL_BIT) < X32_NR_syscalls)) {
 		nr = array_index_nospec(nr & ~__X32_SYSCALL_BIT,
 					X32_NR_syscalls);
-		regs->ax = x32_sys_call_table[nr](regs);
+		regs->ax = x32_sys_call(regs, nr);
 #endif
 	}
 
@@ -340,7 +340,7 @@ static __always_inline void do_syscall_32_irqs_on(struct pt_regs *regs)
 	if (likely(nr < IA32_NR_syscalls)) {
 		nr = array_index_nospec(nr, IA32_NR_syscalls);
 #ifdef CONFIG_IA32_EMULATION
-		regs->ax = ia32_sys_call_table[nr](regs);
+		regs->ax = ia32_sys_call(regs, nr);
 #else
 		/*
 		 * It's possible that a 32-bit syscall implementation
@@ -348,10 +348,11 @@ static __always_inline void do_syscall_32_irqs_on(struct pt_regs *regs)
 		 * the high bits are zero.  Make sure we zero-extend all
 		 * of the args.
 		 */
-		regs->ax = ia32_sys_call_table[nr](
+		regs->ax = ia32_sys_call(
 			(unsigned int)regs->bx, (unsigned int)regs->cx,
 			(unsigned int)regs->dx, (unsigned int)regs->si,
-			(unsigned int)regs->di, (unsigned int)regs->bp);
+			(unsigned int)regs->di, (unsigned int)regs->bp,
+			nr);
 #endif /* CONFIG_IA32_EMULATION */
 	}
 

@@ -20,9 +20,15 @@ extern asmlinkage long sys_ni_syscall(unsigned long, unsigned long, unsigned lon
 #include <asm/syscalls_32.h>
 #undef __SYSCALL_I386
 
+/*
+ * The sys_call_table[] is no longer used for system calls, but
+ * kernel/trace/trace_syscalls.c still wants to know the system
+ * call address.
+ */
+#ifdef CONFIG_X86_32
 #define __SYSCALL_I386(nr, sym, qual) [nr] = sym,
 
-__visible const sys_call_ptr_t ia32_sys_call_table[__NR_syscall_compat_max+1] = {
+const sys_call_ptr_t sys_call_table[__NR_syscall_compat_max+1] = {
 	/*
 	 * Smells like a compiler bug -- it doesn't work
 	 * when the & below is removed.
@@ -30,3 +36,29 @@ __visible const sys_call_ptr_t ia32_sys_call_table[__NR_syscall_compat_max+1] = 
 	[0 ... __NR_syscall_compat_max] = &__sys_ni_syscall,
 #include <asm/syscalls_32.h>
 };
+#undef __SYSCALL_I386
+#endif
+
+#ifdef CONFIG_IA32_EMULATION
+#define __SYSCALL_I386(nr, sym, qual) case nr: return sym(regs);
+long ia32_sys_call(const struct pt_regs *regs, unsigned int nr)
+{
+	switch (nr) {
+	#include <asm/syscalls_32.h>
+	default: return __sys_ni_syscall(regs);
+	}
+};
+#else /* CONFIG_IA32_EMULATION */
+#define __SYSCALL_I386(nr, sym, qual) case nr: return sym(bx, cx, dx, si, di, bp);
+long ia32_sys_call(unsigned long bx, unsigned long cx, unsigned long dx,
+		   unsigned long si, unsigned long di, unsigned long bp,
+		   int nr)
+{
+	switch (nr) {
+	#include <asm/syscalls_32.h>
+	default: return __sys_ni_syscall(bx, cx, dx, si, di, bp);
+	}
+};
+#endif /* CONFIG_IA32_EMULATION */
+
+#undef __SYSCALL_I386
