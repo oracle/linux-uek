@@ -186,6 +186,14 @@
 #endif
 .endm
 
+#ifdef CONFIG_X86_64
+.macro CLEAR_BRANCH_HISTORY
+	ALTERNATIVE "", "call clear_bhb_loop", X86_FEATURE_CLEAR_BHB_LOOP
+.endm
+#else
+#define CLEAR_BRANCH_HISTORY
+#endif
+
 #else /* __ASSEMBLY__ */
 
 #ifdef CONFIG_RETPOLINE
@@ -316,6 +324,10 @@ extern void srso_alias_untrain_ret(void);
 
 extern void entry_untrain_ret(void);
 extern void entry_ibpb(void);
+
+#ifdef CONFIG_X86_64
+extern void clear_bhb_loop(void);
+#endif
 
 DECLARE_STATIC_KEY_FALSE(switch_mm_always_ibpb);
 DECLARE_STATIC_KEY_FALSE(switch_mm_cond_ibpb);

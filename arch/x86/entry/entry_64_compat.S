@@ -114,6 +114,7 @@ ENTRY(entry_SYSENTER_compat)
 
 	ENABLE_IBRS
 	UNTRAIN_RET
+	CLEAR_BRANCH_HISTORY
 
 	/*
 	 * SYSENTER doesn't filter flags, so we need to clear NT and AC
@@ -261,6 +262,7 @@ GLOBAL(entry_SYSCALL_compat_after_hwframe)
 	STUFF_RSB
 	ENABLE_IBRS
 	UNTRAIN_RET
+	CLEAR_BRANCH_HISTORY
 
 	/*
 	 * User mode is traced as though IRQs are on, and SYSENTER
@@ -393,9 +395,6 @@ ENTRY(entry_INT80_compat)
 	pushq	(%rdi)			/* pt_regs->di */
 .Lint80_keep_stack:
 
-	ENABLE_IBRS
-	UNTRAIN_RET
-
 	pushq	%rsi			/* pt_regs->si */
 	xorl	%esi, %esi		/* nospec   si */
 	pushq	%rdx			/* pt_regs->dx */
@@ -424,6 +423,10 @@ ENTRY(entry_INT80_compat)
 	pushq   %r15                    /* pt_regs->r15 */
 	xorl	%r15d, %r15d		/* nospec   r15 */
 	cld
+
+	ENABLE_IBRS
+	UNTRAIN_RET
+	CLEAR_BRANCH_HISTORY
 
 	/*
 	 * User mode is traced as though IRQs are on, and the interrupt
