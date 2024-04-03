@@ -489,4 +489,5 @@
  * the start of the vector that are only used by 32-bit kernels will be re-used.
  */
 #define X86_BUG_DIV0			X86_BUG(0) /* AMD DIV0 speculation bug (X86_BUG_F00F) */
+#define X86_BUG_BHI			X86_BUG(1) /* CPU is affected by Branch History Injection */
 #endif /* _ASM_X86_CPUFEATURES_H */
