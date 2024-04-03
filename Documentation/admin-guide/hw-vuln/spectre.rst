@@ -445,6 +445,8 @@ The possible values in this file are:
    - System is protected by software clearing sequence
  * - BHI: Vulnerable
    - System is vulnerable to BHI attacks
+ * - BHI: Vulnerable; KVM: SW loop
+   - System is vulnerable to BHI attacks from userspace; KVM is protected by software clearing sequence
 
 Full mitigation might require a microcode update from the CPU
 vendor. When the necessary microcode is not available, the kernel will
@@ -661,7 +663,10 @@ kernel command line.
 			unconditionally disable.
 		auto
 			enable if hardware mitigation
-			control(BHI_DIS_S) is available.
+			control(BHI_DIS_S) is available, otherwise
+			enable alternate mitigation in KVM. Syscalls
+			are not mitigated if hardware mitigation is
+			not present.
 
 For user space mitigation:
 
