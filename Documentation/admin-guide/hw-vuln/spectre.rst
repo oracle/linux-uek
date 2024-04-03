@@ -138,11 +138,10 @@ associated with the source address of the indirect branch. Specifically,
 the BHB might be shared across privilege levels even in the presence of
 Enhanced IBRS.
 
-Currently the only known real-world BHB attack vector is via
-unprivileged eBPF. Therefore, it's highly recommended to not enable
-unprivileged eBPF, especially when eIBRS is used (without retpolines).
-For a full mitigation against BHB attacks, it's recommended to use
-retpolines (or eIBRS combined with retpolines).
+Previously the only known real-world BHB attack vector was via unprivileged
+eBPF. Further research has found attacks that don't require unprivileged eBPF.
+For a full mitigation against BHB attacks it is recommended to set BHI_DIS_S or
+use the BHB clearing sequence.
 
 Attack scenarios
 ----------------
@@ -430,6 +429,23 @@ The possible values in this file are:
   'PBRSB-eIBRS: Not affected'  CPU is not affected by PBRSB
   ===========================  =======================================================
 
+  - Branch History Injection (BHI) protection status:
+
+.. list-table::
+
+ * - BHI: Not affected
+   - System is not affected
+ * - BHI: IBRS
+   - System is protected by IBRS
+ * - BHI: Retpoline
+   - System is protected by retpoline
+ * - BHI: BHI_DIS_S
+   - System is protected by BHI_DIS_S
+ * - BHI: SW loop
+   - System is protected by software clearing sequence
+ * - BHI: Vulnerable
+   - System is vulnerable to BHI attacks
+
 Full mitigation might require a microcode update from the CPU
 vendor. When the necessary microcode is not available, the kernel will
 report vulnerability.
@@ -486,6 +502,11 @@ Spectre variant 2
    boot, by setting the IBRS bit, and they're automatically protected against
    Spectre v2 variant attacks, including cross-thread branch target injections
    on SMT systems (STIBP). In other words, eIBRS enables STIBP too.
+
+   The BHB can still influence the choice of indirect branch predictor entry,
+   and although branch predictor entries are isolated between modes when eIBRS
+   is enabled, the BHB itself is not isolated between modes. Systems which
+   support BHI_DIS_S will set it to protect against BHI attacks.
 
    Legacy IBRS systems clear the IBRS bit on exit to userspace and
    therefore explicitly enable STIBP for that
@@ -628,6 +649,19 @@ kernel command line.
 
 		Not specifying this option is equivalent to
 		spectre_v2=auto.
+
+	spectre_bhi=
+
+		[X86] Control mitigation of Branch History Injection
+		(BHI) vulnerability.
+
+		on
+			unconditionally enable.
+		off
+			unconditionally disable.
+		auto
+			enable if hardware mitigation
+			control(BHI_DIS_S) is available.
 
 For user space mitigation:
 
