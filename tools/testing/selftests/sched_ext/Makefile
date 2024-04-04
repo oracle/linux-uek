@@ -170,6 +170,7 @@ auto-test-targets :=			\
 	maximal				\
 	maybe_null			\
 	minimal				\
+	prog_run			\
 	reload_loop			\
 	select_cpu_dfl			\
 	select_cpu_dfl_nodispatch	\
