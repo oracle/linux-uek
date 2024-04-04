@@ -10,6 +10,7 @@
 
 #include <errno.h>
 #include <scx/common.h>
+#include <scx/compat.h>
 
 enum scx_test_status {
 	SCX_TEST_PASS = 0,
@@ -17,19 +18,7 @@ enum scx_test_status {
 	SCX_TEST_FAIL,
 };
 
-/* Copied from include/linux/sched/ext.h */
-enum scx_test_exit_kind {
-        SCX_EXIT_NONE,
-        SCX_EXIT_DONE,
-
-	SCX_EXIT_UNREG = 64,	/* User-space initiated unregistration */
-	SCX_EXIT_UNREG_BPF,	/* BPF-initiated unregistration */
-	SCX_EXIT_SYSRQ,		/* requested by 'S' sysrq */
-
-	SCX_EXIT_ERROR = 1024,  /* runtime error, error msg contains details */
-	SCX_EXIT_ERROR_BPF,     /* ERROR but triggered through scx_bpf_error() */
-	SCX_EXIT_ERROR_STALL,   /* watchdog detected stalled runnable tasks */
-};
+#define EXIT_KIND(__ent) __COMPAT_ENUM_OR_ZERO("scx_exit_kind", #__ent)
 
 struct scx_test {
 	/**

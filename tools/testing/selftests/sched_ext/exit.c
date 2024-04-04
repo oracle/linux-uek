@@ -33,10 +33,10 @@ static enum scx_test_status run(void *ctx)
 		}
 
 		/* Assumes uei.kind is written last */
-		while (skel->data->uei.kind == SCX_EXIT_NONE)
+		while (skel->data->uei.kind == EXIT_KIND(SCX_EXIT_NONE))
 			sched_yield();
 
-		SCX_EQ(skel->data->uei.kind, SCX_EXIT_UNREG_BPF);
+		SCX_EQ(skel->data->uei.kind, EXIT_KIND(SCX_EXIT_UNREG_BPF));
 		SCX_EQ(skel->data->uei.exit_code, tc);
 		sprintf(buf, "%d", tc);
 		SCX_ASSERT(!strcmp(skel->data->uei.msg, buf));
