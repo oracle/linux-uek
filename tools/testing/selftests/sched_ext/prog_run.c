@@ -46,14 +46,14 @@ static enum scx_test_status run(void *ctx)
 		return SCX_TEST_FAIL;
 	}
 
-	//err = bpf_prog_test_run_opts(prog_fd, &topts);
+	err = bpf_prog_test_run_opts(prog_fd, &topts);
 	SCX_EQ(err, 0);
 
 	/* Assumes uei.kind is written last */
-	while (skel->data->uei.kind == SCX_EXIT_NONE)
+	while (skel->data->uei.kind == EXIT_KIND(SCX_EXIT_NONE))
 		sched_yield();
 
-	SCX_EQ(skel->data->uei.kind, SCX_EXIT_UNREG_BPF);
+	SCX_EQ(skel->data->uei.kind, EXIT_KIND(SCX_EXIT_UNREG_BPF));
 	SCX_EQ(skel->data->uei.exit_code, 0xdeadbeef);
 	close(prog_fd);
 	bpf_link__destroy(link);
