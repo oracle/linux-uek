@@ -188,6 +188,27 @@ struct scx_cpu_release_args {
 	struct task_struct *task;
 };
 
+/*
+ * Exit code IDs are 64bit of the format:
+ *
+ *   Bits: [63  ..  48 47   ..  32 31 .. 0]
+ *         [ SYS ACT ] [ SYS RSN ] [ USR  ]
+ *
+ *   SYS ACT: System-defined exit actions
+ *   SYS RSN: System-defined exit reasons
+ *   USR    : User-defined exit codes and reasons
+ *
+ * Using the above mechanisms, users may communicate intention and context by
+ * ORing system actions and/or system reasons with a user-defined exit code.
+ */
+enum scx_exit_code {
+	/* Reasons */
+	SCX_ECODE_RSN_HOTPLUG	= 1LLU << 32,
+
+	/* Actions */
+	SCX_ECODE_ACT_RESTART	= 1LLU << 48,
+};
+
 /**
  * struct sched_ext_ops - Operation table for BPF scheduler implementation
  *

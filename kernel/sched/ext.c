@@ -2250,16 +2250,31 @@ void __scx_update_idle(struct rq *rq, bool idle)
 #endif
 }
 
+static void hotplug_exit_sched(struct rq *rq, bool online)
+{
+	scx_ops_exit(SCX_ECODE_ACT_RESTART | SCX_ECODE_RSN_HOTPLUG,
+		     "cpu %d going %s, exiting scheduler",
+		     cpu_of(rq), online ? "online" : "offline");
+}
+
 static void rq_online_scx(struct rq *rq, enum rq_onoff_reason reason)
 {
-	if (SCX_HAS_OP(cpu_online) && reason == RQ_ONOFF_HOTPLUG)
-		SCX_CALL_OP(SCX_KF_REST, cpu_online, cpu_of(rq));
+	if (reason == RQ_ONOFF_HOTPLUG) {
+		if (SCX_HAS_OP(cpu_online))
+			SCX_CALL_OP(SCX_KF_REST, cpu_online, cpu_of(rq));
+		else
+			hotplug_exit_sched(rq, true);
+	}
 }
 
 static void rq_offline_scx(struct rq *rq, enum rq_onoff_reason reason)
 {
-	if (SCX_HAS_OP(cpu_offline) && reason == RQ_ONOFF_HOTPLUG)
-		SCX_CALL_OP(SCX_KF_REST, cpu_offline, cpu_of(rq));
+	if (reason == RQ_ONOFF_HOTPLUG) {
+		if (SCX_HAS_OP(cpu_offline))
+			SCX_CALL_OP(SCX_KF_REST, cpu_offline, cpu_of(rq));
+		else
+			hotplug_exit_sched(rq, false);
+	}
 }
 
 #else /* !CONFIG_SMP */
@@ -3298,6 +3313,8 @@ static const char *scx_exit_reason(enum scx_exit_kind kind)
 		return "Scheduler unregistered from user space";
 	case SCX_EXIT_UNREG_BPF:
 		return "Scheduler unregistered from BPF";
+	case SCX_EXIT_UNREG_KERN:
+		return "Scheduler unregistered from the main kernel";
 	case SCX_EXIT_SYSRQ:
 		return "disabled by sysrq-S";
 	case SCX_EXIT_ERROR:
@@ -5074,6 +5091,7 @@ static void bpf_exit_bstr_common(enum scx_exit_kind kind, s64 exit_code,
 	unsigned long flags;
 	int ret;
 
+	BUILD_BUG_ON(sizeof(enum scx_exit_code) != sizeof_field(struct scx_exit_info, exit_code));
 	local_irq_save(flags);
 	bufs = this_cpu_ptr(&scx_bpf_error_bstr_bufs);
 
