@@ -456,6 +456,23 @@ coupled_control
     The default value is 1. This setting does not separate the Collecting
     and Distributing states, maintaining the bond in coupled control.
 
+arp_allslaves
+
+	Specifies whether or not ARP probes should be sent over all slaves.
+	This option affects only active-backup mode for slaves with
+	arp_ip_target set.
+
+	Possible values are:
+
+	off or 0
+
+		The ARP probes are sent only over the current active slave.
+		This is the default.
+
+	on or 1
+
+		ARP probes are sent over all slaves.
+
 downdelay
 
 	Specifies the time, in milliseconds, to wait before disabling
