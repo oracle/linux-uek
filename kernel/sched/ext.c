@@ -2141,21 +2141,6 @@ cpu_found:
 	return cpu;
 }
 
-__bpf_kfunc_start_defs();
-
-__bpf_kfunc s32 scx_bpf_select_cpu_dfl(struct task_struct *p, s32 prev_cpu,
-				       u64 wake_flags, bool *found)
-{
-	if (!scx_kf_allowed(SCX_KF_SELECT_CPU)) {
-		*found = false;
-		return prev_cpu;
-	}
-
-	return scx_select_cpu_dfl(p, prev_cpu, wake_flags, found);
-}
-
-__bpf_kfunc_end_defs();
-
 static int select_task_rq_scx(struct task_struct *p, int prev_cpu, int wake_flags)
 {
 	/*
@@ -4535,6 +4520,8 @@ __bpf_kfunc s32 scx_bpf_create_dsq(u64 dsq_id, s32 node)
 	return PTR_ERR_OR_ZERO(create_dsq(dsq_id, node));
 }
 
+__bpf_kfunc_end_defs();
+
 BTF_KFUNCS_START(scx_kfunc_ids_sleepable)
 BTF_ID_FLAGS(func, scx_bpf_create_dsq, KF_SLEEPABLE)
 BTF_KFUNCS_END(scx_kfunc_ids_sleepable)
@@ -4543,8 +4530,6 @@ static const struct btf_kfunc_id_set scx_kfunc_set_sleepable = {
 	.owner			= THIS_MODULE,
 	.set			= &scx_kfunc_ids_sleepable,
 };
-
-__bpf_kfunc_end_defs();
 
 static bool scx_dispatch_preamble(struct task_struct *p, u64 enq_flags)
 {
@@ -4677,6 +4662,8 @@ __bpf_kfunc void scx_bpf_dispatch_vtime(struct task_struct *p, u64 dsq_id,
 	scx_dispatch_commit(p, dsq_id, enq_flags | SCX_ENQ_DSQ_PRIQ);
 }
 
+__bpf_kfunc_end_defs();
+
 BTF_KFUNCS_START(scx_kfunc_ids_enqueue_dispatch)
 BTF_ID_FLAGS(func, scx_bpf_dispatch, KF_RCU)
 BTF_ID_FLAGS(func, scx_bpf_dispatch_vtime, KF_RCU)
@@ -4686,6 +4673,8 @@ static const struct btf_kfunc_id_set scx_kfunc_set_enqueue_dispatch = {
 	.owner			= THIS_MODULE,
 	.set			= &scx_kfunc_ids_enqueue_dispatch,
 };
+
+__bpf_kfunc_start_defs();
 
 /**
  * scx_bpf_dispatch_nr_slots - Return the number of remaining dispatch slots
@@ -4764,6 +4753,8 @@ __bpf_kfunc bool scx_bpf_consume(u64 dsq_id)
 	}
 }
 
+__bpf_kfunc_end_defs();
+
 BTF_KFUNCS_START(scx_kfunc_ids_dispatch)
 BTF_ID_FLAGS(func, scx_bpf_dispatch_nr_slots)
 BTF_ID_FLAGS(func, scx_bpf_dispatch_cancel)
@@ -4774,6 +4765,8 @@ static const struct btf_kfunc_id_set scx_kfunc_set_dispatch = {
 	.owner			= THIS_MODULE,
 	.set			= &scx_kfunc_ids_dispatch,
 };
+
+__bpf_kfunc_start_defs();
 
 /**
  * scx_bpf_reenqueue_local - Re-enqueue tasks on a local DSQ
@@ -4817,6 +4810,8 @@ __bpf_kfunc u32 scx_bpf_reenqueue_local(void)
 	return nr_enqueued;
 }
 
+__bpf_kfunc_end_defs();
+
 BTF_KFUNCS_START(scx_kfunc_ids_cpu_release)
 BTF_ID_FLAGS(func, scx_bpf_reenqueue_local)
 BTF_KFUNCS_END(scx_kfunc_ids_cpu_release)
@@ -4825,6 +4820,8 @@ static const struct btf_kfunc_id_set scx_kfunc_set_cpu_release = {
 	.owner			= THIS_MODULE,
 	.set			= &scx_kfunc_ids_cpu_release,
 };
+
+__bpf_kfunc_start_defs();
 
 /**
  * scx_bpf_kick_cpu - Trigger reschedule on a CPU
@@ -5006,6 +5003,152 @@ __bpf_kfunc s32 scx_bpf_pick_any_cpu(const struct cpumask *cpus_allowed,
 }
 
 /**
+ * scx_bpf_destroy_dsq - Destroy a custom DSQ
+ * @dsq_id: DSQ to destroy
+ *
+ * Destroy the custom DSQ identified by @dsq_id. Only DSQs created with
+ * scx_bpf_create_dsq() can be destroyed. The caller must ensure that the DSQ is
+ * empty and no further tasks are dispatched to it. Ignored if called on a DSQ
+ * which doesn't exist. Can be called from any online scx_ops operations.
+ */
+__bpf_kfunc void scx_bpf_destroy_dsq(u64 dsq_id)
+{
+	destroy_dsq(dsq_id);
+}
+
+/**
+ * scx_bpf_select_cpu_dfl - The default implementation of ops.select_cpu()
+ * @p: task_struct to select a CPU for
+ * @prev_cpu: CPU @p was on previously
+ * @wake_flags: %SCX_WAKE_* flags
+ * @is_idle: out parameter indicating whether the returned CPU is idle
+ *
+ * Can only be called from ops.select_cpu() if the built-in CPU selection is
+ * enabled - ops.update_idle() is missing or %SCX_OPS_KEEP_BUILTIN_IDLE is set.
+ * @p, @prev_cpu and @wake_flags match ops.select_cpu().
+ *
+ * Returns the picked CPU with *@is_idle indicating whether the picked CPU is
+ * currently idle and thus a good candidate for direct dispatching.
+ */
+__bpf_kfunc s32 scx_bpf_select_cpu_dfl(struct task_struct *p, s32 prev_cpu,
+				       u64 wake_flags, bool *is_idle)
+{
+	if (!scx_kf_allowed(SCX_KF_SELECT_CPU)) {
+		*is_idle = false;
+		return prev_cpu;
+	}
+
+	return scx_select_cpu_dfl(p, prev_cpu, wake_flags, is_idle);
+}
+
+__bpf_kfunc_end_defs();
+
+BTF_KFUNCS_START(scx_kfunc_ids_ops_only)
+BTF_ID_FLAGS(func, scx_bpf_kick_cpu)
+BTF_ID_FLAGS(func, scx_bpf_dsq_nr_queued)
+BTF_ID_FLAGS(func, scx_bpf_test_and_clear_cpu_idle)
+BTF_ID_FLAGS(func, scx_bpf_pick_idle_cpu, KF_RCU)
+BTF_ID_FLAGS(func, scx_bpf_pick_any_cpu, KF_RCU)
+BTF_ID_FLAGS(func, scx_bpf_destroy_dsq)
+BTF_ID_FLAGS(func, scx_bpf_select_cpu_dfl, KF_RCU)
+BTF_KFUNCS_END(scx_kfunc_ids_ops_only)
+
+static const struct btf_kfunc_id_set scx_kfunc_set_ops_only = {
+	.owner			= THIS_MODULE,
+	.set			= &scx_kfunc_ids_ops_only,
+};
+
+struct scx_bpf_error_bstr_bufs {
+	u64			data[MAX_BPRINTF_VARARGS];
+	char			msg[SCX_EXIT_MSG_LEN];
+};
+
+static DEFINE_PER_CPU(struct scx_bpf_error_bstr_bufs, scx_bpf_error_bstr_bufs);
+
+static void bpf_exit_bstr_common(enum scx_exit_kind kind, s64 exit_code,
+				 char *fmt, unsigned long long *data,
+				 u32 data__sz)
+{
+	struct bpf_bprintf_data bprintf_data = { .get_bin_args = true };
+	struct scx_bpf_error_bstr_bufs *bufs;
+	unsigned long flags;
+	int ret;
+
+	local_irq_save(flags);
+	bufs = this_cpu_ptr(&scx_bpf_error_bstr_bufs);
+
+	if (data__sz % 8 || data__sz > MAX_BPRINTF_VARARGS * 8 ||
+	    (data__sz && !data)) {
+		scx_ops_error("invalid data=%p and data__sz=%u",
+			      (void *)data, data__sz);
+		goto out_restore;
+	}
+
+	ret = copy_from_kernel_nofault(bufs->data, data, data__sz);
+	if (ret) {
+		scx_ops_error("failed to read data fields (%d)", ret);
+		goto out_restore;
+	}
+
+	ret = bpf_bprintf_prepare(fmt, UINT_MAX, bufs->data, data__sz / 8,
+				  &bprintf_data);
+	if (ret < 0) {
+		scx_ops_error("failed to format prepration (%d)", ret);
+		goto out_restore;
+	}
+
+	ret = bstr_printf(bufs->msg, sizeof(bufs->msg), fmt,
+			  bprintf_data.bin_args);
+	bpf_bprintf_cleanup(&bprintf_data);
+	if (ret < 0) {
+		scx_ops_error("scx_ops_error(\"%s\", %p, %u) failed to format",
+			      fmt, data, data__sz);
+		goto out_restore;
+	}
+
+	scx_ops_exit_kind(kind, exit_code, "%s", bufs->msg);
+out_restore:
+	local_irq_restore(flags);
+
+}
+
+__bpf_kfunc_start_defs();
+
+/**
+ * scx_bpf_exit_bstr - Gracefully exit the BPF scheduler.
+ * @exit_code: Exit value to pass to user space via struct scx_exit_info.
+ * @fmt: error message format string
+ * @data: format string parameters packaged using ___bpf_fill() macro
+ * @data__sz: @data len, must end in '__sz' for the verifier
+ *
+ * Indicate that the BPF scheduler wants to exit gracefully, and initiate ops
+ * disabling.
+ */
+__bpf_kfunc void scx_bpf_exit_bstr(s64 exit_code, char *fmt,
+				   unsigned long long *data, u32 data__sz)
+{
+	bpf_exit_bstr_common(SCX_EXIT_UNREG_BPF, exit_code, fmt, data,
+			     data__sz);
+}
+
+/**
+ * scx_bpf_error_bstr - Indicate fatal error
+ * @fmt: error message format string
+ * @data: format string parameters packaged using ___bpf_fill() macro
+ * @data__sz: @data len, must end in '__sz' for the verifier
+ *
+ * Indicate that the BPF scheduler encountered a fatal error and initiate ops
+ * disabling.
+ */
+__bpf_kfunc void scx_bpf_error_bstr(char *fmt, unsigned long long *data,
+				    u32 data__sz)
+{
+
+	bpf_exit_bstr_common(SCX_EXIT_ERROR_BPF, 0, fmt, data,
+			     data__sz);
+}
+
+/**
  * scx_bpf_get_idle_cpumask - Get a referenced kptr to the idle-tracking
  * per-CPU cpumask.
  *
@@ -5064,108 +5207,6 @@ __bpf_kfunc void scx_bpf_put_idle_cpumask(const struct cpumask *idle_mask)
 	 */
 }
 
-struct scx_bpf_error_bstr_bufs {
-	u64			data[MAX_BPRINTF_VARARGS];
-	char			msg[SCX_EXIT_MSG_LEN];
-};
-
-static DEFINE_PER_CPU(struct scx_bpf_error_bstr_bufs, scx_bpf_error_bstr_bufs);
-
-static void bpf_exit_bstr_common(enum scx_exit_kind kind, s64 exit_code,
-				 char *fmt, unsigned long long *data,
-				 u32 data__sz)
-{
-	struct bpf_bprintf_data bprintf_data = { .get_bin_args = true };
-	struct scx_bpf_error_bstr_bufs *bufs;
-	unsigned long flags;
-	int ret;
-
-	local_irq_save(flags);
-	bufs = this_cpu_ptr(&scx_bpf_error_bstr_bufs);
-
-	if (data__sz % 8 || data__sz > MAX_BPRINTF_VARARGS * 8 ||
-	    (data__sz && !data)) {
-		scx_ops_error("invalid data=%p and data__sz=%u",
-			      (void *)data, data__sz);
-		goto out_restore;
-	}
-
-	ret = copy_from_kernel_nofault(bufs->data, data, data__sz);
-	if (ret) {
-		scx_ops_error("failed to read data fields (%d)", ret);
-		goto out_restore;
-	}
-
-	ret = bpf_bprintf_prepare(fmt, UINT_MAX, bufs->data, data__sz / 8,
-				  &bprintf_data);
-	if (ret < 0) {
-		scx_ops_error("failed to format prepration (%d)", ret);
-		goto out_restore;
-	}
-
-	ret = bstr_printf(bufs->msg, sizeof(bufs->msg), fmt,
-			  bprintf_data.bin_args);
-	bpf_bprintf_cleanup(&bprintf_data);
-	if (ret < 0) {
-		scx_ops_error("scx_ops_error(\"%s\", %p, %u) failed to format",
-			      fmt, data, data__sz);
-		goto out_restore;
-	}
-
-	scx_ops_exit_kind(kind, exit_code, "%s", bufs->msg);
-out_restore:
-	local_irq_restore(flags);
-
-}
-
-/**
- * scx_bpf_exit_bstr - Gracefully exit the BPF scheduler.
- * @exit_code: Exit value to pass to user space via struct scx_exit_info.
- * @fmt: error message format string
- * @data: format string parameters packaged using ___bpf_fill() macro
- * @data__sz: @data len, must end in '__sz' for the verifier
- *
- * Indicate that the BPF scheduler wants to exit gracefully, and initiate ops
- * disabling.
- */
-__bpf_kfunc void scx_bpf_exit_bstr(s64 exit_code, char *fmt,
-				   unsigned long long *data, u32 data__sz)
-{
-	bpf_exit_bstr_common(SCX_EXIT_UNREG_BPF, exit_code, fmt, data,
-			     data__sz);
-}
-
-/**
- * scx_bpf_error_bstr - Indicate fatal error
- * @fmt: error message format string
- * @data: format string parameters packaged using ___bpf_fill() macro
- * @data__sz: @data len, must end in '__sz' for the verifier
- *
- * Indicate that the BPF scheduler encountered a fatal error and initiate ops
- * disabling.
- */
-__bpf_kfunc void scx_bpf_error_bstr(char *fmt, unsigned long long *data,
-				    u32 data__sz)
-{
-
-	bpf_exit_bstr_common(SCX_EXIT_ERROR_BPF, 0, fmt, data,
-			     data__sz);
-}
-
-/**
- * scx_bpf_destroy_dsq - Destroy a custom DSQ
- * @dsq_id: DSQ to destroy
- *
- * Destroy the custom DSQ identified by @dsq_id. Only DSQs created with
- * scx_bpf_create_dsq() can be destroyed. The caller must ensure that the DSQ is
- * empty and no further tasks are dispatched to it. Ignored if called on a DSQ
- * which doesn't exist. Can be called from any online scx_ops operations.
- */
-__bpf_kfunc void scx_bpf_destroy_dsq(u64 dsq_id)
-{
-	destroy_dsq(dsq_id);
-}
-
 /**
  * scx_bpf_task_running - Is task currently running?
  * @p: task of interest
@@ -5219,27 +5260,14 @@ out:
 }
 #endif
 
-BTF_KFUNCS_START(scx_kfunc_ids_ops_only)
-BTF_ID_FLAGS(func, scx_bpf_kick_cpu)
-BTF_ID_FLAGS(func, scx_bpf_dsq_nr_queued)
-BTF_ID_FLAGS(func, scx_bpf_test_and_clear_cpu_idle)
-BTF_ID_FLAGS(func, scx_bpf_pick_idle_cpu, KF_RCU)
-BTF_ID_FLAGS(func, scx_bpf_pick_any_cpu, KF_RCU)
-BTF_ID_FLAGS(func, scx_bpf_destroy_dsq)
-BTF_ID_FLAGS(func, scx_bpf_select_cpu_dfl, KF_RCU)
-BTF_KFUNCS_END(scx_kfunc_ids_ops_only)
-
-static const struct btf_kfunc_id_set scx_kfunc_set_ops_only = {
-	.owner			= THIS_MODULE,
-	.set			= &scx_kfunc_ids_ops_only,
-};
+__bpf_kfunc_end_defs();
 
 BTF_KFUNCS_START(scx_kfunc_ids_any)
+BTF_ID_FLAGS(func, scx_bpf_exit_bstr, KF_TRUSTED_ARGS)
+BTF_ID_FLAGS(func, scx_bpf_error_bstr, KF_TRUSTED_ARGS)
 BTF_ID_FLAGS(func, scx_bpf_get_idle_cpumask, KF_ACQUIRE)
 BTF_ID_FLAGS(func, scx_bpf_get_idle_smtmask, KF_ACQUIRE)
 BTF_ID_FLAGS(func, scx_bpf_put_idle_cpumask, KF_RELEASE)
-BTF_ID_FLAGS(func, scx_bpf_error_bstr, KF_TRUSTED_ARGS)
-BTF_ID_FLAGS(func, scx_bpf_exit_bstr, KF_TRUSTED_ARGS)
 BTF_ID_FLAGS(func, scx_bpf_task_running, KF_RCU)
 BTF_ID_FLAGS(func, scx_bpf_task_cpu, KF_RCU)
 #ifdef CONFIG_CGROUP_SCHED
@@ -5251,8 +5279,6 @@ static const struct btf_kfunc_id_set scx_kfunc_set_any = {
 	.owner			= THIS_MODULE,
 	.set			= &scx_kfunc_ids_any,
 };
-
-__bpf_kfunc_end_defs();
 
 static int __init scx_init(void)
 {
