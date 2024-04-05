@@ -387,9 +387,12 @@ Requires: %{name}-modules-core-uname-r = %{KVERREL}
 #
 BuildRequires: kmod, patch >= 2.5.4, bash >= 2.03, tar, git
 BuildRequires: bzip2, xz, findutils, gzip, m4, perl-interpreter, perl-Carp, perl-devel, perl-generators, make >= 3.78, diffutils, gawk
-BuildRequires: gcc-toolset-13
-BuildRequires: gcc-toolset-13-gcc-plugin-annobin
+BuildRequires: gcc-toolset-13-annobin-plugin-gcc
 BuildRequires: gcc-toolset-13-binutils
+BuildRequires: gcc-toolset-13-gcc
+BuildRequires: gcc-toolset-13-gcc-c++
+BuildRequires: gcc-toolset-13-runtime
+BuildRequires: gcc-toolset-13-gcc-plugin-annobin
 BuildRequires: gcc-toolset-13-binutils-devel
 BuildRequires: redhat-rpm-config, hmaccalc, python3-devel
 BuildRequires: net-tools, hostname
@@ -704,8 +707,11 @@ Provides: kernel-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: installonlypkg(%{installonly_variant_name})\
 AutoReqProv: no\
 Requires(pre): /usr/bin/find\
-Requires: gcc-toolset-13\
+Requires: gcc-toolset-13-annobin-plugin-gcc\
 Requires: gcc-toolset-13-binutils\
+Requires: gcc-toolset-13-gcc\
+Requires: gcc-toolset-13-gcc-c++\
+Requires: gcc-toolset-13-runtime\
 Requires: gcc-toolset-13-binutils-devel\
 %description -n %{variant_name}-devel\
 This package provides kernel headers and makefiles sufficient to build modules\
