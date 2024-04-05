@@ -151,6 +151,9 @@ __printf(3, 4) void scx_ops_exit_kind(enum scx_exit_kind kind,
 #define scx_ops_error_kind(__err, fmt, args...)					\
 	scx_ops_exit_kind(__err, 0, fmt, ##args)
 
+#define scx_ops_exit(__code, fmt, args...)					\
+	scx_ops_exit_kind(SCX_EXIT_UNREG_KERN, __code, fmt, ##args)
+
 #define scx_ops_error(fmt, args...)						\
 	scx_ops_error_kind(SCX_EXIT_ERROR, fmt, ##args)
 

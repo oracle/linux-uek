@@ -58,6 +58,7 @@ enum scx_exit_kind {
 
 	SCX_EXIT_UNREG = 64,	/* User-space initiated unregistration */
 	SCX_EXIT_UNREG_BPF,	/* BPF-initiated unregistration */
+	SCX_EXIT_UNREG_KERN,	/* Main-kernel-initiated unregistration */
 	SCX_EXIT_SYSRQ,		/* requested by 'S' sysrq */
 
 	SCX_EXIT_ERROR = 1024,	/* runtime error, error msg contains details */
