@@ -3823,7 +3823,14 @@ static bool bond_ab_arp_probe(struct bonding *bond)
 			    curr_active_slave->dev->name);
 
 	if (curr_active_slave) {
-		bond_send_validate(bond, curr_active_slave);
+		if (bond->params.arp_allslaves == 0) {
+			bond_send_validate(bond, curr_active_slave);
+		} else {
+			bond_for_each_slave_rcu(bond, slave, iter) {
+				if (bond_slave_is_up(slave))
+					bond_send_validate(bond, slave);
+			}
+		}
 		return should_notify_rtnl;
 	}
 

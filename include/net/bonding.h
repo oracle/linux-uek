@@ -121,6 +121,7 @@ struct bond_params {
 	int miimon;
 	u8 num_peer_notif;
 	u8 missed_max;
+	u8 arp_allslaves;
 	int arp_interval;
 	int arp_validate;
 	int arp_all_targets;
