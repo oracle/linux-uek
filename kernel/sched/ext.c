@@ -5202,7 +5202,7 @@ __bpf_kfunc void scx_bpf_put_idle_cpumask(const struct cpumask *idle_mask)
 	 * Empty function body because we aren't actually acquiring or
 	 * releasing a reference to a global idle cpumask, which is read-only
 	 * in the caller and is never released. The acquire / release semantics
-	 * here are just used to make the cpumask is a trusted pointer in the
+	 * here are just used to make the cpumask a trusted pointer in the
 	 * caller.
 	 */
 }
