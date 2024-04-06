@@ -77,7 +77,7 @@
 
 /* supported values for SO_RDS_TRANSPORT */
 #define	RDS_TRANS_IB	0
-#define	RDS_TRANS_GAP	1
+#define	RDS_TRANS_LOOP	1
 #define	RDS_TRANS_TCP	2
 #define	RDS_TRANS_COUNT	3
 #define	RDS_TRANS_NONE	(~0)
@@ -246,6 +246,7 @@ struct rds_info_socket {
 	__u64		inum;
 	pid_t		pid;
 	__s32		cong;
+	__u8		t_name[TRANSNAMSIZ];
 } __attribute__((packed));
 
 struct rds6_info_socket {
@@ -258,6 +259,7 @@ struct rds6_info_socket {
 	__u64		inum;
 	pid_t		pid;
 	__s32		cong;
+	__u8		t_name[TRANSNAMSIZ];
 } __attribute__((packed));
 
 struct rds_info_tcp_socket {
