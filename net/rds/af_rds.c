@@ -1283,6 +1283,8 @@ static void rds_sock_info(struct socket *sock, unsigned int len,
 		sinfo.connected_port = rs->rs_conn_port;
 		sinfo.inum = sock_i_ino(rds_rs_to_sk(rs));
 		sinfo.pid = rs->rs_pid;
+		if (rs->rs_transport)
+			strscpy(sinfo.t_name, rs->rs_transport->t_name, sizeof(sinfo.t_name));
 		if (rs->rs_congested)
 			sinfo.cong = rs->rs_congested;
 		else
@@ -1322,6 +1324,8 @@ static void rds6_sock_info(struct socket *sock, unsigned int len,
 		sinfo6.connected_port = rs->rs_conn_port;
 		sinfo6.inum = sock_i_ino(rds_rs_to_sk(rs));
 		sinfo6.pid = rs->rs_pid;
+		if (rs->rs_transport)
+			strscpy(sinfo6.t_name, rs->rs_transport->t_name, sizeof(sinfo6.t_name));
 		if (rs->rs_congested)
 			sinfo6.cong = rs->rs_congested;
 		else
