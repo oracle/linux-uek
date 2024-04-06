@@ -219,4 +219,5 @@ struct rds_transport rds_loop_transport = {
 	.inc_free		= rds_loop_inc_free,
 	.t_name			= "loopback",
 	.t_conn_count		= ATOMIC_INIT(0),
+	.t_type			= RDS_TRANS_LOOP
 };
