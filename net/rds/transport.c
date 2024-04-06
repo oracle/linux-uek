@@ -40,7 +40,7 @@
 
 static char * const rds_trans_modules[] = {
 	[RDS_TRANS_IB] = "rds_rdma",
-	[RDS_TRANS_GAP] = NULL,
+	[RDS_TRANS_LOOP] = NULL,
 	[RDS_TRANS_TCP] = "rds_tcp",
 };
 
