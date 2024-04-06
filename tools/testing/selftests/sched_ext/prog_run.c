@@ -37,7 +37,7 @@ static enum scx_test_status run(void *ctx)
 		return SCX_TEST_FAIL;
 	}
 
-        LIBBPF_OPTS(bpf_test_run_opts, topts);
+	LIBBPF_OPTS(bpf_test_run_opts, topts);
 
 	link = bpf_map__attach_struct_ops(skel->maps.prog_run_ops);
 	if (!link) {
