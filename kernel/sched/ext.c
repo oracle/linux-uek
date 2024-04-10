@@ -26,7 +26,7 @@ struct scx_exit_info {
 	/* %SCX_EXIT_* - broad category of the exit reason */
 	enum scx_exit_kind	kind;
 
-	/* exit code if gracefully exiting from BPF */
+	/* exit code if gracefully exiting */
 	s64			exit_code;
 
 	/* textual representation of the above */
@@ -6068,7 +6068,7 @@ static int __init scx_init(void)
 
 	scx_kset = kset_create_and_add("sched_ext", &scx_uevent_ops, kernel_kobj);
 	if (!scx_kset) {
-		pr_err("sched_ext: Failed to create /sys/sched_ext\n");
+		pr_err("sched_ext: Failed to create /sys/kernel/sched_ext\n");
 		return -ENOMEM;
 	}
 
