@@ -110,4 +110,22 @@ void scx_test_register(struct scx_test *test);
 #define SCX_ASSERT(_x) SCX_FAIL_IF(!(_x), "Expected %s to be true (%lu)",		\
 				   #_x, (u64)(_x))
 
+#define SCX_ECODE_VAL(__ecode) ({						\
+        u64 __val = 0;								\
+	bool __found = false;							\
+										\
+	__found = __COMPAT_read_enum("scx_exit_code", #__ecode, &__val);	\
+	SCX_ASSERT(__found);							\
+	(s64)__val;								\
+})
+
+#define SCX_KIND_VAL(__kind) ({							\
+        u64 __val = 0;								\
+	bool __found = false;							\
+										\
+	__found = __COMPAT_read_enum("scx_exit_kind", #__kind, &__val);		\
+	SCX_ASSERT(__found);							\
+	__val;									\
+})
+
 #endif  // # __SCX_TEST_H__
