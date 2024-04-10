@@ -5844,6 +5844,46 @@ __bpf_kfunc void scx_bpf_error_bstr(char *fmt, unsigned long long *data,
 }
 
 /**
+ * scx_bpf_nr_cpu_ids - Return the number of possible CPU IDs
+ *
+ * All valid CPU IDs in the system are smaller than the returned value.
+ */
+__bpf_kfunc u32 scx_bpf_nr_cpu_ids(void)
+{
+	return nr_cpu_ids;
+}
+
+/**
+ * scx_bpf_get_possible_cpumask - Get a referenced kptr to cpu_possible_mask
+ */
+__bpf_kfunc const struct cpumask *scx_bpf_get_possible_cpumask(void)
+{
+	return cpu_possible_mask;
+}
+
+/**
+ * scx_bpf_get_online_cpumask - Get a referenced kptr to cpu_online_mask
+ */
+__bpf_kfunc const struct cpumask *scx_bpf_get_online_cpumask(void)
+{
+	return cpu_online_mask;
+}
+
+/**
+ * scx_bpf_put_cpumask - Release a possible/online cpumask
+ * @cpumask: cpumask to release
+ */
+__bpf_kfunc void scx_bpf_put_cpumask(const struct cpumask *cpumask)
+{
+	/*
+	 * Empty function body because we aren't actually acquiring or releasing
+	 * a reference to a global cpumask, which is read-only in the caller and
+	 * is never released. The acquire / release semantics here are just used
+	 * to make the cpumask is a trusted pointer in the caller.
+	 */
+}
+
+/**
  * scx_bpf_get_idle_cpumask - Get a referenced kptr to the idle-tracking
  * per-CPU cpumask.
  *
@@ -5960,6 +6000,10 @@ __bpf_kfunc_end_defs();
 BTF_KFUNCS_START(scx_kfunc_ids_any)
 BTF_ID_FLAGS(func, scx_bpf_exit_bstr, KF_TRUSTED_ARGS)
 BTF_ID_FLAGS(func, scx_bpf_error_bstr, KF_TRUSTED_ARGS)
+BTF_ID_FLAGS(func, scx_bpf_nr_cpu_ids)
+BTF_ID_FLAGS(func, scx_bpf_get_possible_cpumask, KF_ACQUIRE)
+BTF_ID_FLAGS(func, scx_bpf_get_online_cpumask, KF_ACQUIRE)
+BTF_ID_FLAGS(func, scx_bpf_put_cpumask, KF_RELEASE)
 BTF_ID_FLAGS(func, scx_bpf_get_idle_cpumask, KF_ACQUIRE)
 BTF_ID_FLAGS(func, scx_bpf_get_idle_smtmask, KF_ACQUIRE)
 BTF_ID_FLAGS(func, scx_bpf_put_idle_cpumask, KF_RELEASE)

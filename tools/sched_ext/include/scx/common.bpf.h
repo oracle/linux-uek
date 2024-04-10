@@ -45,6 +45,10 @@ s32 scx_bpf_select_cpu_dfl(struct task_struct *p, s32 prev_cpu, u64 wake_flags, 
 void scx_bpf_exit_bstr(s64 exit_code, char *fmt,
 		       unsigned long long *data, u32 data__sz) __ksym;
 void scx_bpf_error_bstr(char *fmt, unsigned long long *data, u32 data_len) __ksym;
+u32 scx_bpf_nr_cpu_ids(void) __ksym;
+const struct cpumask *scx_bpf_get_possible_cpumask(void) __ksym;
+const struct cpumask *scx_bpf_get_online_cpumask(void) __ksym;
+void scx_bpf_put_cpumask(const struct cpumask *cpumask) __ksym;
 const struct cpumask *scx_bpf_get_idle_cpumask(void) __ksym;
 const struct cpumask *scx_bpf_get_idle_smtmask(void) __ksym;
 void scx_bpf_put_idle_cpumask(const struct cpumask *cpumask) __ksym;
