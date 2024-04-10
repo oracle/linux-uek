@@ -6,104 +6,18 @@
  * Copyright (c) 2022 Tejun Heo <tj@kernel.org>
  * Copyright (c) 2022 David Vernet <dvernet@meta.com>
  */
-enum scx_wake_flags {
-	/* expose select WF_* flags as enums */
-	SCX_WAKE_FORK		= WF_FORK,
-	SCX_WAKE_TTWU		= WF_TTWU,
-	SCX_WAKE_SYNC		= WF_SYNC,
-};
+enum scx_exit_kind {
+	SCX_EXIT_NONE,
+	SCX_EXIT_DONE,
 
-enum scx_enq_flags {
-	/* expose select ENQUEUE_* flags as enums */
-	SCX_ENQ_WAKEUP		= ENQUEUE_WAKEUP,
-	SCX_ENQ_HEAD		= ENQUEUE_HEAD,
+	SCX_EXIT_UNREG = 64,	/* User-space initiated unregistration */
+	SCX_EXIT_UNREG_BPF,	/* BPF-initiated unregistration */
+	SCX_EXIT_UNREG_KERN,	/* Main-kernel-initiated unregistration */
+	SCX_EXIT_SYSRQ,		/* requested by 'S' sysrq */
 
-	/* high 32bits are SCX specific */
-
-	/*
-	 * Set the following to trigger preemption when calling
-	 * scx_bpf_dispatch() with a local dsq as the target. The slice of the
-	 * current task is cleared to zero and the CPU is kicked into the
-	 * scheduling path. Implies %SCX_ENQ_HEAD.
-	 */
-	SCX_ENQ_PREEMPT		= 1LLU << 32,
-
-	/*
-	 * The task being enqueued was previously enqueued on the current CPU's
-	 * %SCX_DSQ_LOCAL, but was removed from it in a call to the
-	 * bpf_scx_reenqueue_local() kfunc. If bpf_scx_reenqueue_local() was
-	 * invoked in a ->cpu_release() callback, and the task is again
-	 * dispatched back to %SCX_LOCAL_DSQ by this current ->enqueue(), the
-	 * task will not be scheduled on the CPU until at least the next invocation
-	 * of the ->cpu_acquire() callback.
-	 */
-	SCX_ENQ_REENQ		= 1LLU << 40,
-
-	/*
-	 * The task being enqueued is the only task available for the cpu. By
-	 * default, ext core keeps executing such tasks but when
-	 * %SCX_OPS_ENQ_LAST is specified, they're ops.enqueue()'d with the
-	 * %SCX_ENQ_LAST flag set.
-	 *
-	 * If the BPF scheduler wants to continue executing the task,
-	 * ops.enqueue() should dispatch the task to %SCX_DSQ_LOCAL immediately.
-	 * If the task gets queued on a different dsq or the BPF side, the BPF
-	 * scheduler is responsible for triggering a follow-up scheduling event.
-	 * Otherwise, Execution may stall.
-	 */
-	SCX_ENQ_LAST		= 1LLU << 41,
-
-	/* high 8 bits are internal */
-	__SCX_ENQ_INTERNAL_MASK	= 0xffLLU << 56,
-
-	SCX_ENQ_CLEAR_OPSS	= 1LLU << 56,
-	SCX_ENQ_DSQ_PRIQ	= 1LLU << 57,
-};
-
-enum scx_deq_flags {
-	/* expose select DEQUEUE_* flags as enums */
-	SCX_DEQ_SLEEP		= DEQUEUE_SLEEP,
-
-	/* high 32bits are SCX specific */
-
-	/*
-	 * The generic core-sched layer decided to execute the task even though
-	 * it hasn't been dispatched yet. Dequeue from the BPF side.
-	 */
-	SCX_DEQ_CORE_SCHED_EXEC	= 1LLU << 32,
-};
-
-enum scx_pick_idle_cpu_flags {
-	SCX_PICK_IDLE_CORE	= 1LLU << 0,	/* pick a CPU whose SMT siblings are also idle */
-};
-
-enum scx_kick_flags {
-	/*
-	 * Kick the target CPU if idle. Guarantees that the target CPU goes
-	 * through at least one full scheduling cycle before going idle. If the
-	 * target CPU can be determined to be currently not idle and going to go
-	 * through a scheduling cycle before going idle, noop.
-	 */
-	SCX_KICK_IDLE		= 1LLU << 0,
-
-	/*
-	 * Preempt the current task and execute the dispatch path. If the
-	 * current task of the target CPU is an SCX task, its ->scx.slice is
-	 * cleared to zero before the scheduling path is invoked so that the
-	 * task expires and the dispatch path is invoked.
-	 */
-	SCX_KICK_PREEMPT	= 1LLU << 1,
-
-	/*
-	 * Wait for the CPU to be rescheduled. The scx_bpf_kick_cpu() call will
-	 * return after the target CPU finishes picking the next task.
-	 */
-	SCX_KICK_WAIT		= 1LLU << 2,
-};
-
-enum scx_tg_flags {
-	SCX_TG_ONLINE		= 1U << 0,
-	SCX_TG_INITED		= 1U << 1,
+	SCX_EXIT_ERROR = 1024,	/* runtime error, error msg contains details */
+	SCX_EXIT_ERROR_BPF,	/* ERROR but triggered through scx_bpf_error() */
+	SCX_EXIT_ERROR_STALL,	/* watchdog detected stalled runnable tasks */
 };
 
 #ifdef CONFIG_SCHED_CLASS_EXT
