@@ -540,13 +540,21 @@ static void wait_ops_state(struct task_struct *p, unsigned long opss)
 /**
  * ops_cpu_valid - Verify a cpu number
  * @cpu: cpu number which came from a BPF ops
+ * @where: extra information reported on error
  *
  * @cpu is a cpu number which came from the BPF scheduler and can be any value.
- * Verify that it is in range and one of the possible cpus.
+ * Verify that it is in range and one of the possible cpus. If invalid, trigger
+ * an ops error.
  */
-static bool ops_cpu_valid(s32 cpu)
+static bool ops_cpu_valid(s32 cpu, const char *where)
 {
-	return likely(cpu >= 0 && cpu < nr_cpu_ids && cpu_possible(cpu));
+	if (likely(cpu >= 0 && cpu < nr_cpu_ids && cpu_possible(cpu))) {
+		return true;
+	} else {
+		scx_ops_error("invalid CPU %d%s%s", cpu,
+			      where ? " " : "", where ?: "");
+		return false;
+	}
 }
 
 /**
@@ -675,7 +683,7 @@ static void dispatch_enqueue(struct scx_dispatch_q *dsq, struct task_struct *p,
 		 * disallow any internal DSQ from doing vtime ordering of
 		 * tasks.
 		 */
-		scx_ops_error("Cannot use vtime ordering for built-in DSQs");
+		scx_ops_error("cannot use vtime ordering for built-in DSQs");
 		enq_flags &= ~SCX_ENQ_DSQ_PRIQ;
 	}
 
@@ -1398,11 +1406,8 @@ dispatch_to_local_dsq(struct rq *rq, struct rq_flags *rf, u64 dsq_id,
 	} else if ((dsq_id & SCX_DSQ_LOCAL_ON) == SCX_DSQ_LOCAL_ON) {
 		s32 cpu = dsq_id & SCX_DSQ_LOCAL_CPU_MASK;
 
-		if (!ops_cpu_valid(cpu)) {
-			scx_ops_error("invalid cpu %d in SCX_DSQ_LOCAL_ON verdict for %s[%d]",
-				      cpu, p->comm, p->pid);
+		if (!ops_cpu_valid(cpu, "in SCX_DSQ_LOCAL_ON dispatch verdict"))
 			return DTL_INVALID;
-		}
 		dst_rq = cpu_rq(cpu);
 	} else {
 		return DTL_NOT_LOCAL;
@@ -2167,12 +2172,10 @@ static int select_task_rq_scx(struct task_struct *p, int prev_cpu, int wake_flag
 		cpu = SCX_CALL_OP_TASK_RET(SCX_KF_ENQUEUE | SCX_KF_SELECT_CPU,
 					   select_cpu, p, prev_cpu, wake_flags);
 		*ddsp_taskp = NULL;
-		if (ops_cpu_valid(cpu)) {
+		if (ops_cpu_valid(cpu, "from ops.select_cpu()"))
 			return cpu;
-		} else {
-			scx_ops_error("select_cpu returned invalid cpu %d", cpu);
+		else
 			return prev_cpu;
-		}
 	} else {
 		bool found;
 		s32 cpu;
@@ -4854,10 +4857,8 @@ __bpf_kfunc void scx_bpf_kick_cpu(s32 cpu, u64 flags)
 	struct rq *this_rq;
 	unsigned long irq_flags;
 
-	if (!ops_cpu_valid(cpu)) {
-		scx_ops_error("invalid cpu %d", cpu);
+	if (!ops_cpu_valid(cpu, NULL))
 		return;
-	}
 
 	/*
 	 * While bypassing for PM ops, IRQ handling may not be online which can
@@ -4923,7 +4924,7 @@ __bpf_kfunc s32 scx_bpf_dsq_nr_queued(u64 dsq_id)
 	} else if ((dsq_id & SCX_DSQ_LOCAL_ON) == SCX_DSQ_LOCAL_ON) {
 		s32 cpu = dsq_id & SCX_DSQ_LOCAL_CPU_MASK;
 
-		if (ops_cpu_valid(cpu))
+		if (ops_cpu_valid(cpu, NULL))
 			return cpu_rq(cpu)->scx.local_dsq.nr;
 	} else {
 		dsq = find_non_local_dsq(dsq_id);
@@ -4950,7 +4951,7 @@ __bpf_kfunc bool scx_bpf_test_and_clear_cpu_idle(s32 cpu)
 		return false;
 	}
 
-	if (ops_cpu_valid(cpu))
+	if (ops_cpu_valid(cpu, NULL))
 		return test_and_clear_cpu_idle(cpu);
 	else
 		return false;
