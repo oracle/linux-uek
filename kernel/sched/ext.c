@@ -796,6 +796,7 @@ static atomic_t scx_exit_kind = ATOMIC_INIT(SCX_EXIT_DONE);
 static struct scx_exit_info *scx_exit_info;
 
 static atomic_long_t scx_nr_rejected = ATOMIC_LONG_INIT(0);
+static atomic_long_t scx_hotplug_seq = ATOMIC_LONG_INIT(0);
 
 /*
  * The maximum amount of time in jiffies that a task may be runnable without
@@ -2930,31 +2931,32 @@ void __scx_update_idle(struct rq *rq, bool idle)
 #endif
 }
 
-static void hotplug_exit_sched(struct rq *rq, bool online)
+static void handle_hotplug(struct rq *rq, bool online)
 {
-	scx_ops_exit(SCX_ECODE_ACT_RESTART | SCX_ECODE_RSN_HOTPLUG,
-		     "cpu %d going %s, exiting scheduler",
-		     cpu_of(rq), online ? "online" : "offline");
+	int cpu = cpu_of(rq);
+
+	atomic_long_inc(&scx_hotplug_seq);
+
+	if (online && SCX_HAS_OP(cpu_online))
+		SCX_CALL_OP(SCX_KF_REST, cpu_online, cpu);
+	else if (!online && SCX_HAS_OP(cpu_offline))
+		SCX_CALL_OP(SCX_KF_REST, cpu_offline, cpu);
+	else
+		scx_ops_exit(SCX_ECODE_ACT_RESTART | SCX_ECODE_RSN_HOTPLUG,
+			     "cpu %d going %s, exiting scheduler", cpu,
+			     online ? "online" : "offline");
 }
 
 static void rq_online_scx(struct rq *rq, enum rq_onoff_reason reason)
 {
-	if (reason == RQ_ONOFF_HOTPLUG) {
-		if (SCX_HAS_OP(cpu_online))
-			SCX_CALL_OP(SCX_KF_REST, cpu_online, cpu_of(rq));
-		else
-			hotplug_exit_sched(rq, true);
-	}
+	if (reason == RQ_ONOFF_HOTPLUG)
+		handle_hotplug(rq, true);
 }
 
 static void rq_offline_scx(struct rq *rq, enum rq_onoff_reason reason)
 {
-	if (reason == RQ_ONOFF_HOTPLUG) {
-		if (SCX_HAS_OP(cpu_offline))
-			SCX_CALL_OP(SCX_KF_REST, cpu_offline, cpu_of(rq));
-		else
-			hotplug_exit_sched(rq, false);
-	}
+	if (reason == RQ_ONOFF_HOTPLUG)
+		handle_hotplug(rq, false);
 }
 
 #else /* !CONFIG_SMP */
@@ -3811,10 +3813,18 @@ static ssize_t scx_attr_nr_rejected_show(struct kobject *kobj,
 }
 SCX_ATTR(nr_rejected);
 
+static ssize_t scx_attr_hotplug_seq_show(struct kobject *kobj,
+					 struct kobj_attribute *ka, char *buf)
+{
+	return sysfs_emit(buf, "%ld\n", atomic_long_read(&scx_hotplug_seq));
+}
+SCX_ATTR(hotplug_seq);
+
 static struct attribute *scx_global_attrs[] = {
 	&scx_attr_state.attr,
 	&scx_attr_switch_all.attr,
 	&scx_attr_nr_rejected.attr,
+	&scx_attr_hotplug_seq.attr,
 	NULL,
 };
 
