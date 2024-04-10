@@ -4487,8 +4487,7 @@ void __init init_sched_ext_class(void)
 	BUG_ON(!alloc_cpumask_var(&idle_masks.smt, GFP_KERNEL));
 #endif
 	scx_kick_cpus_pnt_seqs =
-		__alloc_percpu(sizeof(scx_kick_cpus_pnt_seqs[0]) *
-			       num_possible_cpus(),
+		__alloc_percpu(sizeof(scx_kick_cpus_pnt_seqs[0]) * nr_cpu_ids,
 			       __alignof__(scx_kick_cpus_pnt_seqs[0]));
 	BUG_ON(!scx_kick_cpus_pnt_seqs);
 
