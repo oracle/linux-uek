@@ -15,8 +15,6 @@
 #include "scx_test.h"
 #include "util.h"
 
-struct hotplug *skel;
-
 const char *online_path = "/sys/devices/system/cpu/cpu1/online";
 
 static bool is_cpu_online(void)
@@ -40,21 +38,19 @@ static enum scx_test_status setup(void **ctx)
 	if (!is_cpu_online())
 		return SCX_TEST_SKIP;
 
-	skel = hotplug__open_and_load();
-	if (!skel) {
-		SCX_ERR("Failed to open and load hotplug skel");
-		return SCX_TEST_FAIL;
-	}
-
 	return SCX_TEST_PASS;
 }
 
 static enum scx_test_status test_hotplug(bool onlining, bool cbs_defined)
 {
+	struct hotplug *skel;
 	struct bpf_link *link;
 	long kind, code;
 
 	SCX_ASSERT(is_cpu_online());
+
+	skel = hotplug__open_and_load();
+	SCX_ASSERT(skel);
 
 	/* Testing the offline -> online path, so go offline before starting */
 	if (onlining)
@@ -78,6 +74,7 @@ static enum scx_test_status test_hotplug(bool onlining, bool cbs_defined)
 
 	if (!link) {
 		SCX_ERR("Failed to attach scheduler");
+		hotplug__destroy(skel);
 		return SCX_TEST_FAIL;
 	}
 
@@ -93,10 +90,49 @@ static enum scx_test_status test_hotplug(bool onlining, bool cbs_defined)
 		toggle_online_status(1);
 
 	bpf_link__destroy(link);
-
-	UEI_RESET(skel, uei);
+	hotplug__destroy(skel);
 
 	return SCX_TEST_PASS;
+}
+
+static enum scx_test_status test_hotplug_attach(void)
+{
+	struct hotplug *skel;
+	struct bpf_link *link;
+	enum scx_test_status status = SCX_TEST_PASS;
+	long kind, code;
+
+	SCX_ASSERT(is_cpu_online());
+	SCX_ASSERT(scx_hotplug_seq() > 0);
+
+	skel = SCX_OPS_OPEN(hotplug_nocb_ops, hotplug);
+	SCX_ASSERT(skel);
+
+	SCX_OPS_LOAD(skel, hotplug_nocb_ops, hotplug, uei);
+
+	/*
+	 * Take the CPU offline to increment the global hotplug seq, which
+	 * should cause attach to fail due to us setting the hotplug seq above
+	 */
+	toggle_online_status(0);
+	link = bpf_map__attach_struct_ops(skel->maps.hotplug_nocb_ops);
+
+	toggle_online_status(1);
+
+	SCX_ASSERT(link);
+	while (!UEI_EXITED(skel, uei))
+		sched_yield();
+
+	kind = SCX_KIND_VAL(SCX_EXIT_UNREG_KERN);
+	code = SCX_ECODE_VAL(SCX_ECODE_ACT_RESTART) |
+	       SCX_ECODE_VAL(SCX_ECODE_RSN_HOTPLUG);
+	SCX_EQ(UEI_KIND(skel, uei), kind);
+	SCX_EQ(UEI_ECODE(skel, uei), code);
+
+	bpf_link__destroy(link);
+	hotplug__destroy(skel);
+
+	return status;
 }
 
 static enum scx_test_status run(void *ctx)
@@ -114,12 +150,11 @@ static enum scx_test_status run(void *ctx)
 
 #undef HP_TEST
 
-	return SCX_TEST_PASS;
+	return test_hotplug_attach();
 }
 
 static void cleanup(void *ctx)
 {
-	hotplug__destroy(skel);
 	toggle_online_status(1);
 }
 
