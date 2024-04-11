@@ -26,7 +26,7 @@ struct scx_exit_info {
 	/* %SCX_EXIT_* - broad category of the exit reason */
 	enum scx_exit_kind	kind;
 
-	/* exit code if gracefully exiting from BPF */
+	/* exit code if gracefully exiting */
 	s64			exit_code;
 
 	/* textual representation of the above */
@@ -562,6 +562,15 @@ struct sched_ext_ops {
 	u32 exit_dump_len;
 
 	/**
+	 * hotplug_seq - A sequence number that may be set by the scheduler to
+	 * detect when a hotplug event has occurred during the loading process.
+	 * If 0, no detection occurs. Otherwise, the scheduler will fail to
+	 * load if the sequence number does not match @scx_hotplug_seq on the
+	 * enable path.
+	 */
+	u64 hotplug_seq;
+
+	/**
 	 * name - BPF scheduler's name
 	 *
 	 * Must be a non-zero valid BPF object name including only isalnum(),
@@ -796,6 +805,7 @@ static atomic_t scx_exit_kind = ATOMIC_INIT(SCX_EXIT_DONE);
 static struct scx_exit_info *scx_exit_info;
 
 static atomic_long_t scx_nr_rejected = ATOMIC_LONG_INIT(0);
+static atomic_long_t scx_hotplug_seq = ATOMIC_LONG_INIT(0);
 
 /*
  * The maximum amount of time in jiffies that a task may be runnable without
@@ -2930,31 +2940,32 @@ void __scx_update_idle(struct rq *rq, bool idle)
 #endif
 }
 
-static void hotplug_exit_sched(struct rq *rq, bool online)
+static void handle_hotplug(struct rq *rq, bool online)
 {
-	scx_ops_exit(SCX_ECODE_ACT_RESTART | SCX_ECODE_RSN_HOTPLUG,
-		     "cpu %d going %s, exiting scheduler",
-		     cpu_of(rq), online ? "online" : "offline");
+	int cpu = cpu_of(rq);
+
+	atomic_long_inc(&scx_hotplug_seq);
+
+	if (online && SCX_HAS_OP(cpu_online))
+		SCX_CALL_OP(SCX_KF_REST, cpu_online, cpu);
+	else if (!online && SCX_HAS_OP(cpu_offline))
+		SCX_CALL_OP(SCX_KF_REST, cpu_offline, cpu);
+	else
+		scx_ops_exit(SCX_ECODE_ACT_RESTART | SCX_ECODE_RSN_HOTPLUG,
+			     "cpu %d going %s, exiting scheduler", cpu,
+			     online ? "online" : "offline");
 }
 
 static void rq_online_scx(struct rq *rq, enum rq_onoff_reason reason)
 {
-	if (reason == RQ_ONOFF_HOTPLUG) {
-		if (SCX_HAS_OP(cpu_online))
-			SCX_CALL_OP(SCX_KF_REST, cpu_online, cpu_of(rq));
-		else
-			hotplug_exit_sched(rq, true);
-	}
+	if (reason == RQ_ONOFF_HOTPLUG)
+		handle_hotplug(rq, true);
 }
 
 static void rq_offline_scx(struct rq *rq, enum rq_onoff_reason reason)
 {
-	if (reason == RQ_ONOFF_HOTPLUG) {
-		if (SCX_HAS_OP(cpu_offline))
-			SCX_CALL_OP(SCX_KF_REST, cpu_offline, cpu_of(rq));
-		else
-			hotplug_exit_sched(rq, false);
-	}
+	if (reason == RQ_ONOFF_HOTPLUG)
+		handle_hotplug(rq, false);
 }
 
 #else /* !CONFIG_SMP */
@@ -3811,10 +3822,18 @@ static ssize_t scx_attr_nr_rejected_show(struct kobject *kobj,
 }
 SCX_ATTR(nr_rejected);
 
+static ssize_t scx_attr_hotplug_seq_show(struct kobject *kobj,
+					 struct kobj_attribute *ka, char *buf)
+{
+	return sysfs_emit(buf, "%ld\n", atomic_long_read(&scx_hotplug_seq));
+}
+SCX_ATTR(hotplug_seq);
+
 static struct attribute *scx_global_attrs[] = {
 	&scx_attr_state.attr,
 	&scx_attr_switch_all.attr,
 	&scx_attr_nr_rejected.attr,
+	&scx_attr_hotplug_seq.attr,
 	NULL,
 };
 
@@ -4336,6 +4355,25 @@ static struct kthread_worker *scx_create_rt_helper(const char *name)
 	return helper;
 }
 
+static void check_hotplug_seq(const struct sched_ext_ops *ops)
+{
+	unsigned long long global_hotplug_seq;
+
+	/*
+	 * If a hotplug event has occurred between when a scheduler was
+	 * initialized, and when we were able to attach, exit and notify user
+	 * space about it.
+	 */
+	if (ops->hotplug_seq) {
+		global_hotplug_seq = atomic_long_read(&scx_hotplug_seq);
+		if (ops->hotplug_seq != global_hotplug_seq) {
+			scx_ops_exit(SCX_ECODE_ACT_RESTART | SCX_ECODE_RSN_HOTPLUG,
+				     "expected hotplug seq %llu did not match actual %llu",
+				     ops->hotplug_seq, global_hotplug_seq);
+		}
+	}
+}
+
 static int validate_ops(const struct sched_ext_ops *ops)
 {
 	/*
@@ -4468,6 +4506,8 @@ static int scx_ops_enable(struct sched_ext_ops *ops)
 	percpu_down_write(&scx_fork_rwsem);
 	cpus_read_lock();
 	scx_cgroup_lock();
+
+	check_hotplug_seq(ops);
 
 	for (i = SCX_OPI_NORMAL_BEGIN; i < SCX_OPI_NORMAL_END; i++)
 		if (((void (**)(void))ops)[i])
@@ -4795,6 +4835,9 @@ static int bpf_scx_init_member(const struct btf_type *t,
 	case offsetof(struct sched_ext_ops, exit_dump_len):
 		ops->exit_dump_len =
 			*(u32 *)(udata + moff) ?: SCX_EXIT_DUMP_DFL_LEN;
+		return 1;
+	case offsetof(struct sched_ext_ops, hotplug_seq):
+		ops->hotplug_seq = *(u64 *)(udata + moff);
 		return 1;
 	}
 
@@ -6068,7 +6111,7 @@ static int __init scx_init(void)
 
 	scx_kset = kset_create_and_add("sched_ext", &scx_uevent_ops, kernel_kobj);
 	if (!scx_kset) {
-		pr_err("sched_ext: Failed to create /sys/sched_ext\n");
+		pr_err("sched_ext: Failed to create /sys/kernel/sched_ext\n");
 		return -ENOMEM;
 	}
 
