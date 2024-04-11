@@ -176,6 +176,8 @@ EXPORT_PER_CPU_SYMBOL(x86_spec_ctrl_restore);
 u64 x86_pred_cmd __ro_after_init = PRED_CMD_IBPB;
 EXPORT_SYMBOL_GPL(x86_pred_cmd);
 
+static u64 __ro_after_init ia32_cap;
+
 void (*x86_return_thunk)(void) __ro_after_init = &__x86_return_thunk;
 
 /* Update SPEC_CTRL MSR and its cached copy unconditionally */
@@ -270,6 +272,8 @@ void __init cpu_select_mitigations(void)
 	} else {
 		pr_info("FEATURE SPEC_CTRL Not Present\n");
 	}
+
+	ia32_cap = x86_read_arch_cap_msr();
 
 	if (boot_cpu_has(X86_FEATURE_IBPB)) {
 		pr_info_once("FEATURE IBPB Present%s\n",
@@ -565,8 +569,6 @@ static const char * const taa_strings[] = {
 
 static void taa_select_mitigation(void)
 {
-	u64 ia32_cap;
-
 	if (!boot_cpu_has_bug(X86_BUG_TAA)) {
 		taa_mitigation = TAA_MITIGATION_OFF;
 		return;
@@ -590,8 +592,6 @@ static void taa_select_mitigation(void)
 	if (taa_mitigation == TAA_MITIGATION_OFF &&
 	    mds_mitigation == MDS_MITIGATION_OFF)
 		return;
-
-	ia32_cap = x86_read_arch_cap_msr();
 
 	if (boot_cpu_has(X86_FEATURE_MD_CLEAR)) {
 		if ( !(ia32_cap & ARCH_CAP_MDS_NO)) {
@@ -689,14 +689,10 @@ bool mmio_stale_data_clear_enabled(void)
 
 void mmio_stale_data_clear_enable(void)
 {
-	u64 ia32_cap;
-
 	if (!boot_cpu_has_bug(X86_BUG_MMIO_STALE_DATA))
 		return;
 
 	static_branch_enable(&mmio_stale_data_clear);
-
-	ia32_cap = x86_read_arch_cap_msr();
 
 	if ((ia32_cap & ARCH_CAP_FB_CLEAR) ||
 	    (boot_cpu_has(X86_FEATURE_MD_CLEAR) &&
@@ -715,8 +711,6 @@ void mmio_stale_data_clear_disable(void)
 
 static void mmio_select_mitigation(void)
 {
-	u64 ia32_cap;
-
 	if (!boot_cpu_has_bug(X86_BUG_MMIO_STALE_DATA) ||
 	     boot_cpu_has_bug(X86_BUG_MMIO_UNKNOWN) ||
 	     cpu_mitigations_off()) {
@@ -726,8 +720,6 @@ static void mmio_select_mitigation(void)
 
 	if (mmio_mitigation == MMIO_MITIGATION_OFF)
 		return;
-
-	ia32_cap = x86_read_arch_cap_msr();
 
 	/*
 	 * Enable CPU buffer clear mitigation for host and VMM, if also affected
@@ -902,8 +894,6 @@ static void _update_srbds_msr(void *p)
 
 static void srbds_select_mitigation(void)
 {
-	u64 ia32_cap;
-
 	/* Init the default value for late loading case. */
 	srbds_mitigation = SRBDS_MITIGATION_FULL;
 
@@ -915,7 +905,6 @@ static void srbds_select_mitigation(void)
 	 * are only exposed to SRBDS when TSX is enabled or when CPU is affected
 	 * by Processor MMIO Stale Data vulnerability.
 	 */
-	ia32_cap = x86_read_arch_cap_msr();
 	if ((ia32_cap & ARCH_CAP_MDS_NO) && !boot_cpu_has(X86_FEATURE_RTM) &&
 	    !boot_cpu_has_bug(X86_BUG_MMIO_STALE_DATA))
 		srbds_mitigation = SRBDS_MITIGATION_TSX_OFF;
@@ -1032,7 +1021,7 @@ static void __init gds_select_mitigation(void)
 	/* Will verify below that mitigation _can_ be disabled */
 
 	/* No microcode */
-	if (!(x86_read_arch_cap_msr() & ARCH_CAP_GDS_CTRL)) {
+	if (!(ia32_cap & ARCH_CAP_GDS_CTRL)) {
 		if (gds_mitigation == GDS_MITIGATION_FORCE) {
 			/*
 			 * This only needs to be done on the boot CPU so do it
@@ -2364,8 +2353,6 @@ static void update_indir_branch_cond(void)
 /* Update the static key controlling the MDS CPU buffer clear in idle */
 static void update_mds_branch_idle(void)
 {
-	u64 ia32_cap = x86_read_arch_cap_msr();
-
 	/*
 	 * Enable the idle clearing if SMT is active on CPUs which are
 	 * affected only by MSBDS and not any other MDS variant.
@@ -3244,7 +3231,7 @@ static const char *spectre_bhi_state(void)
 	else if  (boot_cpu_has(X86_FEATURE_CLEAR_BHB_LOOP))
 		return "; BHI: SW loop, KVM: SW loop";
 	else if (retpoline_enabled() &&
-		 !(x86_read_arch_cap_msr() & ARCH_CAP_RRSBA))
+		 !(ia32_cap & ARCH_CAP_RRSBA))
 		return "; BHI: Retpoline";
 	else if  (boot_cpu_has(X86_FEATURE_CLEAR_BHB_LOOP_ON_VMEXIT))
 		return "; BHI: Syscall hardening, KVM: SW loop";
