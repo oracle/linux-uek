@@ -2101,7 +2101,7 @@ static int bond_miimon_inspect(struct bonding *bond)
 			bond_propose_link_state(slave, BOND_LINK_FAIL);
 			commit++;
 			slave->delay = bond->params.downdelay;
-			if (slave->delay) {
+			if (slave->delay && net_ratelimit()) {
 				netdev_info(bond->dev, "link status down for %sinterface %s, disabling it in %d ms\n",
 					    (BOND_MODE(bond) ==
 					     BOND_MODE_ACTIVEBACKUP) ?
@@ -2116,10 +2116,11 @@ static int bond_miimon_inspect(struct bonding *bond)
 				/* recovered before downdelay expired */
 				bond_propose_link_state(slave, BOND_LINK_UP);
 				slave->last_link_up = jiffies;
-				netdev_info(bond->dev, "link status up again after %d ms for interface %s\n",
-					    (bond->params.downdelay - slave->delay) *
-					    bond->params.miimon,
-					    slave->dev->name);
+				if (net_ratelimit())
+					netdev_info(bond->dev, "link status up again after %d ms for interface %s\n",
+						    (bond->params.downdelay - slave->delay) *
+						    bond->params.miimon,
+						    slave->dev->name);
 				commit++;
 				continue;
 			}
@@ -2141,28 +2142,22 @@ static int bond_miimon_inspect(struct bonding *bond)
 			commit++;
 			slave->delay = bond->params.updelay;
 
-			if (slave->delay) {
-				static DEFINE_RATELIMIT_STATE(
-					rs,
-					DEFAULT_RATELIMIT_INTERVAL,
-					DEFAULT_RATELIMIT_BURST);
-				if (__ratelimit(&rs))
-					netdev_info(
-						bond->dev,
-						"link status up for interface %s, enabling it in %d ms\n",
-						slave->dev->name,
-						ignore_updelay ? 0 :
-						bond->params.updelay *
-						bond->params.miimon);
+			if (slave->delay && net_ratelimit()) {
+				netdev_info(bond->dev, "link status up for interface %s, enabling it in %d ms\n",
+					    slave->dev->name,
+					    ignore_updelay ? 0 :
+					    bond->params.updelay *
+					    bond->params.miimon);
 			}
 			/*FALLTHRU*/
 		case BOND_LINK_BACK:
 			if (!link_state) {
 				bond_propose_link_state(slave, BOND_LINK_DOWN);
-				netdev_info(bond->dev, "link status down again after %d ms for interface %s\n",
-					    (bond->params.updelay - slave->delay) *
-					    bond->params.miimon,
-					    slave->dev->name);
+				if (net_ratelimit())
+					netdev_info(bond->dev, "link status down again after %d ms for interface %s\n",
+						    (bond->params.updelay - slave->delay) *
+						    bond->params.miimon,
+						    slave->dev->name);
 				commit++;
 				continue;
 			}
