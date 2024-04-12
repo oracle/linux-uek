@@ -16,6 +16,8 @@ enum scx_consts {
 	SCX_EXIT_BT_LEN			= 64,
 	SCX_EXIT_MSG_LEN		= 1024,
 	SCX_EXIT_DUMP_DFL_LEN		= 32768,
+
+	SCX_CPUPERF_ONE			= SCHED_CAPACITY_SCALE,
 };
 
 enum scx_exit_kind {
@@ -5976,6 +5978,44 @@ __bpf_kfunc u32 scx_bpf_nr_cpu_ids(void)
 }
 
 /**
+ * scx_bpf_cpuperf_cap - Query the maximum relative capacity of a CPU
+ * @cpu: CPU of interest
+ *
+ * Return the maximum relative capacity of @cpu in relation to the most
+ * performant CPU in the system. The return value is in the range [1,
+ * %SCX_CPUPERF_ONE]. See scx_bpf_cpuperf_cur().
+ */
+__bpf_kfunc u32 scx_bpf_cpuperf_cap(s32 cpu)
+{
+	if (ops_cpu_valid(cpu, NULL))
+		return arch_scale_cpu_capacity(cpu);
+	else
+		return SCX_CPUPERF_ONE;
+}
+
+/**
+ * scx_bpf_cpuperf_cur - Query the current relative performance of a CPU
+ * @cpu: CPU of interest
+ *
+ * Return the current relative performance of @cpu in relation to its maximum.
+ * The return value is in the range [1, %SCX_CPUPERF_ONE].
+ *
+ * The current performance level of a CPU in relation to the maximum performance
+ * available in the system can be calculated as follows:
+ *
+ *   scx_bpf_cpuperf_cap() * scx_bpf_cpuperf_cur() / %SCX_CPUPERF_ONE
+ *
+ * The result is in the range [1, %SCX_CPUPERF_ONE].
+ */
+__bpf_kfunc u32 scx_bpf_cpuperf_cur(s32 cpu)
+{
+	if (ops_cpu_valid(cpu, NULL))
+		return arch_scale_freq_capacity(cpu);
+	else
+		return SCX_CPUPERF_ONE;
+}
+
+/**
  * scx_bpf_get_possible_cpumask - Get a referenced kptr to cpu_possible_mask
  */
 __bpf_kfunc const struct cpumask *scx_bpf_get_possible_cpumask(void)
@@ -6123,6 +6163,8 @@ BTF_KFUNCS_START(scx_kfunc_ids_any)
 BTF_ID_FLAGS(func, scx_bpf_exit_bstr, KF_TRUSTED_ARGS)
 BTF_ID_FLAGS(func, scx_bpf_error_bstr, KF_TRUSTED_ARGS)
 BTF_ID_FLAGS(func, scx_bpf_nr_cpu_ids)
+BTF_ID_FLAGS(func, scx_bpf_cpuperf_cap)
+BTF_ID_FLAGS(func, scx_bpf_cpuperf_cur)
 BTF_ID_FLAGS(func, scx_bpf_get_possible_cpumask, KF_ACQUIRE)
 BTF_ID_FLAGS(func, scx_bpf_get_online_cpumask, KF_ACQUIRE)
 BTF_ID_FLAGS(func, scx_bpf_put_cpumask, KF_RELEASE)

@@ -24,6 +24,8 @@
  */
 #include <scx/common.bpf.h>
 
+#define ONE_SEC_IN_NS	1000000000
+
 char _license[] SEC("license") = "GPL";
 
 const volatile u64 slice_ns = SCX_SLICE_DFL;
@@ -101,6 +103,7 @@ struct {
 /* Statistics */
 u64 nr_enqueued, nr_dispatched, nr_reenqueued, nr_dequeued;
 u64 nr_core_sched_execed;
+u32 cpuperf_min, cpuperf_avg, cpuperf_max;
 
 s32 BPF_STRUCT_OPS(qmap_select_cpu, struct task_struct *p,
 		   s32 prev_cpu, u64 wake_flags)
@@ -384,16 +387,8 @@ static void print_cpus(void)
 	char buf[128] = "", *p;
 	int idx;
 
-	if (!(possible = scx_bpf_get_possible_cpumask())) {
-		scx_bpf_error("failed to obtain possible cpumasks");
-		return;
-	}
-
-	if (!(online = scx_bpf_get_online_cpumask())) {
-		scx_bpf_error("failed to obtain online cpumasks");
-		scx_bpf_put_cpumask(possible);
-		return;
-	}
+	possible = scx_bpf_get_possible_cpumask();
+	online = scx_bpf_get_online_cpumask();
 
 	idx = 0;
 	bpf_for(cpu, 0, scx_bpf_nr_cpu_ids()) {
@@ -434,12 +429,81 @@ void BPF_STRUCT_OPS(qmap_cpu_offline, s32 cpu)
 	print_cpus();
 }
 
+struct cpu_mon_timer {
+	struct bpf_timer timer;
+};
+
+struct {
+	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__uint(max_entries, 1);
+	__type(key, u32);
+	__type(value, struct cpu_mon_timer);
+} central_timer SEC(".maps");
+
+/*
+ * Print out the min, avg and max performance levels of CPUs every second to
+ * demonstrate the cpuperf interface.
+ */
+static int cpu_mon_timerfn(void *map, int *key, struct bpf_timer *timer)
+{
+	u32 nr_cpu_ids = scx_bpf_nr_cpu_ids();
+	u64 cap_sum = 0, cur_sum = 0, cur_min = SCX_CPUPERF_ONE, cur_max = 0;
+	const struct cpumask *online;
+	int i;
+
+	online = scx_bpf_get_online_cpumask();
+	if (!online)
+		return -ENOMEM;
+
+	bpf_for(i, 0, nr_cpu_ids) {
+		u32 cap, cur;
+
+		if (!bpf_cpumask_test_cpu(i, online))
+			continue;
+
+		cap = scx_bpf_cpuperf_cap(i);
+		cur = scx_bpf_cpuperf_cur(i);
+
+		cur_min = cur < cur_min ? cur : cur_min;
+		cur_max = cur > cur_max ? cur : cur_max;
+
+		/*
+		 * $cur is relative to $cap. Scale it down accordingly so that
+		 * it's in the same scale as other CPUs and $cur_sum/$cap_sum
+		 * makes sense.
+		 */
+		cur_sum += cur * cap / SCX_CPUPERF_ONE;
+		cap_sum += cap;
+	}
+
+	scx_bpf_put_cpumask(online);
+
+	cpuperf_min = cur_min;
+	cpuperf_avg = cur_sum * SCX_CPUPERF_ONE / cap_sum;
+	cpuperf_max = cur_max;
+
+	bpf_timer_start(timer, ONE_SEC_IN_NS, 0);
+	return 0;
+}
+
 s32 BPF_STRUCT_OPS(qmap_init)
 {
+	u32 key = 0;
+	struct bpf_timer *timer;
+
 	if (!switch_partial)
 		__COMPAT_scx_bpf_switch_all();
+
 	print_cpus();
-	return 0;
+
+	timer = bpf_map_lookup_elem(&central_timer, &key);
+	if (!timer)
+		return -ESRCH;
+
+	bpf_timer_init(timer, &central_timer, CLOCK_MONOTONIC);
+	bpf_timer_set_callback(timer, cpu_mon_timerfn);
+
+	return bpf_timer_start(timer, ONE_SEC_IN_NS, 0);
 }
 
 void BPF_STRUCT_OPS(qmap_exit, struct scx_exit_info *ei)
