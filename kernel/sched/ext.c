@@ -2488,6 +2488,14 @@ static void set_next_task_scx(struct rq *rq, struct task_struct *p, bool first)
 			rq->scx.flags &= ~SCX_RQ_CAN_STOP_TICK;
 
 		sched_update_tick_dependency(rq);
+
+		/*
+		 * For now, let's refresh the load_avgs just when transitioning
+		 * in and out of nohz. In the future, we might want to add a
+		 * mechanism which calls the following periodically on
+		 * tick-stopped CPUs.
+		 */
+		update_other_load_avgs(rq);
 	}
 }
 
@@ -3074,6 +3082,8 @@ void scx_tick(struct rq *rq)
 				   "watchdog failed to check in for %u.%03us",
 				   dur_ms / 1000, dur_ms % 1000);
 	}
+
+	update_other_load_avgs(rq);
 }
 
 static void task_tick_scx(struct rq *rq, struct task_struct *curr, int queued)
