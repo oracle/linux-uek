@@ -45,6 +45,14 @@ void scx_next_task_picked(struct rq *rq, struct task_struct *p,
 			  const struct sched_class *active);
 void init_sched_ext_class(void);
 
+static inline u32 scx_cpuperf_target(s32 cpu)
+{
+	if (scx_enabled())
+		return cpu_rq(cpu)->scx.cpuperf_target;
+	else
+		return 0;
+}
+
 static inline const struct sched_class *next_active_class(const struct sched_class *class)
 {
 	class++;
@@ -91,6 +99,7 @@ static inline void scx_tick(void) {}
 static inline void scx_next_task_picked(struct rq *rq, struct task_struct *p,
 					const struct sched_class *active) {}
 static inline void init_sched_ext_class(void) {}
+static inline u32 scx_cpuperf_target(s32 cpu) { return 0; }
 
 #define for_each_active_class		for_each_class
 #define for_balance_class_range		for_class_range

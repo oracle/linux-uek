@@ -48,6 +48,7 @@ void scx_bpf_error_bstr(char *fmt, unsigned long long *data, u32 data_len) __ksy
 u32 scx_bpf_nr_cpu_ids(void) __ksym;
 u32 scx_bpf_cpuperf_cap(s32 cpu) __ksym;
 u32 scx_bpf_cpuperf_cur(s32 cpu) __ksym;
+void scx_bpf_cpuperf_set(s32 cpu, u32 perf) __ksym;
 const struct cpumask *scx_bpf_get_possible_cpumask(void) __ksym;
 const struct cpumask *scx_bpf_get_online_cpumask(void) __ksym;
 void scx_bpf_put_cpumask(const struct cpumask *cpumask) __ksym;
