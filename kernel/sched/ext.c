@@ -18,6 +18,43 @@ enum scx_consts {
 	SCX_EXIT_DUMP_DFL_LEN		= 32768,
 };
 
+enum scx_exit_kind {
+	SCX_EXIT_NONE,
+	SCX_EXIT_DONE,
+
+	SCX_EXIT_UNREG = 64,	/* user-space initiated unregistration */
+	SCX_EXIT_UNREG_BPF,	/* BPF-initiated unregistration */
+	SCX_EXIT_UNREG_KERN,	/* kernel-initiated unregistration */
+	SCX_EXIT_SYSRQ,		/* requested by 'S' sysrq */
+
+	SCX_EXIT_ERROR = 1024,	/* runtime error, error msg contains details */
+	SCX_EXIT_ERROR_BPF,	/* ERROR but triggered through scx_bpf_error() */
+	SCX_EXIT_ERROR_STALL,	/* watchdog detected stalled runnable tasks */
+};
+
+/*
+ * An exit code can be specified when exiting with scx_bpf_exit() or
+ * scx_ops_exit(), corresponding to exit_kind UNREG_BPF and UNREG_KERN
+ * respectively. The codes are 64bit of the format:
+ *
+ *   Bits: [63  ..  48 47   ..  32 31 .. 0]
+ *         [ SYS ACT ] [ SYS RSN ] [ USR  ]
+ *
+ *   SYS ACT: System-defined exit actions
+ *   SYS RSN: System-defined exit reasons
+ *   USR    : User-defined exit codes and reasons
+ *
+ * Using the above, users may communicate intention and context by ORing system
+ * actions and/or system reasons with a user-defined exit code.
+ */
+enum scx_exit_code {
+	/* Reasons */
+	SCX_ECODE_RSN_HOTPLUG	= 1LLU << 32,
+
+	/* Actions */
+	SCX_ECODE_ACT_RESTART	= 1LLU << 48,
+};
+
 /*
  * scx_exit_info is passed to ops.exit() to describe why the BPF scheduler is
  * being disabled.
@@ -319,7 +356,7 @@ struct sched_ext_ops {
 	 * If not specified, the default is ordering them according to when they
 	 * became runnable.
 	 */
-	bool (*core_sched_before)(struct task_struct *a,struct task_struct *b);
+	bool (*core_sched_before)(struct task_struct *a, struct task_struct *b);
 
 	/**
 	 * set_weight - Set task weight
@@ -689,27 +726,6 @@ enum scx_tg_flags {
 	SCX_TG_INITED		= 1U << 1,
 };
 
-/*
- * Exit code IDs are 64bit of the format:
- *
- *   Bits: [63  ..  48 47   ..  32 31 .. 0]
- *         [ SYS ACT ] [ SYS RSN ] [ USR  ]
- *
- *   SYS ACT: System-defined exit actions
- *   SYS RSN: System-defined exit reasons
- *   USR    : User-defined exit codes and reasons
- *
- * Using the above mechanisms, users may communicate intention and context by
- * ORing system actions and/or system reasons with a user-defined exit code.
- */
-enum scx_exit_code {
-	/* Reasons */
-	SCX_ECODE_RSN_HOTPLUG	= 1LLU << 32,
-
-	/* Actions */
-	SCX_ECODE_ACT_RESTART	= 1LLU << 48,
-};
-
 enum scx_ops_enable_state {
 	SCX_OPS_PREPPING,
 	SCX_OPS_ENABLING,
@@ -812,7 +828,7 @@ static atomic_long_t scx_hotplug_seq = ATOMIC_LONG_INIT(0);
  * being scheduled on a CPU. If this timeout is exceeded, it will trigger
  * scx_ops_error().
  */
-unsigned long scx_watchdog_timeout;
+static unsigned long scx_watchdog_timeout;
 
 /*
  * The last time the delayed work was run. This delayed work relies on
@@ -820,7 +836,7 @@ unsigned long scx_watchdog_timeout;
  * that this work itself could get wedged. To account for this, we check that
  * it's not stalled in the timer tick, and trigger an error if it is.
  */
-unsigned long scx_watchdog_timestamp = INITIAL_JIFFIES;
+static unsigned long scx_watchdog_timestamp = INITIAL_JIFFIES;
 
 static struct delayed_work scx_watchdog_work;
 
@@ -887,9 +903,19 @@ static DEFINE_PER_CPU(struct scx_dsp_ctx, scx_dsp_ctx);
 static struct kset *scx_kset;
 static struct kobject *scx_root_kobj;
 
-static void scx_bpf_dispatch(struct task_struct *p, u64 dsq_id, u64 slice,
-			     u64 enq_flags);
 static void scx_bpf_kick_cpu(s32 cpu, u64 flags);
+static __printf(3, 4) void scx_ops_exit_kind(enum scx_exit_kind kind,
+					     s64 exit_code,
+					     const char *fmt, ...);
+
+#define scx_ops_error_kind(__err, fmt, args...)					\
+	scx_ops_exit_kind(__err, 0, fmt, ##args)
+
+#define scx_ops_exit(__code, fmt, args...)					\
+	scx_ops_exit_kind(SCX_EXIT_UNREG_KERN, __code, fmt, ##args)
+
+#define scx_ops_error(fmt, args...)						\
+	scx_ops_error_kind(SCX_EXIT_ERROR, fmt, ##args)
 
 struct scx_task_iter {
 	struct sched_ext_entity		cursor;
@@ -2297,7 +2323,7 @@ static int balance_one(struct rq *rq, struct task_struct *prev,
 		 * If the previous sched_class for the current CPU was not SCX,
 		 * notify the BPF scheduler that it again has control of the
 		 * core. This callback complements ->cpu_release(), which is
-		 * emitted in scx_notify_pick_next_task().
+		 * emitted in scx_next_task_picked().
 		 */
 		if (SCX_HAS_OP(cpu_acquire))
 			SCX_CALL_OP(SCX_KF_UNLOCKED, cpu_acquire, cpu_of(rq),
@@ -2672,10 +2698,23 @@ preempt_reason_from_class(const struct sched_class *class)
 	return SCX_CPU_PREEMPT_UNKNOWN;
 }
 
-void __scx_notify_pick_next_task(struct rq *rq, struct task_struct *task,
-				 const struct sched_class *active)
+void scx_next_task_picked(struct rq *rq, struct task_struct *p,
+			  const struct sched_class *active)
 {
 	lockdep_assert_rq_held(rq);
+
+	if (!scx_enabled())
+		return;
+#ifdef CONFIG_SMP
+	/*
+	 * Pairs with the smp_load_acquire() issued by a CPU in
+	 * kick_cpus_irq_workfn() who is waiting for this CPU to perform a
+	 * resched.
+	 */
+	smp_store_release(&rq->scx.pnt_seq, rq->scx.pnt_seq + 1);
+#endif
+	if (!static_branch_unlikely(&scx_ops_cpu_preempt))
+		return;
 
 	/*
 	 * The callback is conceptually meant to convey that the CPU is no
@@ -2700,7 +2739,7 @@ void __scx_notify_pick_next_task(struct rq *rq, struct task_struct *task,
 		if (SCX_HAS_OP(cpu_release)) {
 			struct scx_cpu_release_args args = {
 				.reason = preempt_reason_from_class(active),
-				.task = task,
+				.task = p,
 			};
 
 			SCX_CALL_OP(SCX_KF_CPU_RELEASE,
@@ -3017,6 +3056,24 @@ static void scx_watchdog_workfn(struct work_struct *work)
 	}
 	queue_delayed_work(system_unbound_wq, to_delayed_work(work),
 			   scx_watchdog_timeout / 2);
+}
+
+void scx_tick(struct rq *rq)
+{
+	unsigned long last_check;
+
+	if (!scx_enabled())
+		return;
+
+	last_check = READ_ONCE(scx_watchdog_timestamp);
+	if (unlikely(time_after(jiffies,
+				last_check + READ_ONCE(scx_watchdog_timeout)))) {
+		u32 dur_ms = jiffies_to_msecs(jiffies - last_check);
+
+		scx_ops_error_kind(SCX_EXIT_ERROR_STALL,
+				   "watchdog failed to check in for %u.%03us",
+				   dur_ms / 1000, dur_ms % 1000);
+	}
 }
 
 static void task_tick_scx(struct rq *rq, struct task_struct *curr, int queued)
@@ -4315,9 +4372,9 @@ static void scx_ops_error_irq_workfn(struct irq_work *irq_work)
 
 static DEFINE_IRQ_WORK(scx_ops_error_irq_work, scx_ops_error_irq_workfn);
 
-__printf(3, 4) void scx_ops_exit_kind(enum scx_exit_kind kind,
-				      s64 exit_code,
-				      const char *fmt, ...)
+static __printf(3, 4) void scx_ops_exit_kind(enum scx_exit_kind kind,
+					     s64 exit_code,
+					     const char *fmt, ...)
 {
 	struct scx_exit_info *ei = scx_exit_info;
 	int none = SCX_EXIT_NONE;
@@ -4792,7 +4849,7 @@ bpf_scx_get_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
 	}
 }
 
-const struct bpf_verifier_ops bpf_scx_verifier_ops = {
+static const struct bpf_verifier_ops bpf_scx_verifier_ops = {
 	.get_func_proto = bpf_scx_get_func_proto,
 	.is_valid_access = bpf_scx_is_valid_access,
 	.btf_struct_access = bpf_scx_btf_struct_access,
@@ -5104,7 +5161,7 @@ static void kick_cpus_irq_workfn(struct irq_work *irq_work)
 		if (cpu != cpu_of(this_rq)) {
 			/*
 			 * Pairs with smp_store_release() issued by this CPU in
-			 * scx_notify_pick_next_task() on the resched path.
+			 * scx_next_task_picked() on the resched path.
 			 *
 			 * We busy-wait here to guarantee that no other task can
 			 * be scheduled on our core before the target CPU has

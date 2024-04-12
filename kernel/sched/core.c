@@ -5757,13 +5757,13 @@ void scheduler_tick(void)
 	calc_global_load_tick(rq);
 	sched_core_tick(rq);
 	task_tick_mm_cid(rq, curr);
+	scx_tick(rq);
 
 	rq_unlock(rq, &rf);
 
 	if (sched_feat(LATENCY_WARN) && resched_latency)
 		resched_latency_warn(cpu, resched_latency);
 
-	scx_notify_sched_tick();
 	perf_event_task_tick();
 
 	if (curr->flags & PF_WQ_WORKER)
@@ -6137,7 +6137,7 @@ restart:
 	for_each_active_class(class) {
 		p = class->pick_next_task(rq);
 		if (p) {
-			scx_notify_pick_next_task(rq, p, class);
+			scx_next_task_picked(rq, p, class);
 			return p;
 		}
 	}

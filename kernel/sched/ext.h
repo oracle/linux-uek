@@ -6,20 +6,6 @@
  * Copyright (c) 2022 Tejun Heo <tj@kernel.org>
  * Copyright (c) 2022 David Vernet <dvernet@meta.com>
  */
-enum scx_exit_kind {
-	SCX_EXIT_NONE,
-	SCX_EXIT_DONE,
-
-	SCX_EXIT_UNREG = 64,	/* User-space initiated unregistration */
-	SCX_EXIT_UNREG_BPF,	/* BPF-initiated unregistration */
-	SCX_EXIT_UNREG_KERN,	/* Main-kernel-initiated unregistration */
-	SCX_EXIT_SYSRQ,		/* requested by 'S' sysrq */
-
-	SCX_EXIT_ERROR = 1024,	/* runtime error, error msg contains details */
-	SCX_EXIT_ERROR_BPF,	/* ERROR but triggered through scx_bpf_error() */
-	SCX_EXIT_ERROR_STALL,	/* watchdog detected stalled runnable tasks */
-};
-
 #ifdef CONFIG_SCHED_CLASS_EXT
 
 struct sched_enq_and_set_ctx {
@@ -34,9 +20,6 @@ void sched_deq_and_put_task(struct task_struct *p, int queue_flags,
 void sched_enq_and_set_task(struct sched_enq_and_set_ctx *ctx);
 
 extern const struct sched_class ext_sched_class;
-extern const struct bpf_verifier_ops bpf_sched_ext_verifier_ops;
-extern unsigned long scx_watchdog_timeout;
-extern unsigned long scx_watchdog_timestamp;
 
 DECLARE_STATIC_KEY_FALSE(__scx_ops_enabled);
 DECLARE_STATIC_KEY_FALSE(__scx_switched_all);
@@ -57,60 +40,10 @@ void scx_post_fork(struct task_struct *p);
 void scx_cancel_fork(struct task_struct *p);
 int scx_check_setscheduler(struct task_struct *p, int policy);
 bool scx_can_stop_tick(struct rq *rq);
+void scx_tick(struct rq *rq);
+void scx_next_task_picked(struct rq *rq, struct task_struct *p,
+			  const struct sched_class *active);
 void init_sched_ext_class(void);
-
-__printf(3, 4) void scx_ops_exit_kind(enum scx_exit_kind kind,
-				      s64 exit_code,
-				      const char *fmt, ...);
-#define scx_ops_error_kind(__err, fmt, args...)					\
-	scx_ops_exit_kind(__err, 0, fmt, ##args)
-
-#define scx_ops_exit(__code, fmt, args...)					\
-	scx_ops_exit_kind(SCX_EXIT_UNREG_KERN, __code, fmt, ##args)
-
-#define scx_ops_error(fmt, args...)						\
-	scx_ops_error_kind(SCX_EXIT_ERROR, fmt, ##args)
-
-void __scx_notify_pick_next_task(struct rq *rq,
-				 struct task_struct *p,
-				 const struct sched_class *active);
-
-static inline void scx_notify_pick_next_task(struct rq *rq,
-					     struct task_struct *p,
-					     const struct sched_class *active)
-{
-	if (!scx_enabled())
-		return;
-#ifdef CONFIG_SMP
-	/*
-	 * Pairs with the smp_load_acquire() issued by a CPU in
-	 * kick_cpus_irq_workfn() who is waiting for this CPU to perform a
-	 * resched.
-	 */
-	smp_store_release(&rq->scx.pnt_seq, rq->scx.pnt_seq + 1);
-#endif
-	if (!static_branch_unlikely(&scx_ops_cpu_preempt))
-		return;
-	__scx_notify_pick_next_task(rq, p, active);
-}
-
-static inline void scx_notify_sched_tick(void)
-{
-	unsigned long last_check;
-
-	if (!scx_enabled())
-		return;
-
-	last_check = READ_ONCE(scx_watchdog_timestamp);
-	if (unlikely(time_after(jiffies,
-				last_check + READ_ONCE(scx_watchdog_timeout)))) {
-		u32 dur_ms = jiffies_to_msecs(jiffies - last_check);
-
-		scx_ops_error_kind(SCX_EXIT_ERROR_STALL,
-				   "watchdog failed to check in for %u.%03us",
-				   dur_ms / 1000, dur_ms % 1000);
-	}
-}
 
 static inline const struct sched_class *next_active_class(const struct sched_class *class)
 {
@@ -154,11 +87,10 @@ static inline void scx_cancel_fork(struct task_struct *p) {}
 static inline int scx_check_setscheduler(struct task_struct *p,
 					 int policy) { return 0; }
 static inline bool scx_can_stop_tick(struct rq *rq) { return true; }
+static inline void scx_tick(void) {}
+static inline void scx_next_task_picked(struct rq *rq, struct task_struct *p,
+					const struct sched_class *active) {}
 static inline void init_sched_ext_class(void) {}
-static inline void scx_notify_pick_next_task(struct rq *rq,
-					     const struct task_struct *p,
-					     const struct sched_class *active) {}
-static inline void scx_notify_sched_tick(void) {}
 
 #define for_each_active_class		for_each_class
 #define for_balance_class_range		for_class_range
