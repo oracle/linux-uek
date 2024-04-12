@@ -24,6 +24,8 @@
  */
 #include <scx/common.bpf.h>
 
+#define ONE_SEC_IN_NS	1000000000
+
 char _license[] SEC("license") = "GPL";
 
 const volatile u64 slice_ns = SCX_SLICE_DFL;
@@ -63,6 +65,18 @@ struct {
 };
 
 /*
+ * If enabled, CPU performance target is set according to the queue index
+ * according to the following table.
+ */
+static const u32 qidx_to_cpuperf_target[] = {
+	[0] = SCX_CPUPERF_ONE * 0 / 4,
+	[1] = SCX_CPUPERF_ONE * 1 / 4,
+	[2] = SCX_CPUPERF_ONE * 2 / 4,
+	[3] = SCX_CPUPERF_ONE * 3 / 4,
+	[4] = SCX_CPUPERF_ONE * 4 / 4,
+};
+
+/*
  * Per-queue sequence numbers to implement core-sched ordering.
  *
  * Tail seq is assigned to each queued task and incremented. Head seq tracks the
@@ -86,17 +100,25 @@ struct {
 	__type(value, struct task_ctx);
 } task_ctx_stor SEC(".maps");
 
-/* Per-cpu dispatch index and remaining count */
+struct cpu_ctx {
+	u64	dsp_idx;	/* dispatch index */
+	u64	dsp_cnt;	/* remaining count */
+	u32	avg_weight;
+	u32	cpuperf_target;
+};
+
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-	__uint(max_entries, 2);
+	__uint(max_entries, 1);
 	__type(key, u32);
-	__type(value, u64);
-} dispatch_idx_cnt SEC(".maps");
+	__type(value, struct cpu_ctx);
+} cpu_ctx_stor SEC(".maps");
 
 /* Statistics */
 u64 nr_enqueued, nr_dispatched, nr_reenqueued, nr_dequeued;
 u64 nr_core_sched_execed;
+u32 cpuperf_min, cpuperf_avg, cpuperf_max;
+u32 cpuperf_target_min, cpuperf_target_avg, cpuperf_target_max;
 
 s32 BPF_STRUCT_OPS(qmap_select_cpu, struct task_struct *p,
 		   s32 prev_cpu, u64 wake_flags)
@@ -235,12 +257,10 @@ static void update_core_sched_head_seq(struct task_struct *p)
 
 void BPF_STRUCT_OPS(qmap_dispatch, s32 cpu, struct task_struct *prev)
 {
-	u32 zero = 0, one = 1;
-	u64 *idx = bpf_map_lookup_elem(&dispatch_idx_cnt, &zero);
-	u64 *cnt = bpf_map_lookup_elem(&dispatch_idx_cnt, &one);
+	struct cpu_ctx *cpuc;
+	u32 zero = 0;
 	void *fifo;
-	s32 pid;
-	int i;
+	s32 i, pid;
 
 	if (dsp_inf_loop_after && nr_dispatched > dsp_inf_loop_after) {
 		struct task_struct *p;
@@ -258,22 +278,22 @@ void BPF_STRUCT_OPS(qmap_dispatch, s32 cpu, struct task_struct *prev)
 		}
 	}
 
-	if (!idx || !cnt) {
-		scx_bpf_error("failed to lookup idx[%p], cnt[%p]", idx, cnt);
+	if (!(cpuc = bpf_map_lookup_elem(&cpu_ctx_stor, &zero))) {
+		scx_bpf_error("failed to look up cpu_ctx");
 		return;
 	}
 
 	for (i = 0; i < 5; i++) {
 		/* Advance the dispatch cursor and pick the fifo. */
-		if (!*cnt) {
-			*idx = (*idx + 1) % 5;
-			*cnt = 1 << *idx;
+		if (!cpuc->dsp_cnt) {
+			cpuc->dsp_idx = (cpuc->dsp_idx + 1) % 5;
+			cpuc->dsp_cnt = 1 << cpuc->dsp_idx;
 		}
-		(*cnt)--;
+		cpuc->dsp_cnt--;
 
-		fifo = bpf_map_lookup_elem(&queue_arr, idx);
+		fifo = bpf_map_lookup_elem(&queue_arr, &cpuc->dsp_idx);
 		if (!fifo) {
-			scx_bpf_error("failed to find ring %llu", *idx);
+			scx_bpf_error("failed to find ring %llu", cpuc->dsp_idx);
 			return;
 		}
 
@@ -291,8 +311,31 @@ void BPF_STRUCT_OPS(qmap_dispatch, s32 cpu, struct task_struct *prev)
 			}
 		}
 
-		*cnt = 0;
+		cpuc->dsp_cnt = 0;
 	}
+}
+
+void BPF_STRUCT_OPS(qmap_tick, struct task_struct *p)
+{
+	struct cpu_ctx *cpuc;
+	u32 zero = 0;
+	int idx;
+
+	if (!(cpuc = bpf_map_lookup_elem(&cpu_ctx_stor, &zero))) {
+		scx_bpf_error("failed to look up cpu_ctx");
+		return;
+	}
+
+	/*
+	 * Use the running avg of weights to select the target cpuperf level.
+	 * This is a demonstration of the cpuperf feature rather than a
+	 * practical strategy to regulate CPU frequency.
+	 */
+	cpuc->avg_weight = cpuc->avg_weight * 3 / 4 + p->scx.weight / 4;
+	idx = weight_to_idx(cpuc->avg_weight);
+	cpuc->cpuperf_target = qidx_to_cpuperf_target[idx];
+
+	scx_bpf_cpuperf_set(scx_bpf_task_cpu(p), cpuc->cpuperf_target);
 }
 
 /*
@@ -382,16 +425,8 @@ static void print_cpus(void)
 	char buf[128] = "", *p;
 	int idx;
 
-	if (!(possible = scx_bpf_get_possible_cpumask())) {
-		scx_bpf_error("failed to obtain possible cpumasks");
-		return;
-	}
-
-	if (!(online = scx_bpf_get_online_cpumask())) {
-		scx_bpf_error("failed to obtain online cpumasks");
-		scx_bpf_put_cpumask(possible);
-		return;
-	}
+	possible = scx_bpf_get_possible_cpumask();
+	online = scx_bpf_get_online_cpumask();
 
 	idx = 0;
 	bpf_for(cpu, 0, scx_bpf_nr_cpu_ids()) {
@@ -432,12 +467,101 @@ void BPF_STRUCT_OPS(qmap_cpu_offline, s32 cpu)
 	print_cpus();
 }
 
+struct cpu_mon_timer {
+	struct bpf_timer timer;
+};
+
+struct {
+	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__uint(max_entries, 1);
+	__type(key, u32);
+	__type(value, struct cpu_mon_timer);
+} central_timer SEC(".maps");
+
+/*
+ * Print out the min, avg and max performance levels of CPUs every second to
+ * demonstrate the cpuperf interface.
+ */
+static int cpu_mon_timerfn(void *map, int *key, struct bpf_timer *timer)
+{
+	u32 zero = 0;
+	u32 nr_cpu_ids = scx_bpf_nr_cpu_ids();
+	u64 cap_sum = 0, cur_sum = 0, cur_min = SCX_CPUPERF_ONE, cur_max = 0;
+	u64 target_sum = 0, target_min = SCX_CPUPERF_ONE, target_max = 0;
+	const struct cpumask *online;
+	int i, nr_online_cpus = 0;
+
+	online = scx_bpf_get_online_cpumask();
+	if (!online)
+		return -ENOMEM;
+
+	bpf_for(i, 0, nr_cpu_ids) {
+		struct cpu_ctx *cpuc;
+		u32 cap, cur;
+
+		if (!bpf_cpumask_test_cpu(i, online))
+			continue;
+		nr_online_cpus++;
+
+		/* collect the capacity and current cpuperf */
+		cap = scx_bpf_cpuperf_cap(i);
+		cur = scx_bpf_cpuperf_cur(i);
+
+		cur_min = cur < cur_min ? cur : cur_min;
+		cur_max = cur > cur_max ? cur : cur_max;
+
+		/*
+		 * $cur is relative to $cap. Scale it down accordingly so that
+		 * it's in the same scale as other CPUs and $cur_sum/$cap_sum
+		 * makes sense.
+		 */
+		cur_sum += cur * cap / SCX_CPUPERF_ONE;
+		cap_sum += cap;
+
+		if (!(cpuc = bpf_map_lookup_percpu_elem(&cpu_ctx_stor, &zero, i))) {
+			scx_bpf_error("failed to look up cpu_ctx");
+			goto out;
+		}
+
+		/* collect target */
+		cur = cpuc->cpuperf_target;
+		target_sum += cur;
+		target_min = cur < target_min ? cur : target_min;
+		target_max = cur > target_max ? cur : target_max;
+	}
+
+	cpuperf_min = cur_min;
+	cpuperf_avg = cur_sum * SCX_CPUPERF_ONE / cap_sum;
+	cpuperf_max = cur_max;
+
+	cpuperf_target_min = target_min;
+	cpuperf_target_avg = target_sum / nr_online_cpus;
+	cpuperf_target_max = target_max;
+
+	bpf_timer_start(timer, ONE_SEC_IN_NS, 0);
+out:
+	scx_bpf_put_cpumask(online);
+	return 0;
+}
+
 s32 BPF_STRUCT_OPS(qmap_init)
 {
+	u32 key = 0;
+	struct bpf_timer *timer;
+
 	if (!switch_partial)
 		__COMPAT_scx_bpf_switch_all();
+
 	print_cpus();
-	return 0;
+
+	timer = bpf_map_lookup_elem(&central_timer, &key);
+	if (!timer)
+		return -ESRCH;
+
+	bpf_timer_init(timer, &central_timer, CLOCK_MONOTONIC);
+	bpf_timer_set_callback(timer, cpu_mon_timerfn);
+
+	return bpf_timer_start(timer, ONE_SEC_IN_NS, 0);
 }
 
 void BPF_STRUCT_OPS(qmap_exit, struct scx_exit_info *ei)
@@ -450,6 +574,7 @@ SCX_OPS_DEFINE(qmap_ops,
 	       .enqueue			= (void *)qmap_enqueue,
 	       .dequeue			= (void *)qmap_dequeue,
 	       .dispatch		= (void *)qmap_dispatch,
+	       .tick			= (void *)qmap_tick,
 	       .core_sched_before	= (void *)qmap_core_sched_before,
 	       .cpu_release		= (void *)qmap_cpu_release,
 	       .init_task		= (void *)qmap_init_task,

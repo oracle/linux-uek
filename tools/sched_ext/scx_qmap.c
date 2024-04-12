@@ -95,10 +95,17 @@ int main(int argc, char **argv)
 		long nr_enqueued = skel->bss->nr_enqueued;
 		long nr_dispatched = skel->bss->nr_dispatched;
 
-		printf("enq=%lu, dsp=%lu, delta=%ld, reenq=%" PRIu64 ", deq=%" PRIu64 ", core=%" PRIu64 "\n",
+		printf("stats  : enq=%lu dsp=%lu delta=%ld reenq=%" PRIu64 " deq=%" PRIu64 " core=%" PRIu64 "\n",
 		       nr_enqueued, nr_dispatched, nr_enqueued - nr_dispatched,
 		       skel->bss->nr_reenqueued, skel->bss->nr_dequeued,
 		       skel->bss->nr_core_sched_execed);
+		printf("cpuperf: cur min/avg/max=%u/%u/%u target min/avg/max=%u/%u/%u\n",
+		       skel->bss->cpuperf_min,
+		       skel->bss->cpuperf_avg,
+		       skel->bss->cpuperf_max,
+		       skel->bss->cpuperf_target_min,
+		       skel->bss->cpuperf_target_avg,
+		       skel->bss->cpuperf_target_max);
 		fflush(stdout);
 		sleep(1);
 	}

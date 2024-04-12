@@ -16,6 +16,45 @@ enum scx_consts {
 	SCX_EXIT_BT_LEN			= 64,
 	SCX_EXIT_MSG_LEN		= 1024,
 	SCX_EXIT_DUMP_DFL_LEN		= 32768,
+
+	SCX_CPUPERF_ONE			= SCHED_CAPACITY_SCALE,
+};
+
+enum scx_exit_kind {
+	SCX_EXIT_NONE,
+	SCX_EXIT_DONE,
+
+	SCX_EXIT_UNREG = 64,	/* user-space initiated unregistration */
+	SCX_EXIT_UNREG_BPF,	/* BPF-initiated unregistration */
+	SCX_EXIT_UNREG_KERN,	/* kernel-initiated unregistration */
+	SCX_EXIT_SYSRQ,		/* requested by 'S' sysrq */
+
+	SCX_EXIT_ERROR = 1024,	/* runtime error, error msg contains details */
+	SCX_EXIT_ERROR_BPF,	/* ERROR but triggered through scx_bpf_error() */
+	SCX_EXIT_ERROR_STALL,	/* watchdog detected stalled runnable tasks */
+};
+
+/*
+ * An exit code can be specified when exiting with scx_bpf_exit() or
+ * scx_ops_exit(), corresponding to exit_kind UNREG_BPF and UNREG_KERN
+ * respectively. The codes are 64bit of the format:
+ *
+ *   Bits: [63  ..  48 47   ..  32 31 .. 0]
+ *         [ SYS ACT ] [ SYS RSN ] [ USR  ]
+ *
+ *   SYS ACT: System-defined exit actions
+ *   SYS RSN: System-defined exit reasons
+ *   USR    : User-defined exit codes and reasons
+ *
+ * Using the above, users may communicate intention and context by ORing system
+ * actions and/or system reasons with a user-defined exit code.
+ */
+enum scx_exit_code {
+	/* Reasons */
+	SCX_ECODE_RSN_HOTPLUG	= 1LLU << 32,
+
+	/* Actions */
+	SCX_ECODE_ACT_RESTART	= 1LLU << 48,
 };
 
 /*
@@ -224,6 +263,16 @@ struct sched_ext_ops {
 	void (*dispatch)(s32 cpu, struct task_struct *prev);
 
 	/**
+	 * tick - Periodic tick
+	 * @p: task running currently
+	 *
+	 * This operation is called every 1/HZ seconds on CPUs which are
+	 * executing an SCX task. Setting @p->scx.slice to 0 will trigger an
+	 * immediate dispatch cycle on the CPU.
+	 */
+	void (*tick)(struct task_struct *p);
+
+	/**
 	 * runnable - A task is becoming runnable on its associated CPU
 	 * @p: task becoming runnable
 	 * @enq_flags: %SCX_ENQ_*
@@ -319,7 +368,7 @@ struct sched_ext_ops {
 	 * If not specified, the default is ordering them according to when they
 	 * became runnable.
 	 */
-	bool (*core_sched_before)(struct task_struct *a,struct task_struct *b);
+	bool (*core_sched_before)(struct task_struct *a, struct task_struct *b);
 
 	/**
 	 * set_weight - Set task weight
@@ -689,27 +738,6 @@ enum scx_tg_flags {
 	SCX_TG_INITED		= 1U << 1,
 };
 
-/*
- * Exit code IDs are 64bit of the format:
- *
- *   Bits: [63  ..  48 47   ..  32 31 .. 0]
- *         [ SYS ACT ] [ SYS RSN ] [ USR  ]
- *
- *   SYS ACT: System-defined exit actions
- *   SYS RSN: System-defined exit reasons
- *   USR    : User-defined exit codes and reasons
- *
- * Using the above mechanisms, users may communicate intention and context by
- * ORing system actions and/or system reasons with a user-defined exit code.
- */
-enum scx_exit_code {
-	/* Reasons */
-	SCX_ECODE_RSN_HOTPLUG	= 1LLU << 32,
-
-	/* Actions */
-	SCX_ECODE_ACT_RESTART	= 1LLU << 48,
-};
-
 enum scx_ops_enable_state {
 	SCX_OPS_PREPPING,
 	SCX_OPS_ENABLING,
@@ -812,7 +840,7 @@ static atomic_long_t scx_hotplug_seq = ATOMIC_LONG_INIT(0);
  * being scheduled on a CPU. If this timeout is exceeded, it will trigger
  * scx_ops_error().
  */
-unsigned long scx_watchdog_timeout;
+static unsigned long scx_watchdog_timeout;
 
 /*
  * The last time the delayed work was run. This delayed work relies on
@@ -820,7 +848,7 @@ unsigned long scx_watchdog_timeout;
  * that this work itself could get wedged. To account for this, we check that
  * it's not stalled in the timer tick, and trigger an error if it is.
  */
-unsigned long scx_watchdog_timestamp = INITIAL_JIFFIES;
+static unsigned long scx_watchdog_timestamp = INITIAL_JIFFIES;
 
 static struct delayed_work scx_watchdog_work;
 
@@ -887,9 +915,19 @@ static DEFINE_PER_CPU(struct scx_dsp_ctx, scx_dsp_ctx);
 static struct kset *scx_kset;
 static struct kobject *scx_root_kobj;
 
-static void scx_bpf_dispatch(struct task_struct *p, u64 dsq_id, u64 slice,
-			     u64 enq_flags);
 static void scx_bpf_kick_cpu(s32 cpu, u64 flags);
+static __printf(3, 4) void scx_ops_exit_kind(enum scx_exit_kind kind,
+					     s64 exit_code,
+					     const char *fmt, ...);
+
+#define scx_ops_error_kind(__err, fmt, args...)					\
+	scx_ops_exit_kind(__err, 0, fmt, ##args)
+
+#define scx_ops_exit(__code, fmt, args...)					\
+	scx_ops_exit_kind(SCX_EXIT_UNREG_KERN, __code, fmt, ##args)
+
+#define scx_ops_error(fmt, args...)						\
+	scx_ops_error_kind(SCX_EXIT_ERROR, fmt, ##args)
 
 struct scx_task_iter {
 	struct sched_ext_entity		cursor;
@@ -2297,7 +2335,7 @@ static int balance_one(struct rq *rq, struct task_struct *prev,
 		 * If the previous sched_class for the current CPU was not SCX,
 		 * notify the BPF scheduler that it again has control of the
 		 * core. This callback complements ->cpu_release(), which is
-		 * emitted in scx_notify_pick_next_task().
+		 * emitted in scx_next_task_picked().
 		 */
 		if (SCX_HAS_OP(cpu_acquire))
 			SCX_CALL_OP(SCX_KF_UNLOCKED, cpu_acquire, cpu_of(rq),
@@ -2462,6 +2500,14 @@ static void set_next_task_scx(struct rq *rq, struct task_struct *p, bool first)
 			rq->scx.flags &= ~SCX_RQ_CAN_STOP_TICK;
 
 		sched_update_tick_dependency(rq);
+
+		/*
+		 * For now, let's refresh the load_avgs just when transitioning
+		 * in and out of nohz. In the future, we might want to add a
+		 * mechanism which calls the following periodically on
+		 * tick-stopped CPUs.
+		 */
+		update_other_load_avgs(rq);
 	}
 }
 
@@ -2672,10 +2718,23 @@ preempt_reason_from_class(const struct sched_class *class)
 	return SCX_CPU_PREEMPT_UNKNOWN;
 }
 
-void __scx_notify_pick_next_task(struct rq *rq, struct task_struct *task,
-				 const struct sched_class *active)
+void scx_next_task_picked(struct rq *rq, struct task_struct *p,
+			  const struct sched_class *active)
 {
 	lockdep_assert_rq_held(rq);
+
+	if (!scx_enabled())
+		return;
+#ifdef CONFIG_SMP
+	/*
+	 * Pairs with the smp_load_acquire() issued by a CPU in
+	 * kick_cpus_irq_workfn() who is waiting for this CPU to perform a
+	 * resched.
+	 */
+	smp_store_release(&rq->scx.pnt_seq, rq->scx.pnt_seq + 1);
+#endif
+	if (!static_branch_unlikely(&scx_ops_cpu_preempt))
+		return;
 
 	/*
 	 * The callback is conceptually meant to convey that the CPU is no
@@ -2700,7 +2759,7 @@ void __scx_notify_pick_next_task(struct rq *rq, struct task_struct *task,
 		if (SCX_HAS_OP(cpu_release)) {
 			struct scx_cpu_release_args args = {
 				.reason = preempt_reason_from_class(active),
-				.task = task,
+				.task = p,
 			};
 
 			SCX_CALL_OP(SCX_KF_CPU_RELEASE,
@@ -3019,6 +3078,26 @@ static void scx_watchdog_workfn(struct work_struct *work)
 			   scx_watchdog_timeout / 2);
 }
 
+void scx_tick(struct rq *rq)
+{
+	unsigned long last_check;
+
+	if (!scx_enabled())
+		return;
+
+	last_check = READ_ONCE(scx_watchdog_timestamp);
+	if (unlikely(time_after(jiffies,
+				last_check + READ_ONCE(scx_watchdog_timeout)))) {
+		u32 dur_ms = jiffies_to_msecs(jiffies - last_check);
+
+		scx_ops_error_kind(SCX_EXIT_ERROR_STALL,
+				   "watchdog failed to check in for %u.%03us",
+				   dur_ms / 1000, dur_ms % 1000);
+	}
+
+	update_other_load_avgs(rq);
+}
+
 static void task_tick_scx(struct rq *rq, struct task_struct *curr, int queued)
 {
 	update_curr_scx(rq);
@@ -3030,6 +3109,8 @@ static void task_tick_scx(struct rq *rq, struct task_struct *curr, int queued)
 	if (scx_ops_bypassing()) {
 		curr->scx.slice = 0;
 		touch_core_sched(rq, curr);
+	} else if (SCX_HAS_OP(tick)) {
+		SCX_CALL_OP(SCX_KF_REST, tick, curr);
 	}
 
 	if (!curr->scx.slice)
@@ -4315,9 +4396,9 @@ static void scx_ops_error_irq_workfn(struct irq_work *irq_work)
 
 static DEFINE_IRQ_WORK(scx_ops_error_irq_work, scx_ops_error_irq_workfn);
 
-__printf(3, 4) void scx_ops_exit_kind(enum scx_exit_kind kind,
-				      s64 exit_code,
-				      const char *fmt, ...)
+static __printf(3, 4) void scx_ops_exit_kind(enum scx_exit_kind kind,
+					     s64 exit_code,
+					     const char *fmt, ...)
 {
 	struct scx_exit_info *ei = scx_exit_info;
 	int none = SCX_EXIT_NONE;
@@ -4393,7 +4474,7 @@ static int scx_ops_enable(struct sched_ext_ops *ops)
 	struct scx_task_iter sti;
 	struct task_struct *p;
 	unsigned long timeout;
-	int i, ret;
+	int i, cpu, ret;
 
 	mutex_lock(&scx_ops_enable_mutex);
 
@@ -4441,6 +4522,9 @@ static int scx_ops_enable(struct sched_ext_ops *ops)
 	scx_warned_zero_slice = false;
 
 	atomic_long_set(&scx_nr_rejected, 0);
+
+	for_each_possible_cpu(cpu)
+		cpu_rq(cpu)->scx.cpuperf_target = SCX_CPUPERF_ONE;
 
 	/*
 	 * Keep CPUs stable during enable so that the BPF scheduler can track
@@ -4792,7 +4876,7 @@ bpf_scx_get_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
 	}
 }
 
-const struct bpf_verifier_ops bpf_scx_verifier_ops = {
+static const struct bpf_verifier_ops bpf_scx_verifier_ops = {
 	.get_func_proto = bpf_scx_get_func_proto,
 	.is_valid_access = bpf_scx_is_valid_access,
 	.btf_struct_access = bpf_scx_btf_struct_access,
@@ -5104,7 +5188,7 @@ static void kick_cpus_irq_workfn(struct irq_work *irq_work)
 		if (cpu != cpu_of(this_rq)) {
 			/*
 			 * Pairs with smp_store_release() issued by this CPU in
-			 * scx_notify_pick_next_task() on the resched path.
+			 * scx_next_task_picked() on the resched path.
 			 *
 			 * We busy-wait here to guarantee that no other task can
 			 * be scheduled on our core before the target CPU has
@@ -5897,6 +5981,77 @@ __bpf_kfunc u32 scx_bpf_nr_cpu_ids(void)
 }
 
 /**
+ * scx_bpf_cpuperf_cap - Query the maximum relative capacity of a CPU
+ * @cpu: CPU of interest
+ *
+ * Return the maximum relative capacity of @cpu in relation to the most
+ * performant CPU in the system. The return value is in the range [1,
+ * %SCX_CPUPERF_ONE]. See scx_bpf_cpuperf_cur().
+ */
+__bpf_kfunc u32 scx_bpf_cpuperf_cap(s32 cpu)
+{
+	if (ops_cpu_valid(cpu, NULL))
+		return arch_scale_cpu_capacity(cpu);
+	else
+		return SCX_CPUPERF_ONE;
+}
+
+/**
+ * scx_bpf_cpuperf_cur - Query the current relative performance of a CPU
+ * @cpu: CPU of interest
+ *
+ * Return the current relative performance of @cpu in relation to its maximum.
+ * The return value is in the range [1, %SCX_CPUPERF_ONE].
+ *
+ * The current performance level of a CPU in relation to the maximum performance
+ * available in the system can be calculated as follows:
+ *
+ *   scx_bpf_cpuperf_cap() * scx_bpf_cpuperf_cur() / %SCX_CPUPERF_ONE
+ *
+ * The result is in the range [1, %SCX_CPUPERF_ONE].
+ */
+__bpf_kfunc u32 scx_bpf_cpuperf_cur(s32 cpu)
+{
+	if (ops_cpu_valid(cpu, NULL))
+		return arch_scale_freq_capacity(cpu);
+	else
+		return SCX_CPUPERF_ONE;
+}
+
+/**
+ * scx_bpf_cpuperf_set - Set the relative performance target of a CPU
+ * @cpu: CPU of interest
+ * @perf: target performance level [0, %SCX_CPUPERF_ONE]
+ * @flags: %SCX_CPUPERF_* flags
+ *
+ * Set the target performance level of @cpu to @perf. @perf is in linear
+ * relative scale between 0 and %SCX_CPUPERF_ONE. This determines how the
+ * schedutil cpufreq governor chooses the target frequency.
+ *
+ * The actual performance level chosen, CPU grouping, and the overhead and
+ * latency of the operations are dependent on the hardware and cpufreq driver in
+ * use. Consult hardware and cpufreq documentation for more information. The
+ * current performance level can be monitored using scx_bpf_cpuperf_cur().
+ */
+__bpf_kfunc void scx_bpf_cpuperf_set(u32 cpu, u32 perf)
+{
+	if (unlikely(perf > SCX_CPUPERF_ONE)) {
+		scx_ops_error("Invalid cpuperf target %u for CPU %d", perf, cpu);
+		return;
+	}
+
+	if (ops_cpu_valid(cpu, NULL)) {
+		struct rq *rq = cpu_rq(cpu);
+
+		rq->scx.cpuperf_target = perf;
+
+		rcu_read_lock_sched_notrace();
+		cpufreq_update_util(cpu_rq(cpu), 0);
+		rcu_read_unlock_sched_notrace();
+	}
+}
+
+/**
  * scx_bpf_get_possible_cpumask - Get a referenced kptr to cpu_possible_mask
  */
 __bpf_kfunc const struct cpumask *scx_bpf_get_possible_cpumask(void)
@@ -6044,6 +6199,9 @@ BTF_KFUNCS_START(scx_kfunc_ids_any)
 BTF_ID_FLAGS(func, scx_bpf_exit_bstr, KF_TRUSTED_ARGS)
 BTF_ID_FLAGS(func, scx_bpf_error_bstr, KF_TRUSTED_ARGS)
 BTF_ID_FLAGS(func, scx_bpf_nr_cpu_ids)
+BTF_ID_FLAGS(func, scx_bpf_cpuperf_cap)
+BTF_ID_FLAGS(func, scx_bpf_cpuperf_cur)
+BTF_ID_FLAGS(func, scx_bpf_cpuperf_set)
 BTF_ID_FLAGS(func, scx_bpf_get_possible_cpumask, KF_ACQUIRE)
 BTF_ID_FLAGS(func, scx_bpf_get_online_cpumask, KF_ACQUIRE)
 BTF_ID_FLAGS(func, scx_bpf_put_cpumask, KF_RELEASE)
