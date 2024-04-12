@@ -3089,6 +3089,7 @@ static inline void cpufreq_update_util(struct rq *rq, unsigned int flags) {}
 #endif
 
 #ifdef CONFIG_SMP
+bool update_other_load_avgs(struct rq *rq);
 unsigned long effective_cpu_util(int cpu, unsigned long util_cfs,
 				 unsigned long *min,
 				 unsigned long *max);
@@ -3131,6 +3132,8 @@ static inline unsigned long cpu_util_rt(struct rq *rq)
 {
 	return READ_ONCE(rq->avg_rt.util_avg);
 }
+#else
+static inline bool update_other_load_avgs(struct rq *rq) { return false; }
 #endif
 
 #ifdef CONFIG_UCLAMP_TASK
