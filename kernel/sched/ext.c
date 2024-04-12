@@ -261,6 +261,16 @@ struct sched_ext_ops {
 	void (*dispatch)(s32 cpu, struct task_struct *prev);
 
 	/**
+	 * tick - Periodic tick
+	 * @p: task running currently
+	 *
+	 * This operation is called every 1/HZ seconds on CPUs which are
+	 * executing an SCX task. Setting @p->scx.slice to 0 will trigger an
+	 * immediate dispatch cycle on the CPU.
+	 */
+	void (*tick)(struct task_struct *p);
+
+	/**
 	 * runnable - A task is becoming runnable on its associated CPU
 	 * @p: task becoming runnable
 	 * @enq_flags: %SCX_ENQ_*
@@ -3097,6 +3107,8 @@ static void task_tick_scx(struct rq *rq, struct task_struct *curr, int queued)
 	if (scx_ops_bypassing()) {
 		curr->scx.slice = 0;
 		touch_core_sched(rq, curr);
+	} else if (SCX_HAS_OP(tick)) {
+		SCX_CALL_OP(SCX_KF_REST, tick, curr);
 	}
 
 	if (!curr->scx.slice)
