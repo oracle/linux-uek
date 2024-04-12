@@ -603,11 +603,11 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 	}
 
 	buf_ptr += (ft_cfg->pkt_offset * 16);
-	if (unlikely(netif_msg_pktdata(priv))) {
+	if (unlikely(netif_msg_pktdata(priv2))) {
 		net_info_ratelimited("%s: %s: Rx: rfoe=%d lmac=%d mbt_buf_idx=%d\n",
-				     priv->netdev->name, __func__, priv->rfoe_num,
+				     priv2->netdev->name, __func__, priv2->rfoe_num,
 				     lmac_id, mbt_buf_idx);
-		netdev_printk(KERN_DEBUG, priv->netdev, "RX MBUF DATA:");
+		netdev_printk(KERN_DEBUG, priv2->netdev, "RX MBUF DATA:");
 		print_hex_dump(KERN_DEBUG, "", DUMP_PREFIX_OFFSET, 16, 4,
 			       buf_ptr, len, true);
 	}
