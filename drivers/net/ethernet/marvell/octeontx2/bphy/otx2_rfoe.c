@@ -623,15 +623,15 @@ static void otx2_rfoe_process_rx_pkt(struct otx2_rfoe_ndev_priv *priv,
 		goto drop_pkt;
 	}
 
-	netif_dbg(priv, rx_status, priv->netdev,
+	netif_dbg(priv2, rx_status, priv2->netdev,
 		  "Rx: rfoe=%d lmac=%d mbt_buf_idx=%d psw0(w0)=0x%llx psw0(w1)=0x%llx psw1(w0)=0x%llx psw1(w1)=0x%llx jd:iova=0x%llx\n",
-		  priv->rfoe_num, lmac_id, mbt_buf_idx,
+		  priv2->rfoe_num, lmac_id, mbt_buf_idx,
 		  *(u64 *)buf_ptr, *((u64 *)buf_ptr + 1),
 		  *((u64 *)buf_ptr + 2), *((u64 *)buf_ptr + 3),
 		  jdt_iova_addr);
 
-	if (unlikely(netif_msg_pktdata(priv))) {
-		netdev_printk(KERN_DEBUG, priv->netdev, "RX MBUF DATA:");
+	if (unlikely(netif_msg_pktdata(priv2))) {
+		netdev_printk(KERN_DEBUG, priv2->netdev, "RX MBUF DATA:");
 		print_hex_dump(KERN_DEBUG, "", DUMP_PREFIX_OFFSET, 16, 4,
 			       buf_ptr, len, true);
 	}
