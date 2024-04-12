@@ -86,13 +86,17 @@ struct {
 	__type(value, struct task_ctx);
 } task_ctx_stor SEC(".maps");
 
-/* Per-cpu dispatch index and remaining count */
+struct cpu_ctx {
+	u64	dsp_idx;	/* dispatch index */
+	u64	dsp_cnt;	/* remaining count */
+};
+
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-	__uint(max_entries, 2);
+	__uint(max_entries, 1);
 	__type(key, u32);
-	__type(value, u64);
-} dispatch_idx_cnt SEC(".maps");
+	__type(value, struct cpu_ctx);
+} cpu_ctx_stor SEC(".maps");
 
 /* Statistics */
 u64 nr_enqueued, nr_dispatched, nr_reenqueued, nr_dequeued;
@@ -235,12 +239,10 @@ static void update_core_sched_head_seq(struct task_struct *p)
 
 void BPF_STRUCT_OPS(qmap_dispatch, s32 cpu, struct task_struct *prev)
 {
-	u32 zero = 0, one = 1;
-	u64 *idx = bpf_map_lookup_elem(&dispatch_idx_cnt, &zero);
-	u64 *cnt = bpf_map_lookup_elem(&dispatch_idx_cnt, &one);
+	struct cpu_ctx *cpuc;
+	u32 zero = 0;
 	void *fifo;
-	s32 pid;
-	int i;
+	s32 i, pid;
 
 	if (dsp_inf_loop_after && nr_dispatched > dsp_inf_loop_after) {
 		struct task_struct *p;
@@ -258,22 +260,22 @@ void BPF_STRUCT_OPS(qmap_dispatch, s32 cpu, struct task_struct *prev)
 		}
 	}
 
-	if (!idx || !cnt) {
-		scx_bpf_error("failed to lookup idx[%p], cnt[%p]", idx, cnt);
+	if (!(cpuc = bpf_map_lookup_elem(&cpu_ctx_stor, &zero))) {
+		scx_bpf_error("failed to look up cpu_ctx");
 		return;
 	}
 
 	for (i = 0; i < 5; i++) {
 		/* Advance the dispatch cursor and pick the fifo. */
-		if (!*cnt) {
-			*idx = (*idx + 1) % 5;
-			*cnt = 1 << *idx;
+		if (!cpuc->dsp_cnt) {
+			cpuc->dsp_idx = (cpuc->dsp_idx + 1) % 5;
+			cpuc->dsp_cnt = 1 << cpuc->dsp_idx;
 		}
-		(*cnt)--;
+		cpuc->dsp_cnt--;
 
-		fifo = bpf_map_lookup_elem(&queue_arr, idx);
+		fifo = bpf_map_lookup_elem(&queue_arr, &cpuc->dsp_idx);
 		if (!fifo) {
-			scx_bpf_error("failed to find ring %llu", *idx);
+			scx_bpf_error("failed to find ring %llu", cpuc->dsp_idx);
 			return;
 		}
 
@@ -291,7 +293,7 @@ void BPF_STRUCT_OPS(qmap_dispatch, s32 cpu, struct task_struct *prev)
 			}
 		}
 
-		*cnt = 0;
+		cpuc->dsp_cnt = 0;
 	}
 }
 
