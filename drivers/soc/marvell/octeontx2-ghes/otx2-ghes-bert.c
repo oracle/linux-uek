@@ -10,6 +10,7 @@
 #include <acpi/ghes.h>
 #include <linux/cper.h>
 #include "otx2-ghes-bert.h"
+#include <soc/marvell/octeontx/octeontx_smc.h>
 
 #define DRV_NAME	"bed-bert"
 
@@ -218,9 +219,15 @@ static int __init ghes_bed_of_match_resource(struct mrvl_bed_source *bsrc)
 		return -ENODEV;
 	}
 
-	res = of_get_address(child_node, 0, &size, NULL);
-	if (!res)
-		goto err;
+	if (is_soc_cn9x()) {
+		res = of_get_address(child_node, 0, &size, NULL);
+		if (!res)
+			goto err;
+	} else if (is_soc_cn10kx()) {
+		res = of_get_address(child_node, 1, &size, NULL);
+		if (!res)
+			goto err;
+	}
 
 	base = of_translate_address(child_node, res);
 	if (base == OF_BAD_ADDR)
@@ -231,18 +238,20 @@ static int __init ghes_bed_of_match_resource(struct mrvl_bed_source *bsrc)
 
 	initdbgmsg("BERT: 0x%llx/0x%llx\n", bsrc->estatus_pa, bsrc->estatus_sz);
 
-	res = of_get_address(child_node, 2, &size, NULL);
-	if (!res)
-		goto err;
+	if (is_soc_cn9x()) {
+		res = of_get_address(child_node, 2, &size, NULL);
+		if (!res)
+			goto err;
 
-	base = of_translate_address(child_node, res);
-	if (base == OF_BAD_ADDR)
-		goto err;
+		base = of_translate_address(child_node, res);
+		if (base == OF_BAD_ADDR)
+			goto err;
 
-	bsrc->ring_pa = (phys_addr_t)base;
-	bsrc->ring_sz = (phys_addr_t)size;
+		bsrc->ring_pa = (phys_addr_t)base;
+		bsrc->ring_sz = (phys_addr_t)size;
 
-	initdbgmsg("BERT: 0x%llx/0x%llx\n", bsrc->ring_pa, bsrc->ring_sz);
+		initdbgmsg("BERT: 0x%llx/0x%llx\n", bsrc->ring_pa, bsrc->ring_sz);
+	}
 
 	return 0;
 
@@ -262,14 +271,16 @@ static int __init ghes_bed_map_resource(struct mrvl_bed_source *bsrc)
 
 	initdbgmsg("BERT block VA=0x%llx\n", (long long)bsrc->estatus_va);
 
-	if (!request_mem_region(bsrc->ring_pa, bsrc->ring_sz, "RING"))
-		return -ENODEV;
+	if (is_soc_cn9x()) {
+		if (!request_mem_region(bsrc->ring_pa, bsrc->ring_sz, "RING"))
+			return -ENODEV;
 
-	bsrc->ring_va = ioremap(bsrc->ring_pa, bsrc->ring_sz);
-	if (!bsrc->ring_va)
-		return -ENODEV;
+		bsrc->ring_va = ioremap(bsrc->ring_pa, bsrc->ring_sz);
+		if (!bsrc->ring_va)
+			return -ENODEV;
 
-	initdbgmsg("RING block VA=0x%llx\n", (long long)bsrc->ring_va);
+		initdbgmsg("RING block VA=0x%llx\n", (long long)bsrc->ring_va);
+	}
 
 
 	return 0;
@@ -298,7 +309,11 @@ static int __init ghes_bert_init(void)
 	err_ring = (struct otx2_ghes_err_ring *)bed_src.ring_va;
 	estatus = (struct acpi_bert_region *)bed_src.estatus_va;
 
-	len = sizeof(struct bed_bert_mem_entry) * err_ring->size;
+	if (is_soc_cn9x())
+		len = sizeof(struct bed_bert_mem_entry) * err_ring->size;
+	else if (is_soc_cn10kx())
+		len = sizeof(struct bed_bert_mem_entry);
+
 	buff = kzalloc(len, GFP_KERNEL);
 	if (!buff) {
 		initerrmsg("%s Unable alloc bert\n", __func__);
