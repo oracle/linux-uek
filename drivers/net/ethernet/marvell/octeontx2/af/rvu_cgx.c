@@ -124,11 +124,11 @@ static bool rvu_cgx_is_mgmt_port(struct rvu *rvu, int cgx_id, int lmac_id)
 {
 	struct cgx_lmac_fwdata_s *fwdata;
 
-	fwdata =  &rvu->fwdata->cgx_fw_data_usx[cgx_id][lmac_id];
-	if (fwdata->mgmt_port)
-		return true;
+	if (!rvu->fwdata)
+		return false;
 
-	return false;
+	fwdata =  &rvu->fwdata->cgx_fw_data_usx[cgx_id][lmac_id];
+	return !!fwdata->mgmt_port;
 }
 
 static void __rvu_map_cgx_lmac_pf(struct rvu *rvu, int pf, int cgx, int lmac)
