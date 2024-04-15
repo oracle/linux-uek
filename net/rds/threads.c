@@ -233,6 +233,7 @@ void rds_queue_reconnect(struct rds_conn_path *cp, bool immediate)
 	struct rds_connection *conn = cp->cp_conn;
 	bool is_tcp = conn->c_trans->t_type == RDS_TRANS_TCP;
 	uint64_t delay;
+	time64_t now_mono = ktime_get_seconds();
 
 	/* let peer with smaller addr initiate reconnect, to avoid duels */
 	if (is_tcp && rds_addr_cmp(&conn->c_laddr, &conn->c_faddr) >= 0) {
@@ -244,6 +245,7 @@ void rds_queue_reconnect(struct rds_conn_path *cp, bool immediate)
 	if (immediate || cp->cp_reconnect_jiffies == 0) {
 		cp->cp_reconnect_jiffies = rds_sysctl_reconnect_min_jiffies;
 		delay = cp->cp_reconnect_jiffies;
+		cp->cp_connection_backoff_start = now_mono;
 	} else {
 		delay = cp->cp_reconnect_jiffies;
 	}
@@ -257,9 +259,24 @@ void rds_queue_reconnect(struct rds_conn_path *cp, bool immediate)
 			delay = rds_sysctl_reconnect_passive_min_jiffies;
 	}
 
-	if (rds_cond_queue_reconnect_work(cp, delay))
-		cp->cp_reconnect_jiffies = min(cp->cp_reconnect_jiffies * 2,
-					       rds_sysctl_reconnect_max_jiffies);
+	if (rds_cond_queue_reconnect_work(cp, delay)) {
+		unsigned long max_jiffies, fuzz_jiffies;
+
+		if (rds_sysctl_reconnect_backoff_after_secs &&
+		    ktime_after(now_mono, cp->cp_connection_backoff_start +
+				rds_sysctl_reconnect_backoff_after_secs)) {
+			max_jiffies =
+			    max(msecs_to_jiffies(rds_sysctl_reconnect_backoff_max_interval_secs * 1000),
+				rds_sysctl_reconnect_max_jiffies);
+			fuzz_jiffies = get_random_u32() % 1000;
+		} else {
+			max_jiffies = rds_sysctl_reconnect_max_jiffies;
+			fuzz_jiffies = 0;
+		}
+
+		cp->cp_reconnect_jiffies =
+		  min(cp->cp_reconnect_jiffies * 2 + fuzz_jiffies, max_jiffies);
+	}
 }
 
 static void rds_connect_worker(struct rds_conn_path *cp,
