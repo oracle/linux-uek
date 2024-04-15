@@ -377,6 +377,7 @@ struct rds_conn_path {
 	time64_t		cp_connection_initiated;
 	time64_t		cp_connection_established;
 	u32			cp_connection_attempts;
+	time64_t		cp_connection_backoff_start;
 
 	struct completion	*cp_shutdown_final;
 };
@@ -1558,6 +1559,8 @@ extern unsigned long rds_sysctl_sndbuf_max;
 extern unsigned long rds_sysctl_reconnect_min_jiffies;
 extern unsigned long rds_sysctl_reconnect_max_jiffies;
 extern unsigned long rds_sysctl_reconnect_passive_min_jiffies;
+extern unsigned int  rds_sysctl_reconnect_backoff_after_secs;
+extern unsigned int  rds_sysctl_reconnect_backoff_max_interval_secs;
 extern unsigned int  rds_sysctl_max_unacked_packets;
 extern unsigned int  rds_sysctl_max_unacked_bytes;
 extern unsigned int  rds_sysctl_ping_enable;
