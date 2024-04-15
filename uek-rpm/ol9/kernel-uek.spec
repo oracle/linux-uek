@@ -28,13 +28,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Next Release
 
 %define distro_build 0
 
-# Sign modules on x86 and aarch64.  Make sure the config files match this setting if more
-# architectures are added.
-%ifarch x86_64 aarch64
-%global signkernel 1
-%else
+# Don't do any signing on UEK-NEXT
 %global signkernel 0
-%endif
 
 # Sign modules on all arches
 %global signmodules 1
