@@ -390,7 +390,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 8
 
 %define variant %{?build_variant:%{build_variant}}%{!?build_variant:-luci}
 
-%define installonly_variant_name kernel%{?build_variant:%{build_variant}}%{!?build_variant:-luci}
+%define installonly_variant_name kernel-uek
 
 Name: kernel%{?variant}
 Group: System Environment/Kernel
@@ -532,6 +532,10 @@ Source200: kabi_lockedlist_x86_64debug
 Source201: kabi_lockedlist_x86_64
 Source202: kabi_lockedlist_aarch64debug
 Source203: kabi_lockedlist_aarch64
+
+%if "kernel%{?variant}" != "%{installonly_variant_name}"
+Provides: %{installonly_variant_name}
+%endif
 
 %ifarch x86_64
 %define sb_cer %{SOURCE22}
