@@ -1185,6 +1185,28 @@ static const __initconst struct x86_cpu_id cpu_vuln_whitelist[] = {
 	VULNWL_INTEL(INTEL_ATOM_TREMONT_L,	NO_EIBRS_PBRSB),
 	VULNWL_INTEL(INTEL_ATOM_TREMONT_D,	NO_ITLB_MULTIHIT | NO_EIBRS_PBRSB),
 
+	/*
+	 * CPUs without eIBRS can be impacted by BHI. However, the default
+	 * Spectre v2 mitigations will also mitigate BHI. So X86_BUG_BHI is
+	 * not set on these CPUs and no extra BHI mitigation is applied.
+	 *
+	 * However, this logic is not applied in a vitual machine because the
+	 * VM can't know if the CPU doesn't effectively have eIBRS, or if eIBRS
+	 * was hidden by the hypervisor. So the VM might apply extra BHI
+	 * mitigation while this is not needed.
+	 *
+	 * To avoid OCI and Exadata VMs from using unnecessary BHI mitigation
+	 * (and avoid the associated performance impact), we explicitly mark the
+	 * Intel CPUs used by OCI and Exadata which do not have eIBRS with NO_BHI
+	 * so that no extra BHI mitigation is used even in VMs.
+	 *
+	 * Intel CPUs without eIBRS used by OCI and Exadata are Haswell Server,
+	 * Broadwell Server and Skylake Server.
+	 */
+	VULNWL_INTEL(INTEL_HASWELL_X,		NO_BHI),
+	VULNWL_INTEL(INTEL_BROADWELL_X,		NO_BHI),
+	VULNWL_INTEL(INTEL_SKYLAKE_X,		NO_BHI),
+
 	/* AMD Family 0xf - 0x12 */
 	VULNWL_AMD(0x0f,	NO_MELTDOWN | NO_SSB | NO_L1TF | NO_MDS | NO_SWAPGS | NO_ITLB_MULTIHIT | NO_MMIO | NO_BHI),
 	VULNWL_AMD(0x10,	NO_MELTDOWN | NO_SSB | NO_L1TF | NO_MDS | NO_SWAPGS | NO_ITLB_MULTIHIT | NO_MMIO | NO_BHI),
