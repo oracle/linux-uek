@@ -2995,10 +2995,11 @@ void kvm_apic_accept_events(struct kvm_vcpu *vcpu)
 	 * after it has processed an INIT signal (and thus in
 	 * KVM_MP_STATE_INIT_RECEIVED state), just eat SIPIs
 	 * and leave the INIT pending.
+	 * UEK: Keep SIPI pending while in SMM too.
 	 */
 	if (kvm_vcpu_latch_init(vcpu)) {
 		WARN_ON_ONCE(vcpu->arch.mp_state == KVM_MP_STATE_INIT_RECEIVED);
-		if (test_bit(KVM_APIC_SIPI, &apic->pending_events))
+		if (!is_smm(vcpu) && test_bit(KVM_APIC_SIPI, &apic->pending_events))
 			clear_bit(KVM_APIC_SIPI, &apic->pending_events);
 		return;
 	}
