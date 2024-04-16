@@ -1554,7 +1554,6 @@ static int mst_ioctl(struct inode* inode, struct file* file, unsigned int opcode
 
         default:
         {
-            mst_err("incorrect opcode = %x available opcodes:\n", opcode);
             print_opcode();
             res = -EINVAL;
             break;
