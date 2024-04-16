@@ -2630,7 +2630,7 @@ config ARCH_ENABLE_HUGEPAGE_MIGRATION
 choice
 	prompt "Clear branch history"
 	depends on CPU_SUP_INTEL
-	default SPECTRE_BHI_AUTO
+	default SPECTRE_BHI_ON
 	help
 	  Enable BHI mitigations. BHI attacks are a form of Spectre V2 attacks
 	  where the branch history buffer is poisoned to speculatively steer
@@ -2647,6 +2647,7 @@ config SPECTRE_BHI_OFF
 	  Equivalent to setting spectre_bhi=off command line parameter.
 config SPECTRE_BHI_AUTO
 	bool "auto"
+	depends on BROKEN
 	help
 	  Equivalent to setting spectre_bhi=auto command line parameter.
 

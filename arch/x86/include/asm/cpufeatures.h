@@ -417,7 +417,7 @@
 
 /*
  * Extended auxiliary flags: Linux defined - for features scattered in various
- * CPUID levels like 0x80000022, etc.
+ * CPUID levels like 0x80000022, etc and Linux defined features.
  *
  * Reuse free bits when adding new feature flags!
  */

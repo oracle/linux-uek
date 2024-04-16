@@ -1955,6 +1955,11 @@ static void __init bhi_select_mitigation(void)
 	if (bhi_mitigation == BHI_MITIGATION_OFF)
 		return;
 
+	/* Retpoline mitigates against BHI unless the CPU has RRSBA behavior */
+	if (retpoline_enabled() &&
+	    !(x86_read_arch_cap_msr() & ARCH_CAP_RRSBA))
+		return;
+
 	if (spec_ctrl_bhi_dis())
 		return;
 
@@ -3237,18 +3242,14 @@ static const char * const spectre_bhi_state(void)
 	else if  (boot_cpu_has(X86_FEATURE_CLEAR_BHB_HW))
 		return "; BHI: BHI_DIS_S";
 	else if  (boot_cpu_has(X86_FEATURE_CLEAR_BHB_LOOP))
-		return "; BHI: SW loop";
-	else if (spectre_v2_enabled == SPECTRE_V2_IBRS &&
-		 !boot_cpu_has(X86_FEATURE_IBRS_ENHANCED) &&
-		 !boot_cpu_has(X86_FEATURE_HYPERVISOR))
-		return "; BHI: IBRS";
+		return "; BHI: SW loop, KVM: SW loop";
 	else if (retpoline_enabled() &&
 		 !(x86_read_arch_cap_msr() & ARCH_CAP_RRSBA))
 		return "; BHI: Retpoline";
 	else if  (boot_cpu_has(X86_FEATURE_CLEAR_BHB_LOOP_ON_VMEXIT))
-		return "; BHI: Vulnerable, KVM: SW loop";
+		return "; BHI: Syscall hardening, KVM: SW loop";
 
-	return "; BHI: Vulnerable";
+	return "; BHI: Vulnerable (Syscall hardening enabled)";
 }
 
 static ssize_t spectre_v2_show_state(char *buf)
@@ -3270,8 +3271,9 @@ static ssize_t spectre_v2_show_state(char *buf)
 			  stibp_state(),
 			  boot_cpu_has(X86_FEATURE_RSB_CTXSW) ? "; RSB filling" : "",
 			  pbrsb_eibrs_state(),
-			  spectre_v2_module_string(),
-			  spectre_bhi_state());
+			  spectre_bhi_state(),
+			  /* this should always be at the end */
+			  spectre_v2_module_string());
 }
 
 static ssize_t srbds_show_state(char *buf)

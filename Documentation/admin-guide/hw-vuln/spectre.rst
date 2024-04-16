@@ -435,18 +435,16 @@ The possible values in this file are:
 
  * - BHI: Not affected
    - System is not affected
- * - BHI: IBRS
-   - System is protected by IBRS
  * - BHI: Retpoline
    - System is protected by retpoline
  * - BHI: BHI_DIS_S
    - System is protected by BHI_DIS_S
- * - BHI: SW loop
+ * - BHI: SW loop; KVM SW loop
    - System is protected by software clearing sequence
- * - BHI: Vulnerable
-   - System is vulnerable to BHI attacks
- * - BHI: Vulnerable; KVM: SW loop
-   - System is vulnerable to BHI attacks from userspace; KVM is protected by software clearing sequence
+ * - BHI: Syscall hardening
+   - Syscalls are hardened against BHI
+ * - BHI: Syscall hardening; KVM: SW loop
+   - System is protected from userspace attacks by syscall hardening; KVM is protected by software clearing sequence
 
 Full mitigation might require a microcode update from the CPU
 vendor. When the necessary microcode is not available, the kernel will
@@ -502,16 +500,18 @@ Spectre variant 2
 
    Systems which support enhanced IBRS (eIBRS) enable IBRS protection once at
    boot, by setting the IBRS bit, and they're automatically protected against
-   Spectre v2 variant attacks, including cross-thread branch target injections
-   on SMT systems (STIBP). In other words, eIBRS enables STIBP too.
+   some Spectre v2 variant attacks. The BHB can still influence the choice of
+   indirect branch predictor entry, and although branch predictor entries are
+   isolated between modes when eIBRS is enabled, the BHB itself is not isolated
+   between modes. Systems which support BHI_DIS_S will set it to protect against
+   BHI attacks.
 
-   The BHB can still influence the choice of indirect branch predictor entry,
-   and although branch predictor entries are isolated between modes when eIBRS
-   is enabled, the BHB itself is not isolated between modes. Systems which
-   support BHI_DIS_S will set it to protect against BHI attacks.
+   On Intel's enhanced IBRS systems, this includes cross-thread branch target
+   injections on SMT systems (STIBP). In other words, Intel eIBRS enables
+   STIBP, too.
 
-   Legacy IBRS systems clear the IBRS bit on exit to userspace and
-   therefore explicitly enable STIBP for that
+   AMD Automatic IBRS does not protect userspace, and Legacy IBRS systems clear
+   the IBRS bit on exit to userspace, therefore both explicitly enable STIBP.
 
    The retpoline mitigation is turned on by default on vulnerable
    CPUs. It can be forced on or off by the administrator
@@ -652,10 +652,18 @@ kernel command line.
 		Not specifying this option is equivalent to
 		spectre_v2=auto.
 
+		In general the kernel by default selects
+		reasonable mitigations for the current CPU. To
+		disable Spectre variant 2 mitigations, boot with
+		spectre_v2=off. Spectre variant 1 mitigations
+		cannot be disabled.
+
 	spectre_bhi=
 
 		[X86] Control mitigation of Branch History Injection
-		(BHI) vulnerability.
+		(BHI) vulnerability. Syscalls are hardened against BHI
+		regardless of this setting. This setting affects the deployment
+		of the HW BHI control and the SW BHB clearing sequence.
 
 		on
 			unconditionally enable.
@@ -664,9 +672,7 @@ kernel command line.
 		auto
 			enable if hardware mitigation
 			control(BHI_DIS_S) is available, otherwise
-			enable alternate mitigation in KVM. Syscalls
-			are not mitigated if hardware mitigation is
-			not present.
+			enable alternate mitigation in KVM.
 
 For user space mitigation:
 
