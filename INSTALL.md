@@ -47,7 +47,9 @@ baseurl=https://yum$ociregion.$ocidomain/repo/OracleLinux/OL9/developer/UEKnext/
 gpgkey=https://yum.oracle.com/RPM-GPG-KEY-oracle-development
 gpgcheck=1
 enabled=1
-Install
+```
+### Install
+```
 sudo dnf install \
    kernel-ueknext \
    kernel-ueknext-core \
@@ -86,7 +88,7 @@ $ rpm -K *.rpm
 Installation can then be done using the dnf install command as follows:
 
 ```
-VERSION="v6.8.0-1"
+VERSION="v6.8.0-2"
 ARCH="$(uname -p)"
 
 sudo dnf install \

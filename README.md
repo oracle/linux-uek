@@ -51,3 +51,7 @@ be reported using Github Issues at:
 If you have kernel patches, please contribute to upstream Linux first! Patches
 accepted by upstream will be part of the next UEK-next build a few weeks after
 that kernel is released.
+
+# Blog post
+
+- https://blogs.oracle.com/linux/post/uek-next
