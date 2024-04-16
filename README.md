@@ -8,7 +8,11 @@ Oracle is a long-time contributor to Linux and we have always had a strong empha
 
 This repository contains the source for the Unbreakable Enterprise Kernel 
 including a small number of Oracle additions which have not yet been accepted into the main 
-Linux kernel source tree.
+Linux kernel source tree. You can preview those changes, which are continually merged into
+the upstream Linux tree, in the `ueknext/latest` branch.
+(Binary RPMs for UEK-next are also available publicly.)[https://blogs.oracle.com/linux/post/uek-next]
+
+(The full Oracle Linux distribution, both sources and binaries, can be found at yum.oracle.com)[https://yum.oracle.com].
 
 ## Current Branches
 
@@ -16,7 +20,7 @@ This repository hosts source code for UEK versions which are in development and 
 
 | UEK Release and Tag | Linux Kernel version | Release Status | Target Arch | Target Userspace Distribution(s) |
 |--------------------|-----------------------------|----------------------|-----------------|--------------------------------------------|
-| [`ueknext/latest`](https://github.com/oracle/linux-uek/tree/ueknext/latest) | v6.8 | Production | `x86_64`, `aarch64` | Oracle Linux 9 |
+| [`ueknext/latest`](https://github.com/oracle/linux-uek/tree/ueknext/latest) | latest | Production | `x86_64`, `aarch64` | Oracle Linux 9 |
 | [`uek7/u2`](https://github.com/oracle/linux-uek/tree/uek7/u2)<br/>[`v5.15.0-206.149.3`](https://github.com/oracle/linux-uek/tree/v5.15.0-206.149.3) | v5.15 | Production | `x86_64`, `aarch64` | Oracle Linux 8, Oracle Linux 9 |
 | [`uek6/u3`](https://github.com/oracle/linux-uek/tree/uek6/u3)<br/>[`v5.4.17-2136.331.5`](https://github.com/oracle/linux-uek/tree/v5.4.17-2136.331.5) | v5.4 | Production | `x86_64`, `aarch64` | Oracle Linux 7, Oracle Linux 8 |
 | [`uek5/u5`](https://github.com/oracle/linux-uek/tree/uek5/u5)<br/>[`v4.14.35-2047.536.3`](https://github.com/oracle/linux-uek/tree/v4.14.35-2047.536.3) | v4.14 | Production | `x86_64`, `aarch64` | Oracle Linux 7 |
