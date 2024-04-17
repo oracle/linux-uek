@@ -130,6 +130,7 @@ struct netns_ipv4 {
 #ifndef	__GENKSYMS__
 	int sysctl_tcp_min_snd_mss;
 #endif
+	UEK_KABI_FILL_HOLE(int sysctl_tcp_early_retrans)
 	struct inet_timewait_death_row tcp_death_row;
 	int sysctl_max_syn_backlog;
 
