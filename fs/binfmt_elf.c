@@ -696,12 +696,14 @@ static int get_elf_notes(struct linux_binprm *bprm, struct elf_phdr *phdr, char 
 	loff_t pos;
 	int ret;
 
+	/* Malformed note segments are ignored. */
+
 	if (!phdr)
 		return 0;
 
 	datasz = phdr->p_filesz;
 	if ((datasz > MAX_FILE_NOTE_SIZE) || (datasz < sizeof(struct elf_note)))
-		return -ENOEXEC;
+		return 0;
 
 	data = kvmalloc(datasz, GFP_KERNEL);
 	if (!data)
@@ -710,10 +712,8 @@ static int get_elf_notes(struct linux_binprm *bprm, struct elf_phdr *phdr, char 
 	pos = phdr->p_offset;
 	ret = kernel_read(bprm->file, data, datasz, &pos);
 	if (ret != datasz) {
-		if (ret >= 0)
-			ret = -EIO;
 		kvfree(data);
-		return ret;
+		return 0;
 	}
 
 	*notes = data;
