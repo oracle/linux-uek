@@ -172,6 +172,8 @@ kernel/drivers/mmc/host/sdhci-pci.ko
 kernel/drivers/mmc/host/sdhci-pltfm.ko
 kernel/drivers/mmc/host/sdhci-tegra.ko
 kernel/drivers/mmc/host/sdhci-xenon-driver.ko
+kernel/drivers/mtd/mtd.ko
+kernel/drivers/mtd/mtd_blkdevs.ko
 kernel/drivers/net/bonding/bonding.ko
 kernel/drivers/net/dummy.ko
 kernel/drivers/net/ethernet/broadcom/bnxt/bnxt_en.ko
