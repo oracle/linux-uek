@@ -186,7 +186,7 @@ static int octtx_parse_mac_info(struct device_node *node)
 		brd.board_num_of_mac = null_string;
 		num = -1;
 	} else {
-		if (kstrtou32(brd.board_num_of_mac, 16, &num))
+		if (kstrtou32(brd.board_num_of_mac, 0, &num))
 			pr_warn("Board MAC address number is not available\n");
 	}
 
@@ -206,7 +206,7 @@ static int octtx_parse_mac_info(struct device_node *node)
 		brd.board_num_of_mac_id = null_string;
 		id_num = -1;
 	} else {
-		if (kstrtou32(brd.board_num_of_mac_id, 16, &id_num))
+		if (kstrtou32(brd.board_num_of_mac_id, 0, &id_num))
 			pr_warn("Board MAC addressess IDs number is not available\n");
 	}
 
