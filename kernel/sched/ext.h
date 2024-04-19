@@ -95,7 +95,7 @@ static inline void scx_cancel_fork(struct task_struct *p) {}
 static inline int scx_check_setscheduler(struct task_struct *p,
 					 int policy) { return 0; }
 static inline bool scx_can_stop_tick(struct rq *rq) { return true; }
-static inline void scx_tick(void) {}
+static inline void scx_tick(struct rq *rq) {}
 static inline void scx_next_task_picked(struct rq *rq, struct task_struct *p,
 					const struct sched_class *active) {}
 static inline void init_sched_ext_class(void) {}
