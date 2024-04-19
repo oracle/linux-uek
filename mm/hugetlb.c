@@ -1399,7 +1399,7 @@ static void __update_and_free_page(struct hstate *h, struct page *page)
 	 * If vmemmap pages were allocated above, then we need to clear the
 	 * hugetlb destructor under the hugetlb lock.
 	 */
-	if (clear_dtor) {
+	if (PageHuge(page)) {
 		spin_lock_irq(&hugetlb_lock);
 		__clear_hugetlb_destructor(h, page);
 		spin_unlock_irq(&hugetlb_lock);
