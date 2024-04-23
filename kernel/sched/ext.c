@@ -5738,28 +5738,36 @@ out:
  * @dsq_id: id of the DSQ
  *
  * Return the number of tasks in the DSQ matching @dsq_id. If not found,
- * -%ENOENT is returned. Can be called from any non-sleepable online scx_ops
- * operations.
+ * -%ENOENT is returned.
  */
 __bpf_kfunc s32 scx_bpf_dsq_nr_queued(u64 dsq_id)
 {
 	struct scx_dispatch_q *dsq;
+	s32 ret;
 
-	lockdep_assert(rcu_read_lock_any_held());
+	preempt_disable();
 
 	if (dsq_id == SCX_DSQ_LOCAL) {
-		return this_rq()->scx.local_dsq.nr;
+		ret = this_rq()->scx.local_dsq.nr;
+		goto out;
 	} else if ((dsq_id & SCX_DSQ_LOCAL_ON) == SCX_DSQ_LOCAL_ON) {
 		s32 cpu = dsq_id & SCX_DSQ_LOCAL_CPU_MASK;
 
-		if (ops_cpu_valid(cpu, NULL))
-			return cpu_rq(cpu)->scx.local_dsq.nr;
+		if (ops_cpu_valid(cpu, NULL)) {
+			ret = cpu_rq(cpu)->scx.local_dsq.nr;
+			goto out;
+		}
 	} else {
 		dsq = find_non_local_dsq(dsq_id);
-		if (dsq)
-			return dsq->nr;
+		if (dsq) {
+			ret = dsq->nr;
+			goto out;
+		}
 	}
-	return -ENOENT;
+	ret = -ENOENT;
+out:
+	preempt_enable();
+	return ret;
 }
 
 /**
