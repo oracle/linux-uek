@@ -5378,6 +5378,44 @@ static const struct btf_kfunc_id_set scx_kfunc_set_sleepable = {
 	.set			= &scx_kfunc_ids_sleepable,
 };
 
+__bpf_kfunc_start_defs();
+
+/**
+ * scx_bpf_select_cpu_dfl - The default implementation of ops.select_cpu()
+ * @p: task_struct to select a CPU for
+ * @prev_cpu: CPU @p was on previously
+ * @wake_flags: %SCX_WAKE_* flags
+ * @is_idle: out parameter indicating whether the returned CPU is idle
+ *
+ * Can only be called from ops.select_cpu() if the built-in CPU selection is
+ * enabled - ops.update_idle() is missing or %SCX_OPS_KEEP_BUILTIN_IDLE is set.
+ * @p, @prev_cpu and @wake_flags match ops.select_cpu().
+ *
+ * Returns the picked CPU with *@is_idle indicating whether the picked CPU is
+ * currently idle and thus a good candidate for direct dispatching.
+ */
+__bpf_kfunc s32 scx_bpf_select_cpu_dfl(struct task_struct *p, s32 prev_cpu,
+				       u64 wake_flags, bool *is_idle)
+{
+	if (!scx_kf_allowed(SCX_KF_SELECT_CPU)) {
+		*is_idle = false;
+		return prev_cpu;
+	}
+
+	return scx_select_cpu_dfl(p, prev_cpu, wake_flags, is_idle);
+}
+
+__bpf_kfunc_end_defs();
+
+BTF_KFUNCS_START(scx_kfunc_ids_select_cpu)
+BTF_ID_FLAGS(func, scx_bpf_select_cpu_dfl, KF_RCU)
+BTF_KFUNCS_END(scx_kfunc_ids_select_cpu)
+
+static const struct btf_kfunc_id_set scx_kfunc_set_select_cpu = {
+	.owner			= THIS_MODULE,
+	.set			= &scx_kfunc_ids_select_cpu,
+};
+
 static bool scx_dispatch_preamble(struct task_struct *p, u64 enq_flags)
 {
 	if (!scx_kf_allowed(SCX_KF_ENQUEUE | SCX_KF_DISPATCH))
@@ -5771,91 +5809,6 @@ out:
 }
 
 /**
- * scx_bpf_test_and_clear_cpu_idle - Test and clear @cpu's idle state
- * @cpu: cpu to test and clear idle for
- *
- * Returns %true if @cpu was idle and its idle state was successfully cleared.
- * %false otherwise.
- *
- * Unavailable if ops.update_idle() is implemented and
- * %SCX_OPS_KEEP_BUILTIN_IDLE is not set.
- */
-__bpf_kfunc bool scx_bpf_test_and_clear_cpu_idle(s32 cpu)
-{
-	if (!static_branch_likely(&scx_builtin_idle_enabled)) {
-		scx_ops_error("built-in idle tracking is disabled");
-		return false;
-	}
-
-	if (ops_cpu_valid(cpu, NULL))
-		return test_and_clear_cpu_idle(cpu);
-	else
-		return false;
-}
-
-/**
- * scx_bpf_pick_idle_cpu - Pick and claim an idle cpu
- * @cpus_allowed: Allowed cpumask
- * @flags: %SCX_PICK_IDLE_CPU_* flags
- *
- * Pick and claim an idle cpu in @cpus_allowed. Returns the picked idle cpu
- * number on success. -%EBUSY if no matching cpu was found.
- *
- * Idle CPU tracking may race against CPU scheduling state transitions. For
- * example, this function may return -%EBUSY as CPUs are transitioning into the
- * idle state. If the caller then assumes that there will be dispatch events on
- * the CPUs as they were all busy, the scheduler may end up stalling with CPUs
- * idling while there are pending tasks. Use scx_bpf_pick_any_cpu() and
- * scx_bpf_kick_cpu() to guarantee that there will be at least one dispatch
- * event in the near future.
- *
- * Unavailable if ops.update_idle() is implemented and
- * %SCX_OPS_KEEP_BUILTIN_IDLE is not set.
- */
-__bpf_kfunc s32 scx_bpf_pick_idle_cpu(const struct cpumask *cpus_allowed,
-				      u64 flags)
-{
-	if (!static_branch_likely(&scx_builtin_idle_enabled)) {
-		scx_ops_error("built-in idle tracking is disabled");
-		return -EBUSY;
-	}
-
-	return scx_pick_idle_cpu(cpus_allowed, flags);
-}
-
-/**
- * scx_bpf_pick_any_cpu - Pick and claim an idle cpu if available or pick any CPU
- * @cpus_allowed: Allowed cpumask
- * @flags: %SCX_PICK_IDLE_CPU_* flags
- *
- * Pick and claim an idle cpu in @cpus_allowed. If none is available, pick any
- * CPU in @cpus_allowed. Guaranteed to succeed and returns the picked idle cpu
- * number if @cpus_allowed is not empty. -%EBUSY is returned if @cpus_allowed is
- * empty.
- *
- * If ops.update_idle() is implemented and %SCX_OPS_KEEP_BUILTIN_IDLE is not
- * set, this function can't tell which CPUs are idle and will always pick any
- * CPU.
- */
-__bpf_kfunc s32 scx_bpf_pick_any_cpu(const struct cpumask *cpus_allowed,
-				     u64 flags)
-{
-	s32 cpu;
-
-	if (static_branch_likely(&scx_builtin_idle_enabled)) {
-		cpu = scx_pick_idle_cpu(cpus_allowed, flags);
-		if (cpu >= 0)
-			return cpu;
-	}
-
-	cpu = cpumask_any_distribute(cpus_allowed);
-	if (cpu < nr_cpu_ids)
-		return cpu;
-	else
-		return -EBUSY;
-}
-
-/**
  * scx_bpf_destroy_dsq - Destroy a custom DSQ
  * @dsq_id: DSQ to destroy
  *
@@ -5869,47 +5822,7 @@ __bpf_kfunc void scx_bpf_destroy_dsq(u64 dsq_id)
 	destroy_dsq(dsq_id);
 }
 
-/**
- * scx_bpf_select_cpu_dfl - The default implementation of ops.select_cpu()
- * @p: task_struct to select a CPU for
- * @prev_cpu: CPU @p was on previously
- * @wake_flags: %SCX_WAKE_* flags
- * @is_idle: out parameter indicating whether the returned CPU is idle
- *
- * Can only be called from ops.select_cpu() if the built-in CPU selection is
- * enabled - ops.update_idle() is missing or %SCX_OPS_KEEP_BUILTIN_IDLE is set.
- * @p, @prev_cpu and @wake_flags match ops.select_cpu().
- *
- * Returns the picked CPU with *@is_idle indicating whether the picked CPU is
- * currently idle and thus a good candidate for direct dispatching.
- */
-__bpf_kfunc s32 scx_bpf_select_cpu_dfl(struct task_struct *p, s32 prev_cpu,
-				       u64 wake_flags, bool *is_idle)
-{
-	if (!scx_kf_allowed(SCX_KF_SELECT_CPU)) {
-		*is_idle = false;
-		return prev_cpu;
-	}
-
-	return scx_select_cpu_dfl(p, prev_cpu, wake_flags, is_idle);
-}
-
 __bpf_kfunc_end_defs();
-
-BTF_KFUNCS_START(scx_kfunc_ids_ops_only)
-BTF_ID_FLAGS(func, scx_bpf_kick_cpu)
-BTF_ID_FLAGS(func, scx_bpf_dsq_nr_queued)
-BTF_ID_FLAGS(func, scx_bpf_test_and_clear_cpu_idle)
-BTF_ID_FLAGS(func, scx_bpf_pick_idle_cpu, KF_RCU)
-BTF_ID_FLAGS(func, scx_bpf_pick_any_cpu, KF_RCU)
-BTF_ID_FLAGS(func, scx_bpf_destroy_dsq)
-BTF_ID_FLAGS(func, scx_bpf_select_cpu_dfl, KF_RCU)
-BTF_KFUNCS_END(scx_kfunc_ids_ops_only)
-
-static const struct btf_kfunc_id_set scx_kfunc_set_ops_only = {
-	.owner			= THIS_MODULE,
-	.set			= &scx_kfunc_ids_ops_only,
-};
 
 struct scx_bpf_error_bstr_bufs {
 	u64			data[MAX_BPRINTF_VARARGS];
@@ -6173,6 +6086,91 @@ __bpf_kfunc void scx_bpf_put_idle_cpumask(const struct cpumask *idle_mask)
 }
 
 /**
+ * scx_bpf_test_and_clear_cpu_idle - Test and clear @cpu's idle state
+ * @cpu: cpu to test and clear idle for
+ *
+ * Returns %true if @cpu was idle and its idle state was successfully cleared.
+ * %false otherwise.
+ *
+ * Unavailable if ops.update_idle() is implemented and
+ * %SCX_OPS_KEEP_BUILTIN_IDLE is not set.
+ */
+__bpf_kfunc bool scx_bpf_test_and_clear_cpu_idle(s32 cpu)
+{
+	if (!static_branch_likely(&scx_builtin_idle_enabled)) {
+		scx_ops_error("built-in idle tracking is disabled");
+		return false;
+	}
+
+	if (ops_cpu_valid(cpu, NULL))
+		return test_and_clear_cpu_idle(cpu);
+	else
+		return false;
+}
+
+/**
+ * scx_bpf_pick_idle_cpu - Pick and claim an idle cpu
+ * @cpus_allowed: Allowed cpumask
+ * @flags: %SCX_PICK_IDLE_CPU_* flags
+ *
+ * Pick and claim an idle cpu in @cpus_allowed. Returns the picked idle cpu
+ * number on success. -%EBUSY if no matching cpu was found.
+ *
+ * Idle CPU tracking may race against CPU scheduling state transitions. For
+ * example, this function may return -%EBUSY as CPUs are transitioning into the
+ * idle state. If the caller then assumes that there will be dispatch events on
+ * the CPUs as they were all busy, the scheduler may end up stalling with CPUs
+ * idling while there are pending tasks. Use scx_bpf_pick_any_cpu() and
+ * scx_bpf_kick_cpu() to guarantee that there will be at least one dispatch
+ * event in the near future.
+ *
+ * Unavailable if ops.update_idle() is implemented and
+ * %SCX_OPS_KEEP_BUILTIN_IDLE is not set.
+ */
+__bpf_kfunc s32 scx_bpf_pick_idle_cpu(const struct cpumask *cpus_allowed,
+				      u64 flags)
+{
+	if (!static_branch_likely(&scx_builtin_idle_enabled)) {
+		scx_ops_error("built-in idle tracking is disabled");
+		return -EBUSY;
+	}
+
+	return scx_pick_idle_cpu(cpus_allowed, flags);
+}
+
+/**
+ * scx_bpf_pick_any_cpu - Pick and claim an idle cpu if available or pick any CPU
+ * @cpus_allowed: Allowed cpumask
+ * @flags: %SCX_PICK_IDLE_CPU_* flags
+ *
+ * Pick and claim an idle cpu in @cpus_allowed. If none is available, pick any
+ * CPU in @cpus_allowed. Guaranteed to succeed and returns the picked idle cpu
+ * number if @cpus_allowed is not empty. -%EBUSY is returned if @cpus_allowed is
+ * empty.
+ *
+ * If ops.update_idle() is implemented and %SCX_OPS_KEEP_BUILTIN_IDLE is not
+ * set, this function can't tell which CPUs are idle and will always pick any
+ * CPU.
+ */
+__bpf_kfunc s32 scx_bpf_pick_any_cpu(const struct cpumask *cpus_allowed,
+				     u64 flags)
+{
+	s32 cpu;
+
+	if (static_branch_likely(&scx_builtin_idle_enabled)) {
+		cpu = scx_pick_idle_cpu(cpus_allowed, flags);
+		if (cpu >= 0)
+			return cpu;
+	}
+
+	cpu = cpumask_any_distribute(cpus_allowed);
+	if (cpu < nr_cpu_ids)
+		return cpu;
+	else
+		return -EBUSY;
+}
+
+/**
  * scx_bpf_task_running - Is task currently running?
  * @p: task of interest
  */
@@ -6228,6 +6226,9 @@ out:
 __bpf_kfunc_end_defs();
 
 BTF_KFUNCS_START(scx_kfunc_ids_any)
+BTF_ID_FLAGS(func, scx_bpf_kick_cpu)
+BTF_ID_FLAGS(func, scx_bpf_dsq_nr_queued)
+BTF_ID_FLAGS(func, scx_bpf_destroy_dsq)
 BTF_ID_FLAGS(func, scx_bpf_exit_bstr, KF_TRUSTED_ARGS)
 BTF_ID_FLAGS(func, scx_bpf_error_bstr, KF_TRUSTED_ARGS)
 BTF_ID_FLAGS(func, scx_bpf_cpuperf_cap)
@@ -6240,6 +6241,9 @@ BTF_ID_FLAGS(func, scx_bpf_put_cpumask, KF_RELEASE)
 BTF_ID_FLAGS(func, scx_bpf_get_idle_cpumask, KF_ACQUIRE)
 BTF_ID_FLAGS(func, scx_bpf_get_idle_smtmask, KF_ACQUIRE)
 BTF_ID_FLAGS(func, scx_bpf_put_idle_cpumask, KF_RELEASE)
+BTF_ID_FLAGS(func, scx_bpf_test_and_clear_cpu_idle)
+BTF_ID_FLAGS(func, scx_bpf_pick_idle_cpu, KF_RCU)
+BTF_ID_FLAGS(func, scx_bpf_pick_any_cpu, KF_RCU)
 BTF_ID_FLAGS(func, scx_bpf_task_running, KF_RCU)
 BTF_ID_FLAGS(func, scx_bpf_task_cpu, KF_RCU)
 #ifdef CONFIG_CGROUP_SCHED
@@ -6270,13 +6274,13 @@ static int __init scx_init(void)
 	if ((ret = register_btf_kfunc_id_set(BPF_PROG_TYPE_STRUCT_OPS,
 					     &scx_kfunc_set_sleepable)) ||
 	    (ret = register_btf_kfunc_id_set(BPF_PROG_TYPE_STRUCT_OPS,
+					     &scx_kfunc_set_select_cpu)) ||
+	    (ret = register_btf_kfunc_id_set(BPF_PROG_TYPE_STRUCT_OPS,
 					     &scx_kfunc_set_enqueue_dispatch)) ||
 	    (ret = register_btf_kfunc_id_set(BPF_PROG_TYPE_STRUCT_OPS,
 					     &scx_kfunc_set_dispatch)) ||
 	    (ret = register_btf_kfunc_id_set(BPF_PROG_TYPE_STRUCT_OPS,
 					     &scx_kfunc_set_cpu_release)) ||
-	    (ret = register_btf_kfunc_id_set(BPF_PROG_TYPE_STRUCT_OPS,
-					     &scx_kfunc_set_ops_only)) ||
 	    (ret = register_btf_kfunc_id_set(BPF_PROG_TYPE_STRUCT_OPS,
 					     &scx_kfunc_set_any)) ||
 	    (ret = register_btf_kfunc_id_set(BPF_PROG_TYPE_TRACING,
