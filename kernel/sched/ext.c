@@ -1080,7 +1080,7 @@ static __always_inline bool scx_kf_allowed(u32 mask)
 static __always_inline bool scx_kf_allowed_on_arg_tasks(u32 mask,
 							struct task_struct *p)
 {
-	if (!scx_kf_allowed(__SCX_KF_RQ_LOCKED))
+	if (!scx_kf_allowed(mask))
 		return false;
 
 	if (unlikely((p != current->scx.kf_tasks[0] &&
