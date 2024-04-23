@@ -1092,6 +1092,44 @@ static __always_inline bool scx_kf_allowed_on_arg_tasks(u32 mask,
 	return true;
 }
 
+/**
+ * nldsq_next_task - Iterate to the next task in a non-local DSQ
+ * @dsq: user dsq being interated
+ * @cur: current position, %NULL to start iteration
+ * @rev: walk backwards
+ *
+ * Returns %NULL when iteration is finished.
+ */
+static struct task_struct *nldsq_next_task(struct scx_dispatch_q *dsq,
+					   struct task_struct *cur, bool rev)
+{
+	struct list_head *list_node;
+	struct scx_dsq_node *dsq_node;
+
+	lockdep_assert_held(&dsq->lock);
+
+	if (cur)
+		list_node = &cur->scx.dsq_node.list;
+	else
+		list_node = &dsq->list;
+
+	if (rev)
+		list_node = list_node->prev;
+	else
+		list_node = list_node->next;
+
+	if (list_node == &dsq->list)
+		return NULL;
+
+	dsq_node = container_of(list_node, struct scx_dsq_node, list);
+
+	return container_of(dsq_node, struct task_struct, scx.dsq_node);
+}
+
+#define nldsq_for_each_task(p, dsq)						\
+	for ((p) = nldsq_next_task((dsq), NULL, false); (p);			\
+	     (p) = nldsq_next_task((dsq), (p), false))
+
 struct scx_task_iter {
 	struct sched_ext_entity		cursor;
 	struct task_struct		*locked;
@@ -1429,7 +1467,7 @@ static void dispatch_enqueue(struct scx_dispatch_q *dsq, struct task_struct *p,
 		 * tested easily when adding the first task.
 		 */
 		if (unlikely(RB_EMPTY_ROOT(&dsq->priq) &&
-			     !list_empty(&dsq->list)))
+			     nldsq_next_task(dsq, NULL, false)))
 			scx_ops_error("DSQ ID 0x%016llx already had FIFO-enqueued tasks",
 				      dsq->id);
 
@@ -2065,7 +2103,7 @@ retry:
 
 	raw_spin_lock(&dsq->lock);
 
-	list_for_each_entry(p, &dsq->list, scx.dsq_node.list) {
+	nldsq_for_each_task(p, dsq) {
 		task_rq = task_rq(p);
 		if (rq == task_rq)
 			goto this_rq;
