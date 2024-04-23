@@ -1393,7 +1393,7 @@ static void dispatch_enqueue(struct scx_dispatch_q *dsq, struct task_struct *p,
 	bool is_local = dsq->id == SCX_DSQ_LOCAL;
 
 	WARN_ON_ONCE(p->scx.dsq || !list_empty(&p->scx.dsq_node.list));
-	WARN_ON_ONCE((p->scx.dsq_flags & SCX_TASK_DSQ_ON_PRIQ) ||
+	WARN_ON_ONCE((p->scx.dsq_node.flags & SCX_TASK_DSQ_ON_PRIQ) ||
 		     !RB_EMPTY_NODE(&p->scx.dsq_node.priq));
 
 	if (!is_local) {
@@ -1433,7 +1433,7 @@ static void dispatch_enqueue(struct scx_dispatch_q *dsq, struct task_struct *p,
 			scx_ops_error("DSQ ID 0x%016llx already had FIFO-enqueued tasks",
 				      dsq->id);
 
-		p->scx.dsq_flags |= SCX_TASK_DSQ_ON_PRIQ;
+		p->scx.dsq_node.flags |= SCX_TASK_DSQ_ON_PRIQ;
 		rb_add(&p->scx.dsq_node.priq, &dsq->priq, scx_dsq_priq_less);
 
 		/*
@@ -1500,10 +1500,10 @@ static void dispatch_enqueue(struct scx_dispatch_q *dsq, struct task_struct *p,
 static void task_unlink_from_dsq(struct task_struct *p,
 				 struct scx_dispatch_q *dsq)
 {
-	if (p->scx.dsq_flags & SCX_TASK_DSQ_ON_PRIQ) {
+	if (p->scx.dsq_node.flags & SCX_TASK_DSQ_ON_PRIQ) {
 		rb_erase(&p->scx.dsq_node.priq, &dsq->priq);
 		RB_CLEAR_NODE(&p->scx.dsq_node.priq);
-		p->scx.dsq_flags &= ~SCX_TASK_DSQ_ON_PRIQ;
+		p->scx.dsq_node.flags &= ~SCX_TASK_DSQ_ON_PRIQ;
 	}
 
 	list_del_init(&p->scx.dsq_node.list);
@@ -4344,7 +4344,7 @@ static void scx_dump_task(struct seq_buf *s, struct task_struct *p, char marker,
 	seq_buf_printf(s, "      scx_state/flags=%u/0x%x dsq_flags=0x%x ops_state/qseq=%lu/%lu\n",
 		       scx_get_task_state(p),
 		       p->scx.flags & ~SCX_TASK_STATE_MASK,
-		       p->scx.dsq_flags,
+		       p->scx.dsq_node.flags,
 		       ops_state & SCX_OPSS_STATE_MASK,
 		       ops_state >> SCX_OPSS_QSEQ_SHIFT);
 	seq_buf_printf(s, "      sticky/holding_cpu=%d/%d dsq_id=%s\n",

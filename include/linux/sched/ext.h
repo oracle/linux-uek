@@ -121,18 +121,20 @@ enum scx_kf_mask {
 	__SCX_KF_TERMINAL	= SCX_KF_ENQUEUE | SCX_KF_SELECT_CPU | SCX_KF_REST,
 };
 
+struct scx_dsq_node {
+	struct list_head	list;		/* dispatch order */
+	struct rb_node		priq;		/* p->scx.dsq_vtime order */
+	u32			flags;		/* SCX_TASK_DSQ_* flags */
+};
+
 /*
  * The following is embedded in task_struct and contains all fields necessary
  * for a task to be scheduled by SCX.
  */
 struct sched_ext_entity {
 	struct scx_dispatch_q	*dsq;
-	struct {
-		struct list_head	list;	/* dispatch order */
-		struct rb_node		priq;	/* p->scx.dsq_vtime order */
-	} dsq_node;
+	struct scx_dsq_node	dsq_node;	/* protected by dsq lock */
 	u32			flags;		/* protected by rq lock */
-	u32			dsq_flags;	/* protected by dsq lock */
 	u32			weight;
 	s32			sticky_cpu;
 	s32			holding_cpu;
