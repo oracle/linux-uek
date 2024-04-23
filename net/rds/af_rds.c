@@ -224,10 +224,10 @@ static int rds_release(struct socket *sock)
 	rhashtable_free_and_destroy(&rs->rs_buf_info_tbl, rds_buf_info_free,
 				    NULL);
 
-	spin_lock_bh(&rs->rs_rns->rns_sock_lock);
+	mutex_lock(&rs->rs_rns->rns_sock_lock);
 	list_del_init(&rs->rs_item);
 	rs->rs_rns->rns_sock_count--;
-	spin_unlock_bh(&rs->rs_rns->rns_sock_lock);
+	mutex_unlock(&rs->rs_rns->rns_sock_lock);
 
 	rds_trans_put(rs->rs_transport);
 
@@ -407,7 +407,7 @@ static unsigned int rds_poll(struct file *file, struct socket *sock,
 static int rds_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 {
 	struct rds_sock *rs = rds_sk_to_rs(sock->sk);
-	spinlock_t *sock_lock;
+	struct mutex *sock_lock;
 	rds_tos_t tos;
 
 	sock_lock = &rs->rs_rns->rns_sock_lock;
@@ -420,18 +420,18 @@ static int rds_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 		    rs->rs_transport->t_type == RDS_TRANS_TCP)
 			tos = 0;
 
-		spin_lock_bh(sock_lock);
+		mutex_lock(sock_lock);
 		if (rs->rs_tos || rs->rs_conn) {
-			spin_unlock_bh(sock_lock);
+			mutex_unlock(sock_lock);
 			return -EINVAL;
 		}
 		rs->rs_tos = tos;
-		spin_unlock_bh(sock_lock);
+		mutex_unlock(sock_lock);
 		break;
 	case SIOCRDSGETTOS:
-		spin_lock_bh(sock_lock);
+		mutex_lock(sock_lock);
 		tos = rs->rs_tos;
-		spin_unlock_bh(sock_lock);
+		mutex_unlock(sock_lock);
 		if (put_user(tos, (rds_tos_t __user *)arg))
 			return -EFAULT;
 		break;
@@ -1112,10 +1112,10 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 		       &rs->rs_bound_addr);
 	}
 
-	spin_lock_bh(&rs->rs_rns->rns_sock_lock);
+	mutex_lock(&rs->rs_rns->rns_sock_lock);
 	list_add_tail(&rs->rs_item, &rs->rs_rns->rns_sock_list);
 	rs->rs_rns->rns_sock_count++;
-	spin_unlock_bh(&rs->rs_rns->rns_sock_lock);
+	mutex_unlock(&rs->rs_rns->rns_sock_lock);
 
 	return 0;
 }
@@ -1200,7 +1200,7 @@ static void rds_sock_inc_info(struct socket *sock, unsigned int len,
 	len /= sizeof(struct rds_info_message);
 
 	rns = rds_ns(sock_net(sock->sk));
-	spin_lock_bh(&rns->rns_sock_lock);
+	mutex_lock(&rns->rns_sock_lock);
 
 	list_for_each_entry(rs, &rns->rns_sock_list, rs_item) {
 		(void)rds_rs_to_sk(rs);
@@ -1219,7 +1219,7 @@ static void rds_sock_inc_info(struct socket *sock, unsigned int len,
 		read_unlock_irqrestore(&rs->rs_recv_lock, flags);
 	}
 
-	spin_unlock_bh(&rns->rns_sock_lock);
+	mutex_unlock(&rns->rns_sock_lock);
 
 	lens->nr = total;
 	lens->each = sizeof(struct rds_info_message);
@@ -1239,7 +1239,7 @@ static void rds6_sock_inc_info(struct socket *sock, unsigned int len,
 	len /= sizeof(struct rds6_info_message);
 
 	rns = rds_ns(sock_net(sock->sk));
-	spin_lock_bh(&rns->rns_sock_lock);
+	mutex_lock(&rns->rns_sock_lock);
 
 	list_for_each_entry(rs, &rns->rns_sock_list, rs_item) {
 		read_lock_irqsave(&rs->rs_recv_lock, flags);
@@ -1255,7 +1255,7 @@ static void rds6_sock_inc_info(struct socket *sock, unsigned int len,
 		read_unlock_irqrestore(&rs->rs_recv_lock, flags);
 	}
 
-	spin_unlock_bh(&rns->rns_sock_lock);
+	mutex_unlock(&rns->rns_sock_lock);
 
 	lens->nr = total;
 	lens->each = sizeof(struct rds6_info_message);
@@ -1274,7 +1274,7 @@ static void rds_sock_info(struct socket *sock, unsigned int len,
 	len /= sizeof(struct rds_info_socket);
 
 	rns = rds_ns(sock_net(sock->sk));
-	spin_lock_bh(&rns->rns_sock_lock);
+	mutex_lock(&rns->rns_sock_lock);
 
 	if (len < rns->rns_sock_count) {
 		sock_count = rns->rns_sock_count;
@@ -1306,7 +1306,7 @@ out:
 	lens->nr = sock_count;
 	lens->each = sizeof(struct rds_info_socket);
 
-	spin_unlock_bh(&rns->rns_sock_lock);
+	mutex_unlock(&rns->rns_sock_lock);
 }
 
 #if IS_ENABLED(CONFIG_IPV6)
@@ -1321,7 +1321,7 @@ static void rds6_sock_info(struct socket *sock, unsigned int len,
 	len /= sizeof(struct rds6_info_socket);
 
 	rns = rds_ns(sock_net(sock->sk));
-	spin_lock_bh(&rns->rns_sock_lock);
+	mutex_lock(&rns->rns_sock_lock);
 
 	if (len < rns->rns_sock_count)
 		goto out;
@@ -1344,7 +1344,7 @@ static void rds6_sock_info(struct socket *sock, unsigned int len,
 out:
 	lens->nr = rns->rns_sock_count;
 	lens->each = sizeof(struct rds6_info_socket);
-	spin_unlock_bh(&rns->rns_sock_lock);
+	mutex_unlock(&rns->rns_sock_lock);
 
 }
 #endif
