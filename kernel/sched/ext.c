@@ -1381,6 +1381,12 @@ static bool scx_dsq_priq_less(struct rb_node *node_a,
 	return time_before64(a->scx.dsq_vtime, b->scx.dsq_vtime);
 }
 
+static void dsq_mod_nr(struct scx_dispatch_q *dsq, s32 delta)
+{
+	/* scx_bpf_dsq_nr_queued() reads ->nr without locking, use WRITE_ONCE() */
+	WRITE_ONCE(dsq->nr, dsq->nr + delta);
+}
+
 static void dispatch_enqueue(struct scx_dispatch_q *dsq, struct task_struct *p,
 			     u64 enq_flags)
 {
@@ -1432,7 +1438,7 @@ static void dispatch_enqueue(struct scx_dispatch_q *dsq, struct task_struct *p,
 			scx_ops_error("DSQ ID 0x%016llx already had PRIQ-enqueued tasks",
 				      dsq->id);
 	}
-	dsq->nr++;
+	dsq_mod_nr(dsq, 1);
 	p->scx.dsq = dsq;
 
 	/*
@@ -1516,7 +1522,7 @@ static void dispatch_dequeue(struct scx_rq *scx_rq, struct task_struct *p)
 		/* @p must still be on @dsq, dequeue */
 		WARN_ON_ONCE(!task_linked_on_dsq(p));
 		task_unlink_from_dsq(p, dsq);
-		dsq->nr--;
+		dsq_mod_nr(dsq, -1);
 	} else {
 		/*
 		 * We're racing against dispatch_to_local_dsq() which already
@@ -2065,8 +2071,8 @@ this_rq:
 	WARN_ON_ONCE(p->scx.holding_cpu >= 0);
 	task_unlink_from_dsq(p, dsq);
 	list_add_tail(&p->scx.dsq_node.fifo, &scx_rq->local_dsq.fifo);
-	dsq->nr--;
-	scx_rq->local_dsq.nr++;
+	dsq_mod_nr(dsq, -1);
+	dsq_mod_nr(&scx_rq->local_dsq, 1);
 	p->scx.dsq = &scx_rq->local_dsq;
 	raw_spin_unlock(&dsq->lock);
 	return true;
@@ -2082,7 +2088,7 @@ remote_rq:
 	 */
 	WARN_ON_ONCE(p->scx.holding_cpu >= 0);
 	task_unlink_from_dsq(p, dsq);
-	dsq->nr--;
+	dsq_mod_nr(dsq, -1);
 	p->scx.holding_cpu = raw_smp_processor_id();
 	raw_spin_unlock(&dsq->lock);
 
@@ -5786,19 +5792,19 @@ __bpf_kfunc s32 scx_bpf_dsq_nr_queued(u64 dsq_id)
 	preempt_disable();
 
 	if (dsq_id == SCX_DSQ_LOCAL) {
-		ret = this_rq()->scx.local_dsq.nr;
+		ret = READ_ONCE(this_rq()->scx.local_dsq.nr);
 		goto out;
 	} else if ((dsq_id & SCX_DSQ_LOCAL_ON) == SCX_DSQ_LOCAL_ON) {
 		s32 cpu = dsq_id & SCX_DSQ_LOCAL_CPU_MASK;
 
 		if (ops_cpu_valid(cpu, NULL)) {
-			ret = cpu_rq(cpu)->scx.local_dsq.nr;
+			ret = READ_ONCE(cpu_rq(cpu)->scx.local_dsq.nr);
 			goto out;
 		}
 	} else {
 		dsq = find_non_local_dsq(dsq_id);
 		if (dsq) {
-			ret = dsq->nr;
+			ret = READ_ONCE(dsq->nr);
 			goto out;
 		}
 	}
