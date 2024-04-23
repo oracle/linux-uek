@@ -2120,38 +2120,13 @@ static void dispatch_to_local_dsq_unlock(struct rq *rq, struct rq_flags *rf,
 }
 #endif	/* CONFIG_SMP */
 
-
-static bool task_can_run_on_rq(struct task_struct *p, struct rq *rq)
-{
-	return likely(test_rq_online(rq)) && !is_migration_disabled(p) &&
-		cpumask_test_cpu(cpu_of(rq), p->cpus_ptr);
-}
-
-static bool consume_dispatch_q(struct rq *rq, struct rq_flags *rf,
-			       struct scx_dispatch_q *dsq)
+static void consume_local_task(struct rq *rq, struct scx_dispatch_q *dsq,
+			       struct task_struct *p)
 {
 	struct scx_rq *scx_rq = &rq->scx;
-	struct task_struct *p;
-	struct rq *task_rq;
-	bool moved = false;
-retry:
-	if (list_empty(&dsq->list))
-		return false;
 
-	raw_spin_lock(&dsq->lock);
+	lockdep_assert_held(&dsq->lock);	/* released on return */
 
-	nldsq_for_each_task(p, dsq) {
-		task_rq = task_rq(p);
-		if (rq == task_rq)
-			goto this_rq;
-		if (task_can_run_on_rq(p, rq))
-			goto remote_rq;
-	}
-
-	raw_spin_unlock(&dsq->lock);
-	return false;
-
-this_rq:
 	/* @dsq is locked and @p is on this rq */
 	WARN_ON_ONCE(p->scx.holding_cpu >= 0);
 	task_unlink_from_dsq(p, dsq);
@@ -2160,10 +2135,23 @@ this_rq:
 	dsq_mod_nr(&scx_rq->local_dsq, 1);
 	p->scx.dsq = &scx_rq->local_dsq;
 	raw_spin_unlock(&dsq->lock);
-	return true;
+}
 
-remote_rq:
 #ifdef CONFIG_SMP
+static bool task_can_run_on_remote_rq(struct task_struct *p, struct rq *rq)
+{
+	return likely(test_rq_online(rq)) && !is_migration_disabled(p) &&
+		cpumask_test_cpu(cpu_of(rq), p->cpus_ptr);
+}
+
+static bool consume_remote_task(struct rq *rq, struct rq_flags *rf,
+				struct scx_dispatch_q *dsq,
+				struct task_struct *p, struct rq *task_rq)
+{
+	bool moved = false;
+
+	lockdep_assert_held(&dsq->lock);	/* released on return */
+
 	/*
 	 * @dsq is locked and @p is on a remote rq. @p is currently protected by
 	 * @dsq->lock. We want to pull @p to @rq but may deadlock if we grab
@@ -2184,10 +2172,43 @@ remote_rq:
 	moved = move_task_to_local_dsq(rq, p, 0);
 
 	double_unlock_balance(rq, task_rq);
+
+	return moved;
+}
+#else	/* CONFIG_SMP */
+static bool task_can_run_on_remote_rq(struct task_struct *p, struct rq *rq) { return false; }
+static bool consume_remote_task(struct rq *rq, struct rq_flags *rf,
+				struct scx_dispatch_q *dsq,
+				struct task_struct *p, struct rq *task_rq) { return false; }
 #endif	/* CONFIG_SMP */
-	if (likely(moved))
-		return true;
-	goto retry;
+
+static bool consume_dispatch_q(struct rq *rq, struct rq_flags *rf,
+			       struct scx_dispatch_q *dsq)
+{
+	struct task_struct *p;
+retry:
+	if (list_empty(&dsq->list))
+		return false;
+
+	raw_spin_lock(&dsq->lock);
+
+	nldsq_for_each_task(p, dsq) {
+		struct rq *task_rq = task_rq(p);
+
+		if (rq == task_rq) {
+			consume_local_task(rq, dsq, p);
+			return true;
+		}
+
+		if (task_can_run_on_remote_rq(p, rq)) {
+			if (likely(consume_remote_task(rq, rf, dsq, p, task_rq)))
+				return true;
+			goto retry;
+		}
+	}
+
+	raw_spin_unlock(&dsq->lock);
+	return false;
 }
 
 enum dispatch_to_local_dsq_ret {
