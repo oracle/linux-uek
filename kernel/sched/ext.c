@@ -3286,6 +3286,24 @@ static void scx_ops_exit_task(struct task_struct *p)
 	scx_set_task_state(p, SCX_TASK_NONE);
 }
 
+void init_scx_entity(struct sched_ext_entity *scx)
+{
+	/*
+	 * init_idle() calls this function again after fork sequence is
+	 * complete. Don't touch ->tasks_node as it's already linked.
+	 */
+	memset(scx, 0, offsetof(struct sched_ext_entity, tasks_node));
+
+	INIT_LIST_HEAD(&scx->dsq_node.fifo);
+	RB_CLEAR_NODE(&scx->dsq_node.priq);
+	scx->sticky_cpu = -1;
+	scx->holding_cpu = -1;
+	INIT_LIST_HEAD(&scx->runnable_node);
+	scx->runnable_at = jiffies;
+	scx->ddsp_dsq_id = SCX_DSQ_INVALID;
+	scx->slice = SCX_SLICE_DFL;
+}
+
 void scx_pre_fork(struct task_struct *p)
 {
 	/*
