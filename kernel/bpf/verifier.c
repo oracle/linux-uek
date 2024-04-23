@@ -172,7 +172,7 @@ static bool bpf_global_percpu_ma_set;
 
 /* verifier_state + insn_idx are pushed to stack when branch is encountered */
 struct bpf_verifier_stack_elem {
-	/* verifer state is 'st'
+	/* verifier state is 'st'
 	 * before processing instruction 'insn_idx'
 	 * and after processing instruction 'prev_insn_idx'
 	 */
@@ -190,11 +190,6 @@ struct bpf_verifier_stack_elem {
 #define BPF_MAP_KEY_POISON	(1ULL << 63)
 #define BPF_MAP_KEY_SEEN	(1ULL << 62)
 
-#define BPF_MAP_PTR_UNPRIV	1UL
-#define BPF_MAP_PTR_POISON	((void *)((0xeB9FUL << 1) +	\
-					  POISON_POINTER_DELTA))
-#define BPF_MAP_PTR(X)		((struct bpf_map *)((X) & ~BPF_MAP_PTR_UNPRIV))
-
 #define BPF_GLOBAL_PERCPU_MA_MAX_SIZE  512
 
 static int acquire_reference_state(struct bpf_verifier_env *env, int insn_idx);
@@ -209,21 +204,22 @@ static bool is_trusted_reg(const struct bpf_reg_state *reg);
 
 static bool bpf_map_ptr_poisoned(const struct bpf_insn_aux_data *aux)
 {
-	return BPF_MAP_PTR(aux->map_ptr_state) == BPF_MAP_PTR_POISON;
+	return aux->map_ptr_state.poison;
 }
 
 static bool bpf_map_ptr_unpriv(const struct bpf_insn_aux_data *aux)
 {
-	return aux->map_ptr_state & BPF_MAP_PTR_UNPRIV;
+	return aux->map_ptr_state.unpriv;
 }
 
 static void bpf_map_ptr_store(struct bpf_insn_aux_data *aux,
-			      const struct bpf_map *map, bool unpriv)
+			      struct bpf_map *map,
+			      bool unpriv, bool poison)
 {
-	BUILD_BUG_ON((unsigned long)BPF_MAP_PTR_POISON & BPF_MAP_PTR_UNPRIV);
 	unpriv |= bpf_map_ptr_unpriv(aux);
-	aux->map_ptr_state = (unsigned long)map |
-			     (unpriv ? BPF_MAP_PTR_UNPRIV : 0UL);
+	aux->map_ptr_state.unpriv = unpriv;
+	aux->map_ptr_state.poison = poison;
+	aux->map_ptr_state.map_ptr = map;
 }
 
 static bool bpf_map_key_poisoned(const struct bpf_insn_aux_data *aux)
@@ -2135,7 +2131,7 @@ static void __reg64_deduce_bounds(struct bpf_reg_state *reg)
 static void __reg_deduce_mixed_bounds(struct bpf_reg_state *reg)
 {
 	/* Try to tighten 64-bit bounds from 32-bit knowledge, using 32-bit
-	 * values on both sides of 64-bit range in hope to have tigher range.
+	 * values on both sides of 64-bit range in hope to have tighter range.
 	 * E.g., if r1 is [0x1'00000000, 0x3'80000000], and we learn from
 	 * 32-bit signed > 0 operation that s32 bounds are now [1; 0x7fffffff].
 	 * With this, we can substitute 1 as low 32-bits of _low_ 64-bit bound
@@ -2143,7 +2139,7 @@ static void __reg_deduce_mixed_bounds(struct bpf_reg_state *reg)
 	 * _high_ 64-bit bound (0x380000000 -> 0x37fffffff) and arrive at a
 	 * better overall bounds for r1 as [0x1'000000001; 0x3'7fffffff].
 	 * We just need to make sure that derived bounds we are intersecting
-	 * with are well-formed ranges in respecitve s64 or u64 domain, just
+	 * with are well-formed ranges in respective s64 or u64 domain, just
 	 * like we do with similar kinds of 32-to-64 or 64-to-32 adjustments.
 	 */
 	__u64 new_umin, new_umax;
@@ -3615,7 +3611,8 @@ static int backtrack_insn(struct bpf_verifier_env *env, int idx, int subseq_idx,
 				 * sreg needs precision before this insn
 				 */
 				bt_clear_reg(bt, dreg);
-				bt_set_reg(bt, sreg);
+				if (sreg != BPF_REG_FP)
+					bt_set_reg(bt, sreg);
 			} else {
 				/* dreg = K
 				 * dreg needs precision after this insn.
@@ -3631,7 +3628,8 @@ static int backtrack_insn(struct bpf_verifier_env *env, int idx, int subseq_idx,
 				 * both dreg and sreg need precision
 				 * before this insn
 				 */
-				bt_set_reg(bt, sreg);
+				if (sreg != BPF_REG_FP)
+					bt_set_reg(bt, sreg);
 			} /* else dreg += K
 			   * dreg still needs precision before this insn
 			   */
@@ -6972,6 +6970,9 @@ static int check_mem_access(struct bpf_verifier_env *env, int insn_idx, u32 regn
 	return err;
 }
 
+static int save_aux_ptr_type(struct bpf_verifier_env *env, enum bpf_reg_type type,
+			     bool allow_trust_mismatch);
+
 static int check_atomic(struct bpf_verifier_env *env, int insn_idx, struct bpf_insn *insn)
 {
 	int load_reg;
@@ -7032,7 +7033,7 @@ static int check_atomic(struct bpf_verifier_env *env, int insn_idx, struct bpf_i
 	    is_pkt_reg(env, insn->dst_reg) ||
 	    is_flow_key_reg(env, insn->dst_reg) ||
 	    is_sk_reg(env, insn->dst_reg) ||
-	    is_arena_reg(env, insn->dst_reg)) {
+	    (is_arena_reg(env, insn->dst_reg) && !bpf_jit_supports_insn(insn, true))) {
 		verbose(env, "BPF_ATOMIC stores into R%d %s is not allowed\n",
 			insn->dst_reg,
 			reg_type_str(env, reg_state(env, insn->dst_reg)->type));
@@ -7068,6 +7069,11 @@ static int check_atomic(struct bpf_verifier_env *env, int insn_idx, struct bpf_i
 	if (err)
 		return err;
 
+	if (is_arena_reg(env, insn->dst_reg)) {
+		err = save_aux_ptr_type(env, PTR_TO_ARENA, false);
+		if (err)
+			return err;
+	}
 	/* Check whether we can write into the same memory. */
 	err = check_mem_access(env, insn_idx, insn->dst_reg, insn->off,
 			       BPF_SIZE(insn->code), BPF_WRITE, -1, true, false);
@@ -9653,12 +9659,8 @@ static int set_map_elem_callback_state(struct bpf_verifier_env *env,
 	struct bpf_map *map;
 	int err;
 
-	if (bpf_map_ptr_poisoned(insn_aux)) {
-		verbose(env, "tail_call abusing map_ptr\n");
-		return -EINVAL;
-	}
-
-	map = BPF_MAP_PTR(insn_aux->map_ptr_state);
+	/* valid map_ptr and poison value does not matter */
+	map = insn_aux->map_ptr_state.map_ptr;
 	if (!map->ops->map_set_for_each_callback_args ||
 	    !map->ops->map_for_each_callback) {
 		verbose(env, "callback function not allowed for map\n");
@@ -10017,12 +10019,12 @@ record_func_map(struct bpf_verifier_env *env, struct bpf_call_arg_meta *meta,
 		return -EACCES;
 	}
 
-	if (!BPF_MAP_PTR(aux->map_ptr_state))
+	if (!aux->map_ptr_state.map_ptr)
 		bpf_map_ptr_store(aux, meta->map_ptr,
-				  !meta->map_ptr->bypass_spec_v1);
-	else if (BPF_MAP_PTR(aux->map_ptr_state) != meta->map_ptr)
-		bpf_map_ptr_store(aux, BPF_MAP_PTR_POISON,
-				  !meta->map_ptr->bypass_spec_v1);
+				  !meta->map_ptr->bypass_spec_v1, false);
+	else if (aux->map_ptr_state.map_ptr != meta->map_ptr)
+		bpf_map_ptr_store(aux, meta->map_ptr,
+				  !meta->map_ptr->bypass_spec_v1, true);
 	return 0;
 }
 
@@ -13318,7 +13320,6 @@ static void scalar32_min_max_and(struct bpf_reg_state *dst_reg,
 	bool src_known = tnum_subreg_is_const(src_reg->var_off);
 	bool dst_known = tnum_subreg_is_const(dst_reg->var_off);
 	struct tnum var32_off = tnum_subreg(dst_reg->var_off);
-	s32 smin_val = src_reg->s32_min_value;
 	u32 umax_val = src_reg->u32_max_value;
 
 	if (src_known && dst_known) {
@@ -13331,18 +13332,16 @@ static void scalar32_min_max_and(struct bpf_reg_state *dst_reg,
 	 */
 	dst_reg->u32_min_value = var32_off.value;
 	dst_reg->u32_max_value = min(dst_reg->u32_max_value, umax_val);
-	if (dst_reg->s32_min_value < 0 || smin_val < 0) {
-		/* Lose signed bounds when ANDing negative numbers,
-		 * ain't nobody got time for that.
-		 */
-		dst_reg->s32_min_value = S32_MIN;
-		dst_reg->s32_max_value = S32_MAX;
-	} else {
-		/* ANDing two positives gives a positive, so safe to
-		 * cast result into s64.
-		 */
+
+	/* Safe to set s32 bounds by casting u32 result into s32 when u32
+	 * doesn't cross sign boundary. Otherwise set s32 bounds to unbounded.
+	 */
+	if ((s32)dst_reg->u32_min_value <= (s32)dst_reg->u32_max_value) {
 		dst_reg->s32_min_value = dst_reg->u32_min_value;
 		dst_reg->s32_max_value = dst_reg->u32_max_value;
+	} else {
+		dst_reg->s32_min_value = S32_MIN;
+		dst_reg->s32_max_value = S32_MAX;
 	}
 }
 
@@ -13351,7 +13350,6 @@ static void scalar_min_max_and(struct bpf_reg_state *dst_reg,
 {
 	bool src_known = tnum_is_const(src_reg->var_off);
 	bool dst_known = tnum_is_const(dst_reg->var_off);
-	s64 smin_val = src_reg->smin_value;
 	u64 umax_val = src_reg->umax_value;
 
 	if (src_known && dst_known) {
@@ -13364,18 +13362,16 @@ static void scalar_min_max_and(struct bpf_reg_state *dst_reg,
 	 */
 	dst_reg->umin_value = dst_reg->var_off.value;
 	dst_reg->umax_value = min(dst_reg->umax_value, umax_val);
-	if (dst_reg->smin_value < 0 || smin_val < 0) {
-		/* Lose signed bounds when ANDing negative numbers,
-		 * ain't nobody got time for that.
-		 */
-		dst_reg->smin_value = S64_MIN;
-		dst_reg->smax_value = S64_MAX;
-	} else {
-		/* ANDing two positives gives a positive, so safe to
-		 * cast result into s64.
-		 */
+
+	/* Safe to set s64 bounds by casting u64 result into s64 when u64
+	 * doesn't cross sign boundary. Otherwise set s64 bounds to unbounded.
+	 */
+	if ((s64)dst_reg->umin_value <= (s64)dst_reg->umax_value) {
 		dst_reg->smin_value = dst_reg->umin_value;
 		dst_reg->smax_value = dst_reg->umax_value;
+	} else {
+		dst_reg->smin_value = S64_MIN;
+		dst_reg->smax_value = S64_MAX;
 	}
 	/* We may learn something more from the var_off */
 	__update_reg_bounds(dst_reg);
@@ -13387,7 +13383,6 @@ static void scalar32_min_max_or(struct bpf_reg_state *dst_reg,
 	bool src_known = tnum_subreg_is_const(src_reg->var_off);
 	bool dst_known = tnum_subreg_is_const(dst_reg->var_off);
 	struct tnum var32_off = tnum_subreg(dst_reg->var_off);
-	s32 smin_val = src_reg->s32_min_value;
 	u32 umin_val = src_reg->u32_min_value;
 
 	if (src_known && dst_known) {
@@ -13400,18 +13395,16 @@ static void scalar32_min_max_or(struct bpf_reg_state *dst_reg,
 	 */
 	dst_reg->u32_min_value = max(dst_reg->u32_min_value, umin_val);
 	dst_reg->u32_max_value = var32_off.value | var32_off.mask;
-	if (dst_reg->s32_min_value < 0 || smin_val < 0) {
-		/* Lose signed bounds when ORing negative numbers,
-		 * ain't nobody got time for that.
-		 */
-		dst_reg->s32_min_value = S32_MIN;
-		dst_reg->s32_max_value = S32_MAX;
-	} else {
-		/* ORing two positives gives a positive, so safe to
-		 * cast result into s64.
-		 */
+
+	/* Safe to set s32 bounds by casting u32 result into s32 when u32
+	 * doesn't cross sign boundary. Otherwise set s32 bounds to unbounded.
+	 */
+	if ((s32)dst_reg->u32_min_value <= (s32)dst_reg->u32_max_value) {
 		dst_reg->s32_min_value = dst_reg->u32_min_value;
 		dst_reg->s32_max_value = dst_reg->u32_max_value;
+	} else {
+		dst_reg->s32_min_value = S32_MIN;
+		dst_reg->s32_max_value = S32_MAX;
 	}
 }
 
@@ -13420,7 +13413,6 @@ static void scalar_min_max_or(struct bpf_reg_state *dst_reg,
 {
 	bool src_known = tnum_is_const(src_reg->var_off);
 	bool dst_known = tnum_is_const(dst_reg->var_off);
-	s64 smin_val = src_reg->smin_value;
 	u64 umin_val = src_reg->umin_value;
 
 	if (src_known && dst_known) {
@@ -13433,18 +13425,16 @@ static void scalar_min_max_or(struct bpf_reg_state *dst_reg,
 	 */
 	dst_reg->umin_value = max(dst_reg->umin_value, umin_val);
 	dst_reg->umax_value = dst_reg->var_off.value | dst_reg->var_off.mask;
-	if (dst_reg->smin_value < 0 || smin_val < 0) {
-		/* Lose signed bounds when ORing negative numbers,
-		 * ain't nobody got time for that.
-		 */
-		dst_reg->smin_value = S64_MIN;
-		dst_reg->smax_value = S64_MAX;
-	} else {
-		/* ORing two positives gives a positive, so safe to
-		 * cast result into s64.
-		 */
+
+	/* Safe to set s64 bounds by casting u64 result into s64 when u64
+	 * doesn't cross sign boundary. Otherwise set s64 bounds to unbounded.
+	 */
+	if ((s64)dst_reg->umin_value <= (s64)dst_reg->umax_value) {
 		dst_reg->smin_value = dst_reg->umin_value;
 		dst_reg->smax_value = dst_reg->umax_value;
+	} else {
+		dst_reg->smin_value = S64_MIN;
+		dst_reg->smax_value = S64_MAX;
 	}
 	/* We may learn something more from the var_off */
 	__update_reg_bounds(dst_reg);
@@ -13456,7 +13446,6 @@ static void scalar32_min_max_xor(struct bpf_reg_state *dst_reg,
 	bool src_known = tnum_subreg_is_const(src_reg->var_off);
 	bool dst_known = tnum_subreg_is_const(dst_reg->var_off);
 	struct tnum var32_off = tnum_subreg(dst_reg->var_off);
-	s32 smin_val = src_reg->s32_min_value;
 
 	if (src_known && dst_known) {
 		__mark_reg32_known(dst_reg, var32_off.value);
@@ -13467,10 +13456,10 @@ static void scalar32_min_max_xor(struct bpf_reg_state *dst_reg,
 	dst_reg->u32_min_value = var32_off.value;
 	dst_reg->u32_max_value = var32_off.value | var32_off.mask;
 
-	if (dst_reg->s32_min_value >= 0 && smin_val >= 0) {
-		/* XORing two positive sign numbers gives a positive,
-		 * so safe to cast u32 result into s32.
-		 */
+	/* Safe to set s32 bounds by casting u32 result into s32 when u32
+	 * doesn't cross sign boundary. Otherwise set s32 bounds to unbounded.
+	 */
+	if ((s32)dst_reg->u32_min_value <= (s32)dst_reg->u32_max_value) {
 		dst_reg->s32_min_value = dst_reg->u32_min_value;
 		dst_reg->s32_max_value = dst_reg->u32_max_value;
 	} else {
@@ -13484,7 +13473,6 @@ static void scalar_min_max_xor(struct bpf_reg_state *dst_reg,
 {
 	bool src_known = tnum_is_const(src_reg->var_off);
 	bool dst_known = tnum_is_const(dst_reg->var_off);
-	s64 smin_val = src_reg->smin_value;
 
 	if (src_known && dst_known) {
 		/* dst_reg->var_off.value has been updated earlier */
@@ -13496,10 +13484,10 @@ static void scalar_min_max_xor(struct bpf_reg_state *dst_reg,
 	dst_reg->umin_value = dst_reg->var_off.value;
 	dst_reg->umax_value = dst_reg->var_off.value | dst_reg->var_off.mask;
 
-	if (dst_reg->smin_value >= 0 && smin_val >= 0) {
-		/* XORing two positive sign numbers gives a positive,
-		 * so safe to cast u64 result into s64.
-		 */
+	/* Safe to set s64 bounds by casting u64 result into s64 when u64
+	 * doesn't cross sign boundary. Otherwise set s64 bounds to unbounded.
+	 */
+	if ((s64)dst_reg->umin_value <= (s64)dst_reg->umax_value) {
 		dst_reg->smin_value = dst_reg->umin_value;
 		dst_reg->smax_value = dst_reg->umax_value;
 	} else {
@@ -14726,7 +14714,7 @@ static void regs_refine_cond_op(struct bpf_reg_state *reg1, struct bpf_reg_state
 
 /* Adjusts the register min/max values in the case that the dst_reg and
  * src_reg are both SCALAR_VALUE registers (or we are simply doing a BPF_K
- * check, in which case we havea fake SCALAR_VALUE representing insn->imm).
+ * check, in which case we have a fake SCALAR_VALUE representing insn->imm).
  * Technically we can do similar adjustments for pointers to the same object,
  * but we don't support that right now.
  */
@@ -17364,7 +17352,7 @@ hit:
 			err = propagate_liveness(env, &sl->state, cur);
 
 			/* if previous state reached the exit with precision and
-			 * current state is equivalent to it (except precsion marks)
+			 * current state is equivalent to it (except precision marks)
 			 * the precision needs to be propagated back in
 			 * the current state.
 			 */
@@ -17542,7 +17530,7 @@ static bool reg_type_mismatch(enum bpf_reg_type src, enum bpf_reg_type prev)
 }
 
 static int save_aux_ptr_type(struct bpf_verifier_env *env, enum bpf_reg_type type,
-			     bool allow_trust_missmatch)
+			     bool allow_trust_mismatch)
 {
 	enum bpf_reg_type *prev_type = &env->insn_aux_data[env->insn_idx].ptr_type;
 
@@ -17560,7 +17548,7 @@ static int save_aux_ptr_type(struct bpf_verifier_env *env, enum bpf_reg_type typ
 		 * src_reg == stack|map in some other branch.
 		 * Reject it.
 		 */
-		if (allow_trust_missmatch &&
+		if (allow_trust_mismatch &&
 		    base_type(type) == PTR_TO_BTF_ID &&
 		    base_type(*prev_type) == PTR_TO_BTF_ID) {
 			/*
@@ -18348,6 +18336,8 @@ static int resolve_pseudo_ldimm64(struct bpf_verifier_env *env)
 			}
 
 			if (env->used_map_cnt >= MAX_USED_MAPS) {
+				verbose(env, "The total number of maps per program has reached the limit of %u\n",
+					MAX_USED_MAPS);
 				fdput(f);
 				return -E2BIG;
 			}
@@ -18959,6 +18949,12 @@ static int convert_ctx_accesses(struct bpf_verifier_env *env)
 			   insn->code == (BPF_ST | BPF_MEM | BPF_W) ||
 			   insn->code == (BPF_ST | BPF_MEM | BPF_DW)) {
 			type = BPF_WRITE;
+		} else if ((insn->code == (BPF_STX | BPF_ATOMIC | BPF_W) ||
+			    insn->code == (BPF_STX | BPF_ATOMIC | BPF_DW)) &&
+			   env->insn_aux_data[i + delta].ptr_type == PTR_TO_ARENA) {
+			insn->code = BPF_STX | BPF_PROBE_ATOMIC | BPF_SIZE(insn->code);
+			env->prog->aux->num_exentries++;
+			continue;
 		} else {
 			continue;
 		}
@@ -19145,12 +19141,19 @@ static int jit_subprogs(struct bpf_verifier_env *env)
 		env->insn_aux_data[i].call_imm = insn->imm;
 		/* point imm to __bpf_call_base+1 from JITs point of view */
 		insn->imm = 1;
-		if (bpf_pseudo_func(insn))
+		if (bpf_pseudo_func(insn)) {
+#if defined(MODULES_VADDR)
+			u64 addr = MODULES_VADDR;
+#else
+			u64 addr = VMALLOC_START;
+#endif
 			/* jit (e.g. x86_64) may emit fewer instructions
 			 * if it learns a u32 imm is the same as a u64 imm.
-			 * Force a non zero here.
+			 * Set close enough to possible prog address.
 			 */
-			insn[1].imm = 1;
+			insn[0].imm = (u32)addr;
+			insn[1].imm = addr >> 32;
+		}
 	}
 
 	err = bpf_prog_alloc_jited_linfo(prog);
@@ -19222,6 +19225,9 @@ static int jit_subprogs(struct bpf_verifier_env *env)
 			if ((BPF_CLASS(insn->code) == BPF_STX ||
 			     BPF_CLASS(insn->code) == BPF_ST) &&
 			     BPF_MODE(insn->code) == BPF_PROBE_MEM32)
+				num_exentries++;
+			if (BPF_CLASS(insn->code) == BPF_STX &&
+			     BPF_MODE(insn->code) == BPF_PROBE_ATOMIC)
 				num_exentries++;
 		}
 		func[i]->aux->num_exentries = num_exentries;
@@ -19829,7 +19835,7 @@ static int do_misc_fixups(struct bpf_verifier_env *env)
 			    !bpf_map_ptr_unpriv(aux)) {
 				struct bpf_jit_poke_descriptor desc = {
 					.reason = BPF_POKE_REASON_TAIL_CALL,
-					.tail_call.map = BPF_MAP_PTR(aux->map_ptr_state),
+					.tail_call.map = aux->map_ptr_state.map_ptr,
 					.tail_call.key = bpf_map_key_immediate(aux),
 					.insn_idx = i + delta,
 				};
@@ -19858,7 +19864,7 @@ static int do_misc_fixups(struct bpf_verifier_env *env)
 				return -EINVAL;
 			}
 
-			map_ptr = BPF_MAP_PTR(aux->map_ptr_state);
+			map_ptr = aux->map_ptr_state.map_ptr;
 			insn_buf[0] = BPF_JMP_IMM(BPF_JGE, BPF_REG_3,
 						  map_ptr->max_entries, 2);
 			insn_buf[1] = BPF_ALU32_IMM(BPF_AND, BPF_REG_3,
@@ -19966,7 +19972,7 @@ static int do_misc_fixups(struct bpf_verifier_env *env)
 			if (bpf_map_ptr_poisoned(aux))
 				goto patch_call_imm;
 
-			map_ptr = BPF_MAP_PTR(aux->map_ptr_state);
+			map_ptr = aux->map_ptr_state.map_ptr;
 			ops = map_ptr->ops;
 			if (insn->imm == BPF_FUNC_map_lookup_elem &&
 			    ops->map_gen_lookup) {
@@ -20072,6 +20078,30 @@ patch_map_ops_generic:
 			goto next_insn;
 		}
 
+#ifdef CONFIG_X86_64
+		/* Implement bpf_get_smp_processor_id() inline. */
+		if (insn->imm == BPF_FUNC_get_smp_processor_id &&
+		    prog->jit_requested && bpf_jit_supports_percpu_insn()) {
+			/* BPF_FUNC_get_smp_processor_id inlining is an
+			 * optimization, so if pcpu_hot.cpu_number is ever
+			 * changed in some incompatible and hard to support
+			 * way, it's fine to back out this inlining logic
+			 */
+			insn_buf[0] = BPF_MOV32_IMM(BPF_REG_0, (u32)(unsigned long)&pcpu_hot.cpu_number);
+			insn_buf[1] = BPF_MOV64_PERCPU_REG(BPF_REG_0, BPF_REG_0);
+			insn_buf[2] = BPF_LDX_MEM(BPF_W, BPF_REG_0, BPF_REG_0, 0);
+			cnt = 3;
+
+			new_prog = bpf_patch_insn_data(env, i + delta, insn_buf, cnt);
+			if (!new_prog)
+				return -ENOMEM;
+
+			delta    += cnt - 1;
+			env->prog = prog = new_prog;
+			insn      = new_prog->insnsi + i + delta;
+			goto next_insn;
+		}
+#endif
 		/* Implement bpf_get_func_arg inline. */
 		if (prog_type == BPF_PROG_TYPE_TRACING &&
 		    insn->imm == BPF_FUNC_get_func_arg) {
@@ -20153,6 +20183,62 @@ patch_map_ops_generic:
 			env->prog = prog = new_prog;
 			insn      = new_prog->insnsi + i + delta;
 			goto next_insn;
+		}
+
+		/* Implement bpf_get_branch_snapshot inline. */
+		if (IS_ENABLED(CONFIG_PERF_EVENTS) &&
+		    prog->jit_requested && BITS_PER_LONG == 64 &&
+		    insn->imm == BPF_FUNC_get_branch_snapshot) {
+			/* We are dealing with the following func protos:
+			 * u64 bpf_get_branch_snapshot(void *buf, u32 size, u64 flags);
+			 * int perf_snapshot_branch_stack(struct perf_branch_entry *entries, u32 cnt);
+			 */
+			const u32 br_entry_size = sizeof(struct perf_branch_entry);
+
+			/* struct perf_branch_entry is part of UAPI and is
+			 * used as an array element, so extremely unlikely to
+			 * ever grow or shrink
+			 */
+			BUILD_BUG_ON(br_entry_size != 24);
+
+			/* if (unlikely(flags)) return -EINVAL */
+			insn_buf[0] = BPF_JMP_IMM(BPF_JNE, BPF_REG_3, 0, 7);
+
+			/* Transform size (bytes) into number of entries (cnt = size / 24).
+			 * But to avoid expensive division instruction, we implement
+			 * divide-by-3 through multiplication, followed by further
+			 * division by 8 through 3-bit right shift.
+			 * Refer to book "Hacker's Delight, 2nd ed." by Henry S. Warren, Jr.,
+			 * p. 227, chapter "Unsigned Division by 3" for details and proofs.
+			 *
+			 * N / 3 <=> M * N / 2^33, where M = (2^33 + 1) / 3 = 0xaaaaaaab.
+			 */
+			insn_buf[1] = BPF_MOV32_IMM(BPF_REG_0, 0xaaaaaaab);
+			insn_buf[2] = BPF_ALU64_REG(BPF_MUL, BPF_REG_2, BPF_REG_0);
+			insn_buf[3] = BPF_ALU64_IMM(BPF_RSH, BPF_REG_2, 36);
+
+			/* call perf_snapshot_branch_stack implementation */
+			insn_buf[4] = BPF_EMIT_CALL(static_call_query(perf_snapshot_branch_stack));
+			/* if (entry_cnt == 0) return -ENOENT */
+			insn_buf[5] = BPF_JMP_IMM(BPF_JEQ, BPF_REG_0, 0, 4);
+			/* return entry_cnt * sizeof(struct perf_branch_entry) */
+			insn_buf[6] = BPF_ALU32_IMM(BPF_MUL, BPF_REG_0, br_entry_size);
+			insn_buf[7] = BPF_JMP_A(3);
+			/* return -EINVAL; */
+			insn_buf[8] = BPF_MOV64_IMM(BPF_REG_0, -EINVAL);
+			insn_buf[9] = BPF_JMP_A(1);
+			/* return -ENOENT; */
+			insn_buf[10] = BPF_MOV64_IMM(BPF_REG_0, -ENOENT);
+			cnt = 11;
+
+			new_prog = bpf_patch_insn_data(env, i + delta, insn_buf, cnt);
+			if (!new_prog)
+				return -ENOMEM;
+
+			delta    += cnt - 1;
+			env->prog = prog = new_prog;
+			insn      = new_prog->insnsi + i + delta;
+			continue;
 		}
 
 		/* Implement bpf_kptr_xchg inline */
