@@ -51,14 +51,17 @@ enum scx_dsq_id_flags {
 };
 
 /*
- * Dispatch queue (dsq) is a simple FIFO which is used to buffer between the
- * scheduler core and the BPF scheduler. See the documentation for more details.
+ * A dispatch queue (DSQ) can be either a FIFO or p->scx.dsq_vtime ordered
+ * queue. A built-in DSQ is always a FIFO. The built-in local DSQs are used to
+ * buffer between the scheduler core and the BPF scheduler. See the
+ * documentation for more details.
  */
 struct scx_dispatch_q {
 	raw_spinlock_t		lock;
-	struct list_head	fifo;	/* processed in dispatching order */
-	struct rb_root_cached	priq;	/* processed in p->scx.dsq_vtime order */
+	struct list_head	list;	/* tasks in dispatch order */
+	struct rb_root		priq;	/* used to order by p->scx.dsq_vtime */
 	u32			nr;
+	u64			seq;	/* used by BPF iter */
 	u64			id;
 	struct rhash_head	hash_node;
 	struct llist_node	free_node;
@@ -92,6 +95,8 @@ enum scx_task_state {
 /* scx_entity.dsq_flags */
 enum scx_ent_dsq_flags {
 	SCX_TASK_DSQ_ON_PRIQ	= 1 << 0, /* task is queued on the priority queue of a dsq */
+
+	SCX_TASK_DSQ_CURSOR	= 1 << 31, /* iteration cursor, not a task */
 };
 
 /*
@@ -119,18 +124,21 @@ enum scx_kf_mask {
 	__SCX_KF_TERMINAL	= SCX_KF_ENQUEUE | SCX_KF_SELECT_CPU | SCX_KF_REST,
 };
 
+struct scx_dsq_node {
+	struct list_head	list;		/* dispatch order */
+	struct rb_node		priq;		/* p->scx.dsq_vtime order */
+	u32			flags;		/* SCX_TASK_DSQ_* flags */
+};
+
 /*
  * The following is embedded in task_struct and contains all fields necessary
  * for a task to be scheduled by SCX.
  */
 struct sched_ext_entity {
 	struct scx_dispatch_q	*dsq;
-	struct {
-		struct list_head	fifo;	/* dispatch order */
-		struct rb_node		priq;	/* p->scx.dsq_vtime order */
-	} dsq_node;
+	struct scx_dsq_node	dsq_node;	/* protected by dsq lock */
+	u64			dsq_seq;
 	u32			flags;		/* protected by rq lock */
-	u32			dsq_flags;	/* protected by dsq lock */
 	u32			weight;
 	s32			sticky_cpu;
 	s32			holding_cpu;
@@ -183,10 +191,11 @@ struct sched_ext_entity {
 	bool			disallow;	/* reject switching into SCX */
 
 	/* cold fields */
-	struct list_head	tasks_node;
 #ifdef CONFIG_EXT_GROUP_SCHED
 	struct cgroup		*cgrp_moving_from;
 #endif
+	/* must be the last field, see init_scx_entity() */
+	struct list_head	tasks_node;
 };
 
 void sched_ext_free(struct task_struct *p);

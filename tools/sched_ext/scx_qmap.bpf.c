@@ -23,8 +23,12 @@
  * Copyright (c) 2022 David Vernet <dvernet@meta.com>
  */
 #include <scx/common.bpf.h>
+#include <string.h>
 
-#define ONE_SEC_IN_NS	1000000000
+enum consts {
+	ONE_SEC_IN_NS		= 1000000000,
+	SHARED_DSQ		= 0,
+};
 
 char _license[] SEC("license") = "GPL";
 
@@ -32,6 +36,9 @@ const volatile u64 slice_ns = SCX_SLICE_DFL;
 const volatile u32 stall_user_nth;
 const volatile u32 stall_kernel_nth;
 const volatile u32 dsp_inf_loop_after;
+const volatile u32 dsp_batch;
+const volatile bool print_shared_dsq;
+const volatile char exp_prefix[17];
 const volatile s32 disallow_tgid;
 const volatile bool switch_partial;
 
@@ -116,7 +123,7 @@ struct {
 
 /* Statistics */
 u64 nr_enqueued, nr_dispatched, nr_reenqueued, nr_dequeued;
-u64 nr_core_sched_execed;
+u64 nr_core_sched_execed, nr_expedited;
 u32 cpuperf_min, cpuperf_avg, cpuperf_max;
 u32 cpuperf_target_min, cpuperf_target_avg, cpuperf_target_max;
 
@@ -211,7 +218,7 @@ void BPF_STRUCT_OPS(qmap_enqueue, struct task_struct *p, u64 enq_flags)
 	if (enq_flags & SCX_ENQ_REENQ) {
 		s32 cpu;
 
-		scx_bpf_dispatch(p, SCX_DSQ_GLOBAL, 0, enq_flags);
+		scx_bpf_dispatch(p, SHARED_DSQ, 0, enq_flags);
 		cpu = scx_bpf_pick_idle_cpu(p->cpus_ptr, 0);
 		if (cpu >= 0)
 			scx_bpf_kick_cpu(cpu, __COMPAT_SCX_KICK_IDLE);
@@ -226,7 +233,7 @@ void BPF_STRUCT_OPS(qmap_enqueue, struct task_struct *p, u64 enq_flags)
 
 	/* Queue on the selected FIFO. If the FIFO overflows, punt to global. */
 	if (bpf_map_push_elem(ring, &pid, 0)) {
-		scx_bpf_dispatch(p, SCX_DSQ_GLOBAL, slice_ns, enq_flags);
+		scx_bpf_dispatch(p, SHARED_DSQ, slice_ns, enq_flags);
 		return;
 	}
 
@@ -255,16 +262,49 @@ static void update_core_sched_head_seq(struct task_struct *p)
 		scx_bpf_error("task_ctx lookup failed");
 }
 
+static bool consume_shared_dsq(void)
+{
+	struct task_struct *p;
+	bool consumed;
+	s32 i;
+
+	if (exp_prefix[0] == '\0')
+		return scx_bpf_consume(SHARED_DSQ);
+
+	/*
+	 * To demonstrate the use of scx_bpf_consume_task(), implement silly
+	 * selective priority boosting mechanism by scanning SHARED_DSQ looking
+	 * for matching comms and consume them first. This makes difference only
+	 * when dsp_batch is larger than 1.
+	 */
+	consumed = false;
+	bpf_for_each(scx_dsq, p, SHARED_DSQ, 0) {
+		char comm[sizeof(exp_prefix)];
+
+		memcpy(comm, p->comm, sizeof(exp_prefix) - 1);
+
+		if (!bpf_strncmp(comm, sizeof(exp_prefix), exp_prefix) &&
+		    scx_bpf_consume_task(BPF_FOR_EACH_ITER, p)) {
+			consumed = true;
+			__sync_fetch_and_add(&nr_expedited, 1);
+		}
+	}
+
+	return consumed || scx_bpf_consume(SHARED_DSQ);
+}
+
 void BPF_STRUCT_OPS(qmap_dispatch, s32 cpu, struct task_struct *prev)
 {
+	struct task_struct *p;
 	struct cpu_ctx *cpuc;
-	u32 zero = 0;
+	u32 zero = 0, batch = dsp_batch ?: 1;
 	void *fifo;
 	s32 i, pid;
 
-	if (dsp_inf_loop_after && nr_dispatched > dsp_inf_loop_after) {
-		struct task_struct *p;
+	if (consume_shared_dsq())
+		return;
 
+	if (dsp_inf_loop_after && nr_dispatched > dsp_inf_loop_after) {
 		/*
 		 * PID 2 should be kthreadd which should mostly be idle and off
 		 * the scheduler. Let's keep dispatching it to force the kernel
@@ -272,7 +312,7 @@ void BPF_STRUCT_OPS(qmap_dispatch, s32 cpu, struct task_struct *prev)
 		 */
 		p = bpf_task_from_pid(2);
 		if (p) {
-			scx_bpf_dispatch(p, SCX_DSQ_GLOBAL, slice_ns, 0);
+			scx_bpf_dispatch(p, SCX_DSQ_LOCAL, slice_ns, 0);
 			bpf_task_release(p);
 			return;
 		}
@@ -289,7 +329,6 @@ void BPF_STRUCT_OPS(qmap_dispatch, s32 cpu, struct task_struct *prev)
 			cpuc->dsp_idx = (cpuc->dsp_idx + 1) % 5;
 			cpuc->dsp_cnt = 1 << cpuc->dsp_idx;
 		}
-		cpuc->dsp_cnt--;
 
 		fifo = bpf_map_lookup_elem(&queue_arr, &cpuc->dsp_idx);
 		if (!fifo) {
@@ -298,17 +337,26 @@ void BPF_STRUCT_OPS(qmap_dispatch, s32 cpu, struct task_struct *prev)
 		}
 
 		/* Dispatch or advance. */
-		if (!bpf_map_pop_elem(fifo, &pid)) {
-			struct task_struct *p;
+		bpf_repeat(BPF_MAX_LOOPS) {
+			if (bpf_map_pop_elem(fifo, &pid))
+				break;
 
 			p = bpf_task_from_pid(pid);
-			if (p) {
-				update_core_sched_head_seq(p);
-				__sync_fetch_and_add(&nr_dispatched, 1);
-				scx_bpf_dispatch(p, SCX_DSQ_GLOBAL, slice_ns, 0);
-				bpf_task_release(p);
+			if (!p)
+				continue;
+
+			update_core_sched_head_seq(p);
+			__sync_fetch_and_add(&nr_dispatched, 1);
+			scx_bpf_dispatch(p, SHARED_DSQ, slice_ns, 0);
+			bpf_task_release(p);
+			batch--;
+			cpuc->dsp_cnt--;
+			if (!batch || !scx_bpf_dispatch_nr_slots()) {
+				consume_shared_dsq();
 				return;
 			}
+			if (!cpuc->dsp_cnt)
+				break;
 		}
 
 		cpuc->dsp_cnt = 0;
@@ -467,7 +515,7 @@ void BPF_STRUCT_OPS(qmap_cpu_offline, s32 cpu)
 	print_cpus();
 }
 
-struct cpu_mon_timer {
+struct monitor_timer {
 	struct bpf_timer timer;
 };
 
@@ -475,14 +523,14 @@ struct {
 	__uint(type, BPF_MAP_TYPE_ARRAY);
 	__uint(max_entries, 1);
 	__type(key, u32);
-	__type(value, struct cpu_mon_timer);
+	__type(value, struct monitor_timer);
 } central_timer SEC(".maps");
 
 /*
  * Print out the min, avg and max performance levels of CPUs every second to
  * demonstrate the cpuperf interface.
  */
-static int cpu_mon_timerfn(void *map, int *key, struct bpf_timer *timer)
+static void monitor_cpuperf(void)
 {
 	u32 zero = 0;
 	u32 nr_cpu_ids = scx_bpf_nr_cpu_ids();
@@ -492,8 +540,6 @@ static int cpu_mon_timerfn(void *map, int *key, struct bpf_timer *timer)
 	int i, nr_online_cpus = 0;
 
 	online = scx_bpf_get_online_cpumask();
-	if (!online)
-		return -ENOMEM;
 
 	bpf_for(i, 0, nr_cpu_ids) {
 		struct cpu_ctx *cpuc;
@@ -537,29 +583,63 @@ static int cpu_mon_timerfn(void *map, int *key, struct bpf_timer *timer)
 	cpuperf_target_min = target_min;
 	cpuperf_target_avg = target_sum / nr_online_cpus;
 	cpuperf_target_max = target_max;
-
-	bpf_timer_start(timer, ONE_SEC_IN_NS, 0);
 out:
 	scx_bpf_put_cpumask(online);
+}
+
+/*
+ * Dump the currently queued tasks in the shared DSQ to demonstrate the usage of
+ * scx_bpf_dsq_nr_queued() and DSQ iterator. Raise the dispatch batch count to
+ * see meaningful dumps in the trace pipe.
+ */
+static void dump_shared_dsq(void)
+{
+	struct task_struct *p;
+	s32 nr;
+
+	if (!(nr = scx_bpf_dsq_nr_queued(SHARED_DSQ)))
+		return;
+
+	bpf_printk("Dumping %d tasks in SHARED_DSQ in reverse order", nr);
+
+	bpf_rcu_read_lock();
+	bpf_for_each(scx_dsq, p, SHARED_DSQ, SCX_DSQ_ITER_REV)
+		bpf_printk("%s[%d]", p->comm, p->pid);
+	bpf_rcu_read_unlock();
+}
+
+static int monitor_timerfn(void *map, int *key, struct bpf_timer *timer)
+{
+	monitor_cpuperf();
+
+	if (print_shared_dsq)
+		dump_shared_dsq();
+
+	bpf_timer_start(timer, ONE_SEC_IN_NS, 0);
 	return 0;
 }
 
-s32 BPF_STRUCT_OPS(qmap_init)
+s32 BPF_STRUCT_OPS_SLEEPABLE(qmap_init)
 {
 	u32 key = 0;
 	struct bpf_timer *timer;
+	s32 ret;
 
 	if (!switch_partial)
 		__COMPAT_scx_bpf_switch_all();
 
 	print_cpus();
 
+	ret = scx_bpf_create_dsq(SHARED_DSQ, -1);
+	if (ret)
+		return ret;
+
 	timer = bpf_map_lookup_elem(&central_timer, &key);
 	if (!timer)
 		return -ESRCH;
 
 	bpf_timer_init(timer, &central_timer, CLOCK_MONOTONIC);
-	bpf_timer_set_callback(timer, cpu_mon_timerfn);
+	bpf_timer_set_callback(timer, monitor_timerfn);
 
 	return bpf_timer_start(timer, ONE_SEC_IN_NS, 0);
 }

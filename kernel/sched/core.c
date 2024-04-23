@@ -4584,22 +4584,7 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 	p->rt.on_rq		= 0;
 	p->rt.on_list		= 0;
 
-#ifdef CONFIG_SCHED_CLASS_EXT
-	p->scx.dsq		= NULL;
-	INIT_LIST_HEAD(&p->scx.dsq_node.fifo);
-	RB_CLEAR_NODE(&p->scx.dsq_node.priq);
-	p->scx.flags		= 0;
-	p->scx.weight		= 0;
-	p->scx.sticky_cpu	= -1;
-	p->scx.holding_cpu	= -1;
-	p->scx.kf_mask		= 0;
-	atomic_long_set(&p->scx.ops_state, 0);
-	INIT_LIST_HEAD(&p->scx.runnable_node);
-	p->scx.runnable_at	= jiffies;
-	p->scx.ddsp_dsq_id	= SCX_DSQ_INVALID;
-	p->scx.ddsp_enq_flags	= 0;
-	p->scx.slice		= SCX_SLICE_DFL;
-#endif
+	init_scx_entity(&p->scx);
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS
 	INIT_HLIST_HEAD(&p->preempt_notifiers);

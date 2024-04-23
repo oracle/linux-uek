@@ -27,6 +27,10 @@ const char help_fmt[] =
 "  -t COUNT      Stall every COUNT'th user thread\n"
 "  -T COUNT      Stall every COUNT'th kernel thread\n"
 "  -l COUNT      Trigger dispatch infinite looping after COUNT dispatches\n"
+"  -b COUNT      Dispatch upto COUNT tasks together\n"
+"  -P            Print out DSQ content to trace_pipe every second, use with -b\n"
+"  -E PREFIX     Expedite consumption of threads w/ matching comm, use with -b\n"
+"                (e.g. match shell on a loaded system)\n"
 "  -d PID        Disallow a process from switching into SCHED_EXT (-1 for self)\n"
 "  -D LEN        Set scx_exit_info.dump buffer length\n"
 "  -p            Switch only tasks on SCHED_EXT policy intead of all\n"
@@ -53,7 +57,7 @@ int main(int argc, char **argv)
 	skel = scx_qmap__open();
 	SCX_BUG_ON(!skel, "Failed to open skel");
 
-	while ((opt = getopt(argc, argv, "s:e:t:T:l:d:D:ph")) != -1) {
+	while ((opt = getopt(argc, argv, "s:e:t:T:l:b:PE:d:D:ph")) != -1) {
 		switch (opt) {
 		case 's':
 			skel->rodata->slice_ns = strtoull(optarg, NULL, 0) * 1000;
@@ -69,6 +73,16 @@ int main(int argc, char **argv)
 			break;
 		case 'l':
 			skel->rodata->dsp_inf_loop_after = strtoul(optarg, NULL, 0);
+			break;
+		case 'b':
+			skel->rodata->dsp_batch = strtoul(optarg, NULL, 0);
+			break;
+		case 'P':
+			skel->rodata->print_shared_dsq = true;
+			break;
+		case 'E':
+			strncpy(skel->rodata->exp_prefix, optarg,
+				sizeof(skel->rodata->exp_prefix) - 1);
 			break;
 		case 'd':
 			skel->rodata->disallow_tgid = strtol(optarg, NULL, 0);
@@ -95,10 +109,10 @@ int main(int argc, char **argv)
 		long nr_enqueued = skel->bss->nr_enqueued;
 		long nr_dispatched = skel->bss->nr_dispatched;
 
-		printf("stats  : enq=%lu dsp=%lu delta=%ld reenq=%" PRIu64 " deq=%" PRIu64 " core=%" PRIu64 "\n",
+		printf("stats  : enq=%lu dsp=%lu delta=%ld reenq=%"PRIu64" deq=%"PRIu64" core=%"PRIu64" exp=%"PRIu64"\n",
 		       nr_enqueued, nr_dispatched, nr_enqueued - nr_dispatched,
 		       skel->bss->nr_reenqueued, skel->bss->nr_dequeued,
-		       skel->bss->nr_core_sched_execed);
+		       skel->bss->nr_core_sched_execed, skel->bss->nr_expedited);
 		printf("cpuperf: cur min/avg/max=%u/%u/%u target min/avg/max=%u/%u/%u\n",
 		       skel->bss->cpuperf_min,
 		       skel->bss->cpuperf_avg,
