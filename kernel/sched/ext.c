@@ -929,13 +929,6 @@ static __printf(3, 4) void scx_ops_exit_kind(enum scx_exit_kind kind,
 #define scx_ops_error(fmt, args...)						\
 	scx_ops_error_kind(SCX_EXIT_ERROR, fmt, ##args)
 
-struct scx_task_iter {
-	struct sched_ext_entity		cursor;
-	struct task_struct		*locked;
-	struct rq			*rq;
-	struct rq_flags			rf;
-};
-
 #define SCX_HAS_OP(op)	static_branch_likely(&scx_has_op[SCX_OP_IDX(op)])
 
 static long jiffies_delta_msecs(unsigned long at, unsigned long now)
@@ -1098,6 +1091,13 @@ static __always_inline bool scx_kf_allowed_on_arg_tasks(u32 mask,
 
 	return true;
 }
+
+struct scx_task_iter {
+	struct sched_ext_entity		cursor;
+	struct task_struct		*locked;
+	struct rq			*rq;
+	struct rq_flags			rf;
+};
 
 /**
  * scx_task_iter_init - Initialize a task iterator
@@ -1533,6 +1533,11 @@ static void dispatch_dequeue(struct scx_rq *scx_rq, struct task_struct *p)
 		raw_spin_unlock(&dsq->lock);
 }
 
+static struct scx_dispatch_q *find_user_dsq(u64 dsq_id)
+{
+	return rhashtable_lookup_fast(&dsq_hash, &dsq_id, dsq_hash_params);
+}
+
 static struct scx_dispatch_q *find_non_local_dsq(u64 dsq_id)
 {
 	lockdep_assert(rcu_read_lock_any_held());
@@ -1540,8 +1545,7 @@ static struct scx_dispatch_q *find_non_local_dsq(u64 dsq_id)
 	if (dsq_id == SCX_DSQ_GLOBAL)
 		return &scx_dsq_global;
 	else
-		return rhashtable_lookup_fast(&dsq_hash, &dsq_id,
-					      dsq_hash_params);
+		return find_user_dsq(dsq_id);
 }
 
 static struct scx_dispatch_q *find_dsq_for_dispatch(struct rq *rq, u64 dsq_id,
@@ -2089,7 +2093,7 @@ remote_rq:
 	moved = move_task_to_local_dsq(rq, p, 0);
 
 	double_unlock_balance(rq, task_rq);
-#endif /* CONFIG_SMP */
+#endif	/* CONFIG_SMP */
 	if (likely(moved))
 		return true;
 	goto retry;
@@ -2206,7 +2210,7 @@ dispatch_to_local_dsq(struct rq *rq, struct rq_flags *rf, u64 dsq_id,
 
 		return dsp ? DTL_DISPATCHED : DTL_LOST;
 	}
-#endif /* CONFIG_SMP */
+#endif	/* CONFIG_SMP */
 
 	scx_ops_error("SCX_DSQ_LOCAL[_ON] verdict target cpu %d not allowed for %s[%d]",
 		      cpu_of(dst_rq), p->comm, p->pid);
@@ -3029,13 +3033,13 @@ static void rq_offline_scx(struct rq *rq, enum rq_onoff_reason reason)
 		handle_hotplug(rq, false);
 }
 
-#else /* !CONFIG_SMP */
+#else	/* CONFIG_SMP */
 
 static bool test_and_clear_cpu_idle(int cpu) { return false; }
 static s32 scx_pick_idle_cpu(const struct cpumask *cpus_allowed, u64 flags) { return -EBUSY; }
 static void reset_idle_masks(void) {}
 
-#endif /* CONFIG_SMP */
+#endif	/* CONFIG_SMP */
 
 static bool check_rq_for_timeouts(struct rq *rq)
 {
@@ -3734,7 +3738,7 @@ static void destroy_dsq(u64 dsq_id)
 
 	rcu_read_lock();
 
-	dsq = rhashtable_lookup_fast(&dsq_hash, &dsq_id, dsq_hash_params);
+	dsq = find_user_dsq(dsq_id);
 	if (!dsq)
 		goto out_unlock_rcu;
 
@@ -5991,16 +5995,6 @@ __bpf_kfunc void scx_bpf_error_bstr(char *fmt, unsigned long long *data,
 }
 
 /**
- * scx_bpf_nr_cpu_ids - Return the number of possible CPU IDs
- *
- * All valid CPU IDs in the system are smaller than the returned value.
- */
-__bpf_kfunc u32 scx_bpf_nr_cpu_ids(void)
-{
-	return nr_cpu_ids;
-}
-
-/**
  * scx_bpf_cpuperf_cap - Query the maximum relative capacity of a CPU
  * @cpu: CPU of interest
  *
@@ -6069,6 +6063,16 @@ __bpf_kfunc void scx_bpf_cpuperf_set(u32 cpu, u32 perf)
 		cpufreq_update_util(cpu_rq(cpu), 0);
 		rcu_read_unlock_sched_notrace();
 	}
+}
+
+/**
+ * scx_bpf_nr_cpu_ids - Return the number of possible CPU IDs
+ *
+ * All valid CPU IDs in the system are smaller than the returned value.
+ */
+__bpf_kfunc u32 scx_bpf_nr_cpu_ids(void)
+{
+	return nr_cpu_ids;
 }
 
 /**
@@ -6218,10 +6222,10 @@ __bpf_kfunc_end_defs();
 BTF_KFUNCS_START(scx_kfunc_ids_any)
 BTF_ID_FLAGS(func, scx_bpf_exit_bstr, KF_TRUSTED_ARGS)
 BTF_ID_FLAGS(func, scx_bpf_error_bstr, KF_TRUSTED_ARGS)
-BTF_ID_FLAGS(func, scx_bpf_nr_cpu_ids)
 BTF_ID_FLAGS(func, scx_bpf_cpuperf_cap)
 BTF_ID_FLAGS(func, scx_bpf_cpuperf_cur)
 BTF_ID_FLAGS(func, scx_bpf_cpuperf_set)
+BTF_ID_FLAGS(func, scx_bpf_nr_cpu_ids)
 BTF_ID_FLAGS(func, scx_bpf_get_possible_cpumask, KF_ACQUIRE)
 BTF_ID_FLAGS(func, scx_bpf_get_online_cpumask, KF_ACQUIRE)
 BTF_ID_FLAGS(func, scx_bpf_put_cpumask, KF_RELEASE)
