@@ -56,7 +56,7 @@ static __net_init int rds_init_net(struct net *net)
 
 	mutex_init(&rns->rns_mod_mutex);
 
-	spin_lock_init(&rns->rns_sock_lock);
+	mutex_init(&rns->rns_sock_lock);
 	INIT_LIST_HEAD(&rns->rns_sock_list);
 
 	ret = rds_bind_tbl_net_init(rns);
@@ -107,6 +107,7 @@ static void rds_exit_net(struct net *net)
 	rds_cong_net_exit(rns);
 	rds_conn_tbl_net_exit(rns);
 	rds_stats_net_exit(net);
+	mutex_destroy(&rns->rns_sock_lock);
 	mutex_destroy(&rns->rns_mod_mutex);
 }
 
