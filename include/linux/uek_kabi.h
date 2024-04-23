@@ -43,7 +43,18 @@
  * UEK_KABI_EXTEND
  *   Simple macro for adding a new element to a struct.
  *
- *   Warning: only use if a hole exists for _all_ arches.  Use pahole to verify.
+ * UEK_KABI_EXTEND_WITH_SIZE
+ *   Adds a new element (usually a struct) to a struct and reserves extra
+ *   space for the new element.  The provided 'size' is the total space to
+ *   be added in longs (i.e. it's 8 * 'size' bytes), including the size of
+ *   the added element.  It is automatically checked that the new element
+ *   does not overflow the reserved space, now nor in the future. However,
+ *   no attempt is done to check the content of the added element (struct)
+ *   for kABI conformance - kABI checking inside the added element is
+ *   effectively switched off.
+ *   For any struct being added by UEK_KABI_EXTEND_WITH_SIZE, it is
+ *   recommended its content to be documented as not covered by kABI
+ *   guarantee.
  *
  * UEK_KABI_FILL_HOLE
  *   Simple macro for filling a hole in a struct.
@@ -66,6 +77,9 @@
  *
  * UEK_KABI_REPLACE_UNSAFE
  *   Unsafe version of UEK_KABI_REPLACE.  Only use for typedefs.
+ *
+ * UEK_KABI_REPLACE_UNSAFE_SIZE
+ *   Similar to UEK_KABI_REPLACE_UNSAFE but preserves the size.
  *
  * UEK_KABI_FORCE_CHANGE
  *   Force change of the symbol checksum.  The argument of the macro is a
@@ -100,6 +114,23 @@
  *   of the size is not allowed and would constitute a silent kABI breakage.
  *   Beware that the UEK_KABI_EXCLUDE macro does not do any size checks.
  *
+ * UEK_KABI_EXCLUDE_WITH_SIZE
+ *   Like UEK_KABI_EXCLUDE, this macro excludes the element from
+ *   checksum generation.  The same warnings as for UEK_KABI_EXCLUDE
+ *   apply: use UEK_KABI_FORCE_CHANGE.
+ *
+ *   This macro is intended to be used for elements embedded inside
+ *   kABI-protected structures (struct, array). In contrast with
+ *   UEK_KABI_EXCLUDE, this macro reserves extra space, so that the
+ *   embedded element can grow without changing the offsets of the
+ *   fields that follow. The provided 'size' is the total space to be
+ *   added in longs (i.e. it's 8 * 'size' bytes), including the size
+ *   of the added element.  It is automatically checked that the new
+ *   element does not overflow the reserved space, now nor in the
+ *   future. The size is also included in the checksum via the
+ *   reserved space, to ensure that we don't accidentally change it,
+ *   which would change the offsets of the fields that follow.
+ *
  * NOTE
  *   Don't use ';' after these macros as it messes up the kABI checker by
  *   changing what the resulting token string looks like.  Instead let this
@@ -123,8 +154,11 @@
 # define _UEK_KABI_DEPRECATE_FN(_type, _orig, _args...)	_type (*_orig)(_args)
 # define _UEK_KABI_REPLACE(_orig, _new)		_orig
 # define _UEK_KABI_REPLACE_UNSAFE(_orig, _new)	_orig
+# define _UEK_KABI_REPLACE_UNSAFE_SIZE(_orig, _new, _size)	_orig
 # define _UEK_KABI_EXCLUDE(_elem)
 # define _UEK_KABI_DEPRECATE_ENUM(_orig)	_orig
+
+# define __UEK_KABI_CHECK_SIZE(_item, _size)
 
 #else
 
@@ -145,8 +179,12 @@
 		_Static_assert(__alignof__(struct{_new;}) <= __alignof__(struct{_orig;}), \
 			       __FILE__ ":" __stringify(__LINE__) ": "  __stringify(_orig) " is not aligned the same as " __stringify(_new) UEK_KABI_ALIGN_WARNING); \
 	}
+# define __UEK_KABI_CHECK_SIZE(_item, _size)				\
+	_Static_assert(sizeof(struct{_item;}) <= _size,			\
+		       __FILE__ ":" __stringify(__LINE__) ": " __stringify(_item) " is larger than the reserved size (" __stringify(_size) " bytes)" UEK_KABI_ALIGN_WARNING);
 #else
 # define __UEK_KABI_CHECK_SIZE_ALIGN(_orig, _new)
+# define __UEK_KABI_CHECK_SIZE(_item, _size)
 #endif
 
 # define UEK_KABI_UNIQUE_ID			__PASTE(uek_kabi_hidden, \
@@ -163,6 +201,15 @@
 		__UEK_KABI_CHECK_SIZE_ALIGN(_orig, _new);  \
 	}
 # define _UEK_KABI_REPLACE_UNSAFE(_orig, _new)	_new
+# define _UEK_KABI_REPLACE_UNSAFE_SIZE(_orig, _new, _size) \
+	union {						\
+		_new;					  \
+		struct {				  \
+			_orig;				  \
+		} UEK_KABI_UNIQUE_ID;			  \
+		__UEK_KABI_CHECK_SIZE(_new, 8 * (_size))	\
+	};
+
 
 # define _UEK_KABI_EXCLUDE(_elem)		_elem
 
@@ -176,6 +223,8 @@
 	_UEK_KABI_DEPRECATE_FN(_type, _orig, _args);
 # define UEK_KABI_REPLACE(_orig, _new)		_UEK_KABI_REPLACE(_orig, _new);
 # define UEK_KABI_REPLACE_UNSAFE(_orig, _new)	_UEK_KABI_REPLACE_UNSAFE(_orig, _new);
+# define UEK_KABI_REPLACE_UNSAFE_SIZE(_orig, _new, _size)	_UEK_KABI_REPLACE_UNSAFE_SIZE(_orig, _new, _size);
+
 /*
  * Macro for breaking up a random element into two smaller chunks using an
  * anonymous struct inside an anonymous union.
@@ -201,6 +250,13 @@
 # define _UEK_KABI_RESERVE(n)		unsigned long uek_reserved##n
 
 #define UEK_KABI_EXCLUDE(_elem)		_UEK_KABI_EXCLUDE(_elem);
+
+#define UEK_KABI_EXCLUDE_WITH_SIZE(_new, _size)				\
+	union {								\
+		UEK_KABI_EXCLUDE(_new)					\
+		unsigned long UEK_KABI_UNIQUE_ID[_size];			\
+		__UEK_KABI_CHECK_SIZE(_new, 8 * (_size))			\
+	};
 
 #define UEK_KABI_DEPRECATE_ENUM(_orig) _UEK_KABI_DEPRECATE_ENUM(_orig),
 
@@ -236,6 +292,12 @@
 	size_t _struct##_size_uek;					\
 	UEK_KABI_EXCLUDE(struct _struct##_uek _struct##_uek)
 
+#define UEK_KABI_EXTEND_WITH_SIZE(_new, _size)                           \
+        UEK_KABI_EXTEND(union {                                          \
+                _new;                                                   \
+                unsigned long UEK_KABI_UNIQUE_ID[_size];                 \
+                __UEK_KABI_CHECK_SIZE(_new, 8 * (_size))                 \
+        })
 /*
  * UEK_KABI_SET_SIZE calculates and sets the size of the extended struct and
  * stores it in the size_uek field for structs that are dynamically allocated.
