@@ -51,13 +51,15 @@ enum scx_dsq_id_flags {
 };
 
 /*
- * Dispatch queue (dsq) is a simple FIFO which is used to buffer between the
- * scheduler core and the BPF scheduler. See the documentation for more details.
+ * A dispatch queue (DSQ) can be either a FIFO or p->scx.dsq_vtime ordered
+ * queue. A built-in DSQ is always a FIFO. The built-in local DSQs are used to
+ * buffer between the scheduler core and the BPF scheduler. See the
+ * documentation for more details.
  */
 struct scx_dispatch_q {
 	raw_spinlock_t		lock;
-	struct list_head	fifo;	/* processed in dispatching order */
-	struct rb_root_cached	priq;	/* processed in p->scx.dsq_vtime order */
+	struct list_head	list;	/* tasks in dispatch order */
+	struct rb_root_cached	priq;	/* used to order by p->scx.dsq_vtime */
 	u32			nr;
 	u64			id;
 	struct rhash_head	hash_node;
@@ -126,7 +128,7 @@ enum scx_kf_mask {
 struct sched_ext_entity {
 	struct scx_dispatch_q	*dsq;
 	struct {
-		struct list_head	fifo;	/* dispatch order */
+		struct list_head	list;	/* dispatch order */
 		struct rb_node		priq;	/* p->scx.dsq_vtime order */
 	} dsq_node;
 	u32			flags;		/* protected by rq lock */
