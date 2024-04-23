@@ -279,7 +279,7 @@ struct rds_stats_struct {
 
 struct rds_net {
 	/* The following socket info is used for stats gathering */
-	spinlock_t		rns_sock_lock;
+	struct mutex		rns_sock_lock;
 	u32			rns_sock_count;
 	struct list_head	rns_sock_list;
 
