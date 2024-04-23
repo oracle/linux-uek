@@ -974,10 +974,12 @@ static __always_inline void scx_kf_allow(u32 mask)
 		  "invalid nesting current->scx.kf_mask=0x%x mask=0x%x\n",
 		  current->scx.kf_mask, mask);
 	current->scx.kf_mask |= mask;
+	barrier();
 }
 
 static void scx_kf_disallow(u32 mask)
 {
+	barrier();
 	current->scx.kf_mask &= ~mask;
 }
 
