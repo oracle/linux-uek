@@ -2138,10 +2138,23 @@ static void consume_local_task(struct rq *rq, struct scx_dispatch_q *dsq,
 }
 
 #ifdef CONFIG_SMP
+/*
+ * Similar to kernel/sched/core.c::is_cpu_allowed() but we're testing whether @p
+ * can be pulled to @rq.
+ */
 static bool task_can_run_on_remote_rq(struct task_struct *p, struct rq *rq)
 {
-	return likely(test_rq_online(rq)) && !is_migration_disabled(p) &&
-		cpumask_test_cpu(cpu_of(rq), p->cpus_ptr);
+	int cpu = cpu_of(rq);
+
+	if (!cpumask_test_cpu(cpu, p->cpus_ptr))
+		return false;
+	if (unlikely(is_migration_disabled(p)))
+		return false;
+	if (!(p->flags & PF_KTHREAD) && unlikely(!task_cpu_possible(cpu, p)))
+		return false;
+	if (unlikely(!test_rq_online(rq)))
+		return false;
+	return true;
 }
 
 static bool consume_remote_task(struct rq *rq, struct rq_flags *rf,
