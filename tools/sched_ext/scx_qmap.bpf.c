@@ -23,6 +23,7 @@
  * Copyright (c) 2022 David Vernet <dvernet@meta.com>
  */
 #include <scx/common.bpf.h>
+#include <string.h>
 
 enum consts {
 	ONE_SEC_IN_NS		= 1000000000,
@@ -37,6 +38,7 @@ const volatile u32 stall_kernel_nth;
 const volatile u32 dsp_inf_loop_after;
 const volatile u32 dsp_batch;
 const volatile bool print_shared_dsq;
+const volatile char exp_prefix[17];
 const volatile s32 disallow_tgid;
 const volatile bool switch_partial;
 
@@ -121,7 +123,7 @@ struct {
 
 /* Statistics */
 u64 nr_enqueued, nr_dispatched, nr_reenqueued, nr_dequeued;
-u64 nr_core_sched_execed;
+u64 nr_core_sched_execed, nr_expedited;
 u32 cpuperf_min, cpuperf_avg, cpuperf_max;
 u32 cpuperf_target_min, cpuperf_target_avg, cpuperf_target_max;
 
@@ -260,6 +262,37 @@ static void update_core_sched_head_seq(struct task_struct *p)
 		scx_bpf_error("task_ctx lookup failed");
 }
 
+static bool consume_shared_dsq(void)
+{
+	struct task_struct *p;
+	bool consumed;
+	s32 i;
+
+	if (exp_prefix[0] == '\0')
+		return scx_bpf_consume(SHARED_DSQ);
+
+	/*
+	 * To demonstrate the use of scx_bpf_consume_task(), implement silly
+	 * selective priority boosting mechanism by scanning SHARED_DSQ looking
+	 * for matching comms and consume them first. This makes difference only
+	 * when dsp_batch is larger than 1.
+	 */
+	consumed = false;
+	bpf_for_each(scx_dsq, p, SHARED_DSQ, 0) {
+		char comm[sizeof(exp_prefix)];
+
+		memcpy(comm, p->comm, sizeof(exp_prefix) - 1);
+
+		if (!bpf_strncmp(comm, sizeof(exp_prefix), exp_prefix) &&
+		    scx_bpf_consume_task(BPF_FOR_EACH_ITER, p)) {
+			consumed = true;
+			__sync_fetch_and_add(&nr_expedited, 1);
+		}
+	}
+
+	return consumed || scx_bpf_consume(SHARED_DSQ);
+}
+
 void BPF_STRUCT_OPS(qmap_dispatch, s32 cpu, struct task_struct *prev)
 {
 	struct task_struct *p;
@@ -268,7 +301,7 @@ void BPF_STRUCT_OPS(qmap_dispatch, s32 cpu, struct task_struct *prev)
 	void *fifo;
 	s32 i, pid;
 
-	if (scx_bpf_consume(SHARED_DSQ))
+	if (consume_shared_dsq())
 		return;
 
 	if (dsp_inf_loop_after && nr_dispatched > dsp_inf_loop_after) {
@@ -319,7 +352,7 @@ void BPF_STRUCT_OPS(qmap_dispatch, s32 cpu, struct task_struct *prev)
 			batch--;
 			cpuc->dsp_cnt--;
 			if (!batch || !scx_bpf_dispatch_nr_slots()) {
-				scx_bpf_consume(SHARED_DSQ);
+				consume_shared_dsq();
 				return;
 			}
 			if (!cpuc->dsp_cnt)
