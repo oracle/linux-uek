@@ -59,7 +59,7 @@ enum scx_dsq_id_flags {
 struct scx_dispatch_q {
 	raw_spinlock_t		lock;
 	struct list_head	list;	/* tasks in dispatch order */
-	struct rb_root_cached	priq;	/* used to order by p->scx.dsq_vtime */
+	struct rb_root		priq;	/* used to order by p->scx.dsq_vtime */
 	u32			nr;
 	u64			id;
 	struct rhash_head	hash_node;

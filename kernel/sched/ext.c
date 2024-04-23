@@ -1422,8 +1422,7 @@ static void dispatch_enqueue(struct scx_dispatch_q *dsq, struct task_struct *p,
 
 	if (enq_flags & SCX_ENQ_DSQ_PRIQ) {
 		p->scx.dsq_flags |= SCX_TASK_DSQ_ON_PRIQ;
-		rb_add_cached(&p->scx.dsq_node.priq, &dsq->priq,
-			      scx_dsq_priq_less);
+		rb_add(&p->scx.dsq_node.priq, &dsq->priq, scx_dsq_priq_less);
 		/* A DSQ should only be using either FIFO or PRIQ enqueuing. */
 		if (unlikely(!list_empty(&dsq->list)))
 			scx_ops_error("DSQ ID 0x%016llx already had FIFO-enqueued tasks",
@@ -1434,7 +1433,7 @@ static void dispatch_enqueue(struct scx_dispatch_q *dsq, struct task_struct *p,
 		else
 			list_add_tail(&p->scx.dsq_node.list, &dsq->list);
 		/* A DSQ should only be using either FIFO or PRIQ enqueuing. */
-		if (unlikely(rb_first_cached(&dsq->priq)))
+		if (unlikely(rb_first(&dsq->priq)))
 			scx_ops_error("DSQ ID 0x%016llx already had PRIQ-enqueued tasks",
 				      dsq->id);
 	}
@@ -1479,7 +1478,7 @@ static void task_unlink_from_dsq(struct task_struct *p,
 				 struct scx_dispatch_q *dsq)
 {
 	if (p->scx.dsq_flags & SCX_TASK_DSQ_ON_PRIQ) {
-		rb_erase_cached(&p->scx.dsq_node.priq, &dsq->priq);
+		rb_erase(&p->scx.dsq_node.priq, &dsq->priq);
 		RB_CLEAR_NODE(&p->scx.dsq_node.priq);
 		p->scx.dsq_flags &= ~SCX_TASK_DSQ_ON_PRIQ;
 	} else {
@@ -2040,7 +2039,7 @@ static bool consume_dispatch_q(struct rq *rq, struct rq_flags *rf,
 	struct rq *task_rq;
 	bool moved = false;
 retry:
-	if (list_empty(&dsq->list) && !rb_first_cached(&dsq->priq))
+	if (list_empty(&dsq->list) && !rb_first(&dsq->priq))
 		return false;
 
 	raw_spin_lock(&dsq->lock);
@@ -2053,7 +2052,7 @@ retry:
 			goto remote_rq;
 	}
 
-	for (rb_node = rb_first_cached(&dsq->priq); rb_node;
+	for (rb_node = rb_first(&dsq->priq); rb_node;
 	     rb_node = rb_next(rb_node)) {
 		p = container_of(rb_node, struct task_struct, scx.dsq_node.priq);
 		task_rq = task_rq(p);
@@ -2605,7 +2604,7 @@ static void put_prev_task_scx(struct rq *rq, struct task_struct *p)
 
 static struct task_struct *first_local_task(struct rq *rq)
 {
-	WARN_ON_ONCE(rb_first_cached(&rq->scx.local_dsq.priq));
+	WARN_ON_ONCE(rb_first(&rq->scx.local_dsq.priq));
 	return list_first_entry_or_null(&rq->scx.local_dsq.list,
 					struct task_struct, scx.dsq_node.list);
 }
