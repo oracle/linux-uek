@@ -473,13 +473,12 @@ BuildConflicts: rpm < 4.13.0.1-19
 %undefine _unique_debug_srcs
 %undefine _debugsource_packages
 %undefine _debuginfo_subpackages
-%undefine _no_recompute_build_ids
-
-# This sets build-ids to be made unique between package version/releases
-%global _unique_build_ids 1
 
 # Terminate the build if the ELF file processed by find-debuginfo.sh has no build ID
 %global _missing_build_ids_terminate_build 1
+
+# Do not recompute build-ids but keep whatever is in the ELF file already.
+%global _no_recompute_build_ids 1
 
 %endif
 
@@ -1166,6 +1165,9 @@ BuildKernel() {
     # make sure EXTRAVERSION says what we want it to say
     perl -p -i -e "s/^EXTRAVERSION.*/EXTRAVERSION = %{?stablerev}-%{release}.%{_target_cpu}${Flavour:+.${Flavour}}/" Makefile
     #perl -p -i -e "s/^SUBLEVEL.*/SUBLEVEL = %{base_sublevel}/" Makefile
+
+    # This ensures build-ids are unique to allow parallel debuginfo
+    perl -p -i -e "s/^CONFIG_BUILD_SALT.*/CONFIG_BUILD_SALT=\"%{KVERREL}\"/" .config
 
     make %{?make_opts} mrproper
 
