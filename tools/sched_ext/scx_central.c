@@ -46,8 +46,7 @@ int main(int argc, char **argv)
 
 	libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
 
-	skel = scx_central__open();
-	SCX_BUG_ON(!skel, "Failed to open skel");
+	skel = SCX_OPS_OPEN(central_ops, scx_central);
 
 	skel->rodata->central_cpu = 0;
 	skel->rodata->nr_cpu_ids = libbpf_num_possible_cpus();

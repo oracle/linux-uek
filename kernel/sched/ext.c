@@ -121,10 +121,10 @@ enum scx_ops_flags {
 	 */
 	SCX_OPS_CGROUP_KNOB_WEIGHT = 1LLU << 16,	/* cpu.weight */
 
-	SCX_OPS_ALL_FLAGS	= SCX_OPS_SWITCH_PARTIAL |
-				  SCX_OPS_KEEP_BUILTIN_IDLE |
+	SCX_OPS_ALL_FLAGS	= SCX_OPS_KEEP_BUILTIN_IDLE |
 				  SCX_OPS_ENQ_LAST |
 				  SCX_OPS_ENQ_EXITING |
+				  SCX_OPS_SWITCH_PARTIAL |
 				  SCX_OPS_CGROUP_KNOB_WEIGHT,
 };
 
@@ -155,13 +155,13 @@ struct scx_cgroup_init_args {
 
 enum scx_cpu_preempt_reason {
 	/* next task is being scheduled by &sched_class_rt */
-        SCX_CPU_PREEMPT_RT,
+	SCX_CPU_PREEMPT_RT,
 	/* next task is being scheduled by &sched_class_dl */
-        SCX_CPU_PREEMPT_DL,
+	SCX_CPU_PREEMPT_DL,
 	/* next task is being scheduled by &sched_class_stop */
-        SCX_CPU_PREEMPT_STOP,
+	SCX_CPU_PREEMPT_STOP,
 	/* unknown reason for SCX being preempted */
-        SCX_CPU_PREEMPT_UNKNOWN,
+	SCX_CPU_PREEMPT_UNKNOWN,
 };
 
 /*
@@ -920,11 +920,11 @@ static __printf(3, 4) void scx_ops_exit_kind(enum scx_exit_kind kind,
 					     s64 exit_code,
 					     const char *fmt, ...);
 
-#define scx_ops_error_kind(__err, fmt, args...)					\
-	scx_ops_exit_kind(__err, 0, fmt, ##args)
+#define scx_ops_error_kind(err, fmt, args...)					\
+	scx_ops_exit_kind((err), 0, fmt, ##args)
 
-#define scx_ops_exit(__code, fmt, args...)					\
-	scx_ops_exit_kind(SCX_EXIT_UNREG_KERN, __code, fmt, ##args)
+#define scx_ops_exit(code, fmt, args...)					\
+	scx_ops_exit_kind(SCX_EXIT_UNREG_KERN, (code), fmt, ##args)
 
 #define scx_ops_error(fmt, args...)						\
 	scx_ops_error_kind(SCX_EXIT_ERROR, fmt, ##args)
@@ -1537,7 +1537,7 @@ static void dispatch_enqueue(struct scx_dispatch_q *dsq, struct task_struct *p,
 			list_add_tail(&p->scx.dsq_node.list, &dsq->list);
 	}
 
-	/* seq records the order tasks are queued, used by BPF iterations */
+	/* seq records the order tasks are queued, used by BPF DSQ iterator */
 	dsq->seq++;
 	p->scx.dsq_seq = dsq->seq;
 
@@ -4561,14 +4561,14 @@ static __printf(3, 4) void scx_ops_exit_kind(enum scx_exit_kind kind,
 	if (!atomic_try_cmpxchg(&scx_exit_kind, &none, kind))
 		return;
 
+	ei->exit_code = exit_code;
+
 	if (kind >= SCX_EXIT_ERROR)
 		ei->bt_len = stack_trace_save(ei->bt, SCX_EXIT_BT_LEN, 1);
 
 	va_start(args, fmt);
 	vscnprintf(ei->msg, SCX_EXIT_MSG_LEN, fmt, args);
 	va_end(args);
-
-	ei->exit_code = exit_code;
 
 	/*
 	 * Set ei->kind and ->reason for scx_dump_state(). They'll be set again
@@ -6152,7 +6152,6 @@ static void bpf_exit_bstr_common(enum scx_exit_kind kind, s64 exit_code,
 	unsigned long flags;
 	int ret;
 
-	BUILD_BUG_ON(sizeof(enum scx_exit_code) != sizeof_field(struct scx_exit_info, exit_code));
 	local_irq_save(flags);
 	bufs = this_cpu_ptr(&scx_bpf_error_bstr_bufs);
 
@@ -6389,11 +6388,10 @@ __bpf_kfunc const struct cpumask *scx_bpf_get_idle_smtmask(void)
 __bpf_kfunc void scx_bpf_put_idle_cpumask(const struct cpumask *idle_mask)
 {
 	/*
-	 * Empty function body because we aren't actually acquiring or
-	 * releasing a reference to a global idle cpumask, which is read-only
-	 * in the caller and is never released. The acquire / release semantics
-	 * here are just used to make the cpumask a trusted pointer in the
-	 * caller.
+	 * Empty function body because we aren't actually acquiring or releasing
+	 * a reference to a global idle cpumask, which is read-only in the
+	 * caller and is never released. The acquire / release semantics here
+	 * are just used to make the cpumask a trusted pointer in the caller.
 	 */
 }
 

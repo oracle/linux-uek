@@ -19,8 +19,8 @@ const char help_fmt[] =
 "\n"
 "See the top-level comment in .bpf.c for more details.\n"
 "\n"
-"Usage: %s [-s SLICE_US] [-e COUNT] [-t COUNT] [-T COUNT] [-l COUNT] [-d PID]\n"
-"       [-D LEN] [-p]\n"
+"Usage: %s [-s SLICE_US] [-e COUNT] [-t COUNT] [-T COUNT] [-l COUNT] [-b COUNT]\n"
+"       [-P] [-E PREFIX] [-d PID] [-D LEN] [-p]\n"
 "\n"
 "  -s SLICE_US   Override slice duration\n"
 "  -e COUNT      Trigger scx_bpf_error() after COUNT enqueues\n"
@@ -54,8 +54,7 @@ int main(int argc, char **argv)
 
 	libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
 
-	skel = scx_qmap__open();
-	SCX_BUG_ON(!skel, "Failed to open skel");
+	skel = SCX_OPS_OPEN(qmap_ops, scx_qmap);
 
 	while ((opt = getopt(argc, argv, "s:e:t:T:l:b:PE:d:D:ph")) != -1) {
 		switch (opt) {

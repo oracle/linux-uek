@@ -125,8 +125,7 @@ int main(int argc, char **argv)
 
 	libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
 
-	skel = scx_flatcg__open();
-	SCX_BUG_ON(!skel, "Failed to open skel");
+	skel = SCX_OPS_OPEN(flatcg_ops, scx_flatcg);
 
 	skel->rodata->nr_cpus = libbpf_num_possible_cpus();
 

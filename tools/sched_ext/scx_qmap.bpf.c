@@ -266,7 +266,6 @@ static bool consume_shared_dsq(void)
 {
 	struct task_struct *p;
 	bool consumed;
-	s32 i;
 
 	if (exp_prefix[0] == '\0')
 		return scx_bpf_consume(SHARED_DSQ);
@@ -283,7 +282,8 @@ static bool consume_shared_dsq(void)
 
 		memcpy(comm, p->comm, sizeof(exp_prefix) - 1);
 
-		if (!bpf_strncmp(comm, sizeof(exp_prefix), exp_prefix) &&
+		if (!bpf_strncmp(comm, sizeof(exp_prefix),
+				 (const char *)exp_prefix) &&
 		    scx_bpf_consume_task(BPF_FOR_EACH_ITER, p)) {
 			consumed = true;
 			__sync_fetch_and_add(&nr_expedited, 1);
