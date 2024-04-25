@@ -7,12 +7,14 @@
 #include <linux/device.h>
 #include <linux/cdev.h>
 #include <linux/cleanup.h>
+#include <uapi/fwctl/fwctl.h>
 
 struct fwctl_device;
 struct fwctl_uctx;
 
 /**
  * struct fwctl_ops - Driver provided operations
+ * @device_type: The drivers assigned device_type number. This is uABI
  * @uctx_size: The size of the fwctl_uctx struct to allocate. The first
  *	bytes of this memory will be a fwctl_uctx. The driver can use the
  *	remaining bytes as its private memory.
@@ -20,11 +22,17 @@ struct fwctl_uctx;
  *	used.
  * @close_uctx: Called when the uctx is destroyed, usually when the FD is
  *	closed.
+ * @info: Implement FWCTL_INFO. Return a kmalloc() memory that is copied to
+ *	out_device_data. On input length indicates the size of the user buffer
+ *	on output it indicates the size of the memory. The driver can ignore
+ *	length on input, the core code will handle everything.
  */
 struct fwctl_ops {
+	enum fwctl_device_type device_type;
 	size_t uctx_size;
 	int (*open_uctx)(struct fwctl_uctx *uctx);
 	void (*close_uctx)(struct fwctl_uctx *uctx);
+	void *(*info)(struct fwctl_uctx *uctx, size_t *length);
 };
 
 /**
