@@ -7074,3 +7074,51 @@ int rvu_mbox_handler_nix_tl1_rr_prio(struct rvu *rvu,
 
 	return 0;
 }
+
+int rvu_nix_tl1_xoff_wait_for_link_credits(struct rvu *rvu, u16 pcifunc)
+{
+	int link, blkaddr, count = 1000;
+	u64 tx_credits, regval;
+	struct nix_hw *nix_hw;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
+	if (blkaddr < 0)
+		return NIX_AF_ERR_AF_LF_INVALID;
+
+	nix_hw =  get_nix_hw(rvu->hw, blkaddr);
+	if (!nix_hw)
+		return NIX_AF_ERR_INVALID_NIXBLK;
+
+	/* set TL1 sw_xoff */
+	link = nix_get_tx_link(rvu, pcifunc);
+	rvu_write64(rvu, blkaddr, NIX_AF_TL1X_SW_XOFF(link), 1);
+
+	/* wait for link credits to return */
+	tx_credits = nix_hw->tx_credits[link];
+	while (1) {
+		regval = rvu_read64(rvu, blkaddr, NIX_AF_TX_LINKX_NORM_CREDIT(link));
+		if (((regval >> 12) & 0xFFFFF) == tx_credits)
+			break;
+		count--;
+		if (!count) {
+			dev_err(rvu->dev, "TX link(%d) credit poll timeout\n", link);
+			return -ETIMEDOUT;
+		}
+		cpu_relax();
+		udelay(1);
+	}
+	return 0;
+}
+
+int rvu_nix_tl1_xoff_clear(struct rvu *rvu, u16 pcifunc)
+{
+	int blkaddr;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
+	if (blkaddr < 0)
+		return NIX_AF_ERR_AF_LF_INVALID;
+
+	nix_clear_tx_xoff(rvu, blkaddr, NIX_TXSCH_LVL_TL1,
+			  nix_get_tx_link(rvu, pcifunc));
+	return 0;
+}

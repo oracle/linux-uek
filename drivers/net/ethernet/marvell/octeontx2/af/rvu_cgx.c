@@ -272,7 +272,7 @@ static void cgx_notify_pfs(struct cgx_link_event *event, struct rvu *rvu)
 	struct cgx_link_user_info *linfo;
 	struct cgx_link_info_msg *msg;
 	unsigned long pfmap;
-	int pfid;
+	int pfid, err;
 
 	linfo = &event->link_uinfo;
 	pfmap = cgxlmac_to_pfmap(rvu, event->cgx_id, event->lmac_id);
@@ -286,6 +286,15 @@ static void cgx_notify_pfs(struct cgx_link_event *event, struct rvu *rvu)
 		pfid = find_first_bit(&pfmap,
 				      rvu->cgx_cnt_max * rvu->hw->lmac_per_cgx);
 		clear_bit(pfid, &pfmap);
+
+		/* clear TL1 sw_xoff */
+		if (linfo->link_up) {
+			err = rvu_nix_tl1_xoff_clear(rvu, pfid << 10);
+			if (err)
+				dev_warn(rvu->dev,
+					 "tl1 sw_xoff clear unsuccessful, cgx=%d lmac=%d\n",
+					 event->cgx_id, event->lmac_id);
+		}
 
 		/* check if notification is enabled */
 		if (!test_bit(pfid, &rvu->pf_notify_bmap)) {
@@ -1206,6 +1215,7 @@ int rvu_mbox_handler_cgx_set_link_mode(struct rvu *rvu,
 	struct cgx_lmac_fwdata_s *linkmodes;
 	u8 cgx_idx, lmac;
 	void *cgxd;
+	int err;
 
 	if (!is_cgx_config_permitted(rvu, req->hdr.pcifunc))
 		return -EPERM;
@@ -1216,6 +1226,12 @@ int rvu_mbox_handler_cgx_set_link_mode(struct rvu *rvu,
 		linkmodes = &rvu->fwdata->cgx_fw_data_usx[cgx_idx][lmac];
 	else
 		linkmodes = &rvu->fwdata->cgx_fw_data[cgx_idx][lmac];
+
+	err = rvu_nix_tl1_xoff_wait_for_link_credits(rvu, req->hdr.pcifunc);
+	if (err)
+		dev_warn(rvu->dev,
+			 "tl1 sw_xoff/link_credit_poll unsuccessful, cgx=%d lmac=%d\n",
+			 cgx_idx, lmac);
 
 	rsp->status = cgx_set_link_mode(cgxd, req->args, linkmodes,
 					cgx_idx, lmac);
@@ -1236,6 +1252,14 @@ int rvu_mbox_handler_cgx_set_link_state(struct rvu *rvu,
 		return LMAC_AF_ERR_PERM_DENIED;
 
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
+
+	if (!req->enable) {
+		err = rvu_nix_tl1_xoff_wait_for_link_credits(rvu, req->hdr.pcifunc);
+		if (err)
+			dev_warn(rvu->dev,
+				 "tl1 sw_xoff/link_credit_poll unsuccessful, cgx=%d lmac=%d\n",
+				 cgx_id, lmac_id);
+	}
 
 	err = cgx_set_link_state(rvu_cgx_pdata(cgx_id, rvu), lmac_id,
 				 !!req->enable);
