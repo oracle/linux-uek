@@ -62,8 +62,11 @@ bool scx_bpf_task_running(const struct task_struct *p) __ksym;
 s32 scx_bpf_task_cpu(const struct task_struct *p) __ksym;
 struct cgroup *scx_bpf_task_cgroup(struct task_struct *p) __ksym;
 
-static inline __attribute__((format(printf, 1, 2)))
-void ___scx_bpf_exit_format_checker(const char *fmt, ...) {}
+/*
+ * Use the following as @it when calling scx_bpf_consume_task() from whitin
+ * bpf_for_each() loops.
+ */
+#define BPF_FOR_EACH_ITER	(&___it)
 
 /* hopefully temporary wrapper to work around BPF restriction */
 static inline bool scx_bpf_consume_task(struct bpf_iter_scx_dsq *it,
@@ -74,11 +77,8 @@ static inline bool scx_bpf_consume_task(struct bpf_iter_scx_dsq *it,
 	return __scx_bpf_consume_task(ptr, p);
 }
 
-/*
- * Use the following as @it when calling scx_bpf_consume_task() from whitin
- * bpf_for_each() loops.
- */
-#define BPF_FOR_EACH_ITER	(&___it)
+static inline __attribute__((format(printf, 1, 2)))
+void ___scx_bpf_exit_format_checker(const char *fmt, ...) {}
 
 /*
  * Helper macro for initializing the fmt and variadic argument inputs to both
@@ -250,7 +250,7 @@ int bpf_rbtree_add_impl(struct bpf_rb_root *root, struct bpf_rb_node *node,
 
 struct bpf_rb_node *bpf_rbtree_first(struct bpf_rb_root *root) __ksym;
 
-extern void *bpf_refcount_acquire_impl(void *kptr, void *meta) __ksym;
+void *bpf_refcount_acquire_impl(void *kptr, void *meta) __ksym;
 #define bpf_refcount_acquire(kptr) bpf_refcount_acquire_impl(kptr, NULL)
 
 /* task */

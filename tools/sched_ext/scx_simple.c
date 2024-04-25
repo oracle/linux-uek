@@ -60,8 +60,7 @@ int main(int argc, char **argv)
 
 	libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
 
-	skel = scx_simple__open();
-	SCX_BUG_ON(!skel, "Failed to open skel");
+	skel = SCX_OPS_OPEN(simple_ops, scx_simple);
 
 	while ((opt = getopt(argc, argv, "fh")) != -1) {
 		switch (opt) {

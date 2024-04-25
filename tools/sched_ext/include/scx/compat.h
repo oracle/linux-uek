@@ -143,7 +143,7 @@ static inline long scx_hotplug_seq(void)
  *	o If nonzero and running on an older kernel, the value is set to zero
  *	  and a warning is emitted
  *
- * - sched_ext_ops.hotplug_sqn
+ * - sched_ext_ops.hotplug_seq
  *	o If nonzero and running on an older kernel, the scheduler will fail to
  *	  load
  */
@@ -163,7 +163,7 @@ static inline long scx_hotplug_seq(void)
 	if (__COMPAT_struct_has_field("sched_ext_ops", "exit_dump_len") &&	\
 	    (__skel)->struct_ops.__ops_name->exit_dump_len) {			\
 		fprintf(stderr, "WARNING: kernel doesn't support setting exit dump len\n"); \
-		(__skel)->struct_ops.__ops_name->exit_dump_len = 0;	\
+		(__skel)->struct_ops.__ops_name->exit_dump_len = 0;		\
 	}									\
 	SCX_BUG_ON(__scx_name##__load((__skel)), "Failed to load skel");	\
 })
