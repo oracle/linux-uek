@@ -26,6 +26,9 @@ struct fwctl_uctx;
  *	out_device_data. On input length indicates the size of the user buffer
  *	on output it indicates the size of the memory. The driver can ignore
  *	length on input, the core code will handle everything.
+ * @fw_rpc: Implement FWCTL_RPC. Deliver rpc_in/in_len to the FW and return
+ *	the response and set out_len. rpc_in can be returned as the response
+ *	pointer. Otherwise the returned pointer is freed with kvfree().
  */
 struct fwctl_ops {
 	enum fwctl_device_type device_type;
@@ -33,6 +36,8 @@ struct fwctl_ops {
 	int (*open_uctx)(struct fwctl_uctx *uctx);
 	void (*close_uctx)(struct fwctl_uctx *uctx);
 	void *(*info)(struct fwctl_uctx *uctx, size_t *length);
+	void *(*fw_rpc)(struct fwctl_uctx *uctx, enum fwctl_rpc_scope scope,
+			void *rpc_in, size_t in_len, size_t *out_len);
 };
 
 /**
