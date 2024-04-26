@@ -185,6 +185,11 @@ static inline long scx_hotplug_seq(void)
 		fprintf(stderr, "WARNING: kernel doesn't support setting exit dump len\n"); \
 		(__skel)->struct_ops.__ops_name->exit_dump_len = 0;		\
 	}									\
+	if (!__COMPAT_struct_has_field("sched_ext_ops", "tick") &&		\
+	    (__skel)->struct_ops.__ops_name->tick) {				\
+		fprintf(stderr, "WARNING: kernel doesn't support ops.tick()\n"); \
+		(__skel)->struct_ops.__ops_name->tick = NULL;			\
+	}									\
 	SCX_BUG_ON(__scx_name##__load((__skel)), "Failed to load skel");	\
 })
 
