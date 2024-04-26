@@ -28,13 +28,16 @@ struct cgroup_bpf {
 	 * have either zero or one element
 	 * when BPF_F_ALLOW_MULTI the list can have up to BPF_CGROUP_MAX_PROGS
 	 */
-	UEK_KABI_REPLACE(struct bpf_prog *prog[MAX_BPF_ATTACH_TYPE],
-			 struct list_head progs[MAX_BPF_ATTACH_TYPE])
+	UEK_KABI_REPLACE_UNSAFE_SIZE(
+		struct bpf_prog *prog[MAX_BPF_ATTACH_TYPE],
+		struct list_head progs[MAX_BPF_ATTACH_TYPE], 12)
 	/* array of effective progs in this cgroup */
-	UEK_KABI_REPLACE(struct bpf_prog __rcu *effective[MAX_BPF_ATTACH_TYPE],
-			 struct bpf_prog_array __rcu *effective[MAX_BPF_ATTACH_TYPE])
-	UEK_KABI_REPLACE(bool disallow_override[MAX_BPF_ATTACH_TYPE],
-			 u32 flags[MAX_BPF_ATTACH_TYPE])
+	UEK_KABI_REPLACE_UNSAFE_SIZE(
+		struct bpf_prog __rcu *effective[MAX_BPF_ATTACH_TYPE],
+		struct bpf_prog_array __rcu *effective[MAX_BPF_ATTACH_TYPE], 6)
+	UEK_KABI_REPLACE_UNSAFE_SIZE(
+		bool disallow_override[MAX_BPF_ATTACH_TYPE],
+		u32 flags[MAX_BPF_ATTACH_TYPE], 3)
 	/* temp storage for effective prog array used by prog_attach/detach */
 	UEK_KABI_EXTEND(struct bpf_prog_array __rcu *inactive)
 };
