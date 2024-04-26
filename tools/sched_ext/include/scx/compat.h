@@ -72,6 +72,12 @@ static inline bool __COMPAT_read_enum(const char *type, const char *name, u64 *v
 	__val;									\
 })
 
+static inline bool __COMPAT_ksym_exists(const char *ksym)
+{
+	__COMPAT_load_vmlinux_btf();
+	return btf__find_by_name(__COMPAT_vmlinux_btf, ksym) >= 0;
+}
+
 static inline bool __COMPAT_struct_has_field(const char *type, const char *field)
 {
 	const struct btf_type *t;
@@ -104,10 +110,24 @@ static inline bool __COMPAT_struct_has_field(const char *type, const char *field
  * An ops flag, %SCX_OPS_SWITCH_PARTIAL, replaced scx_bpf_switch_all() which had
  * to be called from ops.init(). To support both before and after, use both
  * %__COMPAT_SCX_OPS_SWITCH_PARTIAL and %__COMPAT_scx_bpf_switch_all() defined
- * in compat.bpf.h.
+ * in compat.bpf.h. Users can switch to directly using %SCX_OPS_SWITCH_PARTIAL
+ * in the future.
  */
 #define __COMPAT_SCX_OPS_SWITCH_PARTIAL						\
 	__COMPAT_ENUM_OR_ZERO("scx_ops_flags", "SCX_OPS_SWITCH_PARTIAL")
+
+/*
+ * scx_bpf_nr_cpu_ids(), scx_bpf_get_possible/online_cpumask() are new. Users
+ * will be able to assume existence in the future.
+ */
+#define __COMPAT_HAS_CPUMASKS							\
+	__COMPAT_ksym_exists("scx_bpf_nr_cpu_ids")
+
+/*
+ * DSQ iterator is new. Users will be able to assume existence in the future.
+ */
+#define __COMPAT_HAS_DSQ_ITER							\
+	__COMPAT_ksym_exists("bpf_iter_scx_dsq_new")
 
 static inline long scx_hotplug_seq(void)
 {

@@ -101,6 +101,10 @@ int main(int argc, char **argv)
 		}
 	}
 
+	if (!__COMPAT_HAS_DSQ_ITER &&
+	    (skel->rodata->print_shared_dsq || strlen(skel->rodata->exp_prefix)))
+		fprintf(stderr, "kernel doesn't support DSQ iteration\n");
+
 	SCX_OPS_LOAD(skel, qmap_ops, scx_qmap, uei);
 	link = SCX_OPS_ATTACH(skel, qmap_ops);
 
@@ -112,13 +116,14 @@ int main(int argc, char **argv)
 		       nr_enqueued, nr_dispatched, nr_enqueued - nr_dispatched,
 		       skel->bss->nr_reenqueued, skel->bss->nr_dequeued,
 		       skel->bss->nr_core_sched_execed, skel->bss->nr_expedited);
-		printf("cpuperf: cur min/avg/max=%u/%u/%u target min/avg/max=%u/%u/%u\n",
-		       skel->bss->cpuperf_min,
-		       skel->bss->cpuperf_avg,
-		       skel->bss->cpuperf_max,
-		       skel->bss->cpuperf_target_min,
-		       skel->bss->cpuperf_target_avg,
-		       skel->bss->cpuperf_target_max);
+		if (__COMPAT_ksym_exists("scx_bpf_cpuperf_cur"))
+			printf("cpuperf: cur min/avg/max=%u/%u/%u target min/avg/max=%u/%u/%u\n",
+			       skel->bss->cpuperf_min,
+			       skel->bss->cpuperf_avg,
+			       skel->bss->cpuperf_max,
+			       skel->bss->cpuperf_target_min,
+			       skel->bss->cpuperf_target_avg,
+			       skel->bss->cpuperf_target_max);
 		fflush(stdout);
 		sleep(1);
 	}

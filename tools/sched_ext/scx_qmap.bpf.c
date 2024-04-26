@@ -277,14 +277,14 @@ static bool consume_shared_dsq(void)
 	 * when dsp_batch is larger than 1.
 	 */
 	consumed = false;
-	bpf_for_each(scx_dsq, p, SHARED_DSQ, 0) {
+	__COMPAT_DSQ_FOR_EACH(p, SHARED_DSQ, 0) {
 		char comm[sizeof(exp_prefix)];
 
 		memcpy(comm, p->comm, sizeof(exp_prefix) - 1);
 
 		if (!bpf_strncmp(comm, sizeof(exp_prefix),
 				 (const char *)exp_prefix) &&
-		    scx_bpf_consume_task(BPF_FOR_EACH_ITER, p)) {
+		    __COMPAT_scx_bpf_consume_task(BPF_FOR_EACH_ITER, p)) {
 			consumed = true;
 			__sync_fetch_and_add(&nr_expedited, 1);
 		}
@@ -473,6 +473,9 @@ static void print_cpus(void)
 	char buf[128] = "", *p;
 	int idx;
 
+	if (!__COMPAT_HAS_CPUMASKS)
+		return;
+
 	possible = scx_bpf_get_possible_cpumask();
 	online = scx_bpf_get_online_cpumask();
 
@@ -603,7 +606,7 @@ static void dump_shared_dsq(void)
 	bpf_printk("Dumping %d tasks in SHARED_DSQ in reverse order", nr);
 
 	bpf_rcu_read_lock();
-	bpf_for_each(scx_dsq, p, SHARED_DSQ, SCX_DSQ_ITER_REV)
+	__COMPAT_DSQ_FOR_EACH(p, SHARED_DSQ, SCX_DSQ_ITER_REV)
 		bpf_printk("%s[%d]", p->comm, p->pid);
 	bpf_rcu_read_unlock();
 }
