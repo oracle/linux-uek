@@ -4548,6 +4548,7 @@ static void scx_ops_error_irq_workfn(struct irq_work *irq_work)
 
 	if (ei->kind >= SCX_EXIT_ERROR)
 		scx_dump_state(ei, scx_ops.exit_dump_len);
+
 	schedule_scx_ops_disable_work();
 }
 

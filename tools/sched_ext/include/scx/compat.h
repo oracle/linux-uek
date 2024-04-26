@@ -72,7 +72,7 @@ static inline bool __COMPAT_read_enum(const char *type, const char *name, u64 *v
 	__val;									\
 })
 
-static inline bool __COMPAT_ksym_exists(const char *ksym)
+static inline bool __COMPAT_has_ksym(const char *ksym)
 {
 	__COMPAT_load_vmlinux_btf();
 	return btf__find_by_name(__COMPAT_vmlinux_btf, ksym) >= 0;
@@ -121,13 +121,13 @@ static inline bool __COMPAT_struct_has_field(const char *type, const char *field
  * will be able to assume existence in the future.
  */
 #define __COMPAT_HAS_CPUMASKS							\
-	__COMPAT_ksym_exists("scx_bpf_nr_cpu_ids")
+	__COMPAT_has_ksym("scx_bpf_nr_cpu_ids")
 
 /*
  * DSQ iterator is new. Users will be able to assume existence in the future.
  */
 #define __COMPAT_HAS_DSQ_ITER							\
-	__COMPAT_ksym_exists("bpf_iter_scx_dsq_new")
+	__COMPAT_has_ksym("bpf_iter_scx_dsq_new")
 
 static inline long scx_hotplug_seq(void)
 {
@@ -157,15 +157,9 @@ static inline long scx_hotplug_seq(void)
  * and attach it, backward compatibility is automatically maintained where
  * reasonable.
  *
- * The following values were added in newer kernels:
- *
- * - sched_ext_ops.exit_dump_len
- *	o If nonzero and running on an older kernel, the value is set to zero
- *	  and a warning is emitted
- *
- * - sched_ext_ops.hotplug_seq
- *	o If nonzero and running on an older kernel, the scheduler will fail to
- *	  load
+ * - ops.tick(): Ignored on older kernels with a warning.
+ * - ops.exit_dump_len: Cleared to zero on older kernels with a warning.
+ * - ops.hotplug_seq: Ignored on older kernels.
  */
 #define SCX_OPS_OPEN(__ops_name, __scx_name) ({					\
 	struct __scx_name *__skel;						\

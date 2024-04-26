@@ -116,7 +116,7 @@ int main(int argc, char **argv)
 		       nr_enqueued, nr_dispatched, nr_enqueued - nr_dispatched,
 		       skel->bss->nr_reenqueued, skel->bss->nr_dequeued,
 		       skel->bss->nr_core_sched_execed, skel->bss->nr_expedited);
-		if (__COMPAT_ksym_exists("scx_bpf_cpuperf_cur"))
+		if (__COMPAT_has_ksym("scx_bpf_cpuperf_cur"))
 			printf("cpuperf: cur min/avg/max=%u/%u/%u target min/avg/max=%u/%u/%u\n",
 			       skel->bss->cpuperf_min,
 			       skel->bss->cpuperf_avg,
@@ -131,5 +131,9 @@ int main(int argc, char **argv)
 	bpf_link__destroy(link);
 	UEI_REPORT(skel, uei);
 	scx_qmap__destroy(skel);
+	/*
+	 * scx_qmap implements ops.cpu_on/offline() and doesn't need to restart
+	 * on CPU hotplug events.
+	 */
 	return 0;
 }
