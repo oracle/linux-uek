@@ -160,7 +160,7 @@ static inline long scx_hotplug_seq(void)
 
 #define SCX_OPS_LOAD(__skel, __ops_name, __scx_name, __uei_name) ({		\
 	UEI_SET_SIZE(__skel, __ops_name, __uei_name);				\
-	if (__COMPAT_struct_has_field("sched_ext_ops", "exit_dump_len") &&	\
+	if (!__COMPAT_struct_has_field("sched_ext_ops", "exit_dump_len") &&	\
 	    (__skel)->struct_ops.__ops_name->exit_dump_len) {			\
 		fprintf(stderr, "WARNING: kernel doesn't support setting exit dump len\n"); \
 		(__skel)->struct_ops.__ops_name->exit_dump_len = 0;		\
