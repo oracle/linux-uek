@@ -52,8 +52,6 @@ int main(int argc, char **argv)
 	signal(SIGINT, sigint_handler);
 	signal(SIGTERM, sigint_handler);
 
-	libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
-
 	skel = SCX_OPS_OPEN(qmap_ops, scx_qmap);
 
 	while ((opt = getopt(argc, argv, "s:e:t:T:l:b:PE:d:D:ph")) != -1) {

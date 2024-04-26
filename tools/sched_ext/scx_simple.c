@@ -58,8 +58,6 @@ int main(int argc, char **argv)
 
 	signal(SIGINT, sigint_handler);
 	signal(SIGTERM, sigint_handler);
-
-	libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
 restart:
 	skel = SCX_OPS_OPEN(simple_ops, scx_simple);
 
