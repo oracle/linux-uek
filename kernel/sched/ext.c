@@ -4544,7 +4544,10 @@ static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 
 static void scx_ops_error_irq_workfn(struct irq_work *irq_work)
 {
-	scx_dump_state(scx_exit_info, scx_ops.exit_dump_len);
+	struct scx_exit_info *ei = scx_exit_info;
+
+	if (ei->kind >= SCX_EXIT_ERROR)
+		scx_dump_state(ei, scx_ops.exit_dump_len);
 	schedule_scx_ops_disable_work();
 }
 
