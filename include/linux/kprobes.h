@@ -358,6 +358,11 @@ static inline void wait_for_kprobe_optimizer(void) { }
 extern void kprobe_ftrace_handler(unsigned long ip, unsigned long parent_ip,
 				  struct ftrace_ops *ops, struct pt_regs *regs);
 extern int arch_prepare_kprobe_ftrace(struct kprobe *p);
+/* Set when ftrace has been killed: kprobes on ftrace must be disabled for safety */
+extern bool kprobe_ftrace_disabled __read_mostly;
+extern void kprobe_ftrace_kill(void);
+#else
+static inline void kprobe_ftrace_kill(void) {}
 #endif
 
 int arch_check_ftrace_location(struct kprobe *p);
@@ -459,6 +464,9 @@ static inline void kprobe_flush_task(struct task_struct *tk)
 {
 }
 static inline void kprobe_free_init_mem(void)
+{
+}
+static inline void kprobe_ftrace_kill(void)
 {
 }
 static inline int disable_kprobe(struct kprobe *kp)

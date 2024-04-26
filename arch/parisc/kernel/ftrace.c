@@ -206,7 +206,12 @@ void kprobe_ftrace_handler(unsigned long ip, unsigned long parent_ip,
 			   struct ftrace_ops *ops, struct pt_regs *regs)
 {
 	struct kprobe_ctlblk *kcb;
-	struct kprobe *p = get_kprobe((kprobe_opcode_t *)ip);
+	struct kprobe *p;
+
+	if (unlikely(kprobe_ftrace_disabled))
+		return;
+
+	p = get_kprobe((kprobe_opcode_t *)ip);
 
 	if (unlikely(!p) || kprobe_disabled(p))
 		return;
