@@ -99,7 +99,8 @@ struct page {
 			 * @dma_addr: might require a 64-bit value on
 			 * 32-bit architectures.
 			 */
-			UEK_KABI_REPLACE(dma_addr_t dma_addr, unsigned long dma_addr[2])
+			UEK_KABI_REPLACE_UNSAFE_SIZE(dma_addr_t dma_addr,
+			unsigned long dma_addr[2], 2)
 		};
 		struct {	/* slab, slob and slub */
 			union {

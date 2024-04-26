@@ -2164,9 +2164,12 @@ struct net_device {
 #endif
 	struct phy_device	*phydev;
 	struct sfp_bus		*sfp_bus;
-        UEK_KABI_REPLACE(struct lock_class_key   qdisc_tx_busylock_key,struct lock_class_key   *qdisc_tx_busylock)
-        UEK_KABI_REPLACE(struct lock_class_key   qdisc_running_key,struct lock_class_key   *qdisc_running_key)
-        struct lock_class_key   qdisc_xmit_lock_key;
+	UEK_KABI_REPLACE_UNSAFE_SIZE(
+		struct lock_class_key qdisc_tx_busylock_key,
+		struct lock_class_key *qdisc_tx_busylock, 1)
+	UEK_KABI_REPLACE_UNSAFE_SIZE(struct lock_class_key qdisc_running_key,
+		struct lock_class_key *qdisc_running_key, 1)
+	struct lock_class_key   qdisc_xmit_lock_key;
 	struct lock_class_key	addr_list_lock_key;
 	bool			proto_down;
 	unsigned		wol_enabled:1;
@@ -2175,7 +2178,8 @@ struct net_device {
 	UEK_KABI_USE(1, void *ml_priv)
 	UEK_KABI_USE(2, enum netdev_ml_priv_type ml_priv_type)
 
-	UEK_KABI_USE(3, struct list_head net_notifier_list)
+	UEK_KABI_REPLACE_UNSAFE_SIZE(unsigned long uek_reserved3,
+		struct list_head net_notifier_list, 2)
 	UEK_KABI_USE(4, const struct udp_tunnel_nic_info	*udp_tunnel_nic_info)
 	UEK_KABI_USE(5, struct udp_tunnel_nic	*udp_tunnel_nic)
 
