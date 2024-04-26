@@ -68,7 +68,7 @@ struct netns_xfrm {
 	u32			sysctl_acq_expires;
 
 	/* There is a 7 byte hole to fill here, hence the replace is safe */
-	UEK_KABI_REPLACE(u8 policy_default, u8 policy_default[XFRM_POLICY_MAX])
+	UEK_KABI_REPLACE_UNSAFE_SIZE(u8 policy_default, u8 policy_default[XFRM_POLICY_MAX], 1)
 
 #ifdef CONFIG_SYSCTL
 	struct ctl_table_header	*sysctl_hdr;

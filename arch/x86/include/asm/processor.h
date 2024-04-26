@@ -144,8 +144,11 @@ struct cpuinfo_x86 {
 	u8			x86_cache_bits;
 	unsigned		initialized : 1;
 
-	/* protected processor identification number */
-	UEK_KABI_USE(1, u64 ppin)
+	/* protected processor identification number
+	 * In 'arch/x86/entry/vdso/vdso32/vclock_gettime.c:
+	 * it fakes a 32 bit kernel causing 'unsigned long' to act as 32 bit.'
+	 */
+	UEK_KABI_REPLACE_UNSAFE(unsigned long uek_reserved1, u64 ppin)
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)

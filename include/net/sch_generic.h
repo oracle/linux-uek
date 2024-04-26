@@ -113,9 +113,9 @@ struct Qdisc {
 	struct sk_buff_head	gso_skb ____cacheline_aligned_in_smp;
 	struct qdisc_skb_head	q;
 
-	/* Replace is safe, no memory layout change */
-	UEK_KABI_REPLACE(struct gnet_stats_basic_packed bstats,
-			 struct gnet_stats_basic_sync bstats)
+	/* No memory layout change */
+	UEK_KABI_REPLACE_UNSAFE_SIZE(struct gnet_stats_basic_packed bstats,
+	struct gnet_stats_basic_sync bstats, 2)
 
 	seqcount_t		running;
 	struct gnet_stats_queue	qstats;

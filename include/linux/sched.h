@@ -1469,7 +1469,8 @@ struct task_struct {
 #endif
 
 #ifdef CONFIG_MMU
-	UEK_KABI_USE(1, struct timer_list oom_reaper_timer)
+	UEK_KABI_REPLACE_UNSAFE_SIZE(unsigned long uek_reserved1,
+	struct timer_list oom_reaper_timer, 9)
 #else
 	UEK_KABI_RESERVE(1)
 #endif

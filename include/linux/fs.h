@@ -1099,8 +1099,9 @@ struct lock_manager_operations {
 	void (*lm_setup)(struct file_lock *, void **);
 	bool (*lm_breaker_owns_lease)(struct file_lock *);
 
-	UEK_KABI_USE2(1, bool (*lm_lock_expirable)(struct file_lock *cfl),
-				void (*lm_expire_lock)(void))
+	UEK_KABI_REPLACE_UNSAFE_SIZE(unsigned long uek_reserved1,
+		struct{bool (*lm_lock_expirable)(struct file_lock *cfl);
+		void (*lm_expire_lock)(void); }, 2)
 	UEK_KABI_USE(2, void *lm_mod_owner)
 };
 
