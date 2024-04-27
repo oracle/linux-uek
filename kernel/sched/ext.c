@@ -2748,6 +2748,8 @@ static struct task_struct *pick_next_task_scx(struct rq *rq)
 	if (!p)
 		return NULL;
 
+	set_next_task_scx(rq, p, true);
+
 	if (unlikely(!p->scx.slice)) {
 		if (!scx_ops_bypassing() && !scx_warned_zero_slice) {
 			printk_deferred(KERN_WARNING "sched_ext: %s[%d] has zero slice in pick_next_task_scx()\n",
@@ -2756,8 +2758,6 @@ static struct task_struct *pick_next_task_scx(struct rq *rq)
 		}
 		p->scx.slice = SCX_SLICE_DFL;
 	}
-
-	set_next_task_scx(rq, p, true);
 
 	return p;
 }
