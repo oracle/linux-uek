@@ -20,7 +20,7 @@ const char help_fmt[] =
 "See the top-level comment in .bpf.c for more details.\n"
 "\n"
 "Usage: %s [-s SLICE_US] [-e COUNT] [-t COUNT] [-T COUNT] [-l COUNT] [-b COUNT]\n"
-"       [-P] [-E PREFIX] [-d PID] [-D LEN] [-p]\n"
+"       [-P] [-E PREFIX] [-d PID] [-D LEN] [-p] [-v]\n"
 "\n"
 "  -s SLICE_US   Override slice duration\n"
 "  -e COUNT      Trigger scx_bpf_error() after COUNT enqueues\n"
@@ -34,9 +34,18 @@ const char help_fmt[] =
 "  -d PID        Disallow a process from switching into SCHED_EXT (-1 for self)\n"
 "  -D LEN        Set scx_exit_info.dump buffer length\n"
 "  -p            Switch only tasks on SCHED_EXT policy intead of all\n"
+"  -v            Print libbpf debug messages\n"
 "  -h            Display this help and exit\n";
 
+static bool verbose;
 static volatile int exit_req;
+
+static int libbpf_print_fn(enum libbpf_print_level level, const char *format, va_list args)
+{
+	if (level == LIBBPF_DEBUG && !verbose)
+		return 0;
+	return vfprintf(stderr, format, args);
+}
 
 static void sigint_handler(int dummy)
 {
@@ -49,12 +58,13 @@ int main(int argc, char **argv)
 	struct bpf_link *link;
 	int opt;
 
+	libbpf_set_print(libbpf_print_fn);
 	signal(SIGINT, sigint_handler);
 	signal(SIGTERM, sigint_handler);
 
 	skel = SCX_OPS_OPEN(qmap_ops, scx_qmap);
 
-	while ((opt = getopt(argc, argv, "s:e:t:T:l:b:PE:d:D:ph")) != -1) {
+	while ((opt = getopt(argc, argv, "s:e:t:T:l:b:PE:d:D:pvh")) != -1) {
 		switch (opt) {
 		case 's':
 			skel->rodata->slice_ns = strtoull(optarg, NULL, 0) * 1000;
@@ -92,6 +102,9 @@ int main(int argc, char **argv)
 		case 'p':
 			skel->rodata->switch_partial = true;
 			skel->struct_ops.qmap_ops->flags |= __COMPAT_SCX_OPS_SWITCH_PARTIAL;
+			break;
+		case 'v':
+			verbose = true;
 			break;
 		default:
 			fprintf(stderr, help_fmt, basename(argv[0]));
