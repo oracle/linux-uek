@@ -91,7 +91,6 @@ bool scx_prio_less(const struct task_struct *a, const struct task_struct *b,
 static inline void scx_next_task_picked(struct rq *rq, struct task_struct *p,
 					const struct sched_class *active) {}
 static inline void scx_tick(struct rq *rq) {}
-static inline void init_scx_entity(struct sched_ext_entity *scx) {}
 static inline void scx_pre_fork(struct task_struct *p) {}
 static inline int scx_fork(struct task_struct *p) { return 0; }
 static inline void scx_post_fork(struct task_struct *p) {}
