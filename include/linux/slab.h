@@ -193,7 +193,8 @@ void * __must_check krealloc(const void *objp, size_t new_size, gfp_t flags) __a
 void kfree(const void *objp);
 void kfree_sensitive(const void *objp);
 size_t __ksize(const void *objp);
-DEFINE_FREE(kfree, void *, if (_T) kfree(_T))
+
+DEFINE_FREE(kfree, void *, if (!IS_ERR_OR_NULL(_T)) kfree(_T))
 
 size_t ksize(const void *objp);
 #ifdef CONFIG_PRINTK
