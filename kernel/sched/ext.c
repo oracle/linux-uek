@@ -2748,6 +2748,8 @@ static struct task_struct *pick_next_task_scx(struct rq *rq)
 	if (!p)
 		return NULL;
 
+	set_next_task_scx(rq, p, true);
+
 	if (unlikely(!p->scx.slice)) {
 		if (!scx_ops_bypassing() && !scx_warned_zero_slice) {
 			printk_deferred(KERN_WARNING "sched_ext: %s[%d] has zero slice in pick_next_task_scx()\n",
@@ -2756,8 +2758,6 @@ static struct task_struct *pick_next_task_scx(struct rq *rq)
 		}
 		p->scx.slice = SCX_SLICE_DFL;
 	}
-
-	set_next_task_scx(rq, p, true);
 
 	return p;
 }
@@ -4544,7 +4544,11 @@ static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 
 static void scx_ops_error_irq_workfn(struct irq_work *irq_work)
 {
-	scx_dump_state(scx_exit_info, scx_ops.exit_dump_len);
+	struct scx_exit_info *ei = scx_exit_info;
+
+	if (ei->kind >= SCX_EXIT_ERROR)
+		scx_dump_state(ei, scx_ops.exit_dump_len);
+
 	schedule_scx_ops_disable_work();
 }
 
@@ -5531,8 +5535,12 @@ __bpf_kfunc s32 scx_bpf_select_cpu_dfl(struct task_struct *p, s32 prev_cpu,
 		*is_idle = false;
 		return prev_cpu;
 	}
-
+#ifdef CONFIG_SMP
 	return scx_select_cpu_dfl(p, prev_cpu, wake_flags, is_idle);
+#else
+	*is_idle = false;
+	return prev_cpu;
+#endif
 }
 
 __bpf_kfunc_end_defs();
