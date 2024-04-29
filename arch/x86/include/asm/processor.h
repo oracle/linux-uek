@@ -490,8 +490,7 @@ struct thread_struct {
 	unsigned		io_bitmap_max;
 
 	mm_segment_t		addr_limit;
-
-	unsigned int		sig_on_uaccess_err:1;
+	UEK_KABI_DEPRECATE(unsigned int, sig_on_uaccess_err:1)
 	unsigned int		uaccess_err:1;	/* uaccess failed */
 
 	/* Floating point and extended processor state */
