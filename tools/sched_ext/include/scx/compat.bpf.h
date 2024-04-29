@@ -37,9 +37,21 @@ static inline void __COMPAT_scx_bpf_switch_all(void)
 }
 
 /*
+ * scx_bpf_exit() is a new addition. Fall back to scx_bpf_error() if
+ * unavailable. Users can use scx_bpf_exit() directly in the future.
+ */
+#define __COMPAT_scx_bpf_exit(code, fmt, args...)				\
+({										\
+	if (bpf_ksym_exists(scx_bpf_exit_bstr))					\
+		scx_bpf_exit((code), fmt, args);				\
+	else									\
+		scx_bpf_error(fmt, args);					\
+})
+
+/*
  * scx_bpf_nr_cpu_ids(), scx_bpf_get_possible/online_cpumask() are new. No good
- * way to noop these kfuncs. Provide a test macro. Users will be able to assume
- * existence in the future.
+ * way to noop these kfuncs. Provide a test macro. Users can assume existence in
+ * the future.
  */
 #define __COMPAT_HAS_CPUMASKS							\
 	bpf_ksym_exists(scx_bpf_nr_cpu_ids)
