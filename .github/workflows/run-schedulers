@@ -16,6 +16,26 @@ if [ ! -x `which vng` ]; then
     exit 1
 fi
 
+function runtest() {
+    local bin="${1}"
+
+    if [ -z "${bin}" ]; then
+        echo "No binary passed to runtest"
+        exit 1
+    fi
+
+    if ! [ -f "${bin}" ]; then
+        echo "Binary ${bin} was not a regular file"
+        exit 1
+    fi
+
+    rm -f /tmp/output
+    (timeout --foreground --preserve-status ${GUEST_TIMEOUT} \
+        vng --force-9p --disable-microvm --verbose -- \
+            "timeout --foreground --preserve-status ${TEST_TIMEOUT} ${bin}" \
+                2>&1 </dev/null || true) | tee /tmp/output
+}
+
 # Test all the available schedulers.
 #
 # NOTE: virtme-ng automatically runs the kernel from the current working
@@ -24,18 +44,8 @@ fi
 # Each scheduler will be tested in a separate instance booted from scratch, to
 # ensure that each run does not impact the others.
 #
-# TODO: exclude scx_layered for now, because it requires a special config
-# file, otherwise its test would fail with "Error: No layer spec".
-#
-# Maybe in the future change scx_layered to run with a default layer spec, just
-# for testing it.
-#
-for sched in $(find tools/sched_ext/build/bin -type f -executable | grep -v scx_layered); do
-    rm -f /tmp/output
-    (timeout --foreground --preserve-status ${GUEST_TIMEOUT} \
-        vng --force-9p --disable-microvm --verbose -- \
-            "timeout --foreground --preserve-status ${TEST_TIMEOUT} ${sched}" \
-                2>&1 </dev/null || true) | tee /tmp/output
+for sched in $(find tools/sched_ext/build/bin -type f -executable); do
+    runtest "${sched}"
     sed -n -e '/\bBUG:/q1' \
            -e '/\bWARNING:/q1' \
            -e '/\berror\b/Iq1' \
