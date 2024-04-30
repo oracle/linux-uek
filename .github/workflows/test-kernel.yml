@@ -40,8 +40,11 @@ jobs:
       # Build a minimal kernel (with sched-ext enabled) using virtme-ng
       - run: vng -v --build --config .github/workflows/sched-ext.config
 
+      # Build the selftests suite
+      - run: make -j $(nproc) -C tools/testing/selftests/sched_ext
+
       # Build the in-kernel schedulers
-      - run: cd tools/sched_ext && make
+      - run: make -j $(nproc) -C tools/sched_ext
 
       # Test the schedulers inside the recompile kernel
       - run: .github/workflows/run-schedulers

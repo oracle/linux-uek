@@ -59,3 +59,14 @@ for sched in $(find tools/sched_ext/build/bin -type f -executable); do
         echo "OK: ${sched}"
     fi
 done
+
+# Run the selftests suite
+runtest "tools/testing/selftests/sched_ext/runner"
+sed -n -e '/not ok/q1' /tmp/output
+res=$?
+if [ ${res} -ne 0 ]; then
+	echo "FAIL: selftests"
+	echo "output: $(cat /tmp/output)"
+else
+	echo "OK: selftests"
+fi
