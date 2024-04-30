@@ -40,6 +40,7 @@
 #define RPMX_RSFEC_RX_CAPTURE				BIT_ULL(27)
 #define RPMX_MTI_RSFEC_STAT_COUNTER_CAPTURE_2		0x40050
 #define RPMX_MTI_RSFEC_STAT_COUNTER_CAPTURE_3		0x40058
+#define RPMX_MTI_RSFEC_STAT_FAST_DATA_HI_CDC		0x40000
 #define RPMX_MTI_FCFECX_VL0_CCW_LO(a)			(0x38618 + ((a) * 0x40))
 #define RPMX_MTI_FCFECX_VL0_NCCW_LO(a)			(0x38620 + ((a) * 0x40))
 #define RPMX_MTI_FCFECX_VL1_CCW_LO(a)			(0x38628 + ((a) * 0x40))
@@ -331,11 +332,11 @@ static void rfoe_dbg_rpm_get_fec_stats(void __iomem *reg_base, int lmac_id,
 		iowrite64(cfg, reg_base + RPMX_MTI_STAT_STATN_CONTROL);
 
 		val_lo = ioread64(reg_base + RPMX_MTI_RSFEC_STAT_COUNTER_CAPTURE_2);
-		val_hi = ioread64(reg_base + RPMX_MTI_STAT_DATA_HI_CDC);
+		val_hi = ioread64(reg_base + RPMX_MTI_RSFEC_STAT_FAST_DATA_HI_CDC);
 		*fec_corr_blks = (val_hi << 32 | val_lo);
 
 		val_lo = ioread64(reg_base + RPMX_MTI_RSFEC_STAT_COUNTER_CAPTURE_3);
-		val_hi = ioread64(reg_base + RPMX_MTI_STAT_DATA_HI_CDC);
+		val_hi = ioread64(reg_base + RPMX_MTI_RSFEC_STAT_FAST_DATA_HI_CDC);
 		*fec_uncorr_blks = (val_hi << 32 | val_lo);
 	}
 }
@@ -381,6 +382,13 @@ static int otx2_rfoe_dbg_read_rpm_stats(struct seq_file *filp, void *unused)
 		stat++;
 	}
 
+	if (!is_otx2) {
+		rfoe_dbg_rpm_get_fec_stats(rpm_reg_base, lmac_id, &fec_corr_blks,
+					   &fec_uncorr_blks);
+		seq_printf(filp, "Fec Corrected Errors: %llu\n", fec_corr_blks);
+		seq_printf(filp, "Fec Uncorrected Errors: %llu\n", fec_uncorr_blks);
+	}
+
 	/* Tx stats */
 	stat = 0;
 	seq_puts(filp, "\n======= TX_STATS======\n\n");
@@ -394,13 +402,6 @@ static int otx2_rfoe_dbg_read_rpm_stats(struct seq_file *filp, void *unused)
 			seq_printf(filp, "%s: %llu\n", rpm_tx_stats_fields[stat],
 				   tx_stat);
 		stat++;
-	}
-
-	if (!is_otx2) {
-		rfoe_dbg_rpm_get_fec_stats(rpm_reg_base, lmac_id, &fec_corr_blks,
-					   &fec_uncorr_blks);
-		seq_printf(filp, "Fec Corrected Errors: %llu\n", fec_corr_blks);
-		seq_printf(filp, "Fec Uncorrected Errors: %llu\n", fec_uncorr_blks);
 	}
 
 	iounmap(rpm_reg_base);
