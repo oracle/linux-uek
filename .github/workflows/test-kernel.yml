@@ -16,7 +16,7 @@ jobs:
       ### DOWNLOAD AND INSTALL DEPENDENCIES ###
 
       # Download dependencies packaged by Ubuntu
-      - run: sudo apt -y install gcc make git coreutils cmake elfutils libelf-dev libunwind-dev libzstd-dev linux-headers-generic linux-tools-common linux-tools-generic ninja-build python3-pip python3-requests qemu-kvm udev iproute2 busybox-static libvirt-clients kbd kmod file rsync zstd pahole flex bison cpio libcap-dev libelf-dev python3-dev cargo rustc
+      - run: sudo apt -y install bc gcc make git coreutils cmake elfutils libelf-dev libunwind-dev libzstd-dev linux-headers-generic linux-tools-common linux-tools-generic ninja-build python3-pip python3-requests qemu-kvm udev iproute2 busybox-static libvirt-clients kbd kmod file rsync zstd pahole flex bison cpio libcap-dev libelf-dev python3-dev cargo rustc gcc-multilib
 
       # clang 17
       # Use a custom llvm.sh script which includes the -y flag for
