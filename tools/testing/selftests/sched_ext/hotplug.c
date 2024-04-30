@@ -83,8 +83,8 @@ static enum scx_test_status test_hotplug(bool onlining, bool cbs_defined)
 	while (!UEI_EXITED(skel, uei))
 		sched_yield();
 
-	SCX_EQ(UEI_KIND(skel, uei), kind);
-	SCX_EQ(UEI_ECODE(skel, uei), code);
+	SCX_EQ(skel->data->uei.kind, kind);
+	SCX_EQ(UEI_REPORT(skel, uei), code);
 
 	if (!onlining)
 		toggle_online_status(1);
@@ -126,8 +126,8 @@ static enum scx_test_status test_hotplug_attach(void)
 	kind = SCX_KIND_VAL(SCX_EXIT_UNREG_KERN);
 	code = SCX_ECODE_VAL(SCX_ECODE_ACT_RESTART) |
 	       SCX_ECODE_VAL(SCX_ECODE_RSN_HOTPLUG);
-	SCX_EQ(UEI_KIND(skel, uei), kind);
-	SCX_EQ(UEI_ECODE(skel, uei), code);
+	SCX_EQ(skel->data->uei.kind, kind);
+	SCX_EQ(UEI_REPORT(skel, uei), code);
 
 	bpf_link__destroy(link);
 	hotplug__destroy(skel);
