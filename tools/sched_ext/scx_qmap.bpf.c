@@ -535,13 +535,16 @@ struct {
  */
 static void monitor_cpuperf(void)
 {
-	u32 zero = 0;
-	u32 nr_cpu_ids = scx_bpf_nr_cpu_ids();
+	u32 zero = 0, nr_cpu_ids;
 	u64 cap_sum = 0, cur_sum = 0, cur_min = SCX_CPUPERF_ONE, cur_max = 0;
 	u64 target_sum = 0, target_min = SCX_CPUPERF_ONE, target_max = 0;
 	const struct cpumask *online;
 	int i, nr_online_cpus = 0;
 
+	if (!__COMPAT_HAS_CPUMASKS)
+		return;
+
+	nr_cpu_ids = scx_bpf_nr_cpu_ids();
 	online = scx_bpf_get_online_cpumask();
 
 	bpf_for(i, 0, nr_cpu_ids) {
