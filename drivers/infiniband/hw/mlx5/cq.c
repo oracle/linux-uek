@@ -39,7 +39,6 @@
 #include "qp.h"
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
-#include <linux/mlx5/driver.h>
 #include "oracle_ext.h"
 #endif /* WITHOUT_ORACLE_EXTENSIONS */
 
@@ -956,9 +955,7 @@ int mlx5_ib_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr,
 {
 	struct ib_device *ibdev = ibcq->device;
 	int entries = attr->cqe;
-#ifdef WITHOUT_ORACLE_EXTENSIONS
 	int vector = attr->comp_vector;
-#endif /* WITHOUT_ORACLE_EXTENSIONS */
 	struct mlx5_ib_dev *dev = to_mdev(ibdev);
 	struct mlx5_ib_cq *cq = to_mcq(ibcq);
 	u32 out[MLX5_ST_SZ_DW(create_cq_out)];
@@ -967,10 +964,7 @@ int mlx5_ib_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr,
 	u32 *cqb = NULL;
 	void *cqc;
 	int cqe_size;
-#ifdef WITHOUT_ORACLE_EXTENSIONS
-	unsigned int irqn;
 	int eqn;
-#endif /* WITHOUT_ORACLE_EXTENSIONS */
 	int err;
 
 	if (entries < 0 ||
@@ -1008,13 +1002,9 @@ int mlx5_ib_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr,
 		INIT_WORK(&cq->notify_work, notify_soft_wc_handler);
 	}
 
-#ifndef WITHOUT_ORACLE_EXTENSIONS
-	cq->eq = mlx5_core_get_eq(dev->mdev, attr->comp_vector);
-#else /* WITHOUT_ORACLE_EXTENSIONS */
 	err = mlx5_vector2eqn(dev->mdev, vector, &eqn);
 	if (err)
 		goto err_cqb;
-#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	cq->cqe_size = cqe_size;
 
@@ -1025,27 +1015,16 @@ int mlx5_ib_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr,
 				  MLX5_IB_CQ_PR_FLAGS_CQE_128_PAD));
 	MLX5_SET(cqc, cqc, log_cq_size, ilog2(entries));
 	MLX5_SET(cqc, cqc, uar_page, index);
-#ifndef WITHOUT_ORACLE_EXTENSIONS
-	MLX5_SET(cqc, cqc, c_eqn_or_apu_element, cq->eq->eqn);
-#else /* WITHOUT_ORACLE_EXTENSIONS */
 	MLX5_SET(cqc, cqc, c_eqn_or_apu_element, eqn);
-#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	MLX5_SET64(cqc, cqc, dbr_addr, cq->db.dma);
 	if (cq->create_flags & IB_UVERBS_CQ_FLAGS_IGNORE_OVERRUN)
 		MLX5_SET(cqc, cqc, oi, 1);
 
 	err = mlx5_core_create_cq(dev->mdev, &cq->mcq, cqb, inlen, out, sizeof(out));
 	if (err)
-#ifndef WITHOUT_ORACLE_EXTENSIONS
-		goto err_put_eq;
-#else /* WITHOUT_ORACLE_EXTENSIONS */
 		goto err_cqb;
-#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	mlx5_ib_dbg(dev, "cqn 0x%x\n", cq->mcq.cqn);
-#ifndef WITHOUT_ORACLE_EXTENSIONS
-	cq->mcq.irqn = cq->eq->irqn;
-#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	if (udata)
 		cq->mcq.tasklet_ctx.comp = mlx5_ib_cq_comp;
 	else
@@ -1067,12 +1046,7 @@ int mlx5_ib_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr,
 err_cmd:
 	mlx5_core_destroy_cq(dev->mdev, &cq->mcq);
 
-#ifndef WITHOUT_ORACLE_EXTENSIONS
-err_put_eq:
-	mlx5_core_put_eq(cq->eq);
-#else /* WITHOUT_ORACLE_EXTENSIONS */
 err_cqb:
-#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	kvfree(cqb);
 	if (udata)
 		destroy_cq_user(cq, udata);
@@ -1095,10 +1069,6 @@ int mlx5_ib_destroy_cq(struct ib_cq *cq, struct ib_udata *udata)
 		destroy_cq_user(mcq, udata);
 	else
 		destroy_cq_kernel(dev, mcq);
-
-#ifndef WITHOUT_ORACLE_EXTENSIONS
-	mlx5_core_put_eq(mcq->eq);
-#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	return 0;
 }
 
