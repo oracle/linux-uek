@@ -1021,7 +1021,7 @@ err_irqs_req:
 }
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
-struct mlx5_eq *mlx5_core_get_eq(struct mlx5_core_dev *dev, u32 vector)
+struct mlx5_eq *mlx5_core_get_eq(struct mlx5_core_dev *dev, int vector)
 {
 	struct mlx5_eq_table *table = dev->priv.eq_table;
 	struct mlx5_eq_comp *tmp_eq_comp;
@@ -1030,8 +1030,8 @@ struct mlx5_eq *mlx5_core_get_eq(struct mlx5_core_dev *dev, u32 vector)
 	mutex_lock(&table->lock);
 	eq_comp = list_entry(table->comp_eqs_list.next, struct mlx5_eq_comp, list);
 	list_for_each_entry(tmp_eq_comp, &table->comp_eqs_list, list) {
-		if (vector) {
-			if (tmp_eq_comp->index == (vector == IB_CQ_FORCE_ZERO_CV ? 0 : vector)) {
+		if (vector || smp_processor_id() == (vector % num_online_cpus())) {
+			if (tmp_eq_comp->index == vector) {
 				eq_comp = tmp_eq_comp;
 				break;
 			}
