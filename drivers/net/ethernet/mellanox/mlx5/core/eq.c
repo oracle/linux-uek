@@ -1001,9 +1001,6 @@ static int create_comp_eqs(struct mlx5_core_dev *dev)
 		}
 
 		mlx5_core_dbg(dev, "allocated completion EQN %d\n", eq->core.eqn);
-#ifndef WITHOUT_ORACLE_EXTENSIONS
-		eq->index = i;
-#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 		/* add tail, to keep the list ordered, for mlx5_vector2eqn to work */
 		list_add_tail(&eq->list, &table->comp_eqs_list);
 	}
@@ -1019,46 +1016,6 @@ err_irqs_req:
 	free_rmap(dev);
 	return err;
 }
-
-#ifndef WITHOUT_ORACLE_EXTENSIONS
-struct mlx5_eq *mlx5_core_get_eq(struct mlx5_core_dev *dev, int vector)
-{
-	struct mlx5_eq_table *table = dev->priv.eq_table;
-	struct mlx5_eq_comp *tmp_eq_comp;
-	struct mlx5_eq_comp *eq_comp;
-
-	mutex_lock(&table->lock);
-	eq_comp = list_entry(table->comp_eqs_list.next, struct mlx5_eq_comp, list);
-	list_for_each_entry(tmp_eq_comp, &table->comp_eqs_list, list) {
-		if (vector || smp_processor_id() == (vector % num_online_cpus())) {
-			if (tmp_eq_comp->index == vector) {
-				eq_comp = tmp_eq_comp;
-				break;
-			}
-		}
-		if (eq_comp->core.cq_count > tmp_eq_comp->core.cq_count)
-			eq_comp = tmp_eq_comp;
-	}
-
-	eq_comp->core.cq_count++;
-	mlx5_core_dbg(dev, "requested %d, chosen %d\n",
-		      vector, eq_comp->index);
-	mutex_unlock(&table->lock);
-
-	return &(eq_comp->core);
-}
-EXPORT_SYMBOL(mlx5_core_get_eq);
-
-void mlx5_core_put_eq(struct mlx5_eq *eq)
-{
-	struct mlx5_eq_table *table = eq->dev->priv.eq_table;
-
-	mutex_lock(&table->lock);
-	eq->cq_count--;
-	mutex_unlock(&table->lock);
-}
-EXPORT_SYMBOL(mlx5_core_put_eq);
-#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 static int vector2eqnirqn(struct mlx5_core_dev *dev, int vector, int *eqn,
 			  unsigned int *irqn)

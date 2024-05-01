@@ -352,28 +352,6 @@ struct mlx5_frag_buf_ctrl {
 	u8			log_frag_strides;
 };
 
-#ifndef WITHOUT_ORACLE_EXTENSIONS
-struct mlx5_cq_table {
-	spinlock_t              lock;   /* protect radix tree */
-	struct radix_tree_root  tree;
-};
-
-struct mlx5_eq {
-	struct mlx5_frag_buf_ctrl fbc;
-	struct mlx5_frag_buf    frag_buf;
-	struct mlx5_core_dev    *dev;
-	struct mlx5_cq_table    cq_table;
-	u32                     cq_count;
-	__be32 __iomem	        *doorbell;
-	u32                     cons_index;
-	unsigned int            vecidx;
-	unsigned int            irqn;
-	u8                      eqn;
-	struct mlx5_rsc_debug   *dbg;
-	struct mlx5_irq         *irq;
-};
-#endif /* !WITHOUT_ORACLE_EXTENSIONS */
-
 struct mlx5_core_psv {
 	u32	psv_idx;
 	struct psv_layout {
@@ -1077,10 +1055,6 @@ void mlx5_unregister_debugfs(void);
 
 void mlx5_fill_page_frag_array_perm(struct mlx5_frag_buf *buf, __be64 *pas, u8 perm);
 void mlx5_fill_page_frag_array(struct mlx5_frag_buf *frag_buf, __be64 *pas);
-#ifndef WITHOUT_ORACLE_EXTENSIONS
-struct mlx5_eq *mlx5_core_get_eq(struct mlx5_core_dev *dev, int vector);
-void mlx5_core_put_eq(struct mlx5_eq *eq);
-#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 int mlx5_vector2eqn(struct mlx5_core_dev *dev, int vector, int *eqn);
 int mlx5_core_attach_mcg(struct mlx5_core_dev *dev, union ib_gid *mgid, u32 qpn);
 int mlx5_core_detach_mcg(struct mlx5_core_dev *dev, union ib_gid *mgid, u32 qpn);
