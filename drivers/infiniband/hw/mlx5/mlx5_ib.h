@@ -578,9 +578,6 @@ struct mlx5_ib_cq {
 	struct list_head	wc_list;
 	enum ib_cq_notify_flags notify_flags;
 	struct work_struct	notify_work;
-#ifndef WITHOUT_ORACLE_EXTENSIONS
-	struct mlx5_eq		*eq;
-#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	u16			private_flags; /* Use mlx5_ib_cq_pr_flags */
 };
 
