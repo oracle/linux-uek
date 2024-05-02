@@ -29,5 +29,6 @@ extern const char kallsyms_modules[] __weak;
 extern const u32 kallsyms_symbol_modules[] __weak;
 
 extern const unsigned int kallsyms_markers[] __weak;
+extern const unsigned int kallsyms_seqs_of_names[] __weak;
 
 #endif // LINUX_KALLSYMS_INTERNAL_H_
