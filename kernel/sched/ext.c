@@ -6144,58 +6144,51 @@ __bpf_kfunc void bpf_iter_scx_dsq_destroy(struct bpf_iter_scx_dsq *it)
 
 __bpf_kfunc_end_defs();
 
-struct scx_bpf_error_bstr_bufs {
+struct scx_bpf_bstr_bufs {
 	u64			data[MAX_BPRINTF_VARARGS];
 	char			msg[SCX_EXIT_MSG_LEN];
 };
 
-static DEFINE_PER_CPU(struct scx_bpf_error_bstr_bufs, scx_bpf_error_bstr_bufs);
+static DEFINE_PER_CPU(struct scx_bpf_bstr_bufs, scx_bpf_bstr_bufs);
 
-static void bpf_exit_bstr_common(enum scx_exit_kind kind, s64 exit_code,
-				 char *fmt, unsigned long long *data,
-				 u32 data__sz)
+static char *bstr_format(char *fmt, unsigned long long *data, u32 data__sz)
 {
 	struct bpf_bprintf_data bprintf_data = { .get_bin_args = true };
-	struct scx_bpf_error_bstr_bufs *bufs;
-	unsigned long flags;
+	struct scx_bpf_bstr_bufs *bufs = this_cpu_ptr(&scx_bpf_bstr_bufs);
 	int ret;
 
-	local_irq_save(flags);
-	bufs = this_cpu_ptr(&scx_bpf_error_bstr_bufs);
+	lockdep_assert_irqs_disabled();
 
 	if (data__sz % 8 || data__sz > MAX_BPRINTF_VARARGS * 8 ||
 	    (data__sz && !data)) {
 		scx_ops_error("invalid data=%p and data__sz=%u",
 			      (void *)data, data__sz);
-		goto out_restore;
+		return ERR_PTR(-EINVAL);
 	}
 
 	ret = copy_from_kernel_nofault(bufs->data, data, data__sz);
-	if (ret) {
+	if (ret < 0) {
 		scx_ops_error("failed to read data fields (%d)", ret);
-		goto out_restore;
+		return ERR_PTR(ret);
 	}
 
 	ret = bpf_bprintf_prepare(fmt, UINT_MAX, bufs->data, data__sz / 8,
 				  &bprintf_data);
 	if (ret < 0) {
-		scx_ops_error("failed to format prepration (%d)", ret);
-		goto out_restore;
+		scx_ops_error("format preparation failed (%d)", ret);
+		return ERR_PTR(ret);
 	}
 
 	ret = bstr_printf(bufs->msg, sizeof(bufs->msg), fmt,
 			  bprintf_data.bin_args);
 	bpf_bprintf_cleanup(&bprintf_data);
 	if (ret < 0) {
-		scx_ops_error("scx_ops_error(\"%s\", %p, %u) failed to format",
+		scx_ops_error("(\"%s\", %p, %u) failed to format",
 			      fmt, data, data__sz);
-		goto out_restore;
+		return ERR_PTR(ret);
 	}
 
-	scx_ops_exit_kind(kind, exit_code, "%s", bufs->msg);
-out_restore:
-	local_irq_restore(flags);
-
+	return bufs->msg;
 }
 
 __bpf_kfunc_start_defs();
@@ -6213,8 +6206,14 @@ __bpf_kfunc_start_defs();
 __bpf_kfunc void scx_bpf_exit_bstr(s64 exit_code, char *fmt,
 				   unsigned long long *data, u32 data__sz)
 {
-	bpf_exit_bstr_common(SCX_EXIT_UNREG_BPF, exit_code, fmt, data,
-			     data__sz);
+	unsigned long flags;
+	char *msg;
+
+	local_irq_save(flags);
+	msg = bstr_format(fmt, data, data__sz);
+	if (!IS_ERR(msg))
+		scx_ops_exit_kind(SCX_EXIT_UNREG_BPF, exit_code, fmt, "%s", msg);
+	local_irq_restore(flags);
 }
 
 /**
@@ -6229,9 +6228,14 @@ __bpf_kfunc void scx_bpf_exit_bstr(s64 exit_code, char *fmt,
 __bpf_kfunc void scx_bpf_error_bstr(char *fmt, unsigned long long *data,
 				    u32 data__sz)
 {
+	unsigned long flags;
+	char *msg;
 
-	bpf_exit_bstr_common(SCX_EXIT_ERROR_BPF, 0, fmt, data,
-			     data__sz);
+	local_irq_save(flags);
+	msg = bstr_format(fmt, data, data__sz);
+	if (!IS_ERR(msg))
+		scx_ops_exit_kind(SCX_EXIT_ERROR_BPF, 0, fmt, "%s", msg);
+	local_irq_restore(flags);
 }
 
 /**

@@ -78,14 +78,14 @@ static inline bool scx_bpf_consume_task(struct bpf_iter_scx_dsq *it,
 }
 
 static inline __attribute__((format(printf, 1, 2)))
-void ___scx_bpf_exit_format_checker(const char *fmt, ...) {}
+void ___scx_bpf_bstr_format_checker(const char *fmt, ...) {}
 
 /*
  * Helper macro for initializing the fmt and variadic argument inputs to both
  * bstr exit kfuncs. Callers to this function should use ___fmt and ___param to
  * refer to the initialized list of inputs to the bstr kfunc.
  */
-#define scx_bpf_exit_preamble(fmt, args...)					\
+#define scx_bpf_bstr_preamble(fmt, args...)					\
 	static char ___fmt[] = fmt;						\
 	/*									\
 	 * Note that __param[] must have at least one				\
@@ -105,9 +105,9 @@ void ___scx_bpf_exit_format_checker(const char *fmt, ...) {}
  */
 #define scx_bpf_exit(code, fmt, args...)					\
 ({										\
-	scx_bpf_exit_preamble(fmt, args)					\
+	scx_bpf_bstr_preamble(fmt, args)					\
 	scx_bpf_exit_bstr(code, ___fmt, ___param, sizeof(___param));		\
-	___scx_bpf_exit_format_checker(fmt, ##args);				\
+	___scx_bpf_bstr_format_checker(fmt, ##args);				\
 })
 
 /*
@@ -118,9 +118,9 @@ void ___scx_bpf_exit_format_checker(const char *fmt, ...) {}
  */
 #define scx_bpf_error(fmt, args...)						\
 ({										\
-	scx_bpf_exit_preamble(fmt, args)					\
+	scx_bpf_bstr_preamble(fmt, args)					\
 	scx_bpf_error_bstr(___fmt, ___param, sizeof(___param));			\
-	___scx_bpf_exit_format_checker(fmt, ##args);				\
+	___scx_bpf_bstr_format_checker(fmt, ##args);				\
 })
 
 #define BPF_STRUCT_OPS(name, args...)						\
