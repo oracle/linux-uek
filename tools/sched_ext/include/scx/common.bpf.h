@@ -45,6 +45,7 @@ struct task_struct *bpf_iter_scx_dsq_next(struct bpf_iter_scx_dsq *it) __ksym __
 void bpf_iter_scx_dsq_destroy(struct bpf_iter_scx_dsq *it) __ksym __weak;
 void scx_bpf_exit_bstr(s64 exit_code, char *fmt, unsigned long long *data, u32 data__sz) __ksym __weak;
 void scx_bpf_error_bstr(char *fmt, unsigned long long *data, u32 data_len) __ksym;
+void scx_bpf_dump_bstr(char *fmt, unsigned long long *data, u32 data_len) __ksym;
 u32 scx_bpf_cpuperf_cap(s32 cpu) __ksym __weak;
 u32 scx_bpf_cpuperf_cur(s32 cpu) __ksym __weak;
 void scx_bpf_cpuperf_set(s32 cpu, u32 perf) __ksym __weak;
@@ -120,6 +121,17 @@ void ___scx_bpf_bstr_format_checker(const char *fmt, ...) {}
 ({										\
 	scx_bpf_bstr_preamble(fmt, args)					\
 	scx_bpf_error_bstr(___fmt, ___param, sizeof(___param));			\
+	___scx_bpf_bstr_format_checker(fmt, ##args);				\
+})
+
+/*
+ * scx_bpf_dump() wraps the scx_bpf_dump_bstr() kfunc with variadic arguments
+ * instead of an array of u64. To be used from ops.dump() and friends.
+ */
+#define scx_bpf_dump(fmt, args...)						\
+({										\
+	scx_bpf_bstr_preamble(fmt, args)					\
+	scx_bpf_dump_bstr(___fmt, ___param, sizeof(___param));			\
 	___scx_bpf_bstr_format_checker(fmt, ##args);				\
 })
 

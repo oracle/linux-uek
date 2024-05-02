@@ -176,7 +176,18 @@ struct scx_cpu_release_args {
 	enum scx_cpu_preempt_reason reason;
 
 	/* the task that's going to be scheduled on the CPU */
-	struct task_struct *task;
+	struct task_struct	*task;
+};
+
+/*
+ * Informational context provided to dump operations.
+ */
+struct scx_dump_ctx {
+	enum scx_exit_kind	kind;
+	s64			exit_code;
+	const char		*reason;
+	u64			at_ns;
+	u64			at_jiffies;
 };
 
 /**
@@ -474,6 +485,36 @@ struct sched_ext_ops {
 	 * with a prior enable() call.
 	 */
 	void (*disable)(struct task_struct *p);
+
+	/**
+	 * dump - Dump BPF scheduler state on error
+	 * @ctx: debug dump context
+	 *
+	 * Use scx_bpf_dump() to generate BPF scheduler specific debug dump.
+	 */
+	void (*dump)(struct scx_dump_ctx *ctx);
+
+	/**
+	 * dump_cpu - Dump BPF scheduler state for a CPU on error
+	 * @ctx: debug dump context
+	 * @cpu: CPU to generate debug dump for
+	 * @idle: @cpu is currently idle without any runnable tasks
+	 *
+	 * Use scx_bpf_dump() to generate BPF scheduler specific debug dump for
+	 * @cpu. If @idle is %true and this operation doesn't produce any
+	 * output, @cpu is skipped for dump.
+	 */
+	void (*dump_cpu)(struct scx_dump_ctx *ctx, s32 cpu, bool idle);
+
+	/**
+	 * dump_task - Dump BPF scheduler state for a runnable task on error
+	 * @ctx: debug dump context
+	 * @p: runnable task to generate debug dump for
+	 *
+	 * Use scx_bpf_dump() to generate BPF scheduler specific debug dump for
+	 * @p.
+	 */
+	void (*dump_task)(struct scx_dump_ctx *ctx, struct task_struct *p);
 
 #ifdef CONFIG_EXT_GROUP_SCHED
 	/**
@@ -910,6 +951,12 @@ struct scx_dsp_ctx {
 };
 
 static DEFINE_PER_CPU(struct scx_dsp_ctx, scx_dsp_ctx);
+
+/* ops debug dump */
+static s32 scx_dump_cpu = -1;
+static char scx_dump_last;
+static struct seq_buf *scx_dump_seq_buf;
+static const char *scx_dump_prefix;
 
 /* /sys/kernel/sched_ext interface */
 static struct kset *scx_kset;
@@ -4439,8 +4486,29 @@ static void scx_ops_disable(enum scx_exit_kind kind)
 	schedule_scx_ops_disable_work();
 }
 
-static void scx_dump_task(struct seq_buf *s, struct task_struct *p, char marker,
-			  unsigned long now)
+static void ops_dump_init(struct seq_buf *s, const char *prefix)
+{
+	lockdep_assert_irqs_disabled();
+
+	scx_dump_cpu = smp_processor_id();	/* allow scx_bpf_dump() */
+	scx_dump_last = '\0';			/* nothing printed yet */
+	scx_dump_seq_buf = s;
+	scx_dump_prefix = prefix;
+}
+
+static void ops_dump_exit(void)
+{
+	/*
+	 * If something was printed but the last line wasn't terminated, add a
+	 * new line.
+	 */
+	if (scx_dump_last != '\0' && scx_dump_last != '\n')
+		seq_buf_putc(scx_dump_seq_buf, '\n');
+	scx_dump_cpu = -1;
+}
+
+static void scx_dump_task(struct seq_buf *s, struct scx_dump_ctx *dctx,
+			  struct task_struct *p, char marker)
 {
 	static unsigned long bt[SCX_EXIT_BT_LEN];
 	char dsq_id_buf[19] = "(n/a)";
@@ -4455,7 +4523,7 @@ static void scx_dump_task(struct seq_buf *s, struct task_struct *p, char marker,
 
 	seq_buf_printf(s, "\n %c%c %s[%d] %+ldms\n",
 		       marker, task_state_to_char(p), p->comm, p->pid,
-		       jiffies_delta_msecs(p->scx.runnable_at, now));
+		       jiffies_delta_msecs(p->scx.runnable_at, dctx->at_jiffies));
 	seq_buf_printf(s, "      scx_state/flags=%u/0x%x dsq_flags=0x%x ops_state/qseq=%lu/%lu\n",
 		       scx_get_task_state(p),
 		       p->scx.flags & ~SCX_TASK_STATE_MASK,
@@ -4464,19 +4532,33 @@ static void scx_dump_task(struct seq_buf *s, struct task_struct *p, char marker,
 		       ops_state >> SCX_OPSS_QSEQ_SHIFT);
 	seq_buf_printf(s, "      sticky/holding_cpu=%d/%d dsq_id=%s\n",
 		       p->scx.sticky_cpu, p->scx.holding_cpu, dsq_id_buf);
-	seq_buf_printf(s, "      cpus=%*pb\n\n", cpumask_pr_args(p->cpus_ptr));
+	seq_buf_printf(s, "      cpus=%*pb\n", cpumask_pr_args(p->cpus_ptr));
+
+	if (SCX_HAS_OP(dump_task)) {
+		ops_dump_init(s, "    ");
+		SCX_CALL_OP(SCX_KF_REST, dump_task, dctx, p);
+		ops_dump_exit();
+	}
 
 	bt_len = stack_trace_save_tsk(p, bt, SCX_EXIT_BT_LEN, 1);
-
-	avail = seq_buf_get_buf(s, &buf);
-	used = stack_trace_snprint(buf, avail, bt, bt_len, 3);
-	seq_buf_commit(s, used < avail ? used : -1);
+	if (bt_len) {
+		seq_buf_putc(s, '\n');
+		avail = seq_buf_get_buf(s, &buf);
+		used = stack_trace_snprint(buf, avail, bt, bt_len, 3);
+		seq_buf_commit(s, used < avail ? used : -1);
+	}
 }
 
 static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 {
-	const char trunc_marker[] = "\n\n~~~~ TRUNCATED ~~~~\n";
-	unsigned long now = jiffies;
+	static const char trunc_marker[] = "\n\n~~~~ TRUNCATED ~~~~\n";
+	struct scx_dump_ctx dctx = {
+		.kind = ei->kind,
+		.exit_code = ei->exit_code,
+		.reason = ei->reason,
+		.at_ns = ktime_get_ns(),
+		.at_jiffies = jiffies,
+	};
 	struct seq_buf s;
 	size_t avail, used;
 	char *buf;
@@ -4494,45 +4576,82 @@ static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 	used = stack_trace_snprint(buf, avail, ei->bt, ei->bt_len, 1);
 	seq_buf_commit(&s, used < avail ? used : -1);
 
-	seq_buf_printf(&s, "\nRunqueue states\n");
-	seq_buf_printf(&s, "---------------\n");
+	if (SCX_HAS_OP(dump)) {
+		ops_dump_init(&s, "");
+		SCX_CALL_OP(SCX_KF_UNLOCKED, dump, &dctx);
+		ops_dump_exit();
+	}
+
+	seq_buf_printf(&s, "\nCPU states\n");
+	seq_buf_printf(&s, "----------\n");
 
 	for_each_possible_cpu(cpu) {
 		struct rq *rq = cpu_rq(cpu);
 		struct rq_flags rf;
 		struct task_struct *p;
+		struct seq_buf ns;
+		bool idle;
 
 		rq_lock(rq, &rf);
 
-		if (list_empty(&rq->scx.runnable_list) &&
-		    rq->curr->sched_class == &idle_sched_class)
+		idle = list_empty(&rq->scx.runnable_list) &&
+			rq->curr->sched_class == &idle_sched_class;
+
+		if (idle && !SCX_HAS_OP(dump_cpu))
 			goto next;
 
-		seq_buf_printf(&s, "\nCPU %-4d: nr_run=%u flags=0x%x cpu_rel=%d ops_qseq=%lu pnt_seq=%lu\n",
+		/*
+		 * We don't yet know whether ops.dump_cpu() will produce output
+		 * and we may want to skip the default CPU dump if it doesn't.
+		 * Use a nested seq_buf to generate the standard dump so that we
+		 * can decide whether to commit later.
+		 */
+		avail = seq_buf_get_buf(&s, &buf);
+		seq_buf_init(&ns, buf, avail);
+
+		seq_buf_printf(&ns, "\nCPU %-4d: nr_run=%u flags=0x%x cpu_rel=%d ops_qseq=%lu pnt_seq=%lu\n",
 			       cpu, rq->scx.nr_running, rq->scx.flags,
 			       rq->scx.cpu_released, rq->scx.ops_qseq,
 			       rq->scx.pnt_seq);
-		seq_buf_printf(&s, "          curr=%s[%d] class=%ps\n",
+		seq_buf_printf(&ns, "          curr=%s[%d] class=%ps\n",
 			       rq->curr->comm, rq->curr->pid,
 			       rq->curr->sched_class);
 		if (!cpumask_empty(rq->scx.cpus_to_kick))
-			seq_buf_printf(&s, "  cpus_to_kick   : %*pb\n",
+			seq_buf_printf(&ns, "  cpus_to_kick   : %*pb\n",
 				       cpumask_pr_args(rq->scx.cpus_to_kick));
 		if (!cpumask_empty(rq->scx.cpus_to_kick_if_idle))
-			seq_buf_printf(&s, "  idle_to_kick   : %*pb\n",
+			seq_buf_printf(&ns, "  idle_to_kick   : %*pb\n",
 				       cpumask_pr_args(rq->scx.cpus_to_kick_if_idle));
 		if (!cpumask_empty(rq->scx.cpus_to_preempt))
-			seq_buf_printf(&s, "  cpus_to_preempt: %*pb\n",
+			seq_buf_printf(&ns, "  cpus_to_preempt: %*pb\n",
 				       cpumask_pr_args(rq->scx.cpus_to_preempt));
 		if (!cpumask_empty(rq->scx.cpus_to_wait))
-			seq_buf_printf(&s, "  cpus_to_wait   : %*pb\n",
+			seq_buf_printf(&ns, "  cpus_to_wait   : %*pb\n",
 				       cpumask_pr_args(rq->scx.cpus_to_wait));
 
+		used = seq_buf_used(&ns);
+		if (SCX_HAS_OP(dump_cpu)) {
+			ops_dump_init(&ns, "  ");
+			SCX_CALL_OP(SCX_KF_REST, dump_cpu, &dctx, cpu, idle);
+			ops_dump_exit();
+		}
+
+		/*
+		 * If idle && nothing generated by ops.dump_cpu(), there's
+		 * nothing interesting. Skip.
+		 */
+		if (idle && used == seq_buf_used(&ns))
+			goto next;
+
+		seq_buf_commit(&s, seq_buf_used(&ns));
+		if (seq_buf_has_overflowed(&ns))
+			seq_buf_set_overflow(&s);
+
 		if (rq->curr->sched_class == &ext_sched_class)
-			scx_dump_task(&s, rq->curr, '*', now);
+			scx_dump_task(&s, &dctx, rq->curr, '*');
 
 		list_for_each_entry(p, &rq->scx.runnable_list, scx.runnable_node)
-			scx_dump_task(&s, p, ' ', now);
+			scx_dump_task(&s, &dctx, p, ' ');
 	next:
 		rq_unlock(rq, &rf);
 	}
@@ -6239,6 +6358,54 @@ __bpf_kfunc void scx_bpf_error_bstr(char *fmt, unsigned long long *data,
 }
 
 /**
+ * scx_bpf_dump - Generate extra debug dump specific to the BPF scheduler
+ * @fmt: format string
+ * @data: format string parameters packaged using ___bpf_fill() macro
+ * @data__sz: @data len, must end in '__sz' for the verifier
+ *
+ * To be called through scx_bpf_dump() helper from ops.dump(), dump_cpu() and
+ * dump_task() to generate extra debug dump specific to the BPF scheduler.
+ *
+ * The extra dump may be multiple lines. A single line may be split over
+ * multiple calls. The last line is automatically terminated.
+ */
+__bpf_kfunc void scx_bpf_dump_bstr(char *fmt, unsigned long long *data,
+				   u32 data__sz)
+{
+	struct seq_buf *s = scx_dump_seq_buf;
+	char *msg, *p;
+
+	if (raw_smp_processor_id() != scx_dump_cpu) {
+		scx_ops_error("scx_bpf_dump() must only be called from ops.dump() and friends");
+		return;
+	}
+
+	lockdep_assert_irqs_disabled();
+
+	msg = bstr_format(fmt, data, data__sz);
+	if (IS_ERR(msg)) {
+		seq_buf_printf(s, "%s[!] (\"%s\", %p, %u) failed to format\n",
+			       scx_dump_prefix, fmt, data, data__sz);
+		return;
+	}
+
+	if (msg[0] == '\0')
+		return;
+
+	if (scx_dump_last == '\0') {
+		seq_buf_putc(s, '\n');
+		scx_dump_last = '\n';
+	}
+
+	for (p = msg; *p != '\0'; p++) {
+		if (scx_dump_last == '\n')
+			seq_buf_printf(s, "%s", scx_dump_prefix);
+		seq_buf_putc(s, *p);
+		scx_dump_last = *p;
+	}
+}
+
+/**
  * scx_bpf_cpuperf_cap - Query the maximum relative capacity of a CPU
  * @cpu: CPU of interest
  *
@@ -6556,6 +6723,7 @@ BTF_ID_FLAGS(func, bpf_iter_scx_dsq_next, KF_ITER_NEXT | KF_RET_NULL)
 BTF_ID_FLAGS(func, bpf_iter_scx_dsq_destroy, KF_ITER_DESTROY)
 BTF_ID_FLAGS(func, scx_bpf_exit_bstr, KF_TRUSTED_ARGS)
 BTF_ID_FLAGS(func, scx_bpf_error_bstr, KF_TRUSTED_ARGS)
+BTF_ID_FLAGS(func, scx_bpf_dump_bstr, KF_TRUSTED_ARGS)
 BTF_ID_FLAGS(func, scx_bpf_cpuperf_cap)
 BTF_ID_FLAGS(func, scx_bpf_cpuperf_cur)
 BTF_ID_FLAGS(func, scx_bpf_cpuperf_set)
