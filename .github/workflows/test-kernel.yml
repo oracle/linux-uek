@@ -46,5 +46,11 @@ jobs:
       # Build the in-kernel schedulers
       - run: make -j $(nproc) -C tools/sched_ext
 
+      # Setup KVM support
+      - run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       # Test the schedulers inside the recompile kernel
       - run: .github/workflows/run-schedulers
