@@ -74,7 +74,6 @@ enum {
 	MLX5_SET_HCA_CAP_OP_MOD_GENERAL_DEVICE        = 0x0,
 	MLX5_SET_HCA_CAP_OP_MOD_ODP                   = 0x2,
 	MLX5_SET_HCA_CAP_OP_MOD_ATOMIC                = 0x3,
-	MLX5_SET_HCA_CAP_OP_MOD_ROCE                  = 0x4,
 };
 
 enum {
@@ -930,9 +929,7 @@ enum {
 
 struct mlx5_ifc_roce_cap_bits {
 	u8         roce_apm[0x1];
-	u8         reserved_at_1[0x3];
-	u8         sw_r_roce_src_udp_port[0x1];
-	u8         reserved_at_5[0x19];
+	u8         reserved_at_1[0x1d];
 	u8	   qp_ts_format[0x2];
 
 	u8         reserved_at_20[0x60];
