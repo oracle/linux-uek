@@ -31,7 +31,7 @@ function runtest() {
 
     rm -f /tmp/output
     (timeout --foreground --preserve-status ${GUEST_TIMEOUT} \
-        vng --force-9p --disable-microvm --verbose -- \
+        vng --force-9p --verbose -- \
             "timeout --foreground --preserve-status ${TEST_TIMEOUT} ${bin}" \
                 2>&1 </dev/null || true) | tee /tmp/output
 }
@@ -46,11 +46,12 @@ function runtest() {
 #
 for sched in $(find tools/sched_ext/build/bin -type f -executable); do
     runtest "${sched}"
-    sed -n -e '/\bBUG:/q1' \
-           -e '/\bWARNING:/q1' \
-           -e '/\berror\b/Iq1' \
-           -e '/\bstall/Iq1' \
-           -e '/\btimeout\b/Iq1' /tmp/output
+    grep -v " Speculative Return Stack Overflow" /tmp/output | \
+        sed -n -e '/\bBUG:/q1' \
+            -e '/\bWARNING:/q1' \
+            -e '/\berror\b/Iq1' \
+            -e '/\bstall/Iq1' \
+            -e '/\btimeout\b/Iq1'
     res=$?
     if [ ${res} -ne 0 ]; then
         echo "FAIL: ${sched}"
