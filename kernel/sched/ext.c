@@ -4213,9 +4213,13 @@ static void scx_ops_bypass(bool bypass)
 			return;
 	}
 
-	mutex_lock(&scx_ops_enable_mutex);
+	/*
+	 * We need to guarantee that no tasks are on the BPF scheduler while
+	 * bypassing. Either we see enabled or the enable path sees the
+	 * increased bypass_depth before moving tasks to SCX.
+	 */
 	if (!scx_enabled())
-		goto out_unlock;
+		return;
 
 	/*
 	 * No task property is changing. We just need to make sure all currently
@@ -4254,9 +4258,6 @@ static void scx_ops_bypass(bool bypass)
 		/* kick to restore ticks */
 		resched_cpu(cpu);
 	}
-
-out_unlock:
-	mutex_unlock(&scx_ops_enable_mutex);
 }
 
 static void free_exit_info(struct scx_exit_info *ei)
