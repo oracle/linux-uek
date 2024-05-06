@@ -716,6 +716,7 @@ static void blk_account_io_merge(struct request *req)
 		part = req->part;
 
 		part_dec_in_flight(req->q, part, rq_data_dir(req));
+		exadata_sq_disk_dec_inflight(req->q, part);
 
 		hd_struct_put(part);
 		part_stat_unlock();

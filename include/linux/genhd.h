@@ -134,7 +134,7 @@ struct hd_struct {
 	struct percpu_ref ref;
 	struct rcu_work rcu_work;
  
-	UEK_KABI_RESERVE(1)
+	UEK_KABI_USE(1, atomic_t sq_inflight_io)
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)

@@ -38,6 +38,7 @@
 #include <linux/debugfs.h>
 #include <linux/bpf.h>
 #include <linux/psi.h>
+#include <linux/uek.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/block.h>
@@ -70,6 +71,22 @@ struct kmem_cache *blk_requestq_cachep;
  * Controlling structure to kblockd
  */
 static struct workqueue_struct *kblockd_workqueue;
+
+bool is_exadata_sq_disk(struct request_queue *q) {
+       return static_branch_unlikely(&on_exadata) && (q->nr_hw_queues == 1);
+}
+
+void exadata_sq_disk_inc_inflight(struct request_queue *q, struct hd_struct *part) {
+       if (is_exadata_sq_disk(q))
+               atomic_inc(&part->sq_inflight_io);
+}
+
+void exadata_sq_disk_dec_inflight(struct request_queue *q, struct hd_struct *part) {
+       if (is_exadata_sq_disk(q)) {
+               if (atomic_dec_return(&part->sq_inflight_io) < 0)
+                       atomic_set(&part->sq_inflight_io, 0);
+       }
+}
 
 /**
  * blk_queue_flag_set - atomically set a queue flag
@@ -1378,6 +1395,7 @@ void blk_account_io_done(struct request *req, u64 now)
 		part_stat_inc(part, ios[sgrp]);
 		part_stat_add(part, nsecs[sgrp], now - req->start_time_ns);
 		part_dec_in_flight(req->q, part, rq_data_dir(req));
+		exadata_sq_disk_dec_inflight(req->q, part);
 
 		hd_struct_put(part);
 		part_stat_unlock();
@@ -1388,6 +1406,7 @@ void blk_account_io_start(struct request *rq, bool new_io)
 {
 	struct hd_struct *part;
 	int rw = rq_data_dir(rq);
+	int inflight_io = 1;
 
 	if (!blk_do_io_stat(rq))
 		return;
@@ -1413,9 +1432,17 @@ void blk_account_io_start(struct request *rq, bool new_io)
 		}
 		part_inc_in_flight(rq->q, part, rw);
 		rq->part = part;
+		if (is_exadata_sq_disk(rq->q)) {
+			inflight_io = atomic_inc_return(&part->sq_inflight_io);
+			/* Bring stamp to current to avoid disk idle time be accounted
+			* into io_ticks.
+			*/
+			if (inflight_io == 1)
+				part->stamp = blk_get_iostat_ticks(rq->q);
+		}
 	}
 
-	update_io_ticks(part, blk_get_iostat_ticks(rq->q), false);
+	update_io_ticks(part, blk_get_iostat_ticks(rq->q), inflight_io > 1);
 
 	part_stat_unlock();
 }

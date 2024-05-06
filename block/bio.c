@@ -1774,15 +1774,22 @@ again:
 void generic_start_io_acct(struct request_queue *q, int op,
 			   unsigned long sectors, struct hd_struct *part)
 {
+	int inflight_io = 1;
 	const int sgrp = op_stat_group(op);
 
 	part_stat_lock();
-
-	update_io_ticks(part, blk_get_iostat_ticks(q), false);
+	if (is_exadata_sq_disk(q)) {
+		inflight_io = atomic_inc_return(&part->sq_inflight_io);
+		/* Bring stamp to current to avoid disk idle time be accounted
+		 * into io_ticks.
+		 */
+		if (inflight_io == 1)
+			part->stamp = blk_get_iostat_ticks(q);
+	}
+	update_io_ticks(part, blk_get_iostat_ticks(q), inflight_io > 1);
 	part_stat_inc(part, ios[sgrp]);
 	part_stat_add(part, sectors[sgrp], sectors);
 	part_inc_in_flight(q, part, op_is_write(op));
-
 	part_stat_unlock();
 }
 EXPORT_SYMBOL(generic_start_io_acct);
@@ -1803,6 +1810,7 @@ void generic_end_io_acct(struct request_queue *q, int req_op,
 	update_io_ticks(part, now, true);
 	part_stat_add(part, nsecs[sgrp], duration_ns);
 	part_dec_in_flight(q, part, op_is_write(req_op));
+	exadata_sq_disk_dec_inflight(q, part);
 
 	part_stat_unlock();
 }

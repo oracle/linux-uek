@@ -349,4 +349,8 @@ void blk_queue_free_zone_bitmaps(struct request_queue *q);
 static inline void blk_queue_free_zone_bitmaps(struct request_queue *q) {}
 #endif
 
+bool is_exadata_sq_disk(struct request_queue *q);
+void exadata_sq_disk_inc_inflight(struct request_queue *q, struct hd_struct *part);
+void exadata_sq_disk_dec_inflight(struct request_queue *q, struct hd_struct *part);
+
 #endif /* BLK_INTERNAL_H */
