@@ -38,7 +38,6 @@
 #include <linux/debugfs.h>
 #include <linux/bpf.h>
 #include <linux/psi.h>
-#include <linux/uek.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/block.h>
@@ -1387,9 +1386,6 @@ void blk_account_io_done(struct request *req, u64 now)
 
 void blk_account_io_start(struct request *rq, bool new_io)
 {
-	bool inflight = false;
-	struct blk_mq_hw_ctx *hctx;
-
 	struct hd_struct *part;
 	int rw = rq_data_dir(rq);
 
@@ -1419,12 +1415,7 @@ void blk_account_io_start(struct request *rq, bool new_io)
 		rq->part = part;
 	}
 
-	if (static_branch_unlikely(&on_exadata) &&
-	   (rq->q->nr_hw_queues == 1)) {
-		hctx = rq->q->queue_hw_ctx[0];
-		inflight = blk_mq_hctx_has_tags(hctx);
-	}
-	update_io_ticks(part, blk_get_iostat_ticks(rq->q), inflight);
+	update_io_ticks(part, blk_get_iostat_ticks(rq->q), false);
 
 	part_stat_unlock();
 }
