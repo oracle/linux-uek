@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2021 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2025, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -539,13 +539,16 @@ static void rds_conn_shutdown_check_wait(struct work_struct *work)
 	if (!test_bit(RDS_SHUTDOWN_WAITING, &cp->cp_flags))
 		return;
 
-	if (!test_bit(RDS_SHUTDOWN_WAIT1_DONE, &cp->cp_flags)) {
-		if (test_bit(RDS_IN_XMIT, &cp->cp_flags) ||
-		    test_and_set_bit(RDS_RECV_REFILL, &cp->cp_flags))
+	if (!test_bit(RDS_SHUTDOWN_WAIT_XMIT_DONE, &cp->cp_flags)) {
+		if (test_and_set_bit(RDS_IN_XMIT, &cp->cp_flags))
 			return;
+		set_bit_mb(RDS_SHUTDOWN_WAIT_XMIT_DONE, &cp->cp_flags);
+	}
 
-		set_bit(RDS_SHUTDOWN_WAIT1_DONE, &cp->cp_flags);
-		smp_mb__after_atomic();
+	if (!test_bit(RDS_SHUTDOWN_WAIT_RECV_DONE, &cp->cp_flags)) {
+		if (test_and_set_bit(RDS_RECV_REFILL, &cp->cp_flags))
+			return;
+		set_bit_mb(RDS_SHUTDOWN_WAIT_RECV_DONE, &cp->cp_flags);
 	}
 
 	if (atomic_read(&cp->cp_rdma_map_pending) != 0)
@@ -650,7 +653,8 @@ void rds_conn_init_shutdown(struct rds_conn_path *cp)
 		}
 		mutex_unlock(&cp->cp_cm_lock);
 
-		clear_bit(RDS_SHUTDOWN_WAIT1_DONE, &cp->cp_flags);
+		clear_bit(RDS_SHUTDOWN_WAIT_XMIT_DONE, &cp->cp_flags);
+		clear_bit(RDS_SHUTDOWN_WAIT_RECV_DONE, &cp->cp_flags);
 		clear_bit(RDS_SHUTDOWN_PREPARE_DONE, &cp->cp_flags);
 		set_bit(RDS_SHUTDOWN_WAITING, &cp->cp_flags);
 		smp_mb__after_atomic();
