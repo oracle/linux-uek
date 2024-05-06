@@ -6345,7 +6345,7 @@ __bpf_kfunc void scx_bpf_exit_bstr(s64 exit_code, char *fmt,
 	local_irq_save(flags);
 	msg = bstr_format(fmt, data, data__sz);
 	if (!IS_ERR(msg))
-		scx_ops_exit_kind(SCX_EXIT_UNREG_BPF, exit_code, fmt, "%s", msg);
+		scx_ops_exit_kind(SCX_EXIT_UNREG_BPF, exit_code, "%s", msg);
 	local_irq_restore(flags);
 }
 
@@ -6367,7 +6367,7 @@ __bpf_kfunc void scx_bpf_error_bstr(char *fmt, unsigned long long *data,
 	local_irq_save(flags);
 	msg = bstr_format(fmt, data, data__sz);
 	if (!IS_ERR(msg))
-		scx_ops_exit_kind(SCX_EXIT_ERROR_BPF, 0, fmt, "%s", msg);
+		scx_ops_exit_kind(SCX_EXIT_ERROR_BPF, 0, "%s", msg);
 	local_irq_restore(flags);
 }
 
