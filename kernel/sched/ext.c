@@ -303,9 +303,10 @@ struct sched_ext_ops {
 	 *
 	 * This and ->enqueue() are related but not coupled. This operation
 	 * notifies @p's state transition and may not be followed by ->enqueue()
-	 * e.g. when @p is being dispatched to a remote CPU. Likewise, a task
-	 * may be ->enqueue()'d without being preceded by this operation e.g.
-	 * after exhausting its slice.
+	 * e.g. when @p is being dispatched to a remote CPU, or when @p is
+	 * being enqueued on a CPU experiencing a hotplug event. Likewise, a
+	 * task may be ->enqueue()'d without being preceded by this operation
+	 * e.g. after exhausting its slice.
 	 */
 	void (*runnable)(struct task_struct *p, u64 enq_flags);
 
@@ -597,8 +598,8 @@ struct sched_ext_ops {
 	 * cpu_online - A CPU became online
 	 * @cpu: CPU which just came up
 	 *
-	 * @cpu just came online. @cpu doesn't call ops.enqueue() or run tasks
-	 * associated with other CPUs beforehand.
+	 * @cpu just came online. @cpu will not call ops.enqueue() or
+	 * ops.dispatch(), nor run tasks associated with other CPUs beforehand.
 	 */
 	void (*cpu_online)(s32 cpu);
 
@@ -606,8 +607,8 @@ struct sched_ext_ops {
 	 * cpu_offline - A CPU is going offline
 	 * @cpu: CPU which is going offline
 	 *
-	 * @cpu is going offline. @cpu doesn't call ops.enqueue() or run tasks
-	 * associated with other CPUs afterwards.
+	 * @cpu is going offline. @cpu will not call ops.enqueue() or
+	 * ops.dispatch(), nor run tasks associated with other CPUs afterwards.
 	 */
 	void (*cpu_offline)(s32 cpu);
 
