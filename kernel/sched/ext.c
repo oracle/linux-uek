@@ -925,8 +925,8 @@ static DEFINE_PER_CPU(struct task_struct *, direct_dispatch_task);
  *
  * A hotplugged CPU may begin scheduling tasks before the core scheduler will
  * call into rq_online_scx(). Track whether we've had a chance to invoke
- * ops.cpu_online() so we can dispatch locally until the scheduler knows about
- * the hotplug event.
+ * ops.cpu_online() so we can skip invoking ops.enqueue() or ops.dispatch() on
+ * that CPU until the scheduler knows about the hotplug event.
  */
 static DEFINE_PER_CPU(bool, scx_cpu_online);
 
@@ -1785,11 +1785,7 @@ static void direct_dispatch(struct task_struct *p, u64 enq_flags)
 
 static bool test_rq_online(struct rq *rq)
 {
-#ifdef CONFIG_SMP
-	return rq->online;
-#else
-	return true;
-#endif
+	return per_cpu(scx_cpu_online, cpu_of(rq));
 }
 
 static void do_enqueue_task(struct rq *rq, struct task_struct *p, u64 enq_flags,
@@ -2572,7 +2568,7 @@ static int balance_one(struct rq *rq, struct task_struct *prev,
 		goto has_tasks;
 
 	if (!SCX_HAS_OP(dispatch) || scx_ops_bypassing() ||
-			unlikely(!*this_cpu_ptr(&scx_cpu_online)))
+	    unlikely(!test_rq_online(rq)))
 		goto out;
 
 	dspc->rq = rq;
@@ -3213,12 +3209,12 @@ static void rq_online_scx(struct rq *rq, enum rq_onoff_reason reason)
 {
 	if (reason == RQ_ONOFF_HOTPLUG)
 		handle_hotplug(rq, true);
-	__this_cpu_write(scx_cpu_online, true);
+	per_cpu(scx_cpu_online, cpu_of(rq)) = true;
 }
 
 static void rq_offline_scx(struct rq *rq, enum rq_onoff_reason reason)
 {
-	__this_cpu_write(scx_cpu_online, false);
+	per_cpu(scx_cpu_online, cpu_of(rq)) = false;
 	if (reason == RQ_ONOFF_HOTPLUG)
 		handle_hotplug(rq, false);
 }
