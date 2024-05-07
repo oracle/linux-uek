@@ -41,7 +41,6 @@
 #include <linux/psi.h>
 #include <linux/sched/sysctl.h>
 #include <linux/blk-crypto.h>
-#include <linux/uek.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/block.h>
@@ -1292,9 +1291,6 @@ void blk_account_io_done(struct request *req, u64 now)
 
 void blk_account_io_start(struct request *rq)
 {
-	bool inflight = false;
-	struct blk_mq_hw_ctx *hctx;
-
 	if (!blk_do_io_stat(rq))
 		return;
 
@@ -1305,14 +1301,7 @@ void blk_account_io_start(struct request *rq)
 		rq->part = rq->rq_disk->part0;
 
 	part_stat_lock();
-
-	if (static_branch_unlikely(&on_exadata) &&
-	    (rq->q->nr_hw_queues == 1)) {
-		hctx = rq->q->queue_hw_ctx[0];
-		inflight = blk_mq_hctx_has_tags(hctx);
-	}
-
-	update_io_ticks(rq->part, blk_get_iostat_ticks(rq->q), inflight);
+	update_io_ticks(rq->part, blk_get_iostat_ticks(rq->q), false);
 	part_stat_unlock();
 }
 
@@ -1320,20 +1309,10 @@ static unsigned long __part_start_io_acct(struct block_device *part,
 					  unsigned int sectors, unsigned int op,
 					  unsigned long start_time)
 {
-	bool inflight = false;
-	struct blk_mq_hw_ctx *hctx;
 	const int sgrp = op_stat_group(op);
 
 	part_stat_lock();
-
-	if (static_branch_unlikely(&on_exadata) &&
-	    (part->bd_disk->queue->nr_hw_queues == 1)) {
-               hctx = part->bd_disk->queue->queue_hw_ctx[0];
-               inflight = blk_mq_hctx_has_tags(hctx);
-       }
-
-	update_io_ticks(part, start_time, inflight);
-
+	update_io_ticks(part, start_time, false);
 	part_stat_inc(part, ios[sgrp]);
 	part_stat_add(part, sectors[sgrp], sectors);
 	part_stat_local_inc(part, in_flight[op_is_write(op)]);

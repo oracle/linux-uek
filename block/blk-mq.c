@@ -2565,44 +2565,6 @@ static bool blk_mq_hctx_has_requests(struct blk_mq_hw_ctx *hctx)
 	return data.has_rq;
 }
 
-struct tags_iter_data {
-       struct blk_mq_hw_ctx *hctx;
-       unsigned tags;
-       bool has_tags;
-};
-
-static bool blk_mq_hctx_has_tag(struct request *rq, void *data, bool reserved)
-{
-       struct tags_iter_data *iter_data = data;
-
-       if (rq->mq_hctx != iter_data->hctx)
-               return true;
-
-       iter_data->tags++;
-
-       if (iter_data->tags > 1){
-               iter_data->has_tags = true;
-               return false;
-       }
-       return true;
-}
-
-bool blk_mq_hctx_has_tags(struct blk_mq_hw_ctx *hctx)
-{
-       struct tags_iter_data data = {
-               .hctx = hctx,
-               .has_tags = false,
-               .tags = 0,
-       };
-
-       if (hctx->sched_tags)
-               blk_mq_all_tag_iter(hctx->sched_tags, blk_mq_hctx_has_tag, &data);
-       if (hctx->tags && !data.has_tags)
-               blk_mq_all_tag_iter(hctx->tags, blk_mq_hctx_has_tag, &data);
-
-       return data.has_tags;
-}
-
 static inline bool blk_mq_last_cpu_in_hctx(unsigned int cpu,
 		struct blk_mq_hw_ctx *hctx)
 {
