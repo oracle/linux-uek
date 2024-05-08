@@ -4,6 +4,10 @@
 
 #ifndef __ASSEMBLER__
 
+#if defined(CONFIG_ARM_GIC_V3_ITS)
+#define NR_IRQS (1 << 19)
+#endif
+
 #include <asm-generic/irq.h>
 #include <linux/irqchip/arm-gic-common.h>
 
