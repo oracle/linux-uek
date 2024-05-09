@@ -4516,18 +4516,23 @@ static void scx_ops_disable(enum scx_exit_kind kind)
 
 static void dump_newline(struct seq_buf *s)
 {
-	seq_buf_putc(s, '\n');
+	/* @s may be zero sized and seq_buf triggers WARN if so */
+	if (s->size)
+		seq_buf_putc(s, '\n');
 }
 
 static __printf(2, 3) void dump_line(struct seq_buf *s, const char *fmt, ...)
 {
 	va_list args;
 
-	va_start(args, fmt);
-	seq_buf_vprintf(s, fmt, args);
-	va_end(args);
+	/* @s may be zero sized and seq_buf triggers WARN if so */
+	if (s->size) {
+		va_start(args, fmt);
+		seq_buf_vprintf(s, fmt, args);
+		va_end(args);
 
-	seq_buf_putc(s, '\n');
+		seq_buf_putc(s, '\n');
+	}
 }
 
 static void dump_stack_trace(struct seq_buf *s, const char *prefix,
@@ -4739,9 +4744,15 @@ static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 		if (idle && used == seq_buf_used(&ns))
 			goto next;
 
-		seq_buf_commit(&s, seq_buf_used(&ns));
-		if (seq_buf_has_overflowed(&ns))
-			seq_buf_set_overflow(&s);
+		/*
+		 * $s may already have overflowed when $ns was created. If so,
+		 * calling commit on it will trigger BUG.
+		 */
+		if (avail) {
+			seq_buf_commit(&s, seq_buf_used(&ns));
+			if (seq_buf_has_overflowed(&ns))
+				seq_buf_set_overflow(&s);
+		}
 
 		if (rq->curr->sched_class == &ext_sched_class)
 			scx_dump_task(&s, &dctx, rq->curr, '*');
