@@ -1301,7 +1301,6 @@ static void rds_sock_info(struct socket *sock, unsigned int len,
 			  struct rds_info_iterator *iter,
 			  struct rds_info_lengths *lens)
 {
-	struct rds_info_socket sinfo;
 	struct rds_sock *rs;
 
 	len /= sizeof(struct rds_info_socket);
@@ -1312,6 +1311,8 @@ static void rds_sock_info(struct socket *sock, unsigned int len,
 		goto out;
 
 	list_for_each_entry(rs, &rds_sock_list, rs_item) {
+		struct rds_info_socket sinfo = {};
+
 		sinfo.sndbuf = rds_sk_sndbuf(rs);
 		sinfo.rcvbuf = rds_sk_rcvbuf(rs);
 		sinfo.bound_addr = rs->rs_bound_addr_v4;
@@ -1338,7 +1339,6 @@ static void rds6_sock_info(struct socket *sock, unsigned int len,
 			   struct rds_info_iterator *iter,
 			   struct rds_info_lengths *lens)
 {
-	struct rds6_info_socket sinfo6;
 	struct rds_sock *rs;
 
 	len /= sizeof(struct rds6_info_socket);
@@ -1349,6 +1349,8 @@ static void rds6_sock_info(struct socket *sock, unsigned int len,
 		goto out;
 
 	list_for_each_entry(rs, &rds_sock_list, rs_item) {
+		struct rds6_info_socket sinfo6 = {};
+
 		sinfo6.sndbuf = rds_sk_sndbuf(rs);
 		sinfo6.rcvbuf = rds_sk_rcvbuf(rs);
 		sinfo6.bound_addr = rs->rs_bound_addr;
