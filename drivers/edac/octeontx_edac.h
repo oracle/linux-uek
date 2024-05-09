@@ -20,7 +20,7 @@
 #define CN10K_EDAC_INJECT	(0xc2000b10)
 #define CN10K_DSS_EINJ_CAP	(0x20000000)
 
-#define SIZE	256
+#define SIZE	CPER_REC_LEN
 #define NAME_SZ	8
 
 struct cper_sec_plat_gic {

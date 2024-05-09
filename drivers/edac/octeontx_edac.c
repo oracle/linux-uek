@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Marvell OcteonTx2, CN10K EDAC Firmware First RAS driver
+ * The driver supports SDE Interface notification
+ * The driver supports error injection via SMC call
  *
  * Copyright (C) 2022 Marvell.
  */
@@ -8,6 +10,7 @@
 #include <linux/arm_sdei.h>
 #include <linux/arm-smccc.h>
 #include <linux/sys_soc.h>
+#include <linux/cper.h>
 #include "edac_module.h"
 #include "octeontx_edac.h"
 
@@ -33,20 +36,17 @@ static const struct of_device_id octeontx_edac_ghes_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, octeontx_edac_ghes_of_match);
 
-
 static const struct of_device_id tad_of_match[] = {
 	{.name = "tad",},
 	{},
 };
 MODULE_DEVICE_TABLE(of, tad_of_match);
 
-
 static const struct of_device_id dss_of_match[] = {
 	{.name = "dss",},
 	{},
 };
 MODULE_DEVICE_TABLE(of, dss_of_match);
-
 
 static const struct of_device_id mdc_of_match[] = {
 	{.name = "mdc",},
@@ -183,8 +183,9 @@ static void octeontx_edac_inject_error(struct octeontx_edac_pvt *pvt)
 			otx_printk(KERN_DEBUG, "call mismatch\n");
 	}
 
-	otx_printk(KERN_DEBUG, "%s: (0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx) -> e?0x%lx\n",
-			__func__, arg[0], arg[1], arg[2], arg[3], arg[4], res.a0);
+	otx_printk(KERN_DEBUG, "Inject: CPU%d: (0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx) 0x%lx\n",
+			smp_processor_id(),
+			arg[0], arg[1], arg[2], arg[3], arg[4], res.a0);
 }
 
 static ssize_t inject(struct octeontx_edac_pvt *pvt,
@@ -309,79 +310,21 @@ static enum hw_event_mc_err_type octeontx_edac_severity(int cper_sev)
 	return HW_EVENT_ERR_INFO;
 }
 
-static const char * const mem_err_types[] = {
-	"unknown",
-	"no error",
-	"single-bit ECC",
-	"multi-bit ECC",
-	"single-symbol chipkill ECC",
-	"multi-symbol chipkill ECC",
-	"master abort",
-	"target abort",
-	"parity error",
-	"watchdog timeout",
-	"invalid address",
-	"mirror Broken",
-	"memory sparing",
-	"scrub corrected error",
-	"scrub uncorrected error",
-	"physical memory map-out event",
-	"unknown error",
-};
-
-static void octeontx_edac_make_error_desc(struct cper_sec_mem_err *err, u8 *msg, u32 size)
-{
-	char *p;
-	char *end;
-
-	p = msg;
-	end = msg + size;
-
-	if (err->validation_bits & CPER_MEM_VALID_ERROR_TYPE)
-		p += snprintf(p, end - p, "%s ", mem_err_types[err->error_type]);
-	if (err->validation_bits & CPER_MEM_VALID_ERROR_STATUS)
-		p += snprintf(p, end - p, "status:0x%llx ", err->error_status);
-	if (err->validation_bits & CPER_MEM_VALID_PA)
-		p += snprintf(p, end - p, "addr: 0x%llx ", err->physical_addr);
-	if (err->validation_bits & CPER_MEM_VALID_NODE)
-		p += snprintf(p, end - p, "node:%d ", err->node);
-	if (err->validation_bits & CPER_MEM_VALID_CARD)
-		p += snprintf(p, end - p, "card:%d ", err->card);
-	if (err->validation_bits & CPER_MEM_VALID_MODULE)
-		p += snprintf(p, end - p, "module:%d ", err->module);
-	if (err->validation_bits & CPER_MEM_VALID_RANK_NUMBER)
-		p += snprintf(p, end - p, "rank:%d ", err->rank);
-	if (err->validation_bits & CPER_MEM_VALID_BANK)
-		p += snprintf(p, end - p, "bank:%d ", err->bank);
-	if (err->validation_bits & CPER_MEM_VALID_DEVICE)
-		p += snprintf(p, end - p, "device:%d ", err->device);
-	if (err->validation_bits & CPER_MEM_VALID_ROW)
-		p += snprintf(p, end - p, "row:%d ", err->row);
-	if (err->validation_bits & CPER_MEM_VALID_COLUMN)
-		p += snprintf(p, end - p, "col:%d ", err->column);
-	if (err->validation_bits & CPER_MEM_VALID_BIT_POSITION)
-		p += snprintf(p, end - p, "bit_pos:%d ", err->bit_pos);
-	if (err->validation_bits & CPER_MEM_VALID_REQUESTOR_ID)
-		p += snprintf(p, end - p, "requestorID: 0x%llx ", err->requestor_id);
-	if (err->validation_bits & CPER_MEM_VALID_RESPONDER_ID)
-		p += snprintf(p, end - p, "responderID: 0x%llx ", err->responder_id);
-	if (err->validation_bits & CPER_MEM_VALID_TARGET_ID)
-		p += snprintf(p, end - p, "targetID: 0x%llx ", err->target_id);
-}
-
 static int octeontx_sdei_register(struct octeontx_edac *ghes, sdei_event_callback *cb)
 {
-	int ret = 0;
+	int err = 0;
 
-	ret = sdei_event_register(ghes->sdei_num, cb, ghes);
-	if (ret < 0) {
-		pr_err("Unable register SDEI\n");
-		return ret;
+	err = sdei_event_register(ghes->sdei_num, cb, ghes);
+	if (err) {
+		pr_err("Failed to register sdei-event #%d\n", ghes->sdei_num);
+		return err;
 	}
-	ret = sdei_event_enable(ghes->sdei_num);
-	if (ret < 0) {
-		pr_err("Unable enable SDEI\n");
-		return ret;
+
+	err = sdei_event_enable(ghes->sdei_num);
+	if (err) {
+		sdei_event_unregister(ghes->sdei_num);
+		pr_err("Failed to enable sdei-event #%d\n", ghes->sdei_num);
+		return err;
 	}
 	/*Ensure that reg updated*/
 	wmb();
@@ -391,20 +334,23 @@ static int octeontx_sdei_register(struct octeontx_edac *ghes, sdei_event_callbac
 
 static void octeontx_sdei_unregister(struct octeontx_edac *ghes)
 {
-	int ret = 0;
+	int err = 0;
 
-	ret = sdei_event_disable(ghes->sdei_num);
-	if (ret < 0)
-		pr_err("Unable disable SDEI\n");
+	err = sdei_event_disable(ghes->sdei_num);
+	if (err) {
+		pr_err("Failed to disable sdei-event #%d (%pe)\n",
+				ghes->sdei_num, ERR_PTR(err));
+		return;
+	}
 
-	ret = sdei_event_unregister(ghes->sdei_num);
-	if (ret < 0)
-		pr_err("Unable unregister SDEI\n");
+	err = sdei_event_unregister(ghes->sdei_num);
+	if (err)
+		pr_err("Failed to unregister sdei-event #%d (%pe)\n",
+				ghes->sdei_num, ERR_PTR(err));
 
 	/*Ensure that reg updated*/
 	wmb();
 }
-
 
 static int octeontx_mc_sdei_callback(u32 event_id, struct pt_regs *regs, void *arg)
 {
@@ -435,6 +381,62 @@ static int octeontx_cpu_sdei_callback(u32 event_id, struct pt_regs *regs, void *
 	return 0;
 }
 
+static void octeontx_edac_mem_msg(struct octeontx_ghes_record *rec, char msg[SIZE])
+{
+	struct cper_mem_err_compact cmem;
+	struct cper_sec_mem_err *err = &rec->mem;
+	u32 len = SIZE;
+	u32 n = 0;
+
+	cper_mem_err_pack(err, &cmem);
+	n += cper_mem_err_location(&cmem, msg);
+
+	if (err->validation_bits & CPER_MEM_VALID_ERROR_TYPE)
+		n += snprintf(msg + n, len - n, "%s ", cper_mem_err_type_str(err->error_type));
+	msg[n] = '\0';
+}
+
+static void octeontx_edac_gic_msg(struct octeontx_ghes_record *rec, char msg[SIZE])
+{
+	struct cper_sec_platform_err *plat_err = NULL;
+	struct cper_sec_plat_gic *gicerr = NULL;
+	u32 len = SIZE;
+	u32 n = 0;
+
+	plat_err = &rec->gic;
+	gicerr   = &plat_err->perr.gic;
+
+	n += scnprintf(msg + n, len - n, "vbits=0x%x ", gicerr->validation_bits);
+	n += scnprintf(msg + n, len - n, "type 0x%x sev %d code 0x%x ",
+			gicerr->error_type, gicerr->error_sev, gicerr->error_code);
+	n += scnprintf(msg + n, len - n, "misc0=0x%llx misc1 0x%llx addr 0x%llx ",
+			gicerr->misc0, gicerr->misc1, gicerr->erraddr);
+	msg[n] = '\0';
+}
+
+static void octeontx_edac_cpu_msg(struct octeontx_ghes_record *rec, char msg[SIZE])
+{
+	struct cper_sec_proc_arm *desc = NULL;
+	struct cper_arm_err_info *info = NULL;
+	u32 len = SIZE;
+	u32 n = 0;
+
+	desc = &rec->core.desc;
+	info = &rec->core.info;
+
+	n += scnprintf(msg + n, len - n, "%s ", rec->msg);
+	n += scnprintf(msg + n, len - n, "midr=0x%llx ", desc->midr);
+	if (desc->validation_bits & CPER_ARM_VALID_MPIDR)
+		n += scnprintf(msg + n, len - n, "mpidr=0x%llx ", desc->mpidr);
+	if (info->validation_bits & CPER_ARM_INFO_VALID_PHYSICAL_ADDR)
+		n += scnprintf(msg + n, len - n, "paddr=0x%llx ", info->physical_fault_addr);
+	if (info->validation_bits & CPER_ARM_INFO_VALID_VIRT_ADDR)
+		n += scnprintf(msg + n, len - n, "vaddr=0x%llx ", info->virt_fault_addr);
+	if (info->validation_bits & CPER_ARM_INFO_VALID_ERR_INFO)
+		n += scnprintf(msg + n, len - n, "info=0x%llx ", info->error_info);
+	msg[n] = '\0';
+}
+
 static void octeontx_edac_mc_wq(struct work_struct *work)
 {
 	struct delayed_work *dw = to_delayed_work(work);
@@ -463,6 +465,7 @@ loop:
 	memcpy_fromio(&rec, ring->records + tail, sizeof(rec));
 
 	type = octeontx_edac_severity(rec.error_severity);
+
 	if (type == HW_EVENT_ERR_FATAL || type == HW_EVENT_ERR_UNCORRECTED) {
 		if (IS_ENABLED(CONFIG_MEMORY_FAILURE))
 			memory_failure(PHYS_PFN(rec.mem.physical_addr), 0);
@@ -471,7 +474,7 @@ loop:
 				 PHYS_PFN(rec.mem.physical_addr));
 	}
 
-	octeontx_edac_make_error_desc(&rec.mem, msg, sizeof(msg));
+	octeontx_edac_mem_msg(&rec, msg);
 
 	++tail;
 	ring->tail = tail % ring->size;
@@ -490,6 +493,62 @@ exit:
 	mutex_unlock(&ghes->lock);
 }
 
+static void octeontx_edac_wq_handler(struct octeontx_edac *ghes,
+				struct edac_device_ctl_info *edac_dev)
+{
+	struct octeontx_ghes_ring *ring = ghes->ring;
+	struct octeontx_ghes_record rec;
+	enum hw_event_mc_err_type type;
+	u32 head = 0;
+	u32 tail = 0;
+	u32 inst = 0;
+	char msg[SIZE];
+
+	mutex_lock(&ghes->lock);
+
+loop:
+	head = ring->head;
+	tail = ring->tail;
+
+	/*Ensure that head updated*/
+	rmb();
+
+	if (head == tail)
+		goto exit;
+
+	memcpy_fromio(&rec, ring->records + tail, sizeof(rec));
+
+	type = octeontx_edac_severity(rec.error_severity);
+
+	if (!strcmp(ghes->name, gic_of_match[0].name)) {
+		octeontx_edac_gic_msg(&rec, msg);
+	} else if (!strcmp(ghes->name, tad_of_match[0].name) ||
+			!strcmp(ghes->name, mdc_of_match[0].name)) {
+		octeontx_edac_mem_msg(&rec, msg);
+	} else if (!strncmp(ghes->name, cpu_of_match[0].name, 4)) {
+		octeontx_edac_cpu_msg(&rec, msg);
+		if (kstrtoint(&ghes->name[4], 10, &inst) || inst > 255)
+			inst = 0;
+	}
+
+	++tail;
+	ring->tail = tail % ring->size;
+
+	/*Ensure that tail updated*/
+	wmb();
+
+	if (type == HW_EVENT_ERR_FATAL || type == HW_EVENT_ERR_UNCORRECTED)
+		edac_device_handle_ue(edac_dev, inst, 0, msg);
+	else
+		edac_device_handle_ce(edac_dev, inst, 0, msg);
+
+	if (head != tail)
+		goto loop;
+
+exit:
+	mutex_unlock(&ghes->lock);
+}
+
 static void octeontx_edac_device_wq(struct work_struct *work)
 {
 	struct delayed_work *dw = to_delayed_work(work);
@@ -497,51 +556,8 @@ static void octeontx_edac_device_wq(struct work_struct *work)
 			container_of(dw, struct edac_device_ctl_info, work);
 	struct octeontx_edac_pvt *pvt = edac_dev->pvt_info;
 	struct octeontx_edac *ghes = pvt->ghes;
-	struct octeontx_ghes_ring *ring = ghes->ring;
-	struct octeontx_ghes_record rec;
-	enum hw_event_mc_err_type type;
-	u32 head = 0;
-	u32 tail = 0;
-	char msg[SIZE];
-	char *p = NULL;
 
-	mutex_lock(&ghes->lock);
-
-loop:
-	head = ring->head;
-	tail = ring->tail;
-
-	/*Ensure that head updated*/
-	rmb();
-
-	if (head == tail)
-		goto exit;
-
-	memcpy_fromio(&rec, ring->records + tail, sizeof(rec));
-
-	type = octeontx_edac_severity(rec.error_severity);
-
-	p = msg;
-	p += snprintf(p, sizeof(rec.msg), "%s ", rec.msg);
-
-	octeontx_edac_make_error_desc(&rec.mem, p, SIZE - (p - msg));
-
-	++tail;
-	ring->tail = tail % ring->size;
-
-	/*Ensure that tail updated*/
-	wmb();
-
-	if (type == HW_EVENT_ERR_FATAL || type == HW_EVENT_ERR_UNCORRECTED)
-		edac_device_handle_ue(edac_dev, 0, 0, msg);
-	else
-		edac_device_handle_ce(edac_dev, 0, 0, msg);
-
-	if (head != tail)
-		goto loop;
-
-exit:
-	mutex_unlock(&ghes->lock);
+	octeontx_edac_wq_handler(ghes, edac_dev);
 }
 
 static void octeontx_edac_cpu_wq(struct work_struct *work)
@@ -549,135 +565,8 @@ static void octeontx_edac_cpu_wq(struct work_struct *work)
 	struct delayed_work *dw = to_delayed_work(work);
 	struct octeontx_edac *ghes = container_of(dw, struct octeontx_edac, work);
 	struct edac_device_ctl_info *edac_dev = ghes->edac_dev;
-	struct octeontx_ghes_ring *ring = ghes->ring;
-	struct octeontx_ghes_record rec;
-	struct cper_sec_proc_arm *desc = NULL;
-	struct cper_arm_err_info *info = NULL;
-	enum hw_event_mc_err_type type;
-	u32 cpu = 0;
-	u32 head = 0;
-	u32 tail = 0;
-	char msg[SIZE];
-	char *p = NULL;
 
-	mutex_lock(&ghes->lock);
-
-loop:
-	head = ring->head;
-	tail = ring->tail;
-
-	/*Ensure that head updated*/
-	rmb();
-
-	if (head == tail)
-		goto exit;
-
-	if (kstrtoint(&ghes->name[4], 10, &cpu) || cpu > 255)
-		cpu = 0;
-
-	memcpy_fromio(&rec, ring->records + tail, sizeof(rec));
-
-	type = octeontx_edac_severity(rec.error_severity);
-
-	p = msg;
-	p += snprintf(p, strlen(rec.msg), "%s ", rec.msg);
-
-	desc = &rec.core.desc;
-	p += snprintf(p, SIZE - (p - msg), "midr=0x%llx ", desc->midr);
-	if (desc->validation_bits & CPER_ARM_VALID_MPIDR)
-		p += snprintf(p, SIZE - (p - msg), "mpidr=0x%llx ", desc->mpidr);
-
-	info = &rec.core.info;
-	if (info->validation_bits & CPER_ARM_INFO_VALID_PHYSICAL_ADDR)
-		p += snprintf(p, SIZE - (p - msg), "paddr=0x%llx ", info->physical_fault_addr);
-	if (info->validation_bits & CPER_ARM_INFO_VALID_VIRT_ADDR)
-		p += snprintf(p, SIZE - (p - msg), "vaddr=0x%llx ", info->virt_fault_addr);
-	if (info->validation_bits & CPER_ARM_INFO_VALID_ERR_INFO)
-		p += snprintf(p, SIZE - (p - msg), "info=0x%llx ", info->error_info);
-
-	if (p < msg + SIZE)
-		*p = '\0';
-
-	++tail;
-	ring->tail = tail % ring->size;
-
-	/*Ensure that tail updated*/
-	wmb();
-
-	if (type == HW_EVENT_ERR_FATAL || type == HW_EVENT_ERR_UNCORRECTED)
-		edac_device_handle_ue(edac_dev, cpu, 0, msg);
-	else
-		edac_device_handle_ce(edac_dev, cpu, 0, msg);
-
-	if (head != tail)
-		goto loop;
-
-exit:
-	mutex_unlock(&ghes->lock);
-}
-
-static void octeontx_edac_gic_wq(struct work_struct *work)
-{
-	struct delayed_work *dw = to_delayed_work(work);
-	struct edac_device_ctl_info *edac_dev =
-			container_of(dw, struct edac_device_ctl_info, work);
-	struct octeontx_edac_pvt *pvt = edac_dev->pvt_info;
-	struct octeontx_edac *ghes = pvt->ghes;
-	struct octeontx_ghes_ring *ring = ghes->ring;
-	struct octeontx_ghes_record rec;
-	struct cper_sec_platform_err *plat_err;
-	struct cper_sec_plat_gic *gicerr;
-	enum hw_event_mc_err_type type;
-	u32 head = 0;
-	u32 tail = 0;
-	char msg[SIZE];
-	char *p = NULL;
-
-	mutex_lock(&ghes->lock);
-
-loop:
-	head = ring->head;
-	tail = ring->tail;
-
-	/*Ensure that head updated*/
-	rmb();
-
-	if (head == tail)
-		goto exit;
-
-	memcpy_fromio(&rec, ring->records + tail, sizeof(rec));
-
-	type = octeontx_edac_severity(rec.error_severity);
-
-	p = msg;
-	plat_err = &rec.gic;
-	gicerr = &plat_err->perr.gic;
-
-	p += snprintf(p, SIZE - (p - msg), "vbits=0x%x ", gicerr->validation_bits);
-	p += snprintf(p, SIZE - (p - msg), "type 0x%x sev %d code 0x%x ",
-			gicerr->error_type, gicerr->error_sev, gicerr->error_code);
-	p += snprintf(p, SIZE - (p - msg), "misc0=0x%llx misc1 0x%llx addr 0x%llx ",
-			gicerr->misc0, gicerr->misc1, gicerr->erraddr);
-
-	if (p < msg + SIZE)
-		*p = '\0';
-
-	++tail;
-	ring->tail = tail % ring->size;
-
-	/*Ensure that tail updated*/
-	wmb();
-
-	if (type == HW_EVENT_ERR_FATAL || type == HW_EVENT_ERR_UNCORRECTED)
-		edac_device_handle_ue(edac_dev, 0, 0, msg);
-	else
-		edac_device_handle_ce(edac_dev, 0, 0, msg);
-
-	if (head != tail)
-		goto loop;
-
-exit:
-	mutex_unlock(&ghes->lock);
+	octeontx_edac_wq_handler(ghes, edac_dev);
 }
 
 static void octeontx_edac_enable_msix(struct pci_dev *pdev)
@@ -748,7 +637,7 @@ static int octeontx_ghes_of_match_resource(struct octeontx_ghes_list *list)
 	ghes = list->ghes;
 	for_each_available_child_of_node(root, node) {
 
-		strncpy(ghes->name, node->name, sizeof(ghes->name));
+		strscpy(ghes->name, node->name, sizeof(ghes->name));
 
 		mutex_init(&ghes->lock);
 
@@ -875,7 +764,7 @@ static int octeontx_edac_mc_init(struct platform_device *pdev,
 
 	ret = octeontx_sdei_register(ghes, octeontx_mc_sdei_callback);
 	if (ret)
-		goto err2;
+		goto err1;
 
 	otx_printk(KERN_DEBUG, "Register %s %d/%d/%d\n",
 			ghes->name, ghes->ring->tail,
@@ -883,30 +772,12 @@ static int octeontx_edac_mc_init(struct platform_device *pdev,
 
 	return 0;
 
-err2:
-	octeontx_sdei_unregister(ghes);
 err1:
 	edac_mc_del_mc(&pdev->dev);
 	edac_mc_free(mci);
 
 err0:
 	dev_err(dev, "Unable register %d\n", ret);
-
-	return ret;
-}
-
-static int octeontx_dss_probe(struct platform_device *pdev)
-{
-	struct octeontx_edac *ghes = NULL;
-	int ret = 0;
-
-	ret = octeontx_edac_map_resource(pdev, &ghes, NULL);
-	if (ret)
-		return ret;
-
-	ghes->ecc_cap = CN10K_DSS_EINJ_CAP;
-
-	ret = octeontx_edac_mc_init(pdev, ghes);
 
 	return ret;
 }
@@ -944,16 +815,13 @@ static int octeontx_edac_device_init(struct platform_device *pdev,
 	if (edac_device_add_device(edac_dev))
 		goto err0;
 
-	if (strcmp(ghes->name, "gic") == 0)
-		INIT_DELAYED_WORK(&edac_dev->work, octeontx_edac_gic_wq);
-	else
-		INIT_DELAYED_WORK(&edac_dev->work, octeontx_edac_device_wq);
+	INIT_DELAYED_WORK(&edac_dev->work, octeontx_edac_device_wq);
 
 	edac_stop_work(&edac_dev->work);
 
 	ret = octeontx_sdei_register(ghes, octeontx_device_sdei_callback);
 	if (ret)
-		goto err1;
+		goto err0;
 
 	otx_printk(KERN_DEBUG, "Register %s %d/%d/%d\n",
 			ghes->name, ghes->ring->tail,
@@ -961,13 +829,27 @@ static int octeontx_edac_device_init(struct platform_device *pdev,
 
 	return 0;
 
-err1:
-	octeontx_sdei_unregister(ghes);
 err0:
 	dev_err(dev, "Unable register %d\n", ret);
 	edac_device_free_ctl_info(edac_dev);
 
 	return -ENXIO;
+}
+
+static int octeontx_dss_probe(struct platform_device *pdev)
+{
+	struct octeontx_edac *ghes = NULL;
+	int ret = 0;
+
+	ret = octeontx_edac_map_resource(pdev, &ghes, NULL);
+	if (ret)
+		return ret;
+
+	ghes->ecc_cap = CN10K_DSS_EINJ_CAP;
+
+	ret = octeontx_edac_mc_init(pdev, ghes);
+
+	return ret;
 }
 
 static int octeontx_tad_probe(struct platform_device *pdev)
@@ -1205,7 +1087,6 @@ static int __init octeontx_edac_init(void)
 	ret = octeontx_ghes_of_match_resource(&ghes_list);
 	if (ret)
 		goto exit0;
-
 	sdei_init();
 	if (soc_device_match(cn10_socinfo)) {
 
@@ -1289,7 +1170,6 @@ static void __exit octeontx_edac_exit(void)
 	platform_driver_unregister(&mdc_edac_drv);
 	kfree(ghes_list.ghes);
 }
-
 
 late_initcall(octeontx_edac_init);
 module_exit(octeontx_edac_exit);
