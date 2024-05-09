@@ -963,6 +963,15 @@ struct scx_dsp_ctx {
 
 static DEFINE_PER_CPU(struct scx_dsp_ctx, scx_dsp_ctx);
 
+/* string formatting from BPF */
+struct scx_bstr_buf {
+	u64			data[MAX_BPRINTF_VARARGS];
+	char			line[SCX_EXIT_MSG_LEN];
+};
+
+static DEFINE_RAW_SPINLOCK(scx_bstr_buf_lock);
+static struct scx_bstr_buf scx_bstr_buf;
+
 /* ops debug dump */
 static s32 scx_dump_cpu = -1;
 static char scx_dump_last;
@@ -6274,20 +6283,13 @@ __bpf_kfunc void bpf_iter_scx_dsq_destroy(struct bpf_iter_scx_dsq *it)
 
 __bpf_kfunc_end_defs();
 
-struct scx_bpf_bstr_bufs {
-	u64			data[MAX_BPRINTF_VARARGS];
-	char			msg[SCX_EXIT_MSG_LEN];
-};
-
-static DEFINE_PER_CPU(struct scx_bpf_bstr_bufs, scx_bpf_bstr_bufs);
-
 static char *bstr_format(char *fmt, unsigned long long *data, u32 data__sz)
 {
 	struct bpf_bprintf_data bprintf_data = { .get_bin_args = true };
-	struct scx_bpf_bstr_bufs *bufs = this_cpu_ptr(&scx_bpf_bstr_bufs);
+	struct scx_bstr_buf *buf = &scx_bstr_buf;
 	int ret;
 
-	lockdep_assert_irqs_disabled();
+	lockdep_assert_held(&scx_bstr_buf_lock);
 
 	if (data__sz % 8 || data__sz > MAX_BPRINTF_VARARGS * 8 ||
 	    (data__sz && !data)) {
@@ -6296,20 +6298,20 @@ static char *bstr_format(char *fmt, unsigned long long *data, u32 data__sz)
 		return ERR_PTR(-EINVAL);
 	}
 
-	ret = copy_from_kernel_nofault(bufs->data, data, data__sz);
+	ret = copy_from_kernel_nofault(buf->data, data, data__sz);
 	if (ret < 0) {
 		scx_ops_error("failed to read data fields (%d)", ret);
 		return ERR_PTR(ret);
 	}
 
-	ret = bpf_bprintf_prepare(fmt, UINT_MAX, bufs->data, data__sz / 8,
+	ret = bpf_bprintf_prepare(fmt, UINT_MAX, buf->data, data__sz / 8,
 				  &bprintf_data);
 	if (ret < 0) {
 		scx_ops_error("format preparation failed (%d)", ret);
 		return ERR_PTR(ret);
 	}
 
-	ret = bstr_printf(bufs->msg, sizeof(bufs->msg), fmt,
+	ret = bstr_printf(buf->line, sizeof(buf->line), fmt,
 			  bprintf_data.bin_args);
 	bpf_bprintf_cleanup(&bprintf_data);
 	if (ret < 0) {
@@ -6318,7 +6320,7 @@ static char *bstr_format(char *fmt, unsigned long long *data, u32 data__sz)
 		return ERR_PTR(ret);
 	}
 
-	return bufs->msg;
+	return buf->line;
 }
 
 __bpf_kfunc_start_defs();
@@ -6339,11 +6341,11 @@ __bpf_kfunc void scx_bpf_exit_bstr(s64 exit_code, char *fmt,
 	unsigned long flags;
 	char *msg;
 
-	local_irq_save(flags);
+	raw_spin_lock_irqsave(&scx_bstr_buf_lock, flags);
 	msg = bstr_format(fmt, data, data__sz);
 	if (!IS_ERR(msg))
 		scx_ops_exit_kind(SCX_EXIT_UNREG_BPF, exit_code, "%s", msg);
-	local_irq_restore(flags);
+	raw_spin_unlock_irqrestore(&scx_bstr_buf_lock, flags);
 }
 
 /**
@@ -6361,11 +6363,11 @@ __bpf_kfunc void scx_bpf_error_bstr(char *fmt, unsigned long long *data,
 	unsigned long flags;
 	char *msg;
 
-	local_irq_save(flags);
+	raw_spin_lock_irqsave(&scx_bstr_buf_lock, flags);
 	msg = bstr_format(fmt, data, data__sz);
 	if (!IS_ERR(msg))
 		scx_ops_exit_kind(SCX_EXIT_ERROR_BPF, 0, "%s", msg);
-	local_irq_restore(flags);
+	raw_spin_unlock_irqrestore(&scx_bstr_buf_lock, flags);
 }
 
 /**
@@ -6384,6 +6386,7 @@ __bpf_kfunc void scx_bpf_dump_bstr(char *fmt, unsigned long long *data,
 				   u32 data__sz)
 {
 	struct seq_buf *s = scx_dump_seq_buf;
+	unsigned long flags;
 	char *msg, *p;
 
 	if (raw_smp_processor_id() != scx_dump_cpu) {
@@ -6391,17 +6394,17 @@ __bpf_kfunc void scx_bpf_dump_bstr(char *fmt, unsigned long long *data,
 		return;
 	}
 
-	lockdep_assert_irqs_disabled();
+	raw_spin_lock_irqsave(&scx_bstr_buf_lock, flags);
 
 	msg = bstr_format(fmt, data, data__sz);
 	if (IS_ERR(msg)) {
 		seq_buf_printf(s, "%s[!] (\"%s\", %p, %u) failed to format\n",
 			       scx_dump_prefix, fmt, data, data__sz);
-		return;
+		goto out_unlock;
 	}
 
 	if (msg[0] == '\0')
-		return;
+		goto out_unlock;
 
 	if (scx_dump_last == '\0') {
 		seq_buf_putc(s, '\n');
@@ -6414,6 +6417,9 @@ __bpf_kfunc void scx_bpf_dump_bstr(char *fmt, unsigned long long *data,
 		seq_buf_putc(s, *p);
 		scx_dump_last = *p;
 	}
+
+out_unlock:
+	raw_spin_unlock_irqrestore(&scx_bstr_buf_lock, flags);
 }
 
 /**
