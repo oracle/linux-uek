@@ -212,8 +212,12 @@ int ipoib_vlan_add_common(struct net_device *pdev,
 #ifdef WITHOUT_ORACLE_EXTENSIONS
 	ppriv = ipoib_priv(pdev);
 
-	snprintf(intf_name, sizeof(intf_name), "%s.%04x",
-		 ppriv->dev->name, pkey);
+	/* If you increase IFNAMSIZ, update snprintf below
+	 * to allow longer names.
+	 */
+	BUILD_BUG_ON(IFNAMSIZ != 16);
+	snprintf(intf_name, sizeof(intf_name), "%.10s.%04x", ppriv->dev->name,
+		 pkey);
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	ndev = ipoib_intf_alloc(ppriv->ca, ppriv->port, intf_name);
