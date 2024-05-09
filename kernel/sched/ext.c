@@ -973,10 +973,16 @@ static DEFINE_RAW_SPINLOCK(scx_bstr_buf_lock);
 static struct scx_bstr_buf scx_bstr_buf;
 
 /* ops debug dump */
-static s32 scx_dump_cpu = -1;
-static char scx_dump_last;
-static struct seq_buf *scx_dump_seq_buf;
-static const char *scx_dump_prefix;
+struct scx_dump_data {
+	s32			cpu;
+	char			last;
+	struct seq_buf		*s;
+	const char		*prefix;
+};
+
+struct scx_dump_data scx_dump_data = {
+	.cpu			= -1,
+};
 
 /* /sys/kernel/sched_ext interface */
 static struct kset *scx_kset;
@@ -4508,23 +4514,28 @@ static void scx_ops_disable(enum scx_exit_kind kind)
 
 static void ops_dump_init(struct seq_buf *s, const char *prefix)
 {
+	struct scx_dump_data *dd = &scx_dump_data;
+
 	lockdep_assert_irqs_disabled();
 
-	scx_dump_cpu = smp_processor_id();	/* allow scx_bpf_dump() */
-	scx_dump_last = '\0';			/* nothing printed yet */
-	scx_dump_seq_buf = s;
-	scx_dump_prefix = prefix;
+	dd->cpu = smp_processor_id();		/* allow scx_bpf_dump() */
+	dd->last = '\0';			/* nothing printed yet */
+	dd->s = s;
+	dd->prefix = prefix;
 }
 
 static void ops_dump_exit(void)
 {
+	struct scx_dump_data *dd = &scx_dump_data;
+
 	/*
 	 * If something was printed but the last line wasn't terminated, add a
 	 * new line.
 	 */
-	if (scx_dump_last != '\0' && scx_dump_last != '\n')
-		seq_buf_putc(scx_dump_seq_buf, '\n');
-	scx_dump_cpu = -1;
+	if (dd->last != '\0' && dd->last != '\n')
+		seq_buf_putc(dd->s, '\n');
+
+	dd->cpu = -1;
 }
 
 static void scx_dump_task(struct seq_buf *s, struct scx_dump_ctx *dctx,
@@ -6385,11 +6396,11 @@ __bpf_kfunc void scx_bpf_error_bstr(char *fmt, unsigned long long *data,
 __bpf_kfunc void scx_bpf_dump_bstr(char *fmt, unsigned long long *data,
 				   u32 data__sz)
 {
-	struct seq_buf *s = scx_dump_seq_buf;
+	struct scx_dump_data *dd = &scx_dump_data;
 	unsigned long flags;
 	char *msg, *p;
 
-	if (raw_smp_processor_id() != scx_dump_cpu) {
+	if (raw_smp_processor_id() != dd->cpu) {
 		scx_ops_error("scx_bpf_dump() must only be called from ops.dump() and friends");
 		return;
 	}
@@ -6398,24 +6409,24 @@ __bpf_kfunc void scx_bpf_dump_bstr(char *fmt, unsigned long long *data,
 
 	msg = bstr_format(fmt, data, data__sz);
 	if (IS_ERR(msg)) {
-		seq_buf_printf(s, "%s[!] (\"%s\", %p, %u) failed to format\n",
-			       scx_dump_prefix, fmt, data, data__sz);
+		seq_buf_printf(dd->s, "%s[!] (\"%s\", %p, %u) failed to format\n",
+			       dd->prefix, fmt, data, data__sz);
 		goto out_unlock;
 	}
 
 	if (msg[0] == '\0')
 		goto out_unlock;
 
-	if (scx_dump_last == '\0') {
-		seq_buf_putc(s, '\n');
-		scx_dump_last = '\n';
+	if (dd->last == '\0') {
+		seq_buf_putc(dd->s, '\n');
+		dd->last = '\n';
 	}
 
 	for (p = msg; *p != '\0'; p++) {
-		if (scx_dump_last == '\n')
-			seq_buf_printf(s, "%s", scx_dump_prefix);
-		seq_buf_putc(s, *p);
-		scx_dump_last = *p;
+		if (dd->last == '\n')
+			seq_buf_printf(dd->s, "%s", dd->prefix);
+		seq_buf_putc(dd->s, *p);
+		dd->last = *p;
 	}
 
 out_unlock:
