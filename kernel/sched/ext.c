@@ -975,7 +975,8 @@ static struct scx_bstr_buf scx_exit_bstr_buf;
 /* ops debug dump */
 struct scx_dump_data {
 	s32			cpu;
-	char			last;
+	bool			first;
+	s32			cursor;
 	struct seq_buf		*s;
 	const char		*prefix;
 	struct scx_bstr_buf	buf;
@@ -4538,23 +4539,64 @@ static void ops_dump_init(struct seq_buf *s, const char *prefix)
 	lockdep_assert_irqs_disabled();
 
 	dd->cpu = smp_processor_id();		/* allow scx_bpf_dump() */
-	dd->last = '\0';			/* nothing printed yet */
+	dd->first = true;
+	dd->cursor = 0;
 	dd->s = s;
 	dd->prefix = prefix;
 }
 
-static void ops_dump_exit(void)
+static void ops_dump_flush(void)
 {
 	struct scx_dump_data *dd = &scx_dump_data;
+	char *line = dd->buf.line;
+
+	if (!dd->cursor)
+		return;
 
 	/*
-	 * If something was printed but the last line wasn't terminated, add a
-	 * new line.
+	 * There's something to flush and this is the first line. Insert a blank
+	 * line to distinguish ops dump.
 	 */
-	if (dd->last != '\0' && dd->last != '\n')
+	if (dd->first) {
 		dump_line(dd->s, "\n");
+		dd->first = false;
+	}
 
-	dd->cpu = -1;
+	/*
+	 * There may be multiple lines in $line. Scan and emit each line
+	 * separately.
+	 */
+	while (true) {
+		char *end = line;
+		char c;
+
+		while (*end != '\n' && *end != '\0')
+			end++;
+
+		/*
+		 * If $line overflowed, it may not have newline at the end.
+		 * Always emit with a newline.
+		 */
+		c = *end;
+		*end = '\0';
+		dump_line(dd->s, "%s%s\n", dd->prefix, line);
+		if (c == '\0')
+			break;
+
+		/* move to the next line */
+		end++;
+		if (*end == '\0')
+			break;
+		line = end;
+	}
+
+	dd->cursor = 0;
+}
+
+static void ops_dump_exit(void)
+{
+	ops_dump_flush();
+	scx_dump_data.cpu = -1;
 }
 
 static void scx_dump_task(struct seq_buf *s, struct scx_dump_ctx *dctx,
@@ -6417,7 +6459,6 @@ __bpf_kfunc void scx_bpf_dump_bstr(char *fmt, unsigned long long *data,
 {
 	struct scx_dump_data *dd = &scx_dump_data;
 	struct scx_bstr_buf *buf = &dd->buf;
-	char *p;
 	s32 ret;
 
 	if (raw_smp_processor_id() != dd->cpu) {
@@ -6425,27 +6466,31 @@ __bpf_kfunc void scx_bpf_dump_bstr(char *fmt, unsigned long long *data,
 		return;
 	}
 
-	ret = bstr_format(buf, fmt, data, data__sz);
+	/* append the formatted string to the line buf */
+	ret = __bstr_format(buf->data, buf->line + dd->cursor,
+			    sizeof(buf->line) - dd->cursor, fmt, data, data__sz);
 	if (ret < 0) {
 		dump_line(dd->s, "%s[!] (\"%s\", %p, %u) failed to format (%d)\n",
 			  dd->prefix, fmt, data, data__sz, ret);
 		return;
 	}
 
-	if (buf->line[0] == '\0')
+	dd->cursor += ret;
+	dd->cursor = min_t(s32, dd->cursor, sizeof(buf->line));
+
+	if (!dd->cursor)
 		return;
 
-	if (dd->last == '\0') {
-		dump_line(dd->s, "\n");
-		dd->last = '\n';
-	}
-
-	for (p = buf->line; *p != '\0'; p++) {
-		if (dd->last == '\n')
-			dump_line(dd->s, "%s", dd->prefix);
-		dump_line(dd->s, "%c", *p);
-		dd->last = *p;
-	}
+	/*
+	 * If the line buf overflowed or ends in a newline, flush it into the
+	 * dump. This is to allow the caller to generate a single line over
+	 * multiple calls. As ops_dump_flush() can also handle multiple lines in
+	 * the line buf, the only case which can lead to an unexpected
+	 * truncation is when the caller keeps generating newlines in the middle
+	 * instead of the end consecutively. Don't do that.
+	 */
+	if (dd->cursor >= sizeof(buf->line) || buf->line[dd->cursor - 1] == '\n')
+		ops_dump_flush();
 }
 
 /**
