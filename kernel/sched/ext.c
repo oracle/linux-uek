@@ -4521,6 +4521,15 @@ static __printf(2, 3) void dump_line(struct seq_buf *s, const char *fmt, ...)
 	va_end(args);
 }
 
+static void dump_stack_trace(struct seq_buf *s, const char *prefix,
+			     const unsigned long *bt, unsigned int len)
+{
+	unsigned int i;
+
+	for (i = 0; i < len; i++)
+		dump_line(s, "%s%pS\n", prefix, (void *)bt[i]);
+}
+
 static void ops_dump_init(struct seq_buf *s, const char *prefix)
 {
 	struct scx_dump_data *dd = &scx_dump_data;
@@ -4554,8 +4563,6 @@ static void scx_dump_task(struct seq_buf *s, struct scx_dump_ctx *dctx,
 	char dsq_id_buf[19] = "(n/a)";
 	unsigned long ops_state = atomic_long_read(&p->scx.ops_state);
 	unsigned int bt_len;
-	size_t avail, used;
-	char *buf;
 
 	if (p->scx.dsq)
 		scnprintf(dsq_id_buf, sizeof(dsq_id_buf), "0x%llx",
@@ -4582,9 +4589,7 @@ static void scx_dump_task(struct seq_buf *s, struct scx_dump_ctx *dctx,
 	bt_len = stack_trace_save_tsk(p, bt, SCX_EXIT_BT_LEN, 1);
 	if (bt_len) {
 		dump_line(s, "\n");
-		avail = seq_buf_get_buf(s, &buf);
-		used = stack_trace_snprint(buf, avail, bt, bt_len, 3);
-		seq_buf_commit(s, used < avail ? used : -1);
+		dump_stack_trace(s, "    ", bt, bt_len);
 	}
 }
 
@@ -4599,7 +4604,6 @@ static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 		.at_jiffies = jiffies,
 	};
 	struct seq_buf s;
-	size_t avail, used;
 	char *buf;
 	int cpu;
 
@@ -4613,9 +4617,7 @@ static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 	dump_line(&s, "  %s (%s)\n", ei->reason, ei->msg);
 	dump_line(&s, "\n");
 	dump_line(&s, "Backtrace:\n");
-	avail = seq_buf_get_buf(&s, &buf);
-	used = stack_trace_snprint(buf, avail, ei->bt, ei->bt_len, 1);
-	seq_buf_commit(&s, used < avail ? used : -1);
+	dump_stack_trace(&s, "  ", ei->bt, ei->bt_len);
 
 	if (SCX_HAS_OP(dump)) {
 		ops_dump_init(&s, "");
@@ -4632,6 +4634,7 @@ static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 		struct rq_flags rf;
 		struct task_struct *p;
 		struct seq_buf ns;
+		size_t avail, used;
 		bool idle;
 
 		rq_lock(rq, &rf);
