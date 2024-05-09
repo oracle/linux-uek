@@ -963,15 +963,35 @@ struct scx_dsp_ctx {
 
 static DEFINE_PER_CPU(struct scx_dsp_ctx, scx_dsp_ctx);
 
+/* string formatting from BPF */
+struct scx_bstr_buf {
+	u64			data[MAX_BPRINTF_VARARGS];
+	char			line[SCX_EXIT_MSG_LEN];
+};
+
+static DEFINE_RAW_SPINLOCK(scx_exit_bstr_buf_lock);
+static struct scx_bstr_buf scx_exit_bstr_buf;
+
 /* ops debug dump */
-static s32 scx_dump_cpu = -1;
-static char scx_dump_last;
-static struct seq_buf *scx_dump_seq_buf;
-static const char *scx_dump_prefix;
+struct scx_dump_data {
+	s32			cpu;
+	bool			first;
+	s32			cursor;
+	struct seq_buf		*s;
+	const char		*prefix;
+	struct scx_bstr_buf	buf;
+};
+
+struct scx_dump_data scx_dump_data = {
+	.cpu			= -1,
+};
 
 /* /sys/kernel/sched_ext interface */
 static struct kset *scx_kset;
 static struct kobject *scx_root_kobj;
+
+#define CREATE_TRACE_POINTS
+#include <trace/events/sched_ext.h>
 
 static void scx_bpf_kick_cpu(s32 cpu, u64 flags);
 static __printf(3, 4) void scx_ops_exit_kind(enum scx_exit_kind kind,
@@ -4497,25 +4517,115 @@ static void scx_ops_disable(enum scx_exit_kind kind)
 	schedule_scx_ops_disable_work();
 }
 
+static void dump_newline(struct seq_buf *s)
+{
+	trace_sched_ext_dump("");
+
+	/* @s may be zero sized and seq_buf triggers WARN if so */
+	if (s->size)
+		seq_buf_putc(s, '\n');
+}
+
+static __printf(2, 3) void dump_line(struct seq_buf *s, const char *fmt, ...)
+{
+	va_list args;
+
+#ifdef CONFIG_TRACEPOINTS
+	if (trace_sched_ext_dump_enabled()) {
+		/* protected by scx_dump_state()::dump_lock */
+		static char line_buf[SCX_EXIT_MSG_LEN];
+
+		va_start(args, fmt);
+		vscnprintf(line_buf, sizeof(line_buf), fmt, args);
+		va_end(args);
+
+		trace_sched_ext_dump(line_buf);
+	}
+#endif
+	/* @s may be zero sized and seq_buf triggers WARN if so */
+	if (s->size) {
+		va_start(args, fmt);
+		seq_buf_vprintf(s, fmt, args);
+		va_end(args);
+
+		seq_buf_putc(s, '\n');
+	}
+}
+
+static void dump_stack_trace(struct seq_buf *s, const char *prefix,
+			     const unsigned long *bt, unsigned int len)
+{
+	unsigned int i;
+
+	for (i = 0; i < len; i++)
+		dump_line(s, "%s%pS", prefix, (void *)bt[i]);
+}
+
 static void ops_dump_init(struct seq_buf *s, const char *prefix)
 {
+	struct scx_dump_data *dd = &scx_dump_data;
+
 	lockdep_assert_irqs_disabled();
 
-	scx_dump_cpu = smp_processor_id();	/* allow scx_bpf_dump() */
-	scx_dump_last = '\0';			/* nothing printed yet */
-	scx_dump_seq_buf = s;
-	scx_dump_prefix = prefix;
+	dd->cpu = smp_processor_id();		/* allow scx_bpf_dump() */
+	dd->first = true;
+	dd->cursor = 0;
+	dd->s = s;
+	dd->prefix = prefix;
+}
+
+static void ops_dump_flush(void)
+{
+	struct scx_dump_data *dd = &scx_dump_data;
+	char *line = dd->buf.line;
+
+	if (!dd->cursor)
+		return;
+
+	/*
+	 * There's something to flush and this is the first line. Insert a blank
+	 * line to distinguish ops dump.
+	 */
+	if (dd->first) {
+		dump_newline(dd->s);
+		dd->first = false;
+	}
+
+	/*
+	 * There may be multiple lines in $line. Scan and emit each line
+	 * separately.
+	 */
+	while (true) {
+		char *end = line;
+		char c;
+
+		while (*end != '\n' && *end != '\0')
+			end++;
+
+		/*
+		 * If $line overflowed, it may not have newline at the end.
+		 * Always emit with a newline.
+		 */
+		c = *end;
+		*end = '\0';
+		dump_line(dd->s, "%s%s", dd->prefix, line);
+		if (c == '\0')
+			break;
+
+		/* move to the next line */
+		end++;
+		if (*end == '\0')
+			break;
+		line = end;
+	}
+
+	dd->cursor = 0;
 }
 
 static void ops_dump_exit(void)
 {
-	/*
-	 * If something was printed but the last line wasn't terminated, add a
-	 * new line.
-	 */
-	if (scx_dump_last != '\0' && scx_dump_last != '\n')
-		seq_buf_putc(scx_dump_seq_buf, '\n');
-	scx_dump_cpu = -1;
+	ops_dump_flush();
+	scx_dump_data.cpu = -1;
 }
 
 static void scx_dump_task(struct seq_buf *s, struct scx_dump_ctx *dctx,
@@ -4525,25 +4635,23 @@ static void scx_dump_task(struct seq_buf *s, struct scx_dump_ctx *dctx,
 	char dsq_id_buf[19] = "(n/a)";
 	unsigned long ops_state = atomic_long_read(&p->scx.ops_state);
 	unsigned int bt_len;
-	size_t avail, used;
-	char *buf;
 
 	if (p->scx.dsq)
 		scnprintf(dsq_id_buf, sizeof(dsq_id_buf), "0x%llx",
 			  (unsigned long long)p->scx.dsq->id);
 
-	seq_buf_printf(s, "\n %c%c %s[%d] %+ldms\n",
-		       marker, task_state_to_char(p), p->comm, p->pid,
-		       jiffies_delta_msecs(p->scx.runnable_at, dctx->at_jiffies));
-	seq_buf_printf(s, "      scx_state/flags=%u/0x%x dsq_flags=0x%x ops_state/qseq=%lu/%lu\n",
-		       scx_get_task_state(p),
-		       p->scx.flags & ~SCX_TASK_STATE_MASK,
-		       p->scx.dsq_node.flags,
-		       ops_state & SCX_OPSS_STATE_MASK,
-		       ops_state >> SCX_OPSS_QSEQ_SHIFT);
-	seq_buf_printf(s, "      sticky/holding_cpu=%d/%d dsq_id=%s\n",
-		       p->scx.sticky_cpu, p->scx.holding_cpu, dsq_id_buf);
-	seq_buf_printf(s, "      cpus=%*pb\n", cpumask_pr_args(p->cpus_ptr));
+	dump_newline(s);
+	dump_line(s, " %c%c %s[%d] %+ldms",
+		  marker, task_state_to_char(p), p->comm, p->pid,
+		  jiffies_delta_msecs(p->scx.runnable_at, dctx->at_jiffies));
+	dump_line(s, "      scx_state/flags=%u/0x%x dsq_flags=0x%x ops_state/qseq=%lu/%lu",
+		  scx_get_task_state(p), p->scx.flags & ~SCX_TASK_STATE_MASK,
+		  p->scx.dsq_node.flags, ops_state & SCX_OPSS_STATE_MASK,
+		  ops_state >> SCX_OPSS_QSEQ_SHIFT);
+	dump_line(s, "      sticky/holding_cpu=%d/%d dsq_id=%s dsq_vtime=%llu",
+		  p->scx.sticky_cpu, p->scx.holding_cpu, dsq_id_buf,
+		  p->scx.dsq_vtime);
+	dump_line(s, "      cpus=%*pb", cpumask_pr_args(p->cpus_ptr));
 
 	if (SCX_HAS_OP(dump_task)) {
 		ops_dump_init(s, "    ");
@@ -4553,15 +4661,14 @@ static void scx_dump_task(struct seq_buf *s, struct scx_dump_ctx *dctx,
 
 	bt_len = stack_trace_save_tsk(p, bt, SCX_EXIT_BT_LEN, 1);
 	if (bt_len) {
-		seq_buf_putc(s, '\n');
-		avail = seq_buf_get_buf(s, &buf);
-		used = stack_trace_snprint(buf, avail, bt, bt_len, 3);
-		seq_buf_commit(s, used < avail ? used : -1);
+		dump_newline(s);
+		dump_stack_trace(s, "    ", bt, bt_len);
 	}
 }
 
 static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 {
+	static DEFINE_SPINLOCK(dump_lock);
 	static const char trunc_marker[] = "\n\n~~~~ TRUNCATED ~~~~\n";
 	struct scx_dump_ctx dctx = {
 		.kind = ei->kind,
@@ -4571,21 +4678,24 @@ static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 		.at_jiffies = jiffies,
 	};
 	struct seq_buf s;
-	size_t avail, used;
+	unsigned long flags;
 	char *buf;
 	int cpu;
 
-	if (dump_len <= sizeof(trunc_marker))
-		return;
+	spin_lock_irqsave(&dump_lock, flags);
 
-	seq_buf_init(&s, ei->dump, dump_len - sizeof(trunc_marker));
+	seq_buf_init(&s, ei->dump, dump_len);
 
-	seq_buf_printf(&s, "%s[%d] triggered exit kind %d:\n  %s (%s)\n\n",
-		       current->comm, current->pid, ei->kind, ei->reason, ei->msg);
-	seq_buf_printf(&s, "Backtrace:\n");
-	avail = seq_buf_get_buf(&s, &buf);
-	used = stack_trace_snprint(buf, avail, ei->bt, ei->bt_len, 1);
-	seq_buf_commit(&s, used < avail ? used : -1);
+	if (ei->kind == SCX_EXIT_NONE) {
+		dump_line(&s, "Debug dump triggered by %s", ei->reason);
+	} else {
+		dump_line(&s, "%s[%d] triggered exit kind %d:",
+			  current->comm, current->pid, ei->kind);
+		dump_line(&s, "  %s (%s)", ei->reason, ei->msg);
+		dump_newline(&s);
+		dump_line(&s, "Backtrace:");
+		dump_stack_trace(&s, "  ", ei->bt, ei->bt_len);
+	}
 
 	if (SCX_HAS_OP(dump)) {
 		ops_dump_init(&s, "");
@@ -4593,14 +4703,16 @@ static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 		ops_dump_exit();
 	}
 
-	seq_buf_printf(&s, "\nCPU states\n");
-	seq_buf_printf(&s, "----------\n");
+	dump_newline(&s);
+	dump_line(&s, "CPU states");
+	dump_line(&s, "----------");
 
 	for_each_possible_cpu(cpu) {
 		struct rq *rq = cpu_rq(cpu);
 		struct rq_flags rf;
 		struct task_struct *p;
 		struct seq_buf ns;
+		size_t avail, used;
 		bool idle;
 
 		rq_lock(rq, &rf);
@@ -4620,25 +4732,26 @@ static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 		avail = seq_buf_get_buf(&s, &buf);
 		seq_buf_init(&ns, buf, avail);
 
-		seq_buf_printf(&ns, "\nCPU %-4d: nr_run=%u flags=0x%x cpu_rel=%d ops_qseq=%lu pnt_seq=%lu\n",
-			       cpu, rq->scx.nr_running, rq->scx.flags,
-			       rq->scx.cpu_released, rq->scx.ops_qseq,
-			       rq->scx.pnt_seq);
-		seq_buf_printf(&ns, "          curr=%s[%d] class=%ps\n",
-			       rq->curr->comm, rq->curr->pid,
-			       rq->curr->sched_class);
+		dump_newline(&ns);
+		dump_line(&ns, "CPU %-4d: nr_run=%u flags=0x%x cpu_rel=%d ops_qseq=%lu pnt_seq=%lu",
+			  cpu, rq->scx.nr_running, rq->scx.flags,
+			  rq->scx.cpu_released, rq->scx.ops_qseq,
+			  rq->scx.pnt_seq);
+		dump_line(&ns, "          curr=%s[%d] class=%ps",
+			  rq->curr->comm, rq->curr->pid,
+			  rq->curr->sched_class);
 		if (!cpumask_empty(rq->scx.cpus_to_kick))
-			seq_buf_printf(&ns, "  cpus_to_kick   : %*pb\n",
-				       cpumask_pr_args(rq->scx.cpus_to_kick));
+			dump_line(&ns, "  cpus_to_kick   : %*pb",
+				  cpumask_pr_args(rq->scx.cpus_to_kick));
 		if (!cpumask_empty(rq->scx.cpus_to_kick_if_idle))
-			seq_buf_printf(&ns, "  idle_to_kick   : %*pb\n",
-				       cpumask_pr_args(rq->scx.cpus_to_kick_if_idle));
+			dump_line(&ns, "  idle_to_kick   : %*pb",
+				  cpumask_pr_args(rq->scx.cpus_to_kick_if_idle));
 		if (!cpumask_empty(rq->scx.cpus_to_preempt))
-			seq_buf_printf(&ns, "  cpus_to_preempt: %*pb\n",
-				       cpumask_pr_args(rq->scx.cpus_to_preempt));
+			dump_line(&ns, "  cpus_to_preempt: %*pb",
+				  cpumask_pr_args(rq->scx.cpus_to_preempt));
 		if (!cpumask_empty(rq->scx.cpus_to_wait))
-			seq_buf_printf(&ns, "  cpus_to_wait   : %*pb\n",
-				       cpumask_pr_args(rq->scx.cpus_to_wait));
+			dump_line(&ns, "  cpus_to_wait   : %*pb",
+				  cpumask_pr_args(rq->scx.cpus_to_wait));
 
 		used = seq_buf_used(&ns);
 		if (SCX_HAS_OP(dump_cpu)) {
@@ -4654,9 +4767,15 @@ static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 		if (idle && used == seq_buf_used(&ns))
 			goto next;
 
-		seq_buf_commit(&s, seq_buf_used(&ns));
-		if (seq_buf_has_overflowed(&ns))
-			seq_buf_set_overflow(&s);
+		/*
+		 * $s may already have overflowed when $ns was created. If so,
+		 * calling commit on it will trigger BUG.
+		 */
+		if (avail) {
+			seq_buf_commit(&s, seq_buf_used(&ns));
+			if (seq_buf_has_overflowed(&ns))
+				seq_buf_set_overflow(&s);
+		}
 
 		if (rq->curr->sched_class == &ext_sched_class)
 			scx_dump_task(&s, &dctx, rq->curr, '*');
@@ -4667,9 +4786,11 @@ static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 		rq_unlock(rq, &rf);
 	}
 
-	if (seq_buf_has_overflowed(&s))
-		memcpy(ei->dump + seq_buf_used(&s) - 1, trunc_marker,
-		       sizeof(trunc_marker));
+	if (seq_buf_has_overflowed(&s) && dump_len >= sizeof(trunc_marker))
+		memcpy(ei->dump + dump_len - sizeof(trunc_marker),
+		       trunc_marker, sizeof(trunc_marker));
+
+	spin_unlock_irqrestore(&dump_lock, flags);
 }
 
 static void scx_ops_error_irq_workfn(struct irq_work *irq_work)
@@ -5381,6 +5502,21 @@ static const struct sysrq_key_op sysrq_sched_ext_reset_op = {
 	.enable_mask	= SYSRQ_ENABLE_RTNICE,
 };
 
+static void sysrq_handle_sched_ext_dump(u8 key)
+{
+	struct scx_exit_info ei = { .kind = SCX_EXIT_NONE, .reason = "SysRq-D" };
+
+	if (scx_enabled())
+		scx_dump_state(&ei, 0);
+}
+
+static const struct sysrq_key_op sysrq_sched_ext_dump_op = {
+	.handler	= sysrq_handle_sched_ext_dump,
+	.help_msg	= "dump-sched-ext(D)",
+	.action_msg	= "Trigger sched_ext debug dump",
+	.enable_mask	= SYSRQ_ENABLE_RTNICE,
+};
+
 static bool can_skip_idle_kick(struct rq *rq)
 {
 	lockdep_assert_rq_held(rq);
@@ -5600,6 +5736,7 @@ void __init init_sched_ext_class(void)
 	}
 
 	register_sysrq_key('S', &sysrq_sched_ext_reset_op);
+	register_sysrq_key('D', &sysrq_sched_ext_dump_op);
 	INIT_DELAYED_WORK(&scx_watchdog_work, scx_watchdog_workfn);
 	scx_cgroup_config_knobs();
 }
@@ -6274,51 +6411,49 @@ __bpf_kfunc void bpf_iter_scx_dsq_destroy(struct bpf_iter_scx_dsq *it)
 
 __bpf_kfunc_end_defs();
 
-struct scx_bpf_bstr_bufs {
-	u64			data[MAX_BPRINTF_VARARGS];
-	char			msg[SCX_EXIT_MSG_LEN];
-};
-
-static DEFINE_PER_CPU(struct scx_bpf_bstr_bufs, scx_bpf_bstr_bufs);
-
-static char *bstr_format(char *fmt, unsigned long long *data, u32 data__sz)
+static s32 __bstr_format(u64 *data_buf, char *line_buf, size_t line_size,
+			 char *fmt, unsigned long long *data, u32 data__sz)
 {
 	struct bpf_bprintf_data bprintf_data = { .get_bin_args = true };
-	struct scx_bpf_bstr_bufs *bufs = this_cpu_ptr(&scx_bpf_bstr_bufs);
-	int ret;
-
-	lockdep_assert_irqs_disabled();
+	s32 ret;
 
 	if (data__sz % 8 || data__sz > MAX_BPRINTF_VARARGS * 8 ||
 	    (data__sz && !data)) {
 		scx_ops_error("invalid data=%p and data__sz=%u",
 			      (void *)data, data__sz);
-		return ERR_PTR(-EINVAL);
+		return -EINVAL;
 	}
 
-	ret = copy_from_kernel_nofault(bufs->data, data, data__sz);
+	ret = copy_from_kernel_nofault(data_buf, data, data__sz);
 	if (ret < 0) {
 		scx_ops_error("failed to read data fields (%d)", ret);
-		return ERR_PTR(ret);
+		return ret;
 	}
 
-	ret = bpf_bprintf_prepare(fmt, UINT_MAX, bufs->data, data__sz / 8,
+	ret = bpf_bprintf_prepare(fmt, UINT_MAX, data_buf, data__sz / 8,
 				  &bprintf_data);
 	if (ret < 0) {
 		scx_ops_error("format preparation failed (%d)", ret);
-		return ERR_PTR(ret);
+		return ret;
 	}
 
-	ret = bstr_printf(bufs->msg, sizeof(bufs->msg), fmt,
+	ret = bstr_printf(line_buf, line_size, fmt,
 			  bprintf_data.bin_args);
 	bpf_bprintf_cleanup(&bprintf_data);
 	if (ret < 0) {
 		scx_ops_error("(\"%s\", %p, %u) failed to format",
 			      fmt, data, data__sz);
-		return ERR_PTR(ret);
+		return ret;
 	}
 
-	return bufs->msg;
+	return ret;
+}
+
+static s32 bstr_format(struct scx_bstr_buf *buf,
+		       char *fmt, unsigned long long *data, u32 data__sz)
+{
+	return __bstr_format(buf->data, buf->line, sizeof(buf->line),
+			     fmt, data, data__sz);
 }
 
 __bpf_kfunc_start_defs();
@@ -6337,13 +6472,12 @@ __bpf_kfunc void scx_bpf_exit_bstr(s64 exit_code, char *fmt,
 				   unsigned long long *data, u32 data__sz)
 {
 	unsigned long flags;
-	char *msg;
 
-	local_irq_save(flags);
-	msg = bstr_format(fmt, data, data__sz);
-	if (!IS_ERR(msg))
-		scx_ops_exit_kind(SCX_EXIT_UNREG_BPF, exit_code, "%s", msg);
-	local_irq_restore(flags);
+	raw_spin_lock_irqsave(&scx_exit_bstr_buf_lock, flags);
+	if (bstr_format(&scx_exit_bstr_buf, fmt, data, data__sz) >= 0)
+		scx_ops_exit_kind(SCX_EXIT_UNREG_BPF, exit_code, "%s",
+				  scx_exit_bstr_buf.line);
+	raw_spin_unlock_irqrestore(&scx_exit_bstr_buf_lock, flags);
 }
 
 /**
@@ -6359,13 +6493,12 @@ __bpf_kfunc void scx_bpf_error_bstr(char *fmt, unsigned long long *data,
 				    u32 data__sz)
 {
 	unsigned long flags;
-	char *msg;
 
-	local_irq_save(flags);
-	msg = bstr_format(fmt, data, data__sz);
-	if (!IS_ERR(msg))
-		scx_ops_exit_kind(SCX_EXIT_ERROR_BPF, 0, "%s", msg);
-	local_irq_restore(flags);
+	raw_spin_lock_irqsave(&scx_exit_bstr_buf_lock, flags);
+	if (bstr_format(&scx_exit_bstr_buf, fmt, data, data__sz) >= 0)
+		scx_ops_exit_kind(SCX_EXIT_ERROR_BPF, 0, "%s",
+				  scx_exit_bstr_buf.line);
+	raw_spin_unlock_irqrestore(&scx_exit_bstr_buf_lock, flags);
 }
 
 /**
@@ -6383,37 +6516,40 @@ __bpf_kfunc void scx_bpf_error_bstr(char *fmt, unsigned long long *data,
 __bpf_kfunc void scx_bpf_dump_bstr(char *fmt, unsigned long long *data,
 				   u32 data__sz)
 {
-	struct seq_buf *s = scx_dump_seq_buf;
-	char *msg, *p;
+	struct scx_dump_data *dd = &scx_dump_data;
+	struct scx_bstr_buf *buf = &dd->buf;
+	s32 ret;
 
-	if (raw_smp_processor_id() != scx_dump_cpu) {
+	if (raw_smp_processor_id() != dd->cpu) {
 		scx_ops_error("scx_bpf_dump() must only be called from ops.dump() and friends");
 		return;
 	}
 
-	lockdep_assert_irqs_disabled();
-
-	msg = bstr_format(fmt, data, data__sz);
-	if (IS_ERR(msg)) {
-		seq_buf_printf(s, "%s[!] (\"%s\", %p, %u) failed to format\n",
-			       scx_dump_prefix, fmt, data, data__sz);
+	/* append the formatted string to the line buf */
+	ret = __bstr_format(buf->data, buf->line + dd->cursor,
+			    sizeof(buf->line) - dd->cursor, fmt, data, data__sz);
+	if (ret < 0) {
+		dump_line(dd->s, "%s[!] (\"%s\", %p, %u) failed to format (%d)",
+			  dd->prefix, fmt, data, data__sz, ret);
 		return;
 	}
 
-	if (msg[0] == '\0')
+	dd->cursor += ret;
+	dd->cursor = min_t(s32, dd->cursor, sizeof(buf->line));
+
+	if (!dd->cursor)
 		return;
 
-	if (scx_dump_last == '\0') {
-		seq_buf_putc(s, '\n');
-		scx_dump_last = '\n';
-	}
-
-	for (p = msg; *p != '\0'; p++) {
-		if (scx_dump_last == '\n')
-			seq_buf_printf(s, "%s", scx_dump_prefix);
-		seq_buf_putc(s, *p);
-		scx_dump_last = *p;
-	}
+	/*
+	 * If the line buf overflowed or ends in a newline, flush it into the
+	 * dump. This is to allow the caller to generate a single line over
+	 * multiple calls. As ops_dump_flush() can also handle multiple lines in
+	 * the line buf, the only case which can lead to an unexpected
+	 * truncation is when the caller keeps generating newlines in the middle
+	 * instead of the end consecutively. Don't do that.
+	 */
+	if (dd->cursor >= sizeof(buf->line) || buf->line[dd->cursor - 1] == '\n')
+		ops_dump_flush();
 }
 
 /**
