@@ -138,11 +138,15 @@ int ipoib_vlan_add_common(struct net_device *pdev,
 		return -EPERM;
 
 	if (child_name_buf == NULL) {
+		/* If you increase IFNAMSIZ, update snprintf below
+		 * to allow longer names.
+		 */
+		BUILD_BUG_ON(IFNAMSIZ != 16);
 		/*
 		 * If child name is not provided, we generated
 		 * one using name of parent and pkey.
 		 */
-		snprintf(intf_name, sizeof(intf_name), "%s.%04x",
+		snprintf(intf_name, sizeof(intf_name), "%.10s.%04x",
 			 ppriv->dev->name, pkey);
 	} else {
 		/*
