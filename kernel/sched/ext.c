@@ -4685,12 +4685,16 @@ static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 
 	seq_buf_init(&s, ei->dump, dump_len);
 
-	dump_line(&s, "%s[%d] triggered exit kind %d:",
-		  current->comm, current->pid, ei->kind);
-	dump_line(&s, "  %s (%s)", ei->reason, ei->msg);
-	dump_newline(&s);
-	dump_line(&s, "Backtrace:");
-	dump_stack_trace(&s, "  ", ei->bt, ei->bt_len);
+	if (ei->kind == SCX_EXIT_NONE) {
+		dump_line(&s, "Debug dump triggered by %s", ei->reason);
+	} else {
+		dump_line(&s, "%s[%d] triggered exit kind %d:",
+			  current->comm, current->pid, ei->kind);
+		dump_line(&s, "  %s (%s)", ei->reason, ei->msg);
+		dump_newline(&s);
+		dump_line(&s, "Backtrace:");
+		dump_stack_trace(&s, "  ", ei->bt, ei->bt_len);
+	}
 
 	if (SCX_HAS_OP(dump)) {
 		ops_dump_init(&s, "");
@@ -5497,6 +5501,21 @@ static const struct sysrq_key_op sysrq_sched_ext_reset_op = {
 	.enable_mask	= SYSRQ_ENABLE_RTNICE,
 };
 
+static void sysrq_handle_sched_ext_dump(u8 key)
+{
+	struct scx_exit_info ei = { .kind = SCX_EXIT_NONE, .reason = "SysRq-D" };
+
+	if (scx_enabled())
+		scx_dump_state(&ei, 0);
+}
+
+static const struct sysrq_key_op sysrq_sched_ext_dump_op = {
+	.handler	= sysrq_handle_sched_ext_dump,
+	.help_msg	= "dump-sched-ext(D)",
+	.action_msg	= "Trigger sched_ext debug dump",
+	.enable_mask	= SYSRQ_ENABLE_RTNICE,
+};
+
 static bool can_skip_idle_kick(struct rq *rq)
 {
 	lockdep_assert_rq_held(rq);
@@ -5716,6 +5735,7 @@ void __init init_sched_ext_class(void)
 	}
 
 	register_sysrq_key('S', &sysrq_sched_ext_reset_op);
+	register_sysrq_key('D', &sysrq_sched_ext_dump_op);
 	INIT_DELAYED_WORK(&scx_watchdog_work, scx_watchdog_workfn);
 	scx_cgroup_config_knobs();
 }

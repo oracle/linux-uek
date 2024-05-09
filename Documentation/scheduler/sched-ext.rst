@@ -18,6 +18,13 @@ programs - the BPF scheduler.
   a runnable task stalls, or on invoking the SysRq key sequence
   :kbd:`SysRq-S`.
 
+* When the BPF scheduler triggers an error, debug information is dumped to
+  aid debugging. The debug dump is passed to and printed out by the
+  scheduler binary. The debug dump can also be accessed through the
+  `sched_ext_dump` tracepoint. The SysRq key sequence :kbd:`SysRq-D`
+  triggers a debug dump. This doesn't terminate the BPF scheduler and can
+  only be read through the tracepoint.
+
 Switching to and from sched_ext
 ===============================
 
