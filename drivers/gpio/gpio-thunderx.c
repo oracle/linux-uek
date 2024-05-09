@@ -336,6 +336,9 @@ static int thunderx_gpio_irq_set_type(struct irq_data *d,
 	unsigned long flags;
 	u64 bit_cfg;
 
+	if ((flow_type & IRQ_TYPE_EDGE_BOTH) == IRQ_TYPE_EDGE_BOTH)
+		return -EINVAL;
+
 	irqd_set_trigger_type(d, flow_type);
 
 	bit_cfg = txline->fil_bits | GPIO_BIT_CFG_INT_EN;
