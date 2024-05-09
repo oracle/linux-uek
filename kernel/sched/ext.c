@@ -990,6 +990,9 @@ struct scx_dump_data scx_dump_data = {
 static struct kset *scx_kset;
 static struct kobject *scx_root_kobj;
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/sched_ext.h>
+
 static void scx_bpf_kick_cpu(s32 cpu, u64 flags);
 static __printf(3, 4) void scx_ops_exit_kind(enum scx_exit_kind kind,
 					     s64 exit_code,
@@ -4516,6 +4519,8 @@ static void scx_ops_disable(enum scx_exit_kind kind)
 
 static void dump_newline(struct seq_buf *s)
 {
+	trace_sched_ext_dump("");
+
 	/* @s may be zero sized and seq_buf triggers WARN if so */
 	if (s->size)
 		seq_buf_putc(s, '\n');
@@ -4525,6 +4530,18 @@ static __printf(2, 3) void dump_line(struct seq_buf *s, const char *fmt, ...)
 {
 	va_list args;
 
+#ifdef CONFIG_TRACEPOINTS
+	if (trace_sched_ext_dump_enabled()) {
+		/* protected by scx_dump_state()::dump_lock */
+		static char line_buf[SCX_EXIT_MSG_LEN];
+
+		va_start(args, fmt);
+		vscnprintf(line_buf, sizeof(line_buf), fmt, args);
+		va_end(args);
+
+		trace_sched_ext_dump(line_buf);
+	}
+#endif
 	/* @s may be zero sized and seq_buf triggers WARN if so */
 	if (s->size) {
 		va_start(args, fmt);
@@ -4650,6 +4667,7 @@ static void scx_dump_task(struct seq_buf *s, struct scx_dump_ctx *dctx,
 
 static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 {
+	static DEFINE_SPINLOCK(dump_lock);
 	static const char trunc_marker[] = "\n\n~~~~ TRUNCATED ~~~~\n";
 	struct scx_dump_ctx dctx = {
 		.kind = ei->kind,
@@ -4659,13 +4677,13 @@ static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 		.at_jiffies = jiffies,
 	};
 	struct seq_buf s;
+	unsigned long flags;
 	char *buf;
 	int cpu;
 
-	if (dump_len <= sizeof(trunc_marker))
-		return;
+	spin_lock_irqsave(&dump_lock, flags);
 
-	seq_buf_init(&s, ei->dump, dump_len - sizeof(trunc_marker));
+	seq_buf_init(&s, ei->dump, dump_len);
 
 	dump_line(&s, "%s[%d] triggered exit kind %d:",
 		  current->comm, current->pid, ei->kind);
@@ -4763,9 +4781,11 @@ static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 		rq_unlock(rq, &rf);
 	}
 
-	if (seq_buf_has_overflowed(&s))
-		memcpy(ei->dump + seq_buf_used(&s) - 1, trunc_marker,
-		       sizeof(trunc_marker));
+	if (seq_buf_has_overflowed(&s) && dump_len >= sizeof(trunc_marker))
+		memcpy(ei->dump + dump_len - sizeof(trunc_marker),
+		       trunc_marker, sizeof(trunc_marker));
+
+	spin_unlock_irqrestore(&dump_lock, flags);
 }
 
 static void scx_ops_error_irq_workfn(struct irq_work *irq_work)
