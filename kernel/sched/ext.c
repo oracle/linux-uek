@@ -4514,6 +4514,11 @@ static void scx_ops_disable(enum scx_exit_kind kind)
 	schedule_scx_ops_disable_work();
 }
 
+static void dump_newline(struct seq_buf *s)
+{
+	seq_buf_putc(s, '\n');
+}
+
 static __printf(2, 3) void dump_line(struct seq_buf *s, const char *fmt, ...)
 {
 	va_list args;
@@ -4521,6 +4526,8 @@ static __printf(2, 3) void dump_line(struct seq_buf *s, const char *fmt, ...)
 	va_start(args, fmt);
 	seq_buf_vprintf(s, fmt, args);
 	va_end(args);
+
+	seq_buf_putc(s, '\n');
 }
 
 static void dump_stack_trace(struct seq_buf *s, const char *prefix,
@@ -4529,7 +4536,7 @@ static void dump_stack_trace(struct seq_buf *s, const char *prefix,
 	unsigned int i;
 
 	for (i = 0; i < len; i++)
-		dump_line(s, "%s%pS\n", prefix, (void *)bt[i]);
+		dump_line(s, "%s%pS", prefix, (void *)bt[i]);
 }
 
 static void ops_dump_init(struct seq_buf *s, const char *prefix)
@@ -4558,7 +4565,7 @@ static void ops_dump_flush(void)
 	 * line to distinguish ops dump.
 	 */
 	if (dd->first) {
-		dump_line(dd->s, "\n");
+		dump_newline(dd->s);
 		dd->first = false;
 	}
 
@@ -4579,7 +4586,7 @@ static void ops_dump_flush(void)
 		 */
 		c = *end;
 		*end = '\0';
-		dump_line(dd->s, "%s%s\n", dd->prefix, line);
+		dump_line(dd->s, "%s%s", dd->prefix, line);
 		if (c == '\0')
 			break;
 
@@ -4611,17 +4618,17 @@ static void scx_dump_task(struct seq_buf *s, struct scx_dump_ctx *dctx,
 		scnprintf(dsq_id_buf, sizeof(dsq_id_buf), "0x%llx",
 			  (unsigned long long)p->scx.dsq->id);
 
-	dump_line(s, "\n");
-	dump_line(s, " %c%c %s[%d] %+ldms\n",
+	dump_newline(s);
+	dump_line(s, " %c%c %s[%d] %+ldms",
 		  marker, task_state_to_char(p), p->comm, p->pid,
 		  jiffies_delta_msecs(p->scx.runnable_at, dctx->at_jiffies));
-	dump_line(s, "      scx_state/flags=%u/0x%x dsq_flags=0x%x ops_state/qseq=%lu/%lu\n",
+	dump_line(s, "      scx_state/flags=%u/0x%x dsq_flags=0x%x ops_state/qseq=%lu/%lu",
 		  scx_get_task_state(p), p->scx.flags & ~SCX_TASK_STATE_MASK,
 		  p->scx.dsq_node.flags, ops_state & SCX_OPSS_STATE_MASK,
 		  ops_state >> SCX_OPSS_QSEQ_SHIFT);
-	dump_line(s, "      sticky/holding_cpu=%d/%d dsq_id=%s\n",
+	dump_line(s, "      sticky/holding_cpu=%d/%d dsq_id=%s",
 		    p->scx.sticky_cpu, p->scx.holding_cpu, dsq_id_buf);
-	dump_line(s, "      cpus=%*pb\n", cpumask_pr_args(p->cpus_ptr));
+	dump_line(s, "      cpus=%*pb", cpumask_pr_args(p->cpus_ptr));
 
 	if (SCX_HAS_OP(dump_task)) {
 		ops_dump_init(s, "    ");
@@ -4631,7 +4638,7 @@ static void scx_dump_task(struct seq_buf *s, struct scx_dump_ctx *dctx,
 
 	bt_len = stack_trace_save_tsk(p, bt, SCX_EXIT_BT_LEN, 1);
 	if (bt_len) {
-		dump_line(s, "\n");
+		dump_newline(s);
 		dump_stack_trace(s, "    ", bt, bt_len);
 	}
 }
@@ -4655,11 +4662,11 @@ static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 
 	seq_buf_init(&s, ei->dump, dump_len - sizeof(trunc_marker));
 
-	dump_line(&s, "%s[%d] triggered exit kind %d:\n",
+	dump_line(&s, "%s[%d] triggered exit kind %d:",
 		  current->comm, current->pid, ei->kind);
-	dump_line(&s, "  %s (%s)\n", ei->reason, ei->msg);
-	dump_line(&s, "\n");
-	dump_line(&s, "Backtrace:\n");
+	dump_line(&s, "  %s (%s)", ei->reason, ei->msg);
+	dump_newline(&s);
+	dump_line(&s, "Backtrace:");
 	dump_stack_trace(&s, "  ", ei->bt, ei->bt_len);
 
 	if (SCX_HAS_OP(dump)) {
@@ -4668,9 +4675,9 @@ static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 		ops_dump_exit();
 	}
 
-	dump_line(&s, "\n");
-	dump_line(&s, "CPU states\n");
-	dump_line(&s, "----------\n");
+	dump_newline(&s);
+	dump_line(&s, "CPU states");
+	dump_line(&s, "----------");
 
 	for_each_possible_cpu(cpu) {
 		struct rq *rq = cpu_rq(cpu);
@@ -4697,25 +4704,25 @@ static void scx_dump_state(struct scx_exit_info *ei, size_t dump_len)
 		avail = seq_buf_get_buf(&s, &buf);
 		seq_buf_init(&ns, buf, avail);
 
-		dump_line(&ns, "\n");
-		dump_line(&ns, "CPU %-4d: nr_run=%u flags=0x%x cpu_rel=%d ops_qseq=%lu pnt_seq=%lu\n",
+		dump_newline(&ns);
+		dump_line(&ns, "CPU %-4d: nr_run=%u flags=0x%x cpu_rel=%d ops_qseq=%lu pnt_seq=%lu",
 			  cpu, rq->scx.nr_running, rq->scx.flags,
 			  rq->scx.cpu_released, rq->scx.ops_qseq,
 			  rq->scx.pnt_seq);
-		dump_line(&ns, "          curr=%s[%d] class=%ps\n",
+		dump_line(&ns, "          curr=%s[%d] class=%ps",
 			  rq->curr->comm, rq->curr->pid,
 			  rq->curr->sched_class);
 		if (!cpumask_empty(rq->scx.cpus_to_kick))
-			dump_line(&ns, "  cpus_to_kick   : %*pb\n",
+			dump_line(&ns, "  cpus_to_kick   : %*pb",
 				  cpumask_pr_args(rq->scx.cpus_to_kick));
 		if (!cpumask_empty(rq->scx.cpus_to_kick_if_idle))
-			dump_line(&ns, "  idle_to_kick   : %*pb\n",
+			dump_line(&ns, "  idle_to_kick   : %*pb",
 				  cpumask_pr_args(rq->scx.cpus_to_kick_if_idle));
 		if (!cpumask_empty(rq->scx.cpus_to_preempt))
-			dump_line(&ns, "  cpus_to_preempt: %*pb\n",
+			dump_line(&ns, "  cpus_to_preempt: %*pb",
 				  cpumask_pr_args(rq->scx.cpus_to_preempt));
 		if (!cpumask_empty(rq->scx.cpus_to_wait))
-			dump_line(&ns, "  cpus_to_wait   : %*pb\n",
+			dump_line(&ns, "  cpus_to_wait   : %*pb",
 				  cpumask_pr_args(rq->scx.cpus_to_wait));
 
 		used = seq_buf_used(&ns);
@@ -6470,7 +6477,7 @@ __bpf_kfunc void scx_bpf_dump_bstr(char *fmt, unsigned long long *data,
 	ret = __bstr_format(buf->data, buf->line + dd->cursor,
 			    sizeof(buf->line) - dd->cursor, fmt, data, data__sz);
 	if (ret < 0) {
-		dump_line(dd->s, "%s[!] (\"%s\", %p, %u) failed to format (%d)\n",
+		dump_line(dd->s, "%s[!] (\"%s\", %p, %u) failed to format (%d)",
 			  dd->prefix, fmt, data, data__sz, ret);
 		return;
 	}
