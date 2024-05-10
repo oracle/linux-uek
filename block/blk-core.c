@@ -40,7 +40,6 @@
 #include <linux/part_stat.h>
 #include <linux/sched/sysctl.h>
 #include <linux/blk-crypto.h>
-#include <linux/uek.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/block.h>
@@ -1022,17 +1021,8 @@ again:
 unsigned long bdev_start_io_acct(struct block_device *bdev, enum req_op op,
 				 unsigned long start_time)
 {
-	bool inflight = false;
-	struct blk_mq_hw_ctx *hctx;
-
 	part_stat_lock();
-
-	if (static_branch_unlikely(&on_exadata) &&
-	    (bdev->bd_queue->nr_hw_queues == 1)) {
-		hctx = xa_load(&bdev->bd_queue->hctx_table, 0);
-		inflight = blk_mq_hctx_has_tags(hctx);
-	}
-	update_io_ticks(bdev, start_time, inflight);
+	update_io_ticks(bdev, start_time, false);
 	part_stat_local_inc(bdev, in_flight[op_is_write(op)]);
 	part_stat_unlock();
 
