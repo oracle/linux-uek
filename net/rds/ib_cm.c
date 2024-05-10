@@ -2523,7 +2523,8 @@ unsigned long rds_ib_conn_path_shutdown_check_wait(struct rds_conn_path *cp)
 		(rds_ib_ring_empty(&ic->i_recv_ring) &&
 		 (atomic_read(&ic->i_signaled_sends) == 0) &&
 		 (atomic_read(&ic->i_fastreg_wrs) ==
-		  RDS_IB_DEFAULT_FREG_WR))) ? 0
+		  RDS_IB_DEFAULT_FREG_WR) &&
+		 !test_bit(IB_ACK_IN_FLIGHT, &ic->i_ack_flags))) ? 0
 		: msecs_to_jiffies(1000);
 }
 
