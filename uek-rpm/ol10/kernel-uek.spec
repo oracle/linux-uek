@@ -8,7 +8,7 @@
 %define _wrong_version_format_terminate_build   0
 
 # NOTE: Set uek_release when updating the UEK release version
-%define uek_release unset
+%define uek_release Next
 %if "%{uek_release}" != "unset"
 %define uek_release_name UEK%{uek_release}
 %define uek_release_name_full Unbreakable Enterprise Kernel %{uek_release}
@@ -31,7 +31,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 # that the kernel isn't the stock distribution kernel, for example,
 # by setting the define to ".local" or ".bz123456"
 #
-# % define buildid .local
+%define buildid next
 
 # define _kernel_cc to allow overrides to kernel make invocations.
 # Example:
@@ -39,13 +39,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 
 %define distro_build 0
 
-# Sign modules on x86 and aarch64.  Make sure the config files match this setting if more
-# architectures are added.
-%ifarch x86_64 aarch64
-%global signkernel 1
-%else
+# Don't do any signing on UEK-NEXT for ol10
 %global signkernel 0
-%endif
 
 # Sign modules on all arches
 %global signmodules 1
@@ -364,7 +359,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define kernel_prereq  coreutils, systemd >= 203-2, /usr/bin/kernel-install
 %define initrd_prereq  dracut >= 027
 
-%define variant %{?build_variant:%{build_variant}}%{!?build_variant:-luci}
+%define variant %{?build_variant:%{build_variant}}%{!?build_variant:-ueknext}
 
 %define installonly_variant_name kernel-uek
 
