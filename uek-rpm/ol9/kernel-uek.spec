@@ -8,7 +8,7 @@
 %define _wrong_version_format_terminate_build   0
 
 # NOTE: Set uek_release when updating the UEK release version
-%define uek_release unset
+%define uek_release Next
 %if "%{uek_release}" != "unset"
 %define uek_release_name UEK%{uek_release}
 %define uek_release_name_full Unbreakable Enterprise Kernel %{uek_release}
@@ -34,7 +34,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 # that the kernel isn't the stock distribution kernel, for example,
 # by setting the define to ".local" or ".bz123456"
 #
-# % define buildid .local
+%define buildid next
 
 # define _kernel_cc to allow overrides to kernel make invocations.
 # Example:
@@ -42,13 +42,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 
 %define distro_build 0
 
-# Sign modules on x86 and aarch64.  Make sure the config files match this setting if more
-# architectures are added.
-%ifarch x86_64 aarch64
-%global signkernel 1
-%else
+# Don't do any signing on UEK-NEXT for ol9
 %global signkernel 0
-%endif
 
 # Sign modules on all arches
 %global signmodules 1
@@ -74,7 +69,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define stable_base %(echo $((%{stable_update} - 1)))
 %endif
 %endif
-%define rpmversion 6.12.%{base_sublevel}%{?stablerev}
+%define rpmversion 6.14.%{base_sublevel}%{?stablerev}
 
 ## The not-released-kernel case ##
 %else
@@ -85,7 +80,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 # The git snapshot level
 %define gitrev 0
 # Set rpm version accordingly
-%define rpmversion 6.12.%{upstream_sublevel}
+%define rpmversion 6.14.%{upstream_sublevel}
 %endif
 # Nb: The above rcrev and gitrev values automagically define Patch00 and Patch01 below.
 
@@ -187,7 +182,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %endif
 
 # The kernel tarball/base version
-%define kversion 6.12.%{base_sublevel}
+%define kversion 6.14.%{base_sublevel}
 
 %define make_target bzImage
 
@@ -367,7 +362,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define kernel_prereq  coreutils, systemd >= 203-2, /usr/bin/kernel-install
 %define initrd_prereq  dracut >= 027
 
-%define variant %{?build_variant:%{build_variant}}%{!?build_variant:-luci}
+%define variant %{?build_variant:%{build_variant}}%{!?build_variant:-ueknext}
 
 %define installonly_variant_name kernel-uek
 
