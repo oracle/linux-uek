@@ -429,6 +429,10 @@ static inline int blkdev_zone_mgmt_ioctl(struct block_device *bdev,
 struct block_device *bdev_alloc(struct gendisk *disk, u8 partno);
 void bdev_add(struct block_device *bdev, dev_t dev);
 
+bool is_exadata_sq_disk(struct request_queue *q);
+void exadata_sq_disk_inc_inflight(struct request_queue *q, struct block_device *part);
+void exadata_sq_disk_dec_inflight(struct request_queue *q, struct block_device *part);
+
 int blk_alloc_ext_minor(void);
 void blk_free_ext_minor(unsigned int minor);
 #define ADDPART_FLAG_NONE	0

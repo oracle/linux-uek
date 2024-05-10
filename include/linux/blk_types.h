@@ -75,6 +75,7 @@ struct block_device {
 	 * path
 	 */
 	struct device		bd_device;
+	atomic_t sq_inflight_io;
 } __randomize_layout;
 
 #define bdev_whole(_bdev) \

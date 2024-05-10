@@ -72,6 +72,22 @@ static struct kmem_cache *blk_requestq_cachep;
  */
 static struct workqueue_struct *kblockd_workqueue;
 
+bool is_exadata_sq_disk(struct request_queue *q) {
+	return static_branch_unlikely(&on_exadata) && (q->nr_hw_queues == 1);
+}
+
+void exadata_sq_disk_inc_inflight(struct request_queue *q, struct block_device *part) {
+	if (is_exadata_sq_disk(q))
+		atomic_inc(&part->sq_inflight_io);
+}
+
+void exadata_sq_disk_dec_inflight(struct request_queue *q, struct block_device *part) {
+	if (is_exadata_sq_disk(q)) {
+		if (atomic_dec_return(&part->sq_inflight_io) < 0)
+			atomic_set(&part->sq_inflight_io, 0);
+	}
+}
+
 /**
  * blk_queue_flag_set - atomically set a queue flag
  * @flag: flag to be set
@@ -1021,8 +1037,18 @@ again:
 unsigned long bdev_start_io_acct(struct block_device *bdev, enum req_op op,
 				 unsigned long start_time)
 {
+	int inflight_io = 1;
+	struct request_queue *q = bdev_get_queue(bdev);
 	part_stat_lock();
-	update_io_ticks(bdev, start_time, false);
+	if (is_exadata_sq_disk(q)) {
+		inflight_io = atomic_inc_return(&bdev->sq_inflight_io);
+		/* Bring stamp to current to avoid disk idle time be accounted
+		 * into io_ticks.
+		 */
+		if (inflight_io == 1)
+			bdev->bd_stamp = blk_get_iostat_ticks(q);
+	}
+	update_io_ticks(bdev, start_time, inflight_io > 1);
 	part_stat_local_inc(bdev, in_flight[op_is_write(op)]);
 	part_stat_unlock();
 
@@ -1064,6 +1090,7 @@ void bdev_end_io_acct(struct block_device *bdev, enum req_op op,
 	part_stat_add(bdev, sectors[sgrp], sectors);
 	part_stat_add(bdev, nsecs[sgrp], duration_ns);
 	part_stat_local_dec(bdev, in_flight[op_is_write(op)]);
+	exadata_sq_disk_dec_inflight(q, bdev);
 	part_stat_unlock();
 }
 EXPORT_SYMBOL(bdev_end_io_acct);

@@ -997,12 +997,15 @@ static inline void blk_account_io_done(struct request *req, u64 now)
 		update_io_ticks(req->part, blk_get_iostat_ticks(req->q), true);
 		part_stat_inc(req->part, ios[sgrp]);
 		part_stat_add(req->part, nsecs[sgrp], now - req->start_time_ns);
+		exadata_sq_disk_dec_inflight(req->q, req->part);
 		part_stat_unlock();
 	}
 }
 
 static inline void blk_account_io_start(struct request *req)
 {
+	int inflight_io = 1;
+
 	trace_block_io_start(req);
 
 	if (blk_do_io_stat(req)) {
@@ -1018,7 +1021,16 @@ static inline void blk_account_io_start(struct request *req)
 			req->part = req->q->disk->part0;
 
 		part_stat_lock();
-		update_io_ticks(req->part, blk_get_iostat_ticks(req->q), false);
+		if (is_exadata_sq_disk(req->q)) {
+			inflight_io = atomic_inc_return(&req->part->sq_inflight_io);
+			/* Bring stamp to current to avoid disk idle time be accounted
+			 * into io_ticks.
+			 */
+			if (inflight_io == 1)
+				req->part->bd_stamp = blk_get_iostat_ticks(req->q);
+		}
+
+		update_io_ticks(req->part, blk_get_iostat_ticks(req->q), inflight_io > 1);
 		part_stat_unlock();
 	}
 }
