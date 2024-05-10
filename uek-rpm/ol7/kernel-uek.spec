@@ -135,7 +135,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 5
 # --strict-build-id : ensure all ELF files have build IDs. This is similar to
 #                     the OL8 _missing_build_ids_terminate_build macro.
 # -n                : do not regenerate build IDs! Use the preexisting ones.
-%define debuginfo_args -n uek-rpm/tools/editbuildid/editbuildid --strict-build-id
+%define debuginfo_args -n $RPM_SOURCE_DIR/editbuildid --strict-build-id
 
 # Additional options for user-friendly one-off kernel building:
 #
@@ -666,6 +666,7 @@ source210: tcindex-disable.conf
 Source300: find-debuginfo.sh.ol7.diff
 Source301: find-debuginfo.sh.parallel.diff
 Source302: find-debuginfo.sh.norecompute.diff
+Source304: editbuildid.c
 
 # Sources for kernel-tools
 Source2000: cpupower.service
@@ -1712,7 +1713,7 @@ BuildKernel %make_target %kernel_image emb
 BuildKernel %make_target %kernel_image emb2
 %endif
 
-make -C uek-rpm/tools/editbuildid
+${CC:-gcc} -o $RPM_SOURCE_DIR/editbuildid $RPM_SOURCE_DIR/editbuildid.c
 
 %global perf_make \
   make -s EXTRA_CFLAGS="${RPM_OPT_FLAGS}" LDFLAGS="%{__global_ldflags}" %{?cross_opts} -C tools/perf V=1 NO_PERF_READ_VDSO32=1 NO_PERF_READ_VDSOX32=1 WERROR=0 NO_LIBUNWIND=1 HAVE_CPLUS_DEMANGLE=1 NO_GTK2=1 NO_STRLCPY=1 NO_BIONIC=1 NO_JVMTI=1 prefix=%{_prefix}
