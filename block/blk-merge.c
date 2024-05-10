@@ -722,6 +722,7 @@ static void blk_account_io_merge_request(struct request *req)
 	if (blk_do_io_stat(req)) {
 		part_stat_lock();
 		part_stat_inc(req->part, merges[op_stat_group(req_op(req))]);
+		exadata_sq_disk_dec_inflight(req->q, req->part);
 		part_stat_unlock();
 	}
 }

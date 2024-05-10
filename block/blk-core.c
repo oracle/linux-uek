@@ -41,6 +41,7 @@
 #include <linux/psi.h>
 #include <linux/sched/sysctl.h>
 #include <linux/blk-crypto.h>
+#include <linux/uek.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/block.h>
@@ -73,6 +74,22 @@ struct kmem_cache *blk_requestq_cachep;
  * Controlling structure to kblockd
  */
 static struct workqueue_struct *kblockd_workqueue;
+
+bool is_exadata_sq_disk(struct request_queue *q) {
+	return static_branch_unlikely(&on_exadata) && (q->nr_hw_queues == 1);
+}
+
+void exadata_sq_disk_inc_inflight(struct request_queue *q, struct block_device *part) {
+	if (is_exadata_sq_disk(q))
+		atomic_inc(&part->sq_inflight_io);
+}
+
+void exadata_sq_disk_dec_inflight(struct request_queue *q, struct block_device *part) {
+	if (is_exadata_sq_disk(q)) {
+		if (atomic_dec_return(&part->sq_inflight_io) < 0)
+			atomic_set(&part->sq_inflight_io, 0);
+	}
+}
 
 /**
  * blk_queue_flag_set - atomically set a queue flag
@@ -1285,12 +1302,14 @@ void blk_account_io_done(struct request *req, u64 now)
 		update_io_ticks(req->part, blk_get_iostat_ticks(req->q), true);
 		part_stat_inc(req->part, ios[sgrp]);
 		part_stat_add(req->part, nsecs[sgrp], now - req->start_time_ns);
+		exadata_sq_disk_dec_inflight(req->q, req->part);
 		part_stat_unlock();
 	}
 }
 
 void blk_account_io_start(struct request *rq)
 {
+	int inflight_io = 1;
 	if (!blk_do_io_stat(rq))
 		return;
 
@@ -1301,7 +1320,15 @@ void blk_account_io_start(struct request *rq)
 		rq->part = rq->rq_disk->part0;
 
 	part_stat_lock();
-	update_io_ticks(rq->part, blk_get_iostat_ticks(rq->q), false);
+	if (is_exadata_sq_disk(rq->q)) {
+		inflight_io = atomic_inc_return(&rq->part->sq_inflight_io);
+		/* Bring stamp to current to avoid disk idle time be accounted
+		 * into io_ticks.
+		 */
+		if (inflight_io == 1)
+			rq->part->bd_stamp = blk_get_iostat_ticks(rq->q);
+	}
+	update_io_ticks(rq->part, blk_get_iostat_ticks(rq->q), inflight_io > 1);
 	part_stat_unlock();
 }
 
@@ -1309,10 +1336,20 @@ static unsigned long __part_start_io_acct(struct block_device *part,
 					  unsigned int sectors, unsigned int op,
 					  unsigned long start_time)
 {
+	int inflight_io = 1;
 	const int sgrp = op_stat_group(op);
+	struct request_queue *q = bdev_get_queue(part);
 
 	part_stat_lock();
-	update_io_ticks(part, start_time, false);
+	if (is_exadata_sq_disk(q)) {
+		inflight_io = atomic_inc_return(&part->sq_inflight_io);
+		/* Bring stamp to current to avoid disk idle time be accounted
+		 * into io_ticks.
+		 */
+		if (inflight_io == 1)
+			part->bd_stamp = blk_get_iostat_ticks(q);
+	}
+	update_io_ticks(part, start_time, inflight_io > 1);
 	part_stat_inc(part, ios[sgrp]);
 	part_stat_add(part, sectors[sgrp], sectors);
 	part_stat_local_inc(part, in_flight[op_is_write(op)]);
@@ -1374,6 +1411,7 @@ static void __part_end_io_acct(struct block_device *part, unsigned int op,
 	update_io_ticks(part, now, true);
 	part_stat_add(part, nsecs[sgrp], duration_ns);
 	part_stat_local_dec(part, in_flight[op_is_write(op)]);
+	exadata_sq_disk_dec_inflight(q, part);
 	part_stat_unlock();
 }
 

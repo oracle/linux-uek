@@ -349,6 +349,10 @@ static inline void blk_queue_free_zone_bitmaps(struct request_queue *q) {}
 static inline void blk_queue_clear_zone_settings(struct request_queue *q) {}
 #endif
 
+bool is_exadata_sq_disk(struct request_queue *q);
+void exadata_sq_disk_inc_inflight(struct request_queue *q, struct block_device *part);
+void exadata_sq_disk_dec_inflight(struct request_queue *q, struct block_device *part);
+
 int blk_alloc_ext_minor(void);
 void blk_free_ext_minor(unsigned int minor);
 #define ADDPART_FLAG_NONE	0
