@@ -7,7 +7,7 @@
 %define _missing_doc_files_terminate_build      0
 %define _wrong_version_format_terminate_build   0
 
-Summary: Oracle Unbreakable Enterprise Kernel Release 8
+Summary: Oracle Unbreakable Enterprise Kernel Next Release
 
 # For a stable, released kernel, released_kernel should be 1. For rawhide
 # and/or a kernel built from an rc or git snapshot, released_kernel should
@@ -20,7 +20,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 8
 # that the kernel isn't the stock distribution kernel, for example,
 # by setting the define to ".local" or ".bz123456"
 #
-# % define buildid .local
+%define buildid next
 
 # define _kernel_cc to allow overrides to kernel make invocations.
 # Example:
@@ -28,13 +28,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 8
 
 %define distro_build 0
 
-# Sign modules on x86 and aarch64.  Make sure the config files match this setting if more
-# architectures are added.
-%ifarch x86_64 aarch64
-%global signkernel 1
-%else
+# Don't do any signing on UEK-NEXT for ol9
 %global signkernel 0
-%endif
 
 # Sign modules on all arches
 %global signmodules 1
@@ -60,7 +55,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 8
 %define stable_base %(echo $((%{stable_update} - 1)))
 %endif
 %endif
-%define rpmversion 6.6.%{base_sublevel}%{?stablerev}
+%define rpmversion 6.9.%{base_sublevel}%{?stablerev}
 
 ## The not-released-kernel case ##
 %else
@@ -71,7 +66,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 8
 # The git snapshot level
 %define gitrev 0
 # Set rpm version accordingly
-%define rpmversion 6.6.%{upstream_sublevel}
+%define rpmversion 6.9.%{upstream_sublevel}
 %endif
 # Nb: The above rcrev and gitrev values automagically define Patch00 and Patch01 below.
 
@@ -177,7 +172,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 8
 %endif
 
 # The kernel tarball/base version
-%define kversion 6.6.%{base_sublevel}
+%define kversion 6.9.%{base_sublevel}
 
 %define make_target bzImage
 
@@ -361,7 +356,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 8
 %define kernel_prereq  coreutils, systemd >= 203-2, /usr/bin/kernel-install
 %define initrd_prereq  dracut >= 027
 
-%define variant %{?build_variant:%{build_variant}}%{!?build_variant:-luci}
+%define variant %{?build_variant:%{build_variant}}%{!?build_variant:-ueknext}
 
 %define installonly_variant_name kernel-uek
 
@@ -906,18 +901,18 @@ ApplyPatch()
 
 # Update to latest upstream.
 %if 0%{?released_kernel}
-%define vanillaversion 6.6.%{base_sublevel}
+%define vanillaversion 6.9.%{base_sublevel}
 # non-released_kernel case
 %else
 %if 0%{?rcrev}
-%define vanillaversion 6.6.%{upstream_sublevel}-rc%{rcrev}
+%define vanillaversion 6.9.%{upstream_sublevel}-rc%{rcrev}
 %if 0%{?gitrev}
-%define vanillaversion 6.6.%{upstream_sublevel}-rc%{rcrev}-git%{gitrev}
+%define vanillaversion 6.9.%{upstream_sublevel}-rc%{rcrev}-git%{gitrev}
 %endif
 %else
 # pre-{base_sublevel+1}-rc1 case
 %if 0%{?gitrev}
-%define vanillaversion 6.6.%{base_sublevel}-git%{gitrev}
+%define vanillaversion 6.9.%{base_sublevel}-git%{gitrev}
 %endif
 %endif
 %endif
