@@ -106,16 +106,12 @@ void fsnotify_unmount_inodes(struct super_block *sb)
  * parent cares.  Thus when an event happens on a child it can quickly tell if
  * if there is a need to find a parent and send the event to the parent.
  */
-void __fsnotify_update_child_dentry_flags(struct inode *inode)
+void fsnotify_set_children_dentry_flags(struct inode *inode)
 {
 	struct dentry *alias;
-	int watched;
 
 	if (!S_ISDIR(inode->i_mode))
 		return;
-
-	/* determine if the children should tell inode about their events */
-	watched = fsnotify_inode_watches_children(inode);
 
 	spin_lock(&inode->i_lock);
 	/* run all of the dentries associated with this inode.  Since this is a
@@ -132,15 +128,30 @@ void __fsnotify_update_child_dentry_flags(struct inode *inode)
 				continue;
 
 			spin_lock_nested(&child->d_lock, DENTRY_D_LOCK_NESTED);
-			if (watched)
-				child->d_flags |= DCACHE_FSNOTIFY_PARENT_WATCHED;
-			else
-				child->d_flags &= ~DCACHE_FSNOTIFY_PARENT_WATCHED;
+			child->d_flags |= DCACHE_FSNOTIFY_PARENT_WATCHED;
 			spin_unlock(&child->d_lock);
 		}
 		spin_unlock(&alias->d_lock);
 	}
 	spin_unlock(&inode->i_lock);
+}
+
+/*
+ * Lazily clear false positive PARENT_WATCHED flag for child whose parent had
+ * stopped watching children.
+ */
+static void fsnotify_clear_child_dentry_flag(struct inode *pinode,
+					     struct dentry *dentry)
+{
+	spin_lock(&dentry->d_lock);
+	/*
+	 * d_lock is a sufficient barrier to prevent observing a non-watched
+	 * parent state from before the fsnotify_set_children_dentry_flags()
+	 * or fsnotify_update_flags() call that had set PARENT_WATCHED.
+	 */
+	if (!fsnotify_inode_watches_children(pinode))
+		dentry->d_flags &= ~DCACHE_FSNOTIFY_PARENT_WATCHED;
+	spin_unlock(&dentry->d_lock);
 }
 
 /* Notify this dentry's parent about a child's events. */
@@ -160,7 +171,7 @@ int __fsnotify_parent(const struct path *path, struct dentry *dentry, __u32 mask
 	p_inode = parent->d_inode;
 
 	if (unlikely(!fsnotify_inode_watches_children(p_inode))) {
-		__fsnotify_update_child_dentry_flags(p_inode);
+		fsnotify_clear_child_dentry_flag(p_inode, dentry);
 	} else if (p_inode->i_fsnotify_mask & mask & ~FS_EVENT_ON_CHILD) {
 		struct name_snapshot name;
 

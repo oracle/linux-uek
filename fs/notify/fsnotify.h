@@ -44,7 +44,7 @@ extern void fsnotify_wait_marks_destroyed(void);
  * update the dentry->d_flags of all of inode's children to indicate if inode cares
  * about events that happen to its children.
  */
-extern void __fsnotify_update_child_dentry_flags(struct inode *inode);
+extern void fsnotify_set_children_dentry_flags(struct inode *inode);
 
 /* allocate and destroy and event holder to attach events to notification/access queues */
 extern struct fsnotify_event_holder *fsnotify_alloc_event_holder(void);
