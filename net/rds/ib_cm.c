@@ -2543,8 +2543,6 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 		tasklet_kill(&ic->i_stasklet);
 		tasklet_kill(&ic->i_rtasklet);
 
-		clear_bit_mb(RDS_IB_CQ_ERR, &ic->i_flags);
-
 		/* first destroy the ib state that generates callbacks */
 		if (ic->i_cm_id->qp)
 			rdma_destroy_qp(ic->i_cm_id);
