@@ -2015,7 +2015,7 @@ struct block_device_operations {
 				      unsigned int clearing);
 	/* ->media_changed() is DEPRECATED, use ->check_events() instead */
 	UEK_KABI_RENAME(int (*media_changed) (struct gendisk *), \
-		unsigned int (*set_read_only) (struct block_device *bdev, bool ro));
+		int (*set_read_only) (struct block_device *bdev, bool ro));
 	void (*unlock_native_capacity) (struct gendisk *);
 	int (*revalidate_disk) (struct gendisk *);
 	int (*getgeo)(struct block_device *, struct hd_geometry *);
