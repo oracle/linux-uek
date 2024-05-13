@@ -1446,7 +1446,7 @@ static void unmap_page_range_mt(struct mmu_gather *tlb,
 	 * side of caution and assume the number applies to the VMA and revert
 	 * to unmapping single threaded if necessary.
 	 */
-	if (!(vma->vm_flags & VM_EXEC_KEEP))
+	if (!(vma->vm_flags & VM_EXEC_KEEP)) {
 		ktask_ctl_set_max_threads(&ctl, 8);
 		if (!(vma->vm_flags & VM_SHARED) && total_sz >= min_chunk * 3) {
 			unsigned long swapped_sz;
@@ -1456,6 +1456,7 @@ static void unmap_page_range_mt(struct mmu_gather *tlb,
 				unmap_page_range(tlb, vma, addr, end, details);
 				return;
 			}
+		}
 	}
 
 	/*
