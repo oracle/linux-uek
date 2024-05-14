@@ -1090,7 +1090,6 @@ static void igb_free_q_vectors(struct igb_adapter *adapter)
  */
 static void igb_clear_interrupt_scheme(struct igb_adapter *adapter)
 {
-	igb_free_irq(adapter);
 	igb_free_q_vectors(adapter);
 	igb_reset_interrupt_capability(adapter);
 }
@@ -8769,6 +8768,8 @@ static int __igb_shutdown(struct pci_dev *pdev, bool *enable_wake,
 		__igb_close(netdev, true);
 
 	igb_ptp_suspend(adapter);
+
+	igb_free_irq(adapter);
 
 	igb_clear_interrupt_scheme(adapter);
 	rtnl_unlock();
