@@ -231,6 +231,7 @@ kernel/drivers/net/ethernet/intel/ice/ice.ko
 kernel/drivers/net/ethernet/intel/igb/igb.ko
 kernel/drivers/net/ethernet/intel/ixgbe/ixgbe.ko
 kernel/drivers/net/ethernet/intel/ixgbevf/ixgbevf.ko
+kernel/drivers/net/ethernet/intel/libie/libie.ko
 kernel/drivers/net/ethernet/mellanox/mlx4/mlx4_core.ko
 kernel/drivers/net/ethernet/mellanox/mlx4/mlx4_en.ko
 kernel/drivers/net/ethernet/mellanox/mlx5/core/mlx5_core.ko
@@ -401,6 +402,7 @@ kernel/lib/crypto/libcurve25519-generic.ko
 kernel/lib/crypto/libcurve25519.ko
 kernel/lib/crypto/libdes.ko
 kernel/lib/crypto/libpoly1305.ko
+kernel/lib/dim/dimlib.ko
 kernel/lib/lz4/lz4_compress.ko
 kernel/lib/lz4/lz4hc_compress.ko
 kernel/lib/math/cordic.ko
