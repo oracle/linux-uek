@@ -1479,7 +1479,7 @@ static __net_init int nfsd_init_net(struct net *net)
 		goto out_drc_error;
 	retval = nfsd_reply_cache_init(nn);
 	if (retval)
-		goto out_cache_error;
+		goto out_drc_error;
 
 	atomic_set(&nn->ntf_refcnt, 0);
 	init_waitqueue_head(&nn->ntf_wq);
@@ -1487,8 +1487,6 @@ static __net_init int nfsd_init_net(struct net *net)
 
 	return 0;
 
-out_cache_error:
-	nfsd4_leases_net_shutdown(nn);
 out_drc_error:
 	nfsd_idmap_shutdown(net);
 out_idmap_error:
