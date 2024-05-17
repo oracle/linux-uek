@@ -942,16 +942,16 @@ struct scx_dsp_buf_ent {
 };
 
 static u32 scx_dsp_max_batch;
-static struct scx_dsp_buf_ent __percpu *scx_dsp_buf;
 
 struct scx_dsp_ctx {
 	struct rq		*rq;
 	struct rq_flags		*rf;
-	u32			buf_cursor;
+	u32			cursor;
 	u32			nr_tasks;
+	struct scx_dsp_buf_ent	buf[];
 };
 
-static DEFINE_PER_CPU(struct scx_dsp_ctx, scx_dsp_ctx);
+static struct scx_dsp_ctx __percpu *scx_dsp_ctx;
 
 /* string formatting from BPF */
 struct scx_bstr_buf {
@@ -2500,24 +2500,24 @@ retry:
 
 static void flush_dispatch_buf(struct rq *rq, struct rq_flags *rf)
 {
-	struct scx_dsp_ctx *dspc = this_cpu_ptr(&scx_dsp_ctx);
+	struct scx_dsp_ctx *dspc = this_cpu_ptr(scx_dsp_ctx);
 	u32 u;
 
-	for (u = 0; u < dspc->buf_cursor; u++) {
-		struct scx_dsp_buf_ent *ent = &this_cpu_ptr(scx_dsp_buf)[u];
+	for (u = 0; u < dspc->cursor; u++) {
+		struct scx_dsp_buf_ent *ent = &dspc->buf[u];
 
 		finish_dispatch(rq, rf, ent->task, ent->qseq, ent->dsq_id,
 				ent->enq_flags);
 	}
 
-	dspc->nr_tasks += dspc->buf_cursor;
-	dspc->buf_cursor = 0;
+	dspc->nr_tasks += dspc->cursor;
+	dspc->cursor = 0;
 }
 
 static int balance_one(struct rq *rq, struct task_struct *prev,
 		       struct rq_flags *rf, bool local)
 {
-	struct scx_dsp_ctx *dspc = this_cpu_ptr(&scx_dsp_ctx);
+	struct scx_dsp_ctx *dspc = this_cpu_ptr(scx_dsp_ctx);
 	bool prev_on_scx = prev->sched_class == &ext_sched_class;
 	int nr_loops = SCX_DSP_MAX_LOOPS;
 	bool has_tasks = false;
@@ -4460,8 +4460,8 @@ static void scx_ops_disable_workfn(struct kthread_work *work)
 	} while (dsq == ERR_PTR(-EAGAIN));
 	rhashtable_walk_exit(&rht_iter);
 
-	free_percpu(scx_dsp_buf);
-	scx_dsp_buf = NULL;
+	free_percpu(scx_dsp_ctx);
+	scx_dsp_ctx = NULL;
 	scx_dsp_max_batch = 0;
 
 	free_exit_info(scx_exit_info);
@@ -4945,11 +4945,12 @@ static int scx_ops_enable(struct sched_ext_ops *ops)
 	if (ret)
 		goto err_disable;
 
-	WARN_ON_ONCE(scx_dsp_buf);
+	WARN_ON_ONCE(scx_dsp_ctx);
 	scx_dsp_max_batch = ops->dispatch_max_batch ?: SCX_DSP_DFL_MAX_BATCH;
-	scx_dsp_buf = __alloc_percpu(sizeof(scx_dsp_buf[0]) * scx_dsp_max_batch,
-				     __alignof__(scx_dsp_buf[0]));
-	if (!scx_dsp_buf) {
+	scx_dsp_ctx = __alloc_percpu(struct_size_t(struct scx_dsp_ctx, buf,
+						   scx_dsp_max_batch),
+				     __alignof__(struct scx_dsp_ctx));
+	if (!scx_dsp_ctx) {
 		ret = -ENOMEM;
 		goto err_disable;
 	}
@@ -5829,8 +5830,8 @@ static bool scx_dispatch_preamble(struct task_struct *p, u64 enq_flags)
 
 static void scx_dispatch_commit(struct task_struct *p, u64 dsq_id, u64 enq_flags)
 {
+	struct scx_dsp_ctx *dspc = this_cpu_ptr(scx_dsp_ctx);
 	struct task_struct *ddsp_task;
-	int idx;
 
 	ddsp_task = __this_cpu_read(direct_dispatch_task);
 	if (ddsp_task) {
@@ -5838,19 +5839,17 @@ static void scx_dispatch_commit(struct task_struct *p, u64 dsq_id, u64 enq_flags
 		return;
 	}
 
-	idx = __this_cpu_read(scx_dsp_ctx.buf_cursor);
-	if (unlikely(idx >= scx_dsp_max_batch)) {
+	if (unlikely(dspc->cursor >= scx_dsp_max_batch)) {
 		scx_ops_error("dispatch buffer overflow");
 		return;
 	}
 
-	this_cpu_ptr(scx_dsp_buf)[idx] = (struct scx_dsp_buf_ent){
+	dspc->buf[dspc->cursor++] = (struct scx_dsp_buf_ent){
 		.task = p,
 		.qseq = atomic_long_read(&p->scx.ops_state) & SCX_OPSS_QSEQ_MASK,
 		.dsq_id = dsq_id,
 		.enq_flags = enq_flags,
 	};
-	__this_cpu_inc(scx_dsp_ctx.buf_cursor);
 }
 
 __bpf_kfunc_start_defs();
@@ -5962,7 +5961,7 @@ __bpf_kfunc u32 scx_bpf_dispatch_nr_slots(void)
 	if (!scx_kf_allowed(SCX_KF_DISPATCH))
 		return 0;
 
-	return scx_dsp_max_batch - __this_cpu_read(scx_dsp_ctx.buf_cursor);
+	return scx_dsp_max_batch - __this_cpu_read(scx_dsp_ctx->cursor);
 }
 
 /**
@@ -5973,13 +5972,13 @@ __bpf_kfunc u32 scx_bpf_dispatch_nr_slots(void)
  */
 __bpf_kfunc void scx_bpf_dispatch_cancel(void)
 {
-	struct scx_dsp_ctx *dspc = this_cpu_ptr(&scx_dsp_ctx);
+	struct scx_dsp_ctx *dspc = this_cpu_ptr(scx_dsp_ctx);
 
 	if (!scx_kf_allowed(SCX_KF_DISPATCH))
 		return;
 
-	if (dspc->buf_cursor > 0)
-		dspc->buf_cursor--;
+	if (dspc->cursor > 0)
+		dspc->cursor--;
 	else
 		scx_ops_error("dispatch buffer underflow");
 }
@@ -6001,7 +6000,7 @@ __bpf_kfunc void scx_bpf_dispatch_cancel(void)
  */
 __bpf_kfunc bool scx_bpf_consume(u64 dsq_id)
 {
-	struct scx_dsp_ctx *dspc = this_cpu_ptr(&scx_dsp_ctx);
+	struct scx_dsp_ctx *dspc = this_cpu_ptr(scx_dsp_ctx);
 	struct scx_dispatch_q *dsq;
 
 	if (!scx_kf_allowed(SCX_KF_DISPATCH))
@@ -6047,7 +6046,7 @@ __bpf_kfunc bool __scx_bpf_consume_task(unsigned long it, struct task_struct *p)
 {
 	struct bpf_iter_scx_dsq_kern *kit = (void *)it;
 	struct scx_dispatch_q *dsq, *kit_dsq;
-	struct scx_dsp_ctx *dspc = this_cpu_ptr(&scx_dsp_ctx);
+	struct scx_dsp_ctx *dspc = this_cpu_ptr(scx_dsp_ctx);
 	struct rq *task_rq;
 	u64 kit_dsq_seq;
 
