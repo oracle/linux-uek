@@ -815,14 +815,14 @@ static int __mark_pointer(struct btree_trans *trans,
 static int bch2_trigger_pointer(struct btree_trans *trans,
 			enum btree_id btree_id, unsigned level,
 			struct bkey_s_c k, struct extent_ptr_decoded p,
-			s64 *sectors,
-			unsigned flags)
+			const union bch_extent_entry *entry,
+			s64 *sectors, unsigned flags)
 {
 	bool insert = !(flags & BTREE_TRIGGER_OVERWRITE);
 	struct bpos bucket;
 	struct bch_backpointer bp;
 
-	bch2_extent_ptr_to_bp(trans->c, btree_id, level, k, p, &bucket, &bp);
+	bch2_extent_ptr_to_bp(trans->c, btree_id, level, k, p, entry, &bucket, &bp);
 	*sectors = insert ? bp.bucket_len : -((s64) bp.bucket_len);
 
 	if (flags & BTREE_TRIGGER_TRANSACTIONAL) {
@@ -851,7 +851,7 @@ static int bch2_trigger_pointer(struct btree_trans *trans,
 	if (flags & BTREE_TRIGGER_GC) {
 		struct bch_fs *c = trans->c;
 		struct bch_dev *ca = bch_dev_bkey_exists(c, p.ptr.dev);
-		enum bch_data_type data_type = bkey_ptr_data_type(btree_id, level, k, p);
+		enum bch_data_type data_type = bch2_bkey_ptr_data_type(k, p, entry);
 
 		percpu_down_read(&c->mark_lock);
 		struct bucket *g = PTR_GC_BUCKET(ca, &p.ptr);
@@ -979,7 +979,7 @@ static int __trigger_extent(struct btree_trans *trans,
 
 	bkey_for_each_ptr_decode(k.k, ptrs, p, entry) {
 		s64 disk_sectors;
-		ret = bch2_trigger_pointer(trans, btree_id, level, k, p, &disk_sectors, flags);
+		ret = bch2_trigger_pointer(trans, btree_id, level, k, p, entry, &disk_sectors, flags);
 		if (ret < 0)
 			return ret;
 

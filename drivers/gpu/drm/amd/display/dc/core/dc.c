@@ -1801,6 +1801,9 @@ bool dc_validate_boot_timing(const struct dc *dc,
 		return false;
 	}
 
+	if (link->dpcd_caps.channel_coding_cap.bits.DP_128b_132b_SUPPORTED)
+		return false;
+
 	if (dc->link_srv->edp_is_ilr_optimization_required(link, crtc_timing)) {
 		DC_LOG_EVENT_LINK_TRAINING("Seamless boot disabled to optimize eDP link rate\n");
 		return false;
@@ -3024,7 +3027,8 @@ static void backup_planes_and_stream_state(
 		scratch->blend_tf[i] = *status->plane_states[i]->blend_tf;
 	}
 	scratch->stream_state = *stream;
-	scratch->out_transfer_func = *stream->out_transfer_func;
+	if (stream->out_transfer_func)
+		scratch->out_transfer_func = *stream->out_transfer_func;
 }
 
 static void restore_planes_and_stream_state(
@@ -3046,7 +3050,8 @@ static void restore_planes_and_stream_state(
 		*status->plane_states[i]->blend_tf = scratch->blend_tf[i];
 	}
 	*stream = scratch->stream_state;
-	*stream->out_transfer_func = scratch->out_transfer_func;
+	if (stream->out_transfer_func)
+		*stream->out_transfer_func = scratch->out_transfer_func;
 }
 
 static bool update_planes_and_stream_state(struct dc *dc,

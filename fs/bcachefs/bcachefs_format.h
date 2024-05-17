@@ -578,7 +578,8 @@ struct bch_member {
 	__le64			nbuckets;	/* device size */
 	__le16			first_bucket;   /* index of first bucket used */
 	__le16			bucket_size;	/* sectors */
-	__le32			pad;
+	__u8			btree_bitmap_shift;
+	__u8			pad[3];
 	__le64			last_mount;	/* time_t */
 
 	__le64			flags;
@@ -587,7 +588,14 @@ struct bch_member {
 	__le64			errors_at_reset[BCH_MEMBER_ERROR_NR];
 	__le64			errors_reset_time;
 	__le64			seq;
+	__le64			btree_allocated_bitmap;
 };
+
+/*
+ * This limit comes from the bucket_gens array - it's a single allocation, and
+ * kernel allocation are limited to INT_MAX
+ */
+#define BCH_MEMBER_NBUCKETS_MAX	(INT_MAX - 64)
 
 #define BCH_MEMBER_V1_BYTES	56
 
@@ -818,6 +826,7 @@ struct bch_sb_field_ext {
 	struct bch_sb_field	field;
 	__le64			recovery_passes_required[2];
 	__le64			errors_silent[8];
+	__le64			btrees_lost_data;
 };
 
 struct bch_sb_field_downgrade_entry {
@@ -875,7 +884,8 @@ struct bch_sb_field_downgrade {
 	x(rebalance_work,		BCH_VERSION(1,  3))		\
 	x(member_seq,			BCH_VERSION(1,  4))		\
 	x(subvolume_fs_parent,		BCH_VERSION(1,  5))		\
-	x(btree_subvolume_children,	BCH_VERSION(1,  6))
+	x(btree_subvolume_children,	BCH_VERSION(1,  6))		\
+	x(mi_btree_bitmap,		BCH_VERSION(1,  7))
 
 enum bcachefs_metadata_version {
 	bcachefs_metadata_version_min = 9,
@@ -892,6 +902,8 @@ unsigned bcachefs_metadata_required_upgrade_below = bcachefs_metadata_version_re
 
 #define BCH_SB_SECTOR			8
 #define BCH_SB_MEMBERS_MAX		64 /* XXX kill */
+
+#define BCH_SB_LAYOUT_SIZE_BITS_MAX	16 /* 32 MB */
 
 struct bch_sb_layout {
 	__uuid_t		magic;	/* bcachefs superblock UUID */
@@ -1313,7 +1325,7 @@ static inline __u64 __bset_magic(struct bch_sb *sb)
 	x(write_buffer_keys,	11)		\
 	x(datetime,		12)
 
-enum {
+enum bch_jset_entry_type {
 #define x(f, nr)	BCH_JSET_ENTRY_##f	= nr,
 	BCH_JSET_ENTRY_TYPES()
 #undef x
@@ -1359,7 +1371,7 @@ struct jset_entry_blacklist_v2 {
 	x(inodes,		1)		\
 	x(key_version,		2)
 
-enum {
+enum bch_fs_usage_type {
 #define x(f, nr)	BCH_FS_USAGE_##f	= nr,
 	BCH_FS_USAGE_TYPES()
 #undef x
@@ -1500,7 +1512,8 @@ enum btree_id_flags {
 	  BIT_ULL(KEY_TYPE_stripe))						\
 	x(reflink,		7,	BTREE_ID_EXTENTS|BTREE_ID_DATA,		\
 	  BIT_ULL(KEY_TYPE_reflink_v)|						\
-	  BIT_ULL(KEY_TYPE_indirect_inline_data))				\
+	  BIT_ULL(KEY_TYPE_indirect_inline_data)|				\
+	  BIT_ULL(KEY_TYPE_error))						\
 	x(subvolumes,		8,	0,					\
 	  BIT_ULL(KEY_TYPE_subvolume))						\
 	x(snapshots,		9,	0,					\
@@ -1533,6 +1546,20 @@ enum btree_id {
 #undef x
 	BTREE_ID_NR
 };
+
+static inline bool btree_id_is_alloc(enum btree_id id)
+{
+	switch (id) {
+	case BTREE_ID_alloc:
+	case BTREE_ID_backpointers:
+	case BTREE_ID_need_discard:
+	case BTREE_ID_freespace:
+	case BTREE_ID_bucket_gens:
+		return true;
+	default:
+		return false;
+	}
+}
 
 #define BTREE_MAX_DEPTH		4U
 
