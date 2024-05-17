@@ -188,7 +188,8 @@ static struct bch_inode_info *bch2_inode_insert(struct bch_fs *c, struct bch_ino
 	BUG_ON(!old);
 
 	if (unlikely(old != inode)) {
-		discard_new_inode(&inode->v);
+		__destroy_inode(&inode->v);
+		kmem_cache_free(bch2_inode_cache, inode);
 		inode = old;
 	} else {
 		mutex_lock(&c->vfs_inodes_lock);
@@ -225,8 +226,10 @@ static struct bch_inode_info *bch2_new_inode(struct btree_trans *trans)
 
 	if (unlikely(!inode)) {
 		int ret = drop_locks_do(trans, (inode = to_bch_ei(new_inode(c->vfs_sb))) ? 0 : -ENOMEM);
-		if (ret && inode)
-			discard_new_inode(&inode->v);
+		if (ret && inode) {
+			__destroy_inode(&inode->v);
+			kmem_cache_free(bch2_inode_cache, inode);
+		}
 		if (ret)
 			return ERR_PTR(ret);
 	}
@@ -961,7 +964,6 @@ static int bch2_fiemap(struct inode *vinode, struct fiemap_extent_info *info,
 	struct btree_iter iter;
 	struct bkey_s_c k;
 	struct bkey_buf cur, prev;
-	struct bpos end = POS(ei->v.i_ino, (start + len) >> 9);
 	unsigned offset_into_extent, sectors;
 	bool have_extent = false;
 	u32 snapshot;
@@ -971,6 +973,7 @@ static int bch2_fiemap(struct inode *vinode, struct fiemap_extent_info *info,
 	if (ret)
 		return ret;
 
+	struct bpos end = POS(ei->v.i_ino, (start + len) >> 9);
 	if (start + len < start)
 		return -EINVAL;
 
@@ -1997,6 +2000,7 @@ out:
 	return dget(sb->s_root);
 
 err_put_super:
+	__bch2_fs_stop(c);
 	deactivate_locked_super(sb);
 	return ERR_PTR(bch2_err_class(ret));
 }
