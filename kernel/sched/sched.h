@@ -721,8 +721,14 @@ struct cfs_rq {
 #ifdef CONFIG_SCHED_CLASS_EXT
 /* scx_rq->flags, protected by the rq lock */
 enum scx_rq_flags {
-	SCX_RQ_BALANCING	= 1 << 0,
-	SCX_RQ_CAN_STOP_TICK	= 1 << 1,
+	/*
+	 * A hotplugged CPU starts scheduling before rq_online_scx(). Track
+	 * ops.cpu_on/offline() state so that ops.enqueue/dispatch() are called
+	 * only while the BPF scheduler considers the CPU to be online.
+	 */
+	SCX_RQ_ONLINE		= 1 << 0,
+	SCX_RQ_BALANCING	= 1 << 1,
+	SCX_RQ_CAN_STOP_TICK	= 1 << 2,
 };
 
 struct scx_rq {

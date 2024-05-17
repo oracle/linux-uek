@@ -921,16 +921,6 @@ static unsigned long __percpu *scx_kick_cpus_pnt_seqs;
  */
 static DEFINE_PER_CPU(struct task_struct *, direct_dispatch_task);
 
-/*
- * Has the current CPU been onlined from the perspective of scx?
- *
- * A hotplugged CPU may begin scheduling tasks before the core scheduler will
- * call into rq_online_scx(). Track whether we've had a chance to invoke
- * ops.cpu_online() so we can skip invoking ops.enqueue() or ops.dispatch() on
- * that CPU until the scheduler knows about the hotplug event.
- */
-static DEFINE_PER_CPU(bool, scx_cpu_online);
-
 /* dispatch queues */
 static struct scx_dispatch_q __cacheline_aligned_in_smp scx_dsq_global;
 
@@ -1804,9 +1794,9 @@ static void direct_dispatch(struct task_struct *p, u64 enq_flags)
 	dispatch_enqueue(dsq, p, enq_flags);
 }
 
-static bool test_rq_online(struct rq *rq)
+static bool scx_rq_online(struct rq *rq)
 {
-	return per_cpu(scx_cpu_online, cpu_of(rq));
+	return likely(rq->scx.flags & SCX_RQ_ONLINE);
 }
 
 static void do_enqueue_task(struct rq *rq, struct task_struct *p, u64 enq_flags,
@@ -1826,7 +1816,7 @@ static void do_enqueue_task(struct rq *rq, struct task_struct *p, u64 enq_flags,
 	 * offline. We're just trying to on/offline the CPU. Don't bother the
 	 * BPF scheduler.
 	 */
-	if (unlikely(!test_rq_online(rq)))
+	if (!scx_rq_online(rq))
 		goto local;
 
 	if (scx_ops_bypassing()) {
@@ -2228,7 +2218,7 @@ static bool task_can_run_on_remote_rq(struct task_struct *p, struct rq *rq)
 		return false;
 	if (!(p->flags & PF_KTHREAD) && unlikely(!task_cpu_possible(cpu, p)))
 		return false;
-	if (unlikely(!test_rq_online(rq)))
+	if (!scx_rq_online(rq))
 		return false;
 	return true;
 }
@@ -2383,7 +2373,7 @@ dispatch_to_local_dsq(struct rq *rq, struct rq_flags *rf, u64 dsq_id,
 		 * instead, which should always be safe. As this is an allowed
 		 * behavior, don't trigger an ops error.
 		 */
-		if (unlikely(!test_rq_online(dst_rq)))
+		if (!scx_rq_online(dst_rq))
 			dst_rq = src_rq;
 
 		if (src_rq == dst_rq) {
@@ -2583,8 +2573,7 @@ static int balance_one(struct rq *rq, struct task_struct *prev,
 	if (consume_dispatch_q(rq, rf, &scx_dsq_global))
 		goto has_tasks;
 
-	if (!SCX_HAS_OP(dispatch) || scx_ops_bypassing() ||
-	    unlikely(!test_rq_online(rq)))
+	if (!SCX_HAS_OP(dispatch) || scx_ops_bypassing() || !scx_rq_online(rq))
 		goto out;
 
 	dspc->rq = rq;
@@ -3223,16 +3212,18 @@ static void handle_hotplug(struct rq *rq, bool online)
 
 static void rq_online_scx(struct rq *rq, enum rq_onoff_reason reason)
 {
-	if (reason == RQ_ONOFF_HOTPLUG)
+	if (reason == RQ_ONOFF_HOTPLUG) {
 		handle_hotplug(rq, true);
-	per_cpu(scx_cpu_online, cpu_of(rq)) = true;
+		rq->scx.flags |= SCX_RQ_ONLINE;
+	}
 }
 
 static void rq_offline_scx(struct rq *rq, enum rq_onoff_reason reason)
 {
-	per_cpu(scx_cpu_online, cpu_of(rq)) = false;
-	if (reason == RQ_ONOFF_HOTPLUG)
+	if (reason == RQ_ONOFF_HOTPLUG) {
+		rq->scx.flags &= ~SCX_RQ_ONLINE;
 		handle_hotplug(rq, false);
+	}
 }
 
 #else	/* CONFIG_SMP */
