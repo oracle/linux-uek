@@ -1673,10 +1673,10 @@ static bool task_linked_on_dsq(struct task_struct *p)
 	return !list_empty(&p->scx.dsq_node.list);
 }
 
-static void dispatch_dequeue(struct scx_rq *scx_rq, struct task_struct *p)
+static void dispatch_dequeue(struct rq *rq, struct task_struct *p)
 {
 	struct scx_dispatch_q *dsq = p->scx.dsq;
-	bool is_local = dsq == &scx_rq->local_dsq;
+	bool is_local = dsq == &rq->scx.local_dsq;
 
 	if (!dsq) {
 		WARN_ON_ONCE(task_linked_on_dsq(p));
@@ -2011,8 +2011,6 @@ static void ops_dequeue(struct task_struct *p, u64 deq_flags)
 
 static void dequeue_task_scx(struct rq *rq, struct task_struct *p, int deq_flags)
 {
-	struct scx_rq *scx_rq = &rq->scx;
-
 	if (!(p->scx.flags & SCX_TASK_QUEUED)) {
 		WARN_ON_ONCE(task_runnable(p));
 		return;
@@ -2046,10 +2044,10 @@ static void dequeue_task_scx(struct rq *rq, struct task_struct *p, int deq_flags
 		p->scx.flags &= ~SCX_TASK_DEQD_FOR_SLEEP;
 
 	p->scx.flags &= ~SCX_TASK_QUEUED;
-	scx_rq->nr_running--;
+	rq->scx.nr_running--;
 	sub_nr_running(rq, 1);
 
-	dispatch_dequeue(scx_rq, p);
+	dispatch_dequeue(rq, p);
 }
 
 static void yield_task_scx(struct rq *rq)
@@ -2203,17 +2201,15 @@ static void dispatch_to_local_dsq_unlock(struct rq *rq, struct rq_flags *rf,
 static void consume_local_task(struct rq *rq, struct scx_dispatch_q *dsq,
 			       struct task_struct *p)
 {
-	struct scx_rq *scx_rq = &rq->scx;
-
 	lockdep_assert_held(&dsq->lock);	/* released on return */
 
 	/* @dsq is locked and @p is on this rq */
 	WARN_ON_ONCE(p->scx.holding_cpu >= 0);
 	task_unlink_from_dsq(p, dsq);
-	list_add_tail(&p->scx.dsq_node.list, &scx_rq->local_dsq.list);
+	list_add_tail(&p->scx.dsq_node.list, &rq->scx.local_dsq.list);
 	dsq_mod_nr(dsq, -1);
-	dsq_mod_nr(&scx_rq->local_dsq, 1);
-	WRITE_ONCE(p->scx.dsq, &scx_rq->local_dsq);
+	dsq_mod_nr(&rq->scx.local_dsq, 1);
+	WRITE_ONCE(p->scx.dsq, &rq->scx.local_dsq);
 	raw_spin_unlock(&dsq->lock);
 }
 
@@ -2531,14 +2527,13 @@ static void flush_dispatch_buf(struct rq *rq, struct rq_flags *rf)
 static int balance_one(struct rq *rq, struct task_struct *prev,
 		       struct rq_flags *rf, bool local)
 {
-	struct scx_rq *scx_rq = &rq->scx;
 	struct scx_dsp_ctx *dspc = this_cpu_ptr(&scx_dsp_ctx);
 	bool prev_on_scx = prev->sched_class == &ext_sched_class;
 	int nr_loops = SCX_DSP_MAX_LOOPS;
 	bool has_tasks = false;
 
 	lockdep_assert_rq_held(rq);
-	scx_rq->flags |= SCX_RQ_BALANCING;
+	rq->scx.flags |= SCX_RQ_BALANCING;
 
 	if (static_branch_unlikely(&scx_ops_cpu_preempt) &&
 	    unlikely(rq->scx.cpu_released)) {
@@ -2582,7 +2577,7 @@ static int balance_one(struct rq *rq, struct task_struct *prev,
 	}
 
 	/* if there already are tasks to run, nothing to do */
-	if (scx_rq->local_dsq.nr)
+	if (rq->scx.local_dsq.nr)
 		goto has_tasks;
 
 	if (consume_dispatch_q(rq, rf, &scx_dsq_global))
@@ -2610,7 +2605,7 @@ static int balance_one(struct rq *rq, struct task_struct *prev,
 
 		flush_dispatch_buf(rq, rf);
 
-		if (scx_rq->local_dsq.nr)
+		if (rq->scx.local_dsq.nr)
 			goto has_tasks;
 		if (consume_dispatch_q(rq, rf, &scx_dsq_global))
 			goto has_tasks;
@@ -2635,7 +2630,7 @@ static int balance_one(struct rq *rq, struct task_struct *prev,
 has_tasks:
 	has_tasks = true;
 out:
-	scx_rq->flags &= ~SCX_RQ_BALANCING;
+	rq->scx.flags &= ~SCX_RQ_BALANCING;
 	return has_tasks;
 }
 
@@ -2689,7 +2684,7 @@ static void set_next_task_scx(struct rq *rq, struct task_struct *p, bool first)
 		 * dispatched. Call ops_dequeue() to notify the BPF scheduler.
 		 */
 		ops_dequeue(p, SCX_DEQ_CORE_SCHED_EXEC);
-		dispatch_dequeue(&rq->scx, p);
+		dispatch_dequeue(rq, p);
 	}
 
 	p->se.exec_start = rq_clock_task(rq);
@@ -6145,14 +6140,12 @@ __bpf_kfunc u32 scx_bpf_reenqueue_local(void)
 {
 	u32 nr_enqueued, i;
 	struct rq *rq;
-	struct scx_rq *scx_rq;
 
 	if (!scx_kf_allowed(SCX_KF_CPU_RELEASE))
 		return 0;
 
 	rq = cpu_rq(smp_processor_id());
 	lockdep_assert_rq_held(rq);
-	scx_rq = &rq->scx;
 
 	/*
 	 * Get the number of tasks on the local DSQ before iterating over it to
@@ -6160,7 +6153,7 @@ __bpf_kfunc u32 scx_bpf_reenqueue_local(void)
 	 * the task to stay on the local DSQ, and we want to prevent the BPF
 	 * scheduler from causing us to loop indefinitely.
 	 */
-	nr_enqueued = scx_rq->local_dsq.nr;
+	nr_enqueued = rq->scx.local_dsq.nr;
 	for (i = 0; i < nr_enqueued; i++) {
 		struct task_struct *p;
 
@@ -6169,7 +6162,7 @@ __bpf_kfunc u32 scx_bpf_reenqueue_local(void)
 			     SCX_OPSS_NONE);
 		WARN_ON_ONCE(!(p->scx.flags & SCX_TASK_QUEUED));
 		WARN_ON_ONCE(p->scx.holding_cpu != -1);
-		dispatch_dequeue(scx_rq, p);
+		dispatch_dequeue(rq, p);
 		do_enqueue_task(rq, p, SCX_ENQ_REENQ, -1);
 	}
 
