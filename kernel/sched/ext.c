@@ -1269,6 +1269,28 @@ static void scx_task_iter_init(struct scx_task_iter *iter)
 }
 
 /**
+ * scx_task_iter_rq_unlock - Unlock rq locked by a task iterator
+ * @iter: iterator to unlock rq for
+ *
+ * If @iter is in the middle of a locked iteration, it may be locking the rq of
+ * the task currently being visited. Unlock the rq if so. This function can be
+ * safely called anytime during an iteration.
+ *
+ * Returns %true if the rq @iter was locking is unlocked. %false if @iter was
+ * not locking an rq.
+ */
+static bool scx_task_iter_rq_unlock(struct scx_task_iter *iter)
+{
+	if (iter->locked) {
+		task_rq_unlock(iter->rq, iter->locked, &iter->rf);
+		iter->locked = NULL;
+		return true;
+	} else {
+		return false;
+	}
+}
+
+/**
  * scx_task_iter_exit - Exit a task iterator
  * @iter: iterator to exit
  *
@@ -1278,19 +1300,10 @@ static void scx_task_iter_init(struct scx_task_iter *iter)
  */
 static void scx_task_iter_exit(struct scx_task_iter *iter)
 {
-	struct list_head *cursor = &iter->cursor.tasks_node;
-
 	lockdep_assert_held(&scx_tasks_lock);
 
-	if (iter->locked) {
-		task_rq_unlock(iter->rq, iter->locked, &iter->rf);
-		iter->locked = NULL;
-	}
-
-	if (list_empty(cursor))
-		return;
-
-	list_del_init(cursor);
+	scx_task_iter_rq_unlock(iter);
+	list_del_init(&iter->cursor.tasks_node);
 }
 
 /**
@@ -1320,15 +1333,18 @@ static struct task_struct *scx_task_iter_next(struct scx_task_iter *iter)
 }
 
 /**
- * scx_task_iter_next_filtered - Next non-idle task
+ * scx_task_iter_next_filtered_locked - Next alive non-idle task with its rq locked
  * @iter: iterator to walk
  *
- * Visit the next non-idle task. See scx_task_iter_init() for details.
+ * Visit the next alive non-idle task with its rq lock held. See
+ * scx_task_iter_init() for details.
  */
 static struct task_struct *
-scx_task_iter_next_filtered(struct scx_task_iter *iter)
+scx_task_iter_next_filtered_locked(struct scx_task_iter *iter)
 {
 	struct task_struct *p;
+retry:
+	scx_task_iter_rq_unlock(iter);
 
 	while ((p = scx_task_iter_next(iter))) {
 		/*
@@ -1336,34 +1352,24 @@ scx_task_iter_next_filtered(struct scx_task_iter *iter)
 		 * which haven't yet been onlined. Test sched_class directly.
 		 */
 		if (p->sched_class != &idle_sched_class)
-			return p;
+			break;
 	}
-	return NULL;
-}
-
-/**
- * scx_task_iter_next_filtered_locked - Next non-idle task with its rq locked
- * @iter: iterator to walk
- *
- * Visit the next non-idle task with its rq lock held. See scx_task_iter_init()
- * for details.
- */
-static struct task_struct *
-scx_task_iter_next_filtered_locked(struct scx_task_iter *iter)
-{
-	struct task_struct *p;
-
-	if (iter->locked) {
-		task_rq_unlock(iter->rq, iter->locked, &iter->rf);
-		iter->locked = NULL;
-	}
-
-	p = scx_task_iter_next_filtered(iter);
 	if (!p)
 		return NULL;
 
 	iter->rq = task_rq_lock(p, &iter->rf);
 	iter->locked = p;
+
+	/*
+	 * If we see %TASK_DEAD, @p already disabled preemption, is about to do
+	 * the final __schedule(), won't ever need to be scheduled again and can
+	 * thus be safely ignored. If we don't see %TASK_DEAD, @p can't enter
+	 * the final __schedle() while we're locking its rq and thus will stay
+	 * alive until the rq is unlocked.
+	 */
+	if (READ_ONCE(p->__state) == TASK_DEAD)
+		goto retry;
+
 	return p;
 }
 
@@ -5028,8 +5034,9 @@ static int scx_ops_enable(struct sched_ext_ops *ops)
 	spin_lock_irq(&scx_tasks_lock);
 
 	scx_task_iter_init(&sti);
-	while ((p = scx_task_iter_next_filtered(&sti))) {
+	while ((p = scx_task_iter_next_filtered_locked(&sti))) {
 		get_task_struct(p);
+		scx_task_iter_rq_unlock(&sti);
 		spin_unlock_irq(&scx_tasks_lock);
 
 		ret = scx_ops_init_task(p, task_group(p), false);
