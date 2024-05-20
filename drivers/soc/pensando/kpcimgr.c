@@ -676,7 +676,7 @@ static u64 kpcimgr_upcall(int req, u64 arg1, u64 arg2, u64 arg3)
 static void set_msi_msg(struct msi_desc *desc, struct msi_msg *msg)
 {
 	kstate_t *ks = get_kstate();
-	struct msi_info *msi = &ks->msi[desc->platform.msi_index];
+	struct msi_info *msi = &ks->msi[desc->msi_index];
 
 	msi->msgaddr = ((u64)msg->address_hi << 32) | msg->address_lo;
 	msi->msgdata = msg->data;
@@ -716,8 +716,8 @@ static int alloc_intrs(struct platform_device *pfdev)
 		return r;
 
 	msi_for_each_desc(desc, dev, MSI_DESC_ALL) {
-		isr = kpcimgr_irq_table[desc->platform.msi_index].isr;
-		name = kpcimgr_irq_table[desc->platform.msi_index].name;
+		isr = kpcimgr_irq_table[desc->msi_index].isr;
+		name = kpcimgr_irq_table[desc->msi_index].name;
 		r = devm_request_irq(dev, desc->irq, isr, 0, name, (void *)ks);
 		if (r)
 			goto err_out;
