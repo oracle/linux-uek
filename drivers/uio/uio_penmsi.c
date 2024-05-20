@@ -339,7 +339,7 @@ static void penmsi_callback(struct msi_desc *desc, struct msi_msg *msg)
 	unsigned long flags;
 
 	platdata = init_platdata;
-	devdata = &platdata->devdatas[desc->platform.msi_index];
+	devdata = &platdata->devdatas[desc->msi_index];
 	devdata->msi_msg = *msg;
 
 	spin_lock_irqsave(&penmsi_lock, flags);
@@ -510,7 +510,7 @@ int penmsi_probe(struct platform_device *pdev)
 	msi_for_each_desc(desc, &pdev->dev, MSI_DESC_ALL) {
 		unsigned long flags;
 
-		devdata = &platdata->devdatas[desc->platform.msi_index];
+		devdata = &platdata->devdatas[desc->msi_index];
 		spin_lock_irqsave(&penmsi_lock, flags);
 		devdata->have_msi_desc = true;
 		if (devdata->have_msi_msg)
