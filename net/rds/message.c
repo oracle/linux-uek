@@ -46,6 +46,7 @@ static unsigned int	rds_exthdr_size[] = {
 [RDS_EXTHDR_GEN_NUM]    = sizeof(u32),
 [RDS_EXTHDR_CAP_BITS]   = sizeof(struct rds_ext_header_cap_bits),
 [RDS_EXTHDR_SPORT_IDX]  = 1,
+[RDS_EXTHDR_CSUM_OLD]   = sizeof(struct rds_ext_header_rdma_csum_old),
 [RDS_EXTHDR_CSUM]       = sizeof(struct rds_ext_header_rdma_csum),
 };
 
@@ -437,6 +438,7 @@ int rds_message_copy_from_user(struct rds_sock *rs, struct rds_message *rm,
 	unsigned long sg_off;
 	struct scatterlist *sg;
 	int ret = 0;
+	__wsum sum = 0;
 
 	rm->m_inc.i_hdr.h_len = cpu_to_be32(iov_iter_count(from));
 	rm->m_payload_csum.csum_enabled = !!rds_sysctl_enable_payload_csum;
@@ -488,9 +490,9 @@ int rds_message_copy_from_user(struct rds_sock *rs, struct rds_message *rm,
 						     from);
 		} else {
 			/* calculate full packet wsum checksum */
-			nbytes = rds_csum_and_copy_page_from_iter(sg_page(sg), sg->offset + sg_off,
-								  to_copy, &rm->m_payload_csum,
-								  from);
+			nbytes = rds_csum_and_copy_page_from_iter(sg_page(sg),
+								  sg->offset + sg_off,
+								  to_copy, &sum, from);
 		}
 
 		if (nbytes != to_copy)
@@ -503,29 +505,28 @@ int rds_message_copy_from_user(struct rds_sock *rs, struct rds_message *rm,
 			sg++;
 	}
 
+	rm->m_payload_csum.csum = csum_fold(sum);
 	return ret;
 }
 
 int rds_message_inc_copy_to_user(struct rds_sock *rs, struct rds_incoming *inc,
 				 struct iov_iter *to)
 {
-	struct rds_csum csum = { .csum_val.raw = 0 };
 	struct rds_connection *conn;
 	struct rds_message *rm;
 	struct scatterlist *sg;
 	unsigned long to_copy;
-	unsigned long vec_off;
-	int copied;
+	unsigned long vec_off = 0;
+	__wsum sum = 0;
+	int copied = 0;
 	int ret;
 	u32 len;
 
 	rm = container_of(inc, struct rds_message, m_inc);
 	len = be32_to_cpu(rm->m_inc.i_hdr.h_len);
-	conn = inc->i_conn;
 
+	conn = inc->i_conn;
 	sg = rm->data.op_sg;
-	vec_off = 0;
-	copied = 0;
 
 	while (iov_iter_count(to) && copied < len) {
 		to_copy = min_t(unsigned long, iov_iter_count(to),
@@ -538,7 +539,7 @@ int rds_message_inc_copy_to_user(struct rds_sock *rs, struct rds_incoming *inc,
 		} else {
 			/* calculate full packet wsum checksum */
 			ret = rds_csum_and_copy_page_to_iter(sg_page(sg), sg->offset + vec_off,
-							     to_copy, &csum, to);
+							     to_copy, &sum, to);
 		}
 
 		if (ret != to_copy)
@@ -555,9 +556,15 @@ int rds_message_inc_copy_to_user(struct rds_sock *rs, struct rds_incoming *inc,
 		}
 	}
 
-	if (unlikely(inc->i_payload_csum.csum_enabled) && copied) {
-		rds_stats_inc(rs->rs_stats, s_recv_payload_csum_loopback);
-		rds_check_csum(inc, &csum);
+	if (unlikely(inc->i_payload_csum.csum_enabled)) {
+		if (likely(copied == len)) {
+			inc->i_usercopy_csum = csum_fold(sum);
+			rds_stats_inc(rs->rs_stats,
+				      s_recv_payload_csum_loopback);
+		} else {
+			rds_stats_inc(rs->rs_stats,
+				      s_recv_payload_csum_loopback_badlen);
+		}
 	}
 
 	return copied;
