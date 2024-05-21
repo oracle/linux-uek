@@ -423,6 +423,15 @@ static inline int hugepage_madvise(struct vm_area_struct *vma,
 	BUG();
 	return 0;
 }
+static inline void hugepage_scan_file(struct vm_fault *vmf,
+				      struct file *file, pgoff_t offset)
+{
+}
+static inline bool hugepage_vma_check(struct vm_area_struct *vma,
+				      unsigned long vm_flags)
+{
+	return false;
+}
 static inline void vma_adjust_trans_huge(struct vm_area_struct *vma,
 					 unsigned long start,
 					 unsigned long end,
