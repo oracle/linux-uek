@@ -3,7 +3,7 @@
  *
  * Author: Alan Maguire <alan.maguire@oracle.com>
  *
- * Copyright (c) 2020, Oracle and/or its affiliates.
+ * Copyright (c) 2020, 2024, Oracle and/or its affiliates.
  */
 
 #undef TRACE_SYSTEM
@@ -397,12 +397,11 @@ TRACE_EVENT(rds_receive,
 
 TRACE_EVENT(rds_receive_csum_err,
 
-	TP_PROTO(struct rds_incoming *inc, struct rds_sock *rs,
-		 struct rds_connection *conn, struct rds_conn_path *cp,
-		 struct in6_addr *saddr, struct in6_addr *daddr,
-		 u32 csum_calc),
+	TP_PROTO(struct rds_incoming *inc, struct rds_connection *conn,
+		 struct rds_conn_path *cp, struct in6_addr *saddr,
+		 struct in6_addr *daddr, u32 csum_calc),
 
-	TP_ARGS(inc, rs, conn, cp, saddr, daddr, csum_calc),
+	TP_ARGS(inc, conn, cp, saddr, daddr, csum_calc),
 
 	TP_STRUCT__entry(
 		RDS_TRACE_COMMON_FIELDS
