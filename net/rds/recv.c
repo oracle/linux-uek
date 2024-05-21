@@ -885,10 +885,10 @@ void rds_clear_recv_queue(struct rds_sock *rs)
 /* C wrapper for call to tracepoint in case of RDS receive checksum error */
 void do_rds_receive_csum_err(struct rds_incoming *inc, u32 csum_calc)
 {
-	struct rds_message *rm = container_of(inc, struct rds_message, m_inc);
-
-	trace_rds_receive_csum_err(inc, rm->m_rs, inc->i_conn, inc->i_conn_path,
-				   &inc->i_saddr, &rm->m_daddr, csum_calc);
+	trace_rds_receive_csum_err(inc, inc->i_conn, inc->i_conn_path,
+				   &inc->i_saddr,
+				   inc->i_conn ? &inc->i_conn->c_faddr : NULL,
+				   csum_calc);
 }
 EXPORT_SYMBOL(do_rds_receive_csum_err);
 
