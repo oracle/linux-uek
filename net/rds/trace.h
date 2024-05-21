@@ -399,9 +399,9 @@ TRACE_EVENT(rds_receive_csum_err,
 
 	TP_PROTO(struct rds_incoming *inc, struct rds_connection *conn,
 		 struct rds_conn_path *cp, struct in6_addr *saddr,
-		 struct in6_addr *daddr, u32 csum_calc),
+		 struct in6_addr *daddr),
 
-	TP_ARGS(inc, conn, cp, saddr, daddr, csum_calc),
+	TP_ARGS(inc, conn, cp, saddr, daddr),
 
 	TP_STRUCT__entry(
 		RDS_TRACE_COMMON_FIELDS
@@ -409,8 +409,8 @@ TRACE_EVENT(rds_receive_csum_err,
 		__field(__u64, next_rx_seq)
 		__field(__u32, len)
 		__field(unsigned long, rx_jiffies)
-		__field(u32, csum_rcvd)
-		__field(u32, csum_calc)
+		__field(u16, csum_rcvd)
+		__field(u16, csum_calc)
 	),
 
 	TP_fast_assign(
@@ -430,11 +430,11 @@ TRACE_EVENT(rds_receive_csum_err,
 		__entry->next_rx_seq = cp ? cp->cp_next_rx_seq : 0;
 		__entry->len = be32_to_cpu(inc->i_hdr.h_len);
 		__entry->rx_jiffies = inc ? inc->i_rx_jiffies : 0;
-		__entry->csum_rcvd = inc->i_payload_csum.csum_val.raw;
-		__entry->csum_calc = csum_calc;
+		__entry->csum_rcvd = inc->i_payload_csum.csum;
+		__entry->csum_calc = inc->i_usercopy_csum;
 	),
 
-	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> next %llu seq %llu len %u sport %u dport %u flags 0x%lx rx_jiffies %lu: csum rcvd [0x%x] != calc [0x%x]",
+	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> next %llu seq %llu len %u sport %u dport %u flags 0x%lx rx_jiffies %lu: csum rcvd [0x%hx] != calc [0x%hx]",
 		  show_transport(__entry->transport),
 		  __entry->faddr, __entry->laddr, __entry->tos,
 		  __entry->next_rx_seq, __entry->seq, __entry->len,
