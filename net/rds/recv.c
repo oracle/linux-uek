@@ -55,7 +55,8 @@ void rds_inc_init(struct rds_incoming *inc, struct rds_connection *conn,
 	inc->i_usercopy.rdma_cookie = 0;
 	inc->i_usercopy.rx_tstamp.tv_sec = 0;
 	inc->i_usercopy.rx_tstamp.tv_usec = 0;
-	inc->i_payload_csum.csum_val.raw = 0;
+	inc->i_usercopy_csum = 0;
+	inc->i_payload_csum.csum = 0;
 	inc->i_payload_csum.csum_enabled = false;
 
 	for (i = 0; i < RDS_RX_MAX_TRACES; i++)
@@ -76,8 +77,9 @@ void rds_inc_path_init(struct rds_incoming *inc, struct rds_conn_path *cp,
 	inc->i_usercopy.rdma_cookie = 0;
 	inc->i_usercopy.rx_tstamp.tv_sec = 0;
 	inc->i_usercopy.rx_tstamp.tv_usec = 0;
-	inc->i_payload_csum.csum_val.raw = 0;
+	inc->i_payload_csum.csum = 0;
 	inc->i_payload_csum.csum_enabled = false;
+	inc->i_usercopy_csum = 0;
 
 	for (i = 0; i < RDS_RX_MAX_TRACES; i++)
 		inc->i_rx_lat_trace[i] = 0;
@@ -172,6 +174,7 @@ static void rds_recv_incoming_exthdrs(struct rds_incoming *inc, struct rds_sock 
 		struct rds_ext_header_rdma rdma;
 		struct rds_ext_header_rdma_dest rdma_dest;
 		struct rds_ext_header_cap_bits cap_bits;
+		struct rds_ext_header_rdma_csum_old rdma_csum_old;
 		struct rds_ext_header_rdma_csum rdma_csum;
 	} buffer;
 
@@ -195,15 +198,30 @@ static void rds_recv_incoming_exthdrs(struct rds_incoming *inc, struct rds_sock 
 
 			break;
 
-		case RDS_EXTHDR_CSUM:
+		case RDS_EXTHDR_CSUM_OLD:
 			if (unlikely(rds_sysctl_enable_payload_csum)) {
 				inc->i_payload_csum.csum_enabled =
-					buffer.rdma_csum.h_rdma_csum_enabled;
-				inc->i_payload_csum.csum_val.raw =
-					be32_to_cpu(buffer.rdma_csum.h_rdma_csum_val);
+				    buffer.rdma_csum_old.h_rdma_csum_enabled;
+				inc->i_payload_csum.csum =
+				    csum_fold(be32_to_cpu(buffer.rdma_csum_old.h_rdma_wsum_val));
+				rds_stats_inc(rs->rs_stats, s_recv_payload_csum_old_rcvd);
 			} else {
 				inc->i_payload_csum.csum_enabled = false;
-				inc->i_payload_csum.csum_val.raw = 0;
+				inc->i_payload_csum.csum = 0;
+				rds_stats_inc(rs->rs_stats, s_recv_payload_csum_old_ignored);
+			}
+
+			break;
+
+		case RDS_EXTHDR_CSUM:
+			if (unlikely(rds_sysctl_enable_payload_csum)) {
+				inc->i_payload_csum.csum_enabled = true;
+				inc->i_payload_csum.csum =
+				    be16_to_cpu(buffer.rdma_csum.h_rdma_csum_val);
+				rds_stats_inc(rs->rs_stats, s_recv_payload_csum_rcvd);
+			} else {
+				inc->i_payload_csum.csum_enabled = false;
+				inc->i_payload_csum.csum = 0;
 				rds_stats_inc(rs->rs_stats, s_recv_payload_csum_ignored);
 			}
 
@@ -468,7 +486,13 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 		goto out;
 	}
 
-	/* Process extension headers */
+	/* Process extension headers
+	 *
+	 * Note that as extension headers are processed at this point, this
+	 * may lead to setting parameters or changes to statistics counters
+	 * for messages received on socket connections that will be dropped
+	 * below.
+	 */
 	rds_recv_incoming_exthdrs(inc, rs);
 
 	/* We can be racing with rds_release() which marks the socket dead. */
@@ -825,6 +849,19 @@ int rds_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 			break;
 		}
 
+		/* If enabled, only check the payload checksum if the
+		 * MSG_TRUNC flag is clear and a memory copy checksum was
+		 * calculated.
+		 */
+		if (unlikely(inc->i_payload_csum.csum_enabled) &&
+		    inc->i_usercopy_csum) {
+			if (unlikely(msg_flags & MSG_TRUNC))
+				rds_stats_inc(rs->rs_stats,
+					      s_recv_payload_csum_trunc);
+			else
+				rds_check_csum(inc);
+		}
+
 		rds_stats_inc(rs->rs_stats, s_recv_delivered);
 
 		if (msg->msg_name) {
@@ -881,16 +918,6 @@ void rds_clear_recv_queue(struct rds_sock *rs)
 	}
 	write_unlock_irqrestore(&rs->rs_recv_lock, flags);
 }
-
-/* C wrapper for call to tracepoint in case of RDS receive checksum error */
-void do_rds_receive_csum_err(struct rds_incoming *inc, u32 csum_calc)
-{
-	trace_rds_receive_csum_err(inc, inc->i_conn, inc->i_conn_path,
-				   &inc->i_saddr,
-				   inc->i_conn ? &inc->i_conn->c_faddr : NULL,
-				   csum_calc);
-}
-EXPORT_SYMBOL(do_rds_receive_csum_err);
 
 /*
  * inc->i_saddr isn't used here because it is only set in the receive

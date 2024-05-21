@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2024 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -61,14 +61,14 @@ static size_t
 rds_csum_copy_to_iter(const void *addr, size_t bytes, void *data,
 		      struct iov_iter *i)
 {
-	struct rds_csum *csum = (struct rds_csum *)data;
-	struct rds_csum_state csdata = { .csum = csum->csum_val.csum };
+	__wsum *sum = (__wsum *)data;
+	struct rds_csum_state csdata = { .csum = *sum };
 	size_t n;
 
 	n = rds_csum_and_copy_to_iter(addr, bytes, &csdata, i);
 
 	if (n == bytes)
-		csum->csum_val.csum = csdata.csum;
+		*sum = csdata.csum;
 
 	return n;
 }
@@ -183,14 +183,14 @@ short_copy:
 int rds_tcp_inc_copy_to_user(struct rds_sock *rs, struct rds_incoming *inc,
 			     struct iov_iter *to)
 {
-	struct rds_csum csum = { .csum_val.raw = 0 };
 	struct rds_tcp_incoming *tinc;
 	struct sk_buff *skb;
 	unsigned long to_copy, skb_off;
 	int ret = 0;
+	__wsum sum = 0;
 
 	if (!iov_iter_count(to))
-		goto out;
+		return 0;
 
 	tinc = container_of(inc, struct rds_tcp_incoming, ti_inc);
 
@@ -207,7 +207,7 @@ int rds_tcp_inc_copy_to_user(struct rds_sock *rs, struct rds_incoming *inc,
 					ret = -EFAULT;
 			} else {
 				/* full packet wsum checksum */
-				if (rds_skb_datagram_iter(skb, skb_off, to, to_copy, false, &csum))
+				if (rds_skb_datagram_iter(skb, skb_off, to, to_copy, false, &sum))
 					ret = -EFAULT;
 			}
 
@@ -223,9 +223,14 @@ int rds_tcp_inc_copy_to_user(struct rds_sock *rs, struct rds_incoming *inc,
 		}
 	}
 out:
-	if (unlikely(inc->i_payload_csum.csum_enabled) && ret) {
-		rds_stats_inc(rs->rs_stats, s_recv_payload_csum_tcp);
-		rds_check_csum(inc, &csum);
+	if (unlikely(inc->i_payload_csum.csum_enabled)) {
+		if (likely(ret)) {
+			inc->i_usercopy_csum = csum_fold(sum);
+			rds_stats_inc(rs->rs_stats, s_recv_payload_csum_tcp);
+		} else {
+			rds_stats_inc(rs->rs_stats,
+				      s_recv_payload_csum_tcp_badlen);
+		}
 	}
 
 	return ret;
