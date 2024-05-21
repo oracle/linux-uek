@@ -1224,9 +1224,8 @@ static int rds_send_queue_rm(struct rds_sock *rs, struct rds_connection *conn,
 		if (unlikely(rm->m_payload_csum.csum_enabled && dport &&
 			     rm->data.op_nents)) {
 			struct rds_ext_header_rdma_csum r_csum = {
-				.h_rdma_csum_enabled = true,
 				.h_rdma_csum_val =
-					cpu_to_be32(rm->m_payload_csum.csum_val.raw)
+					cpu_to_be16(rm->m_payload_csum.csum)
 			};
 
 			rds_message_add_extension(&rm->m_inc.i_hdr,

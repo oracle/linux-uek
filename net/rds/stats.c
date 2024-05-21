@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2023, Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2024, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -41,6 +41,14 @@ EXPORT_PER_CPU_SYMBOL_GPL(rds_stats);
 
 /* :.,$s/unsigned long\>.*\<s_\(.*\);/"\1",/g */
 
+/* WARNING: struct rds_info_counter specifies the maximum length of a
+ * rds_stat_names[] string to be 32, including the terminating NULL byte.
+ *
+ * Exceeding that length will trigger a WARN_ONCE in rds_stats_info_copy().
+ *
+ *	 0000000001111111111222222222233
+ *	 1234567890123456789012345678901
+ */
 static char *rds_stat_names[] = {
 	"conn_reset",
 	"recv_drop_bad_checksum",
@@ -54,11 +62,18 @@ static char *rds_stat_names[] = {
 	"recv_delayed_retry",
 	"recv_ack_required",
 	"recv_rdma_bytes",
-	"recv_payload_bad_checksum",
+	"recv_payload_csum_bad",
 	"recv_payload_csum_ib",
+	"recv_payload_csum_ib_badlen",
 	"recv_payload_csum_loopback",
+	"recv_payload_csum_loop_badlen",
 	"recv_payload_csum_tcp",
+	"recv_payload_csum_tcp_badlen",
+	"recv_payload_csum_old_ignored",
 	"recv_payload_csum_ignored",
+	"recv_payload_csum_trunc",
+	"recv_payload_csum_old_rcvd",
+	"recv_payload_csum_rcvd",
 	"recv_ping",
 	"recv_pong",
 	"recv_hb_ping",
@@ -110,8 +125,11 @@ void rds_stats_info_copy(struct rds_info_iterator *iter,
 	size_t i;
 
 	for (i = 0; i < nr; i++) {
-		BUG_ON(strlen(names[i]) >= sizeof(ctr.name));
+		WARN_ONCE(strlen(names[i]) >= sizeof(ctr.name),
+			  "name[%zu] (\"%s\") exceeds max length (%lu > %lu)\n",
+			  i, names[i], strlen(names[i]), sizeof(ctr.name) - 1);
 		strncpy(ctr.name, names[i], sizeof(ctr.name) - 1);
+		ctr.name[(sizeof(ctr.name) - 1)] = '\0';
 		ctr.value = values[i];
 
 		rds_info_copy(iter, &ctr, sizeof(ctr));
