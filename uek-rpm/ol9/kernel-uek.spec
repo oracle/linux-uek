@@ -88,6 +88,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define with_up        1
 # kernel-container
 %define with_container 1
+# kernel-kdump
+%define with_kdump     0
 # kernel-debug
 %define with_debug     1
 # kernel-doc
@@ -230,6 +232,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 
 # if requested, only build base kernel
 %if %{with_baseonly}
+%define with_kdump 0
 %define with_debug 0
 %define with_64k_ps 0
 %define with_64k_ps_debug 0
@@ -361,6 +364,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define kernel_image vmlinux
 %define with_embedded 1
 %define with_up 0
+%define with_kdump 1
 %define with_container 0
 %define with_debug 0
 %define with_headers   1
@@ -529,6 +533,7 @@ Source45: core-aarch64.list
 Source46: filter-modules.sh
 Source47: core-emb2-aarch64.list
 Source48: core-emb-mips64.list
+Source49: core-kdump-mips64.list
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
@@ -538,6 +543,7 @@ Source1008: config-aarch64-debug
 Source1009: config-aarch64-container
 Source1010: config-aarch64-embedded2
 Source1011: config-mips64-emb
+Source1012: config-mips64-kdump
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -859,6 +865,11 @@ This package includes an embedded kernel.
 %description -n kernel%{?variant}emb-core
 This package includes T73 kernel for mips platform
 
+%define variant_summary A minimal Linux kernel compiled for crash dumps
+%kernel_variant_package -o kdump
+%description -n kernel%{?variant}kdump-core
+This package includes a kdump version of the Linux kernel.
+
 %define variant_summary The Linux kernel compiled with extra debugging enabled
 %kernel_variant_package debug
 %description debug-core
@@ -1043,6 +1054,7 @@ mkdir -p configs
 
 %ifarch mips64
 	cp %{SOURCE1011} configs/config-emb
+	cp %{SOURCE1012} configs/config-kdump
 %endif
 
 	echo 'CONFIG_DTRACE=y' >> configs/config
@@ -1153,6 +1165,9 @@ BuildKernel() {
     elif [ "$Flavour" == "emb2" ]; then
         cp configs/config-emb2 .config
         modlistVariant=../kernel%{?variant}emb2
+    elif [ "$Flavour" == "kdump" ]; then
+        cp configs/config-kdump .config
+        modlistVariant=../kernel%{?variant}kdump
     else
 	cp configs/config .config
 	modlistVariant=../kernel%{?variant}${Flavour:+-${Flavour}}
@@ -1161,7 +1176,7 @@ BuildKernel() {
     Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
     echo USING ARCH=$Arch
     make %{?make_opts} ARCH=$Arch %{?_kernel_cc} olddefconfig > /dev/null
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb2" ]; then
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb2" ] && [ "$Flavour" != "kdump" ]; then
        make %{?make_opts} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
     else
        make %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
@@ -1299,7 +1314,7 @@ BuildKernel() {
     %_sourcedir/kabitool -s Module.symvers -o %{_tmppath}/kernel-$KernelVer-kabideps
 
 %if %{with_kabichk}
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb2" ]; then
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb2" && [ "$Flavour" != "kdump" ]; then
        # Create symbol type data which can be used to introspect kABI breakages
        python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
 
@@ -1489,6 +1504,8 @@ BuildKernel() {
       cp $RPM_SOURCE_DIR/core-emb-%{_target_cpu}.list core.list
     elif [ "$Flavour" == "emb2" ]; then
       cp $RPM_SOURCE_DIR/core-emb2-%{_target_cpu}.list core.list
+    elif [ "$Flavour" == "kdump" ]; then
+      cp $RPM_SOURCE_DIR/core-kdump-%{_target_cpu}.list core.list
     else
       cp $RPM_SOURCE_DIR/core-%{_target_cpu}.list core.list
     fi
@@ -1601,6 +1618,10 @@ BuildKernel %make_target %kernel_image emb
 BuildKernel %make_target %kernel_image emb2
 %endif
 
+%if %{with_kdump}
+BuildKernel %make_target %kernel_image kdump
+%endif
+
 %global bpftool_make \
   make %{?make_opts} EXTRA_CFLAGS="${RPM_OPT_FLAGS}" EXTRA_LDFLAGS="%{__global_ldflags}" DESTDIR=$RPM_BUILD_ROOT
 %if %{with_bpftool}
@@ -1647,6 +1668,11 @@ make %{?make_opts} %{?_smp_mflags} htmldocs || %{doc_build_fail}
        mv certs/signing_key.pem.sign.emb2 certs/signing_key.pem \
        mv certs/signing_key.x509.sign.emb2 certs/signing_key.x509 \
        %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb2/ %{dgst} \
+    fi \
+    if [ "%{with_kdump}" -ne "0" ]; then \
+       mv certs/signing_key.pem.sign.kdump certs/signing_key.pem \
+       mv certs/signing_key.x509.sign.kdump certs/signing_key.x509 \
+       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.kdump/ %{dgst} \
     fi \
   fi \
 %{nil}
@@ -1961,6 +1987,11 @@ fi\
 %kernel_variant_postun -o emb
 %kernel_variant_post -o -v emb
 
+%kernel_variant_pre -o kdump
+%kernel_variant_preun -o kdump
+%kernel_variant_postun -o kdump
+%kernel_variant_post -o -v kdump
+
 if [ -x /sbin/ldconfig ]
 then
     /sbin/ldconfig -X || exit $?
@@ -2116,5 +2147,7 @@ fi
 %kernel_variant_files -o %{with_embedded} emb
 
 %kernel_variant_files -o %{with_embedded2} emb2
+
+%kernel_variant_files -o %{with_kdump} kdump
 
 %changelog
