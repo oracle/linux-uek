@@ -120,7 +120,7 @@ optional. The following modified excerpt is from
      * then dispatch the task directly to SCX_DSQ_LOCAL and skip the
      * ops.enqueue() callback.
      *
-     * Note that this implemenation has exactly the same behavior as the
+     * Note that this implementation has exactly the same behavior as the
      * default ops.select_cpu implementation. The behavior of the scheduler
      * would be exactly same if the implementation just didn't define the
      * simple_select_cpu() struct_ops prog.
@@ -145,7 +145,7 @@ optional. The following modified excerpt is from
      * callback will only be invoked if we failed to find a core to dispatch
      * to in ops.select_cpu() above.
      *
-     * Note that this implemenation has exactly the same behavior as the
+     * Note that this implementation has exactly the same behavior as the
      * default ops.enqueue implementation, which just dispatches the task
      * to SCX_DSQ_GLOBAL. The behavior of the scheduler would be exactly same
      * if the implementation just didn't define the simple_enqueue struct_ops
