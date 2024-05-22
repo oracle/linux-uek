@@ -1296,6 +1296,10 @@ static inline struct efi_mokvar_table_entry *efi_mokvar_entry_find(
 }
 #endif
 
+#ifdef CONFIG_ARCH_PENSANDO
+void pensando_efi_mem_reserve(void);
+#endif
+
 #ifdef CONFIG_SYSFB
 extern void efifb_setup_from_dmi(struct screen_info *si, const char *opt);
 #else
