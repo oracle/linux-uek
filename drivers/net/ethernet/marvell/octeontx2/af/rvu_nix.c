@@ -2700,6 +2700,8 @@ static int nix_smq_flush(struct rvu *rvu, int blkaddr,
 		link = (cgx_id * rvu->hw->lmac_per_cgx) + lmac_id;
 		dev_info(rvu->dev, "NIX_AF_TX_LINKX_NORM_CREDIT:0x%llx\n",
 			 rvu_read64(rvu, blkaddr, NIX_AF_TX_LINKX_NORM_CREDIT(link)));
+		dev_info(rvu->dev, "NIX_AF_AQ_STATUS:0x%llx\n",
+			 rvu_read64(rvu, blkaddr, NIX_AF_AQ_STATUS));
 	}
 
 	/* Set NIX_AF_TL3_TL2_LINKX_CFG[ENA] for the TL3/TL2 queue */
