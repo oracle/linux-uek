@@ -1908,17 +1908,11 @@ fi\
 %{expand:%%post -n kernel%{?variant}%{?-v*:%{!-o:-}%{-v*}}-core}\
 %{-r:\
 if [ `uname -i` == "x86_64" -o `uname -i` == "aarch64" ] &&\
-   [ -f /etc/sysconfig/kernel ] && [ $1 -eq 1 ];\
-then\
-    /usr/bin/rpm -qa | grep -q -e "kernel-uek-5.4" -e "kernel-uek4k-5.4" -e "kernel-ueknano-5.4"\
-    if [ $? -eq 0 ]\
-    then\
-        # Change to uek-core only if current default is UEK6\
-        /bin/sed -r -i 's/^DEFAULTKERNEL=(kernel-uek|kernel-uek4k|kernel-ueknano)$/DEFAULTKERNEL=kernel%{?variant}%{?-v*:%{!-o:-}%{-v*}}-core/' /etc/sysconfig/kernel || exit $?\
-    else\
-        # No UEK is present. Change the default to installing kernel\
-        /bin/sed -r -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?variant}%{?-v*:%{!-o:-}%{-v*}}-core/' /etc/sysconfig/kernel || exit $?\
-    fi\
+   [ -f /etc/sysconfig/kernel ] &&\
+   [ "%{?variant}" == "-uek" ] &&\
+   [ $1 -eq 1 ]; then\
+   NEW_DEFAULT="kernel%{?variant}%{?-v:%{!-o:-}%{-v*}}-core"\
+  /bin/sed -r -i "s/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=${NEW_DEFAULT}/" /etc/sysconfig/kernel || exit $?\
 fi}\
 mkdir -p %{_localstatedir}/lib/rpm-state/%{name}\
 touch %{_localstatedir}/lib/rpm-state/%{name}/installing_core_%{KVERREL}%{?-v:.%{-v*}}\

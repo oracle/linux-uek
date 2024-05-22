@@ -1844,8 +1844,10 @@ fi\
 %{-r:\
 if [ `uname -i` == "x86_64" -o `uname -i` == "aarch64" ] &&\
    [ -f /etc/sysconfig/kernel ] &&\
+   [ "%{?variant}" == "-uek" ] &&\
    [ $1 -eq 1 ]; then\
-  /bin/sed -r -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel%{?variant}%{?-v:%{!-o:-}%{-v*}}-core/' /etc/sysconfig/kernel || exit $?\
+   NEW_DEFAULT="kernel%{?variant}%{?-v:%{!-o:-}%{-v*}}-core"\
+  /bin/sed -r -i "s/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=${NEW_DEFAULT}/" /etc/sysconfig/kernel || exit $?\
 fi}\
 mkdir -p %{_localstatedir}/lib/rpm-state/%{name}\
 touch %{_localstatedir}/lib/rpm-state/%{name}/installing_core_%{KVERREL}%{?-v:.%{-v*}}\
