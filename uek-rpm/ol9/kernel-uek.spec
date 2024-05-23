@@ -1860,9 +1860,29 @@ touch %{_localstatedir}/lib/rpm-state/%{name}/installing_core_%{KVERREL}%{?-v:.%
 #
 %define kernel_variant_postun(o) \
 %{expand:%%postun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-core}\
-if [ $1 -eq 0 ] && [ `uname -i` == "x86_64" ];\
-then\
-    /bin/sed -i 's/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=kernel-core/' /etc/sysconfig/kernel || exit $?\
+if [ $1 -eq 0 ] && \
+   [ "$(uname -i)" == "x86_64" -o "$(uname -i)" == "aarch64" ] && \
+   [ -f /etc/sysconfig/kernel ]; then\
+    CUR_DEFAULT=$(grep '^DEFAULTKERNEL' /etc/sysconfig/kernel | cut -d= -f2);\
+    THIS_KERNEL="kernel%{?variant}%{?-v:%{!-o:-}%{-v*}}-core";\
+    NEW_DEFAULT="";\
+    if [ "%{?variant}" == "-uek" ] && \
+       [ "${CUR_DEFAULT}" == "${THIS_KERNEL}" ] && \
+       [ "$(uname -i)" == "x86_64" ]; then\
+        NEW_DEFAULT="kernel-core";\
+    elif [ "%{?variant}" != "-uek" ] && \
+         [ "${CUR_DEFAULT}" == "${THIS_KERNEL}" ]; then\
+        if rpm -q kernel-uek-core >& /dev/null; then\
+            NEW_DEFAULT="kernel-uek-core";\
+        elif rpm -q kernel-uek >& /dev/null; then\
+            NEW_DEFAULT="kernel-uek";\
+        else\
+            NEW_DEFAULT="kernel-core";\
+        fi\
+    fi;\
+    if [ -n "${NEW_DEFAULT}" ]; then\
+        /bin/sed -i "s/^DEFAULTKERNEL=.*$/DEFAULTKERNEL=${NEW_DEFAULT}/" /etc/sysconfig/kernel || exit $?;\
+    fi\
 fi\
 %{nil}
 
