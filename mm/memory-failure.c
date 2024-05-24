@@ -1836,6 +1836,17 @@ try_again:
 		}
 	}
 
+	lock_page(p);
+	if (hwpoison_filter(p)) {
+		if (TestClearPageHWPoison(p))
+			num_poisoned_pages_dec();
+		unlock_page(p);
+		put_page(p);
+		res = -EOPNOTSUPP;
+		goto unlock_mutex;
+	}
+	unlock_page(p);
+
 	if (PageTransHuge(hpage)) {
 		/*
 		 * The flag must be set after the refcount is bumped
@@ -1889,15 +1900,6 @@ try_again:
 	 * correctly, we save a copy of the page flags at this time.
 	 */
 	page_flags = p->flags;
-
-	if (hwpoison_filter(p)) {
-		if (TestClearPageHWPoison(p))
-			num_poisoned_pages_dec();
-		unlock_page(p);
-		put_page(p);
-		res = -EOPNOTSUPP;
-		goto unlock_mutex;
-	}
 
 	/*
 	 * __munlock_pagevec may clear a writeback page's LRU flag without
