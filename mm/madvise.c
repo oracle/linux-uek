@@ -939,7 +939,7 @@ static int madvise_inject_error(int behavior,
 		pr_info("Injecting memory failure for pfn %#lx at process virtual address %#lx\n",
 				pfn, start);
 
-		ret = memory_failure(pfn, MF_COUNT_INCREASED);
+		ret = memory_failure(pfn, MF_ACTION_REQUIRED | MF_COUNT_INCREASED);
 		if (ret)
 			return ret;
 	}
