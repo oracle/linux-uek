@@ -1626,6 +1626,16 @@ int memory_failure(unsigned long pfn, int flags)
 		goto unlock_mutex;
 	}
 
+	lock_page(p);
+	if (hwpoison_filter(p)) {
+		if (TestClearPageHWPoison(p))
+			num_poisoned_pages_dec();
+		unlock_page(p);
+		put_hwpoison_page(p);
+		goto unlock_mutex;
+	}
+	unlock_page(p);
+
 	if (PageTransHuge(hpage)) {
 		if (try_to_split_thp_page(p) < 0) {
 			res = -EBUSY;
@@ -1684,13 +1694,6 @@ int memory_failure(unsigned long pfn, int flags)
 	if (!PageHWPoison(p)) {
 		pr_err("Memory failure: %#lx: just unpoisoned\n", pfn);
 		num_poisoned_pages_dec();
-		unlock_page(p);
-		put_hwpoison_page(p);
-		goto unlock_mutex;
-	}
-	if (hwpoison_filter(p)) {
-		if (TestClearPageHWPoison(p))
-			num_poisoned_pages_dec();
 		unlock_page(p);
 		put_hwpoison_page(p);
 		goto unlock_mutex;
