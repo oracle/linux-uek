@@ -725,6 +725,28 @@ static int kill_accessing_process(struct task_struct *p, unsigned long pfn,
 	return ret > 0 ? -EHWPOISON : -EFAULT;
 }
 
+/*
+ * MF_IGNORED - The m-f() handler marks the page as PG_hwpoisoned'ed.
+ * But it could not do more to isolate the page from being accessed again,
+ * nor does it kill the process. This is extremely rare and one of the
+ * potential causes is that the page state has been changed due to
+ * underlying race condition. This is the most severe outcomes.
+ *
+ * MF_FAILED - The m-f() handler marks the page as PG_hwpoisoned'ed.
+ * It should have killed the process, but it can't isolate the page,
+ * due to conditions such as extra pin, unmap failure, etc. Accessing
+ * the page again may trigger another MCE and the process will be killed
+ * by the m-f() handler immediately.
+ *
+ * MF_DELAYED - The m-f() handler marks the page as PG_hwpoisoned'ed.
+ * The page is unmapped, and is removed from the LRU or file mapping.
+ * An attempt to access the page again will trigger page fault and the
+ * PF handler will kill the process.
+ *
+ * MF_RECOVERED - The m-f() handler marks the page as PG_hwpoisoned'ed.
+ * The page has been completely isolated, that is, unmapped, taken out of
+ * the buddy system, or hole-punnched out of the file mapping.
+ */
 static const char *action_name[] = {
 	[MF_IGNORED] = "Ignored",
 	[MF_FAILED] = "Failed",
@@ -740,6 +762,7 @@ static const char * const action_page_types[] = {
 	[MF_MSG_POISONED_HUGE]		= "huge page already hardware poisoned",
 	[MF_MSG_HUGE]			= "huge page",
 	[MF_MSG_FREE_HUGE]		= "free huge page",
+	[MF_MSG_GET_HWPOISON]		= "get hwpoison page",
 	[MF_MSG_NON_PMD_HUGE]		= "non-pmd-sized huge page",
 	[MF_MSG_UNMAP_FAILED]		= "unmapping failed page",
 	[MF_MSG_DIRTY_SWAPCACHE]	= "dirty swapcache page",
@@ -755,6 +778,7 @@ static const char * const action_page_types[] = {
 	[MF_MSG_BUDDY_2ND]		= "free buddy page (2nd try)",
 	[MF_MSG_DAX]			= "dax page",
 	[MF_MSG_UNSPLIT_THP]		= "unsplit thp",
+	[MF_MSG_ALREADY_POISONED]	= "already poisonealready poisoned",
 	[MF_MSG_UNKNOWN]		= "unknown page",
 };
 
@@ -866,11 +890,12 @@ static int me_kernel(struct page_state *ps, struct page *p)
 
 /*
  * Page in unknown state. Do nothing.
+ * This is a catch-all in case we fail to make sense of the page state.
  */
 static int me_unknown(struct page_state *ps, struct page *p)
 {
 	pr_err("Memory failure: %#lx: Unknown page state\n", page_to_pfn(p));
-	return MF_FAILED;
+	return MF_IGNORED;
 }
 
 /*
@@ -1338,8 +1363,10 @@ static int memory_failure_hugetlb(unsigned long pfn, int flags)
 		pr_err("Memory failure: %#lx: already hardware poisoned\n",
 		       pfn);
 		res = -EHWPOISON;
-		if (flags & MF_ACTION_REQUIRED)
+		if (flags & MF_ACTION_REQUIRED) {
 			res = kill_accessing_process(current, page_to_pfn(head), flags);
+			action_result(pfn, MF_MSG_ALREADY_POISONED, MF_FAILED);
+		}
 		return res;
 	}
 
@@ -1391,7 +1418,7 @@ static int memory_failure_hugetlb(unsigned long pfn, int flags)
 	}
 
 	if (!hwpoison_user_mappings(p, pfn, flags, &head)) {
-		action_result(pfn, MF_MSG_UNMAP_FAILED, MF_IGNORED);
+		action_result(pfn, MF_MSG_UNMAP_FAILED, MF_FAILED);
 		res = -EBUSY;
 		goto out;
 	}
@@ -1571,6 +1598,7 @@ int memory_failure(unsigned long pfn, int flags)
 		res = -EHWPOISON;
 		if (flags & MF_ACTION_REQUIRED)
 			res = kill_accessing_process(current, pfn, flags);
+		action_result(pfn, MF_MSG_ALREADY_POISONED, MF_FAILED);
 		goto unlock_mutex;
 	}
 
@@ -1690,7 +1718,7 @@ int memory_failure(unsigned long pfn, int flags)
 	 * page after thp split.
 	 */
 	if (!hwpoison_user_mappings(p, pfn, flags, &hpage)) {
-		action_result(pfn, MF_MSG_UNMAP_FAILED, MF_IGNORED);
+		action_result(pfn, MF_MSG_UNMAP_FAILED, MF_FAILED);
 		res = -EBUSY;
 		goto unlock_page;
 	}
