@@ -25,7 +25,8 @@ UEK_KABI_RENAME(int (*gc)(struct dst_ops *ops), void (*gc)(struct dst_ops *ops))
 	void			(*destroy)(struct dst_entry *);
 	void			(*ifdown)(struct dst_entry *,
 					  struct net_device *dev, int how);
-	struct dst_entry *	(*negative_advice)(struct dst_entry *);
+	UEK_KABI_RENAME(struct dst_entry *(*negative_advice)(struct dst_entry *), \
+			void (*negative_advice)(struct sock *sk, struct dst_entry *));
 	void			(*link_failure)(struct sk_buff *);
 	void			(*update_pmtu)(struct dst_entry *dst, struct sock *sk,
 					       struct sk_buff *skb, u32 mtu,
