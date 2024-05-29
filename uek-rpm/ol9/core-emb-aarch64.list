@@ -98,7 +98,8 @@ kernel/drivers/md/dm-crypt.ko
 kernel/drivers/md/dm-mod.ko
 kernel/drivers/memory/pl172.ko
 kernel/drivers/mfd/mfd-core.ko
-kernel/drivers/mfd/rsmu-i2c.ko
+kernel/drivers/mfd/rsmu_core.ko
+kernel/drivers/mfd/rsmu_i2c.ko
 kernel/drivers/misc/rsmu.ko
 kernel/drivers/mmc/core/pwrseq_emmc.ko
 kernel/drivers/mmc/core/pwrseq_simple.ko
