@@ -1,0 +1,56 @@
+name: test-kernel
+run-name: ${{ github.actor }} PR run
+on: [pull_request]
+jobs:
+  test-schedulers:
+    runs-on: ubuntu-22.04
+    steps:
+      ### OTHER REPOS ####
+
+      # Hard turn-off interactive mode
+      - run: echo 'debconf debconf/frontend select Noninteractive' | sudo debconf-set-selections
+
+      # Refresh packages list
+      - run: sudo apt update
+
+      ### DOWNLOAD AND INSTALL DEPENDENCIES ###
+
+      # Download dependencies packaged by Ubuntu
+      - run: sudo apt -y install bc gcc make git coreutils cmake elfutils libelf-dev libunwind-dev libzstd-dev linux-headers-generic linux-tools-common linux-tools-generic ninja-build python3-pip python3-requests qemu-kvm udev iproute2 busybox-static libvirt-clients kbd kmod file rsync zstd pahole flex bison cpio libcap-dev libelf-dev python3-dev cargo rustc gcc-multilib
+
+      # clang 17
+      # Use a custom llvm.sh script which includes the -y flag for
+      # add-apt-repository. Otherwise, the CI job will hang. If and when
+      # https://github.com/opencollab/llvm-jenkins.debian.net/pull/26 is
+      # merged, we can go back to using https://apt.llvm.org/llvm.sh.
+      - run: wget https://raw.githubusercontent.com/Byte-Lab/llvm-jenkins.debian.net/fix_llvmsh/llvm.sh
+      - run: chmod +x llvm.sh
+      - run: sudo ./llvm.sh all
+      - run: sudo ln -sf /usr/bin/clang-17 /usr/bin/clang
+      - run: sudo ln -sf /usr/bin/llvm-strip-17 /usr/bin/llvm-strip
+
+      # Checkout repository
+      - uses: actions/checkout@v4
+
+      # Install virtme-ng
+      - run: pip install virtme-ng
+
+      ### END DEPENDENCIES ###
+
+      # Build a minimal kernel (with sched-ext enabled) using virtme-ng
+      - run: vng -v --build --config .github/workflows/sched-ext.config
+
+      # Build the selftests suite
+      - run: make -j $(nproc) -C tools/testing/selftests/sched_ext
+
+      # Build the in-kernel schedulers
+      - run: make -j $(nproc) -C tools/sched_ext
+
+      # Setup KVM support
+      - run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # Test the schedulers inside the recompile kernel
+      - run: .github/workflows/run-schedulers

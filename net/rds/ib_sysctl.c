@@ -271,7 +271,6 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.extra1         = &rds_ib_sysctl_frwr_poll_tmout_secs_min,
 		.extra2         = &rds_ib_sysctl_frwr_poll_tmout_secs_max,
 	},
-	{ }
 };
 
 void rds_ib_sysctl_exit(void)

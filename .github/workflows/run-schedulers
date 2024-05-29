@@ -1,0 +1,73 @@
+#!/bin/bash
+#
+# Run sched-ext scheduler for TIMEOUT seconds inside virtme-ng and catch
+# potential errors, then unload the scheduler and return the exit status.
+
+# Maximum time for each scheduler run.
+TEST_TIMEOUT=30
+
+# Maximum timeout for the guest used for each scheduler run (this is used to
+# hard-shutdown the guest in case of system hangs).
+GUEST_TIMEOUT=60
+
+# Check if virtme-ng is available.
+if [ ! -x `which vng` ]; then
+    echo "vng not found, please install virtme-ng to enable testing"
+    exit 1
+fi
+
+function runtest() {
+    local bin="${1}"
+
+    if [ -z "${bin}" ]; then
+        echo "No binary passed to runtest"
+        exit 1
+    fi
+
+    if ! [ -f "${bin}" ]; then
+        echo "Binary ${bin} was not a regular file"
+        exit 1
+    fi
+
+    rm -f /tmp/output
+    (timeout --foreground --preserve-status ${GUEST_TIMEOUT} \
+        vng --force-9p --verbose -- \
+            "timeout --foreground --preserve-status ${TEST_TIMEOUT} ${bin}" \
+                2>&1 </dev/null || true) | tee /tmp/output
+}
+
+# Test all the available schedulers.
+#
+# NOTE: virtme-ng automatically runs the kernel from the current working
+# directory by default.
+#
+# Each scheduler will be tested in a separate instance booted from scratch, to
+# ensure that each run does not impact the others.
+#
+for sched in $(find tools/sched_ext/build/bin -type f -executable); do
+    runtest "${sched}"
+    grep -v " Speculative Return Stack Overflow" /tmp/output | \
+        sed -n -e '/\bBUG:/q1' \
+            -e '/\bWARNING:/q1' \
+            -e '/\berror\b/Iq1' \
+            -e '/\bstall/Iq1' \
+            -e '/\btimeout\b/Iq1'
+    res=$?
+    if [ ${res} -ne 0 ]; then
+        echo "FAIL: ${sched}"
+        exit 1
+    else
+        echo "OK: ${sched}"
+    fi
+done
+
+# Run the selftests suite
+runtest "tools/testing/selftests/sched_ext/runner"
+sed -n -e '/not ok/q1' /tmp/output
+res=$?
+if [ ${res} -ne 0 ]; then
+	echo "FAIL: selftests"
+	echo "output: $(cat /tmp/output)"
+else
+	echo "OK: selftests"
+fi

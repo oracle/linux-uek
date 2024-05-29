@@ -3712,6 +3712,12 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/iio/imu/bosch,bmi323.yaml
 F:	drivers/iio/imu/bmi323/
 
+BPF JIT for ARC
+M:	Shahab Vahedi <shahab@synopsys.com>
+L:	bpf@vger.kernel.org
+S:	Maintained
+F:	arch/arc/net/
+
 BPF JIT for ARM
 M:	Russell King <linux@armlinux.org.uk>
 M:	Puranjay Mohan <puranjay@kernel.org>
@@ -3823,6 +3829,14 @@ F:	kernel/bpf/syscall.c
 F:	kernel/bpf/tnum.c
 F:	kernel/bpf/trampoline.c
 F:	kernel/bpf/verifier.c
+
+BPF [CRYPTO]
+M:	Vadim Fedorenko <vadim.fedorenko@linux.dev>
+L:	bpf@vger.kernel.org
+S:	Maintained
+F:	crypto/bpf_crypto_skcipher.c
+F:	include/linux/bpf_crypto.h
+F:	kernel/bpf/crypto.c
 
 BPF [DOCUMENTATION] (Related to Standardization)
 R:	David Vernet <void@manifault.com>
@@ -12388,6 +12402,26 @@ F:	drivers/ata/
 F:	include/linux/ata.h
 F:	include/linux/libata.h
 
+LIBETH COMMON ETHERNET LIBRARY
+M:	Alexander Lobakin <aleksander.lobakin@intel.com>
+L:	netdev@vger.kernel.org
+L:	intel-wired-lan@lists.osuosl.org (moderated for non-subscribers)
+S:	Supported
+T:	git https://github.com/alobakin/linux.git
+F:	drivers/net/ethernet/intel/libeth/
+F:	include/net/libeth/
+K:	libeth
+
+LIBIE COMMON INTEL ETHERNET LIBRARY
+M:	Alexander Lobakin <aleksander.lobakin@intel.com>
+L:	intel-wired-lan@lists.osuosl.org (moderated for non-subscribers)
+L:	netdev@vger.kernel.org
+S:	Supported
+T:	git https://github.com/alobakin/linux.git
+F:	drivers/net/ethernet/intel/libie/
+F:	include/linux/net/intel/libie/
+K:	libie
+
 LIBNVDIMM BTT: BLOCK TRANSLATION TABLE
 M:	Vishal Verma <vishal.l.verma@intel.com>
 M:	Dan Williams <dan.j.williams@intel.com>
@@ -15259,6 +15293,7 @@ F:	net/*/netfilter.c
 F:	net/*/netfilter/
 F:	net/bridge/br_netfilter*.c
 F:	net/netfilter/
+F:	tools/testing/selftests/net/netfilter/
 
 NETROM NETWORK LAYER
 M:	Ralf Baechle <ralf@linux-mips.org>
@@ -17767,6 +17802,14 @@ F:	include/net/psample.h
 F:	include/uapi/linux/psample.h
 F:	net/psample
 
+PSE NETWORK DRIVER
+M:	Oleksij Rempel <o.rempel@pengutronix.de>
+M:	Kory Maincent <kory.maincent@bootlin.com>
+L:	netdev@vger.kernel.org
+S:	Maintained
+F:	Documentation/devicetree/bindings/net/pse-pd/
+F:	drivers/net/pse-pd/
+
 PSTORE FILESYSTEM
 M:	Kees Cook <keescook@chromium.org>
 R:	Tony Luck <tony.luck@intel.com>
@@ -18830,6 +18873,12 @@ F:	include/dt-bindings/net/pcs-rzn1-miic.h
 F:	include/linux/pcs-rzn1-miic.h
 F:	net/dsa/tag_rzn1_a5psw.c
 
+RENESAS RZ/N1 DWMAC GLUE LAYER
+M:	Romain Gantois <romain.gantois@bootlin.com>
+S:	Maintained
+F:	Documentation/devicetree/bindings/net/renesas,rzn1-gmac.yaml
+F:	drivers/net/ethernet/stmicro/stmmac/dwmac-rzn1.c
+
 RENESAS RZ/N1 RTC CONTROLLER DRIVER
 M:	Miquel Raynal <miquel.raynal@bootlin.com>
 L:	linux-rtc@vger.kernel.org
@@ -19623,6 +19672,19 @@ F:	include/linux/sched.h
 F:	include/linux/wait.h
 F:	include/uapi/linux/sched.h
 F:	kernel/sched/
+
+SCHEDULER - SCHED_EXT
+R:	Tejun Heo <tj@kernel.org>
+R:	David Vernet <void@manifault.com>
+L:	linux-kernel@vger.kernel.org
+S:	Maintained
+W:	https://github.com/sched-ext/scx
+T:	git://git.kernel.org/pub/scm/linux/kernel/git/tj/sched_ext.git
+F:	include/linux/sched/ext.h
+F:	kernel/sched/ext.h
+F:	kernel/sched/ext.c
+F:	tools/sched_ext/
+F:	tools/testing/selftests/sched_ext
 
 SCSI LIBSAS SUBSYSTEM
 R:	John Garry <john.g.garry@oracle.com>
@@ -21661,6 +21723,7 @@ TEAM DRIVER
 M:	Jiri Pirko <jiri@resnulli.us>
 L:	netdev@vger.kernel.org
 S:	Supported
+F:	Documentation/netlink/specs/team.yaml
 F:	drivers/net/team/
 F:	include/linux/if_team.h
 F:	include/uapi/linux/if_team.h
@@ -23426,6 +23489,7 @@ F:	include/linux/virtio*.h
 F:	include/linux/vringh.h
 F:	include/uapi/linux/virtio_*.h
 F:	tools/virtio/
+F:	tools/testing/selftests/drivers/net/virtio_net/
 
 VIRTIO CRYPTO DRIVER
 M:	Gonglei <arei.gonglei@huawei.com>
