@@ -2,6 +2,7 @@
 # Pensando SoC drivers
 #
 obj-y += cap_soc.o
+obj-y += kpcimgr.o kpcimgr_sysfs.o
 
 CFLAGS_cap_mem.o := -I$(src)
 
