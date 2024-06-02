@@ -87,7 +87,7 @@ static void xve_cm_dma_unmap_rx(struct xve_dev_priv *priv, int frags,
 static int xve_cm_post_receive_srq(struct net_device *netdev, int id)
 {
 	struct xve_dev_priv *priv = netdev_priv(netdev);
-	struct ib_recv_wr *bad_wr;
+	const struct ib_recv_wr *bad_wr;
 	struct ib_recv_wr *wr = &priv->cm.rx_wr;
 	int i, ret;
 
@@ -191,7 +191,7 @@ static void xve_cm_free_rx_ring(struct net_device *dev,
 
 static void xve_cm_start_rx_drain(struct xve_dev_priv *priv)
 {
-	struct ib_send_wr *bad_wr;
+	const struct ib_send_wr *bad_wr;
 	struct xve_cm_ctx *p;
 
 	/* We only reserved 1 extra slot in CQ for drain WRs, so
@@ -642,7 +642,7 @@ static inline int post_send(struct xve_dev_priv *priv,
 			    struct xve_cm_ctx *tx,
 			    unsigned int wr_id, u64 addr, int len)
 {
-	struct ib_send_wr *bad_wr;
+	const struct ib_send_wr *bad_wr;
 
 	priv->tx_sge[0].addr = addr;
 	priv->tx_sge[0].length = len;

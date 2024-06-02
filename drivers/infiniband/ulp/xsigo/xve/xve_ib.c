@@ -128,7 +128,7 @@ static void xve_ud_skb_put_frags(struct xve_dev_priv *priv,
 static int xve_ib_post_receive(struct net_device *dev, int id)
 {
 	struct xve_dev_priv *priv = netdev_priv(dev);
-	struct ib_recv_wr *bad_wr;
+	const struct ib_recv_wr *bad_wr;
 	int ret, i;
 
 	priv->rx_wr.wr_id = id | XVE_OP_RECV;
@@ -732,7 +732,7 @@ static inline int post_send(struct xve_dev_priv *priv,
 			    struct ib_ah *address, u32 qpn,
 			    struct xve_tx_buf *tx_req, void *head, int hlen)
 {
-	struct ib_send_wr *bad_wr;
+	const struct ib_send_wr *bad_wr;
 	struct ib_send_wr *wr = &priv->tx_wr;
 	int i, off;
 	struct sk_buff *skb = tx_req->skb;

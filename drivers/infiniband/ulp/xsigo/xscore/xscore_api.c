@@ -210,7 +210,8 @@ static void xs_dma_unmap_tx(struct ib_device *ca, struct xscore_desc *desc)
 int xscore_post_send_sg(struct xscore_conn_ctx *ctx, struct sk_buff *skb,
 			int oflags)
 {
-	struct ib_send_wr wr, *bad_wr;
+	struct ib_send_wr wr;
+	const struct ib_send_wr *bad_wr;
 	int ret;
 	int nfrags = 0;
 	struct xscore_desc *desc;
@@ -256,7 +257,7 @@ int xscore_post_send_sg(struct xscore_conn_ctx *ctx, struct sk_buff *skb,
 	/* Note the Time stamp */
 	desc->time_stamp = jiffies;
 
-	ret = ib_post_send(ctx->qp, &wr, &bad_wr);
+	ret = ib_post_send(ctx->qp, (const struct ib_send_wr *)&wr, &bad_wr);
 
 	if (ret) {
 		xs_dma_unmap_tx(ctx->port->xs_dev->device, desc);
@@ -279,7 +280,8 @@ int xscore_post_send(struct xscore_conn_ctx *ctx, void *addr, int len,
 	struct ib_device *ca = port->xs_dev->device;
 	dma_addr_t mapping;
 	struct ib_sge list;
-	struct ib_send_wr wr, *bad_wr;
+	struct ib_send_wr wr;
+	const struct ib_send_wr *bad_wr;
 	int ret = 0;
 	struct xscore_desc *desc;
 	unsigned long flags;
@@ -331,7 +333,7 @@ int xscore_post_send(struct xscore_conn_ctx *ctx, void *addr, int len,
 
 	spin_unlock_irqrestore(&ctx->lock, flags);
 
-	ret = ib_post_send(ctx->qp, &wr, &bad_wr);
+	ret = ib_post_send(ctx->qp, (const struct ib_send_wr *)&wr, &bad_wr);
 
 	spin_lock_irqsave(&ctx->lock, flags);
 
@@ -356,7 +358,7 @@ static int xs_post_recv(struct xscore_conn_ctx *ctx, int offset, int n,
 	struct ib_device *ca = port->xs_dev->device;
 	struct ib_sge list[XSCORE_MAX_RXFRAGS];
 	struct ib_recv_wr wr;
-	struct ib_recv_wr *bad_wr;
+	const struct ib_recv_wr *bad_wr;
 	int i, j, ret = 0;
 	dma_addr_t *mapping;
 	int rsize = ctx->rx_buf_size;

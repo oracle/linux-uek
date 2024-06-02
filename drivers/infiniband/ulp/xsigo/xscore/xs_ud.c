@@ -89,7 +89,7 @@ static int xs_ud_post_recv(struct ib_ud_ctx *ctx, int offset, int n)
 		.sg_list = &list,
 		.num_sge = 1,
 	};
-	struct ib_recv_wr *bad_wr;
+	const struct ib_recv_wr *bad_wr;
 	int i, ret;
 	void *addr;
 	u64 mapping;
@@ -116,7 +116,7 @@ static int xs_ud_post_recv(struct ib_ud_ctx *ctx, int offset, int n)
 		list.addr = (unsigned long)mapping;
 		list.length = MAX_UD_RX_BUF_SIZE;
 		wr.wr_id = (int)(offset | XSUD_RECV_WRID);
-		ret = ib_post_recv(ctx->qp, &wr, &bad_wr);
+		ret = ib_post_recv(ctx->qp, (const struct ib_recv_wr *)&wr, &bad_wr);
 		if (ret) {
 			pr_info("xs_ud_post_recv: ib_post_recv");
 			pr_info(" error, i %d, ret = %d\n", i, ret);
@@ -228,7 +228,7 @@ int xs_ud_send_msg(struct xscore_port *pinfop, uint8_t *macp, void *msgp,
 			      .remote_qkey = QP_DEF_QKEY}
 		       }
 	};
-	struct ib_send_wr *bad_wr;
+	const struct ib_send_wr *bad_wr;
 	union ib_gid dgid;
 	struct ib_ah_attr ah_attr = {
 		.dlid = QP_MCAST_LID,
@@ -283,7 +283,7 @@ int xs_ud_send_msg(struct xscore_port *pinfop, uint8_t *macp, void *msgp,
 		goto err;
 	}
 	wr.wr.ud.ah = tbuf->ah;
-	ret = ib_post_send(udp->qp, &wr, &bad_wr);
+	ret = ib_post_send(udp->qp, (const struct ib_send_wr *)&wr, &bad_wr);
 	if (ret)
 		goto err1;
 	return 0;
