@@ -1030,7 +1030,7 @@ u8 xscore_port_num(struct xscore_port *port)
 	return port->port_num;
 }
 EXPORT_SYMBOL(xscore_port_num);
-static void path_rec_complete(int status, struct ib_sa_path_rec *resp,
+static void path_rec_complete(int status, struct sa_path_rec *resp,
 			      void *context)
 {
 	struct xscore_conn_ctx *ctx = context;
@@ -1040,7 +1040,7 @@ static void path_rec_complete(int status, struct ib_sa_path_rec *resp,
 	if (status)
 		IB_ERROR("%s: completed with error %d\n", __func__, status);
 	else
-		memcpy(&ctx->path_rec, resp, sizeof(struct ib_sa_path_rec));
+		memcpy(&ctx->path_rec, resp, sizeof(struct sa_path_rec));
 	ctx->status = status;
 	complete(&ctx->done);
 }
@@ -1050,7 +1050,7 @@ static int use_path_rec;
 static int xscore_send_req(struct xscore_conn_ctx *ctx)
 {
 	struct ib_cm_req_param req;
-	struct ib_sa_path_rec path_rec;
+	struct sa_path_rec path_rec;
 	struct ib_port_attr port_attr;
 	struct ib_sa_query *query;
 	u16 pkey;

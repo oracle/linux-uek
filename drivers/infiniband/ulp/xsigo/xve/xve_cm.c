@@ -966,7 +966,7 @@ static struct ib_qp *xve_cm_create_tx_qp(struct net_device *dev,
 
 static int xve_cm_send_req(struct net_device *dev,
 			   struct ib_cm_id *id, struct ib_qp *qp,
-			   struct ib_sa_path_rec *pathrec)
+			   struct sa_path_rec *pathrec)
 {
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	struct xve_cm_data data = { };
@@ -1032,7 +1032,7 @@ static int xve_cm_modify_tx_init(struct net_device *dev,
 	return 0;
 }
 
-static int xve_cm_tx_init(struct xve_cm_ctx *p, struct ib_sa_path_rec *pathrec)
+static int xve_cm_tx_init(struct xve_cm_ctx *p, struct sa_path_rec *pathrec)
 {
 	struct xve_dev_priv *priv = netdev_priv(p->netdev);
 	int ret;
@@ -1282,7 +1282,7 @@ void xve_cm_tx_start(struct work_struct *work)
 	struct xve_cm_ctx *p;
 	unsigned long flags;
 	int ret;
-	struct ib_sa_path_rec pathrec;
+	struct sa_path_rec pathrec;
 
 	netif_tx_lock_bh(dev);
 	spin_lock_irqsave(&priv->lock, flags);

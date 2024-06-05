@@ -837,7 +837,7 @@ struct xve_path {
 	struct xve_cm_ctx *cm_ctx_common;
 	struct xve_cm_ctx *cm_ctx_tx;
 	struct xve_cm_ctx *cm_ctx_rx;
-	struct ib_sa_path_rec pathrec;
+	struct sa_path_rec pathrec;
 	struct xve_ah *ah;
 	int query_id;
 	struct ib_sa_query *query;

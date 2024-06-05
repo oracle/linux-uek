@@ -481,7 +481,7 @@ void xve_mark_paths_invalid(struct net_device *dev)
 	list_for_each_entry_safe(path, tp, &priv->path_list, list) {
 		xve_debug(DEBUG_IBDEV_INFO, priv,
 			  "%s mark path LID 0x%04x GID %pI6 invalid\n",
-			  __func__, be16_to_cpu(path->pathrec.dlid),
+			  __func__, be16_to_cpu(path->pathrec.ib.dlid),
 			  path->pathrec.dgid.raw);
 		path->valid = 0;
 	}
@@ -576,7 +576,7 @@ unlock:
 }
 
 static void path_rec_completion(int status,
-				struct ib_sa_path_rec *pathrec, void *path_ptr)
+				struct sa_path_rec *pathrec, void *path_ptr)
 {
 	struct xve_path *path = path_ptr;
 	struct net_device *dev = path->dev;
@@ -591,7 +591,7 @@ static void path_rec_completion(int status,
 	if (!status) {
 		priv->counters[XVE_PATHREC_RESP_COUNTER]++;
 		xve_test("XVE: %s PathRec LID 0x%04x for GID %pI6\n",
-			 __func__, be16_to_cpu(pathrec->dlid),
+			 __func__, be16_to_cpu(pathrec->ib.dlid),
 			 pathrec->dgid.raw);
 	} else {
 		priv->counters[XVE_PATHREC_RESP_ERR_COUNTER]++;
@@ -621,7 +621,7 @@ static void path_rec_completion(int status,
 
 		xve_test
 		    ("XVE: %screated address handle %p for LID 0x%04x, SL %d\n",
-		     __func__, ah, be16_to_cpu(pathrec->dlid), pathrec->sl);
+		     __func__, ah, be16_to_cpu(pathrec->ib.dlid), pathrec->sl);
 		if (xve_cm_enabled(dev)) {
 			if (!xve_cmtx_get(path))
 				xve_cm_create_tx(dev, path);
@@ -709,7 +709,7 @@ static int path_rec_start(struct net_device *dev, struct xve_path *path)
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	ib_sa_comp_mask comp_mask =
 	    IB_SA_PATH_REC_MTU_SELECTOR | IB_SA_PATH_REC_MTU;
-	struct ib_sa_path_rec p_rec;
+	struct sa_path_rec p_rec;
 
 	p_rec = path->pathrec;
 	p_rec.mtu_selector = IB_SA_GT;

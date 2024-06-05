@@ -45,6 +45,7 @@
 #include <linux/version.h>
 
 #include <rdma/ib_addr.h>
+#include <rdma/ib_cache.h>
 
 #include "xs_compat.h"
 
@@ -130,7 +131,7 @@ struct xscore_conn_ctx {
 	int status;
 	struct xscore_port *port;
 	struct ib_cm_id *cm_id;
-	struct ib_sa_path_rec path_rec;
+	struct sa_path_rec path_rec;
 	struct ib_cq *scq;
 	struct ib_cq *rcq;
 	struct ib_qp *qp;
