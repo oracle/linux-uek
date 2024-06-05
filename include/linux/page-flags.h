@@ -524,7 +524,7 @@ __PAGEFLAG(Reported, reported, PF_NO_COMPOUND)
 #ifdef CONFIG_MEMORY_HOTPLUG
 PAGEFLAG(VmemmapSelfHosted, vmemmap_self_hosted, PF_ANY)
 #else
-PAGEFLAG_FALSE(VmemmapSelfHosted, vmemmap_self_hosted)
+PAGEFLAG_FALSE(VmemmapSelfHosted)
 #endif
 
 /*
