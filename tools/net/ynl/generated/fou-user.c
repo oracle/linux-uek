@@ -72,7 +72,6 @@ void fou_add_req_free(struct fou_add_req *req)
 
 int fou_add(struct ynl_sock *ys, struct fou_add_req *req)
 {
-	struct ynl_req_state yrs = { .yarg = { .ys = ys, }, };
 	struct nlmsghdr *nlh;
 	int err;
 
@@ -100,7 +99,7 @@ int fou_add(struct ynl_sock *ys, struct fou_add_req *req)
 	if (req->_present.ifindex)
 		mnl_attr_put_u32(nlh, FOU_ATTR_IFINDEX, req->ifindex);
 
-	err = ynl_exec(ys, nlh, &yrs);
+	err = ynl_exec(ys, nlh, NULL);
 	if (err < 0)
 		return -1;
 
@@ -118,7 +117,6 @@ void fou_del_req_free(struct fou_del_req *req)
 
 int fou_del(struct ynl_sock *ys, struct fou_del_req *req)
 {
-	struct ynl_req_state yrs = { .yarg = { .ys = ys, }, };
 	struct nlmsghdr *nlh;
 	int err;
 
@@ -142,7 +140,7 @@ int fou_del(struct ynl_sock *ys, struct fou_del_req *req)
 	if (req->_present.peer_v6_len)
 		mnl_attr_put(nlh, FOU_ATTR_PEER_V6, req->_present.peer_v6_len, req->peer_v6);
 
-	err = ynl_exec(ys, nlh, &yrs);
+	err = ynl_exec(ys, nlh, NULL);
 	if (err < 0)
 		return -1;
 
