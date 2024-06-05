@@ -633,6 +633,7 @@ struct rds_ib_statistics {
 	uint64_t        s_ib_frwr_invalidates;
 	uint64_t	s_ib_frwr_conn_qp_timeout;
 	uint64_t	s_ib_frwr_freg_qp_timeout;
+	uint64_t	s_ib_rx_limit_reached;
 };
 
 extern struct workqueue_struct *rds_ib_wq;
