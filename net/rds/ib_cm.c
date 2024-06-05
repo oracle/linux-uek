@@ -869,6 +869,8 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 					  msecs_to_jiffies(10),
 					  "delay for RX worker");
 		ic->i_rx_wait_for_handler = 1;
+		rds_ib_stats_inc(s_ib_rx_limit_reached);
+
 	}
 }
 
