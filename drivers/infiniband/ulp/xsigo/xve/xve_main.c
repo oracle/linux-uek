@@ -1936,7 +1936,7 @@ static int xcpm_check_vnic_from_same_pvi(xsmp_cookie_t xsmp_hndl,
 
 	hca = xsmp_info.ib_device;
 	port = xscore_port_num(xsmp_info.port);
-	(void)ib_query_gid(hca, port, 0, &local_gid);
+	(void)rdma_query_gid(hca, port, 0, &local_gid);
 
 	mutex_lock(&xve_mutex);
 	list_for_each_entry(priv, &xve_dev_list, list) {
@@ -2390,10 +2390,10 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 	if (xve_set_dev_features(priv, hca))
 		goto device_init_failed;
 
-	result = ib_query_gid(hca, port, 0, &priv->local_gid);
+	result = rdma_query_gid(hca, port, 0, &priv->local_gid);
 
 	if (result) {
-		pr_warn("%s: ib_query_gid port %d failed (ret = %d)\n",
+		pr_warn("%s: rdma_query_gid port %d failed (ret = %d)\n",
 			hca->name, port, result);
 		goto device_init_failed;
 	} else {

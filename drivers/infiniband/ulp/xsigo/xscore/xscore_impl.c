@@ -652,9 +652,9 @@ static int xscore_init_port(struct xscore_port *port)
 
 	IB_FUNCTION("%s\n", __func__);
 
-	ret = ib_query_gid(xs_dev->device, port->port_num, 0, &port->sgid);
+	ret = rdma_query_gid(xs_dev->device, port->port_num, 0, &port->sgid);
 	if (ret) {
-		IB_ERROR("xscore_init_port: ib_query_gid GUID 0x%llx %d\n",
+		IB_ERROR("xscore_init_port: rdma_query_gid GUID 0x%llx %d\n",
 			 port->guid, ret);
 		return ret;
 	}
@@ -780,7 +780,7 @@ static void xscore_port_event_handler(struct work_struct *work)
 		u64 mac;
 
 		clear_bit(XSCORE_PORT_LID_CHANGE, &port->flags);
-		ib_query_gid(port->xs_dev->device, port->port_num, 0,
+		rdma_query_gid(port->xs_dev->device, port->port_num, 0,
 			     &port->sgid);
 		port->guid = be64_to_cpu(port->sgid.global.interface_id);
 		convert_guid_to_mac(port->guid, &mac);
