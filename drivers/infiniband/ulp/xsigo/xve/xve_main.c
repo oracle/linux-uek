@@ -695,6 +695,12 @@ static struct xve_path *path_rec_create(struct net_device *dev, void *gid)
 
 	INIT_LIST_HEAD(&path->fwt_list);
 
+        if (rdma_cap_opa_ah(priv->ca, priv->port))
+                path->pathrec.rec_type = SA_PATH_REC_TYPE_OPA;
+        else
+                path->pathrec.rec_type = SA_PATH_REC_TYPE_IB;
+
+	xve_debug(DEBUG_SEND_INFO, priv, "path_rec_create rec_type =%d \n",path->pathrec.rec_type);
 	memcpy(path->pathrec.dgid.raw, gid, sizeof(union ib_gid));
 	path->pathrec.sgid = priv->local_gid;
 	path->pathrec.pkey = cpu_to_be16(priv->pkey);

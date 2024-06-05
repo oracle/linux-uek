@@ -1106,8 +1106,9 @@ static int xscore_send_req(struct xscore_conn_ctx *ctx)
 	 */
 	(void)ib_query_port(ctx->port->xs_dev->device, ctx->port->port_num,
 			    &port_attr);
-	path_rec.slid = cpu_to_be16(port_attr.lid);
-	path_rec.dlid = cpu_to_be16(ctx->dlid);
+	path_rec.ib.slid = cpu_to_be16(port_attr.lid);
+	path_rec.ib.dlid = cpu_to_be16(ctx->dlid);
+	path_rec.rec_type = SA_PATH_REC_TYPE_IB;
 	path_rec.sgid = ctx->port->sgid;
 	path_rec.dgid = ctx->dgid;
 	ib_query_pkey(ctx->port->xs_dev->device, ctx->port->port_num, 0, &pkey);
