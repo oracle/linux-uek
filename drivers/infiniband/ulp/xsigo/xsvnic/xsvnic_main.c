@@ -1707,7 +1707,7 @@ int xsvnic_set_coalesce(struct net_device *dev, struct ethtool_coalesce *coal)
 				     coal->tx_max_coalesced_frames))) {
 		ret = xscore_modify_cq(ctx->scq, coal->tx_max_coalesced_frames,
 				       coal->tx_coalesce_usecs);
-		if (ret && ret != -ENOSYS) {
+		if (ret && ret != -EOPNOTSUPP) {
 			pr_info("failed modifying Send CQ (%d) vnic ", ret);
 			pr_info("%s\n", xsvnicp->vnic_name);
 			return ret;
@@ -1723,7 +1723,7 @@ int xsvnic_set_coalesce(struct net_device *dev, struct ethtool_coalesce *coal)
 				     coal->rx_max_coalesced_frames))) {
 		ret = xscore_modify_cq(ctx->rcq, coal->rx_max_coalesced_frames,
 				       coal->rx_coalesce_usecs);
-		if (ret && ret != -ENOSYS) {
+		if (ret && ret != -EOPNOTSUPP) {
 			pr_err("failed modifying Recv CQ (%d) vnic ", ret);
 			pr_err("%s\n", xsvnicp->vnic_name);
 			return ret;

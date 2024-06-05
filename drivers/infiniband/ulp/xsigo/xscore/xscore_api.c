@@ -923,7 +923,7 @@ static void xscore_init_dest(struct xscore_conn_ctx *ctx)
 
 int xscore_modify_cq(struct ib_cq *cq, u16 cq_count, u16 cq_period)
 {
-	return ib_modify_cq(cq, cq_count, cq_period);
+	return rdma_set_cq_moderation(cq, cq_count, cq_period);
 }
 EXPORT_SYMBOL(xscore_modify_cq);
 
