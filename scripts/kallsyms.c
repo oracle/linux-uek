@@ -632,6 +632,21 @@ static void write_src(void)
 
 	free(markers);
 
+#ifdef CONFIG_KALLMODSYMS
+	output_label("kallsyms_modules");
+	for (i = 0; i < builtin_module_len; i++)
+		printf("\t.asciz\t\"%s\"\n", builtin_modules[i]);
+	printf("\n");
+
+	for (i = 0; i < builtin_module_len; i++)
+		free(builtin_modules[i]);
+
+	output_label("kallsyms_symbol_modules");
+	for (i = 0; i < table_cnt; i++)
+		printf("\t.int\t%d\n", table[i].module);
+	printf("\n");
+#endif
+
 	sort_symbols_by_name();
 	output_label("kallsyms_seqs_of_names");
 	for (i = 0; i < table_cnt; i++)
@@ -655,21 +670,6 @@ static void write_src(void)
 	for (i = 0; i < 256; i++)
 		printf("\t.short\t%d\n", best_idx[i]);
 	printf("\n");
-
-#ifdef CONFIG_KALLMODSYMS
-	output_label("kallsyms_modules");
-	for (i = 0; i < builtin_module_len; i++)
-		printf("\t.asciz\t\"%s\"\n", builtin_modules[i]);
-	printf("\n");
-
-	for (i = 0; i < builtin_module_len; i++)
-		free(builtin_modules[i]);
-
-	output_label("kallsyms_symbol_modules");
-	for (i = 0; i < table_cnt; i++)
-		printf("\t.int\t%d\n", table[i].module);
-	printf("\n");
-#endif
 }
 
 /* table lookup compression functions */
