@@ -854,8 +854,6 @@ extern unsigned rds_ib_sysctl_yield_after_ms;
 extern unsigned rds_ib_sysctl_cm_watchdog_ms;
 extern int rds_ib_sysctl_check_conn_addrs;
 extern unsigned int rds_ib_sysctl_refill_from_send;
-extern unsigned int rds_ib_sysctl_ring_low_permille;
-extern unsigned int rds_ib_sysctl_ring_mid_permille;
 extern unsigned int rds_ib_sysctl_frwr_poll_tmout_secs;
 
 #endif
