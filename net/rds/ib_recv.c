@@ -1168,26 +1168,6 @@ int rds_ib_recv_path(struct rds_conn_path *cp)
 	return ret;
 }
 
-bool rds_ib_recv_need_bufs(struct rds_conn_path *cp)
-{
-	struct rds_connection *conn = cp->cp_conn;
-	struct rds_ib_connection *ic = conn->c_transport_data;
-
-	switch (rds_ib_sysctl_refill_from_send) {
-	case RDS_IB_TX_REFILL_NEVER:
-		return false;
-	case RDS_IB_TX_REFILL_LOW:
-		return rds_ib_ring_low(&ic->i_recv_ring);
-	case RDS_IB_TX_REFILL_MID:
-		return rds_ib_ring_mid(&ic->i_recv_ring);
-	case RDS_IB_TX_REFILL_ALWAYS:
-		return true;
-	}
-
-	/* Not reached */
-	return true;
-}
-
 int rds_ib_recv_init(void)
 {
 	struct sysinfo si;
