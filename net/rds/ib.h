@@ -382,7 +382,6 @@ struct rds_ib_connection {
 	wait_queue_head_t	i_spawned_cm_handlers_wait;
 	int			i_preferred_send_cpu;
 	int			i_preferred_recv_cpu;
-	int			i_preferred_recv_sibling;
 
 	/* For handling delayed release of device related resource. */
 	struct mutex		i_delayed_free_lock;
