@@ -2304,7 +2304,7 @@ int rds_ib_conn_preferred_cpu(struct rds_connection *conn, bool in_send_path)
 	if (!ic)
 		return WORK_CPU_UNBOUND;
 
-	return in_send_path ? ic->i_preferred_send_cpu : ic->i_preferred_recv_sibling;
+	return in_send_path ? ic->i_preferred_send_cpu : ic->i_preferred_recv_cpu;
 }
 
 bool rds_ib_conn_has_alt_conn(struct rds_connection *conn)
