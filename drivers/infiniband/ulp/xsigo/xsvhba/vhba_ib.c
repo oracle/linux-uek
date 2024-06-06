@@ -300,6 +300,8 @@ int vhba_alloc_fmr_pool(struct virtual_hba *vhba)
 {
 	struct scsi_xg_vhba_host *ha = vhba->ha;
 	struct ib_device_attr dev_attr;
+	struct ib_device *device;
+	struct ib_udata uhw = {.outlen = 0, .inlen = 0};
 	int ret;
 	int page_shift = 0;
 	struct ib_fmr_pool_param pool_params = {
@@ -313,7 +315,8 @@ int vhba_alloc_fmr_pool(struct virtual_hba *vhba)
 		.cache = 1
 	};
 
-	ret = ib_query_device(vhba->xsmp_info.ib_device, &dev_attr);
+	device = vhba->xsmp_info.ib_device;
+	ret = device->ops.query_device(vhba->xsmp_info.ib_device, &dev_attr, &uhw);
 	if (ret) {
 		eprintk(vhba, "query_device error %d\n", ret);
 		return -1;

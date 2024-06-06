@@ -884,10 +884,11 @@ static void xscore_add_one(struct ib_device *device)
 	struct ib_device_attr dev_attr;
 	int p;
 	struct xscore_port *port;
+	struct ib_udata uhw = {.outlen = 0, .inlen = 0};
 
 	IB_FUNCTION("%s: device: %s\n", __func__, device->name);
 
-	if (ib_query_device(device, &dev_attr)) {
+	if (device->ops.query_device(device, &dev_attr, &uhw)) {
 		IB_ERROR("Query device failed for %s\n", device->name);
 		return;
 	}

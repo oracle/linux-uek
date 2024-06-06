@@ -1841,9 +1841,11 @@ int xve_set_dev_features(struct xve_dev_priv *priv, struct ib_device *hca)
 
 	xve_set_netdev(priv->netdev);
 
-	result = ib_query_device(hca, &device_attr);
+	struct ib_udata uhw = {.outlen = 0, .inlen = 0};
+
+	result = hca->ops.query_device(hca, &device_attr, &uhw);
 	if (result) {
-		pr_warn("%s: ib_query_device failed (ret = %d)\n",
+		pr_warn("%s: query_device failed (ret = %d)\n",
 				hca->name, result);
 		return result;
 	}

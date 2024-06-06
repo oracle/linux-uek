@@ -1420,6 +1420,7 @@ int xve_cm_dev_init(struct net_device *dev)
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	int i, ret;
 	struct ib_device_attr attr;
+	struct ib_udata uhw = {.outlen = 0, .inlen = 0};
 
 	if (!priv->cm_supported)
 		return 0;
@@ -1432,9 +1433,9 @@ int xve_cm_dev_init(struct net_device *dev)
 	INIT_LIST_HEAD(&priv->cm.rx_drain_list);
 	INIT_LIST_HEAD(&priv->cm.rx_reap_list);
 
-	ret = ib_query_device(priv->ca, &attr);
+	ret = priv->ca->ops.query_device(priv->ca, &attr, &uhw);
 	if (ret) {
-		pr_warn("ib_query_device() failed with %d\n", ret);
+		pr_warn("query_device() failed with %d\n", ret);
 		return ret;
 	}
 
