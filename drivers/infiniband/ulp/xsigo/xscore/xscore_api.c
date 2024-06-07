@@ -932,7 +932,7 @@ int xscore_conn_init(struct xscore_conn_ctx *ctx, struct xscore_port *port)
 {
 	int i;
 	int ret = 0;
-
+	struct ib_cq_init_attr cq_attr = {};
 	ctx->cm_id = 0;
 	ctx->port = port;
 	ctx->next_xmit = 0;
@@ -961,21 +961,25 @@ int xscore_conn_init(struct xscore_conn_ctx *ctx, struct xscore_port *port)
 	}
 	memset(ctx->rx_ring, 0, ctx->rx_ring_size * sizeof(struct xscore_desc));
 
+	cq_attr.cqe = ctx->tx_ring_size;
+	cq_attr.comp_vector = 0;
 	ctx->scq = ib_create_cq(ctx->port->xs_dev->device,
 				xscore_send_completion, NULL, ctx,
-				ctx->tx_ring_size, 0);
+				&cq_attr);
 	if (IS_ERR(ctx->scq)) {
 		ret = PTR_ERR(ctx->scq);
 		IB_ERROR("%s ib_create_cq scq  failed %d\n", __func__, ret);
 		goto err;
 	}
 
+	cq_attr.cqe = ctx->rx_ring_size;
+	cq_attr.comp_vector = 0;
 	ctx->rcq = ib_create_cq(ctx->port->xs_dev->device,
 				xscore_recv_completion, NULL, ctx,
-				ctx->rx_ring_size, 0);
+				&cq_attr);
 	if (IS_ERR(ctx->rcq)) {
 		ret = PTR_ERR(ctx->rcq);
-		IB_ERROR("%s ib_create_cq scq  failed %d\n", __func__, ret);
+		IB_ERROR("%s ib_create_cq rcq  failed %d\n", __func__, ret);
 		goto err;
 	}
 

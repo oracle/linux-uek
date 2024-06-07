@@ -144,6 +144,7 @@ out_fail:
 int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 {
 	struct xve_dev_priv *priv = netdev_priv(dev);
+	struct ib_cq_init_attr cq_attr = {};
 	struct ib_qp_init_attr init_attr = {
 		.cap = {
 			.max_send_wr = priv->xve_sendq_size,
@@ -154,7 +155,7 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 		.qp_type = IB_QPT_UD
 	};
 	struct ethtool_coalesce *coal;
-	int ret, size = 0, max_sge = MAX_SKB_FRAGS + 1;
+	int ret, size = 0, max_sge = MAX_SKB_FRAGS + 1,req_vec;
 	int i;
 
 	priv->ca->attrs.device_cap_flags &= IB_DEVICE_LOCAL_DMA_LKEY;
@@ -184,9 +185,13 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 		priv->xve_scq_size = priv->xve_sendq_size;
 	}
 
+	req_vec = (priv->port - 1) * 2;
+
 	/* Create Receive CompletionQueue */
+	cq_attr.cqe = priv->xve_rcq_size;
+	cq_attr.comp_vector = (req_vec) % priv->ca->num_comp_vectors;
 	priv->recv_cq = ib_create_cq(priv->ca, xve_ib_completion, NULL,
-				     dev, priv->xve_rcq_size, 0);
+				     priv, &cq_attr);
 	if (IS_ERR(priv->recv_cq)) {
 		pr_warn("%s: failed to create receive CQ for %s size%d\n",
 			ca->name, priv->xve_name, priv->xve_rcq_size);
@@ -194,8 +199,10 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 	}
 
 	/* Create Send CompletionQueue */
+	cq_attr.cqe = priv->xve_scq_size;
+	cq_attr.comp_vector = (req_vec + 1) % priv->ca->num_comp_vectors;
 	priv->send_cq = ib_create_cq(priv->ca, xve_send_comp_handler, NULL,
-				     dev, priv->xve_scq_size, 0);
+				     dev, &cq_attr);
 	if (IS_ERR(priv->send_cq)) {
 		pr_warn("%s: failed to create send CQ for %s size%d\n",
 			ca->name, priv->xve_name, priv->xve_scq_size);

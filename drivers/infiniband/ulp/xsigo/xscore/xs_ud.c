@@ -305,6 +305,7 @@ int xs_ud_create(struct xscore_port *pinfop,
 {
 	int ret = 0;
 	struct ib_ud_ctx *udp;
+	struct ib_cq_init_attr cq_attr = {};
 	struct ib_qp_init_attr init_attr = {
 		.cap = {
 			.max_send_wr = XS_UD_SEND_WQE + 1,
@@ -340,9 +341,11 @@ int xs_ud_create(struct xscore_port *pinfop,
 	/*
 	 * Create completion Q for send and receive (A single one is enough)
 	 */
+	cq_attr.cqe = XS_UD_RECV_WQE + XS_UD_SEND_WQE;
+	cq_attr.comp_vector = 0;
 	udp->cq = ib_create_cq(pinfop->xs_dev->device,
 			       ud_compl_handler, NULL,
-			       (void *)udp, XS_UD_RECV_WQE + XS_UD_SEND_WQE, 0);
+			       (void *)udp, &cq_attr);
 	if (IS_ERR(udp->cq)) {
 		ret = PTR_ERR(udp->cq);
 		XDDS_ERROR("%s: b_create_cq, port: %d, ret : %d\n",
