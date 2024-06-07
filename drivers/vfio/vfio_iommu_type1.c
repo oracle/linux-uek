@@ -67,6 +67,12 @@ module_param_named(max_dirty_tracking_threads,
 MODULE_PARM_DESC(max_dirty_tracking_threads,
 		 "Maximum number of threads do walk page tables for dirty tracking of big chunks.");
 
+static unsigned long domain_default_pgsize_bitmap __read_mostly;
+module_param_named(domain_default_pgsize_bitmap,
+		   domain_default_pgsize_bitmap, ulong, 0644);
+MODULE_PARM_DESC(domain_default_pgsize_bitmap,
+		 "Default IOMMU domain page size bitmap to use at domain allocation.");
+
 /*
  * 64G iova range i.e. 2M bitmap address range.
  * The IOVA zerocopy walker will pin enough struct pages that fit PAGE_SIZE
@@ -2579,6 +2585,7 @@ static bool vfio_iommu_hw_dirty_page_tracking(struct vfio_iommu *iommu)
 static int vfio_iommu_type1_attach_group(void *iommu_data,
 		struct iommu_group *iommu_group, enum vfio_group_type type)
 {
+	unsigned long pgsize_bitmap = domain_default_pgsize_bitmap;
 	struct vfio_iommu *iommu = iommu_data;
 	struct vfio_iommu_group *group;
 	struct vfio_domain *domain, *d;
@@ -2630,6 +2637,16 @@ static int vfio_iommu_type1_attach_group(void *iommu_data,
 		ret = PTR_ERR(domain->domain);
 		goto out_free_domain;
 	}
+
+	/* Override IOMMU bus defined pgsize_bitmap */
+	if (pgsize_bitmap &&
+	     ((domain->domain->pgsize_bitmap & pgsize_bitmap) ==
+	       pgsize_bitmap))
+		domain->domain->pgsize_bitmap = pgsize_bitmap;
+	else if (pgsize_bitmap)
+		pr_warn("%s: page size bitmap ignored got %lx expected %lx",
+			__func__, domain->domain->pgsize_bitmap & pgsize_bitmap,
+			pgsize_bitmap);
 
 	if (iommu->nesting) {
 		ret = iommu_enable_nesting(domain->domain);
