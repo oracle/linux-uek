@@ -2388,6 +2388,9 @@ static struct iommu_domain *amd_iommu_domain_alloc(unsigned int type)
 	if (IS_ERR(domain))
 		return NULL;
 
+	if (amd_iommu_had_support)
+		domain->dirty_ops = &amd_dirty_ops;
+
 	return domain;
 }
 
