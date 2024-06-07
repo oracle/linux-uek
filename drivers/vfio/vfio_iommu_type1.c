@@ -61,6 +61,42 @@ module_param_named(dma_entry_limit, dma_entry_limit, uint, 0644);
 MODULE_PARM_DESC(dma_entry_limit,
 		 "Maximum number of user DMA mappings per container (65535).");
 
+static unsigned int max_dirty_tracking_threads __read_mostly;
+module_param_named(max_dirty_tracking_threads,
+		   max_dirty_tracking_threads, uint, 0644);
+MODULE_PARM_DESC(max_dirty_tracking_threads,
+		 "Maximum number of threads do walk page tables for dirty tracking of big chunks.");
+
+/*
+ * 64G iova range i.e. 2M bitmap address range.
+ * The IOVA zerocopy walker will pin enough struct pages that fit PAGE_SIZE
+ * which means 512. Each PAGE_SIZE bitmap tracks 128M IOVA range, so 512
+ * represent a 2M bitmap size i.e. a 64G, which is set as the padata chunk
+ * size for the page table walker.
+ */
+#define IOVA_BITMAP_CHUNK_SIZE	((PAGE_SIZE / sizeof(struct page *)) << PAGE_SHIFT)
+
+static unsigned int dirty_tracking_bitmap_chunk __read_mostly = IOVA_BITMAP_CHUNK_SIZE;
+static int dirty_tracking_bitmap_chunk_set(const char *val, const struct kernel_param *kp)
+{
+	unsigned int n;
+	int ret;
+
+	ret = kstrtouint(val, 10, &n);
+	if (ret != 0 || !n || !IS_ALIGNED(n, PAGE_SIZE))
+		return -EINVAL;
+	return param_set_uint(val, kp);
+}
+
+static const struct kernel_param_ops dirty_tracking_bitmap_chunk_ops = {
+	.set = dirty_tracking_bitmap_chunk_set,
+	.get = param_get_uint,
+};
+module_param_cb(dirty_tracking_bitmap_chunk, &dirty_tracking_bitmap_chunk_ops,
+		&dirty_tracking_bitmap_chunk, 0644);
+MODULE_PARM_DESC(dirty_tracking_bitmap_chunk,
+		 "Bitmap size per thread in multi-thread dirty tracking.");
+
 struct vfio_iommu {
 	struct list_head	domain_list;
 	struct list_head	iova_list;
@@ -1361,7 +1397,8 @@ static int __iommu_read_and_clear_dirty(struct iova_bitmap *bitmap,
 static int iommu_read_and_clear_dirty(struct iommu_domain *domain,
 				      u64 __user *bitmap,
 				      dma_addr_t iova, size_t size,
-				      size_t pgsize, unsigned long flags)
+				      size_t pgsize, unsigned long flags,
+				      struct mm_struct *mm)
 {
 	const struct iommu_dirty_ops *ops = domain->dirty_ops;
 	struct iommu_iotlb_gather gather;
@@ -1372,7 +1409,7 @@ static int iommu_read_and_clear_dirty(struct iommu_domain *domain,
 	if (!ops || !ops->read_and_clear_dirty)
 		return -EOPNOTSUPP;
 
-	iter = iova_bitmap_alloc(iova, size, pgsize, bitmap);
+	iter = iova_bitmap_alloc_remote(iova, size, pgsize, bitmap, mm);
 	if (IS_ERR(iter))
 		return -ENOMEM;
 
@@ -1391,19 +1428,79 @@ static int iommu_read_and_clear_dirty(struct iommu_domain *domain,
 	return 0;
 }
 
+struct vfio_get_dirty_args {
+	struct iommu_domain *domain;
+	u64 __user *bitmap;
+	dma_addr_t iova;
+	dma_addr_t size;
+	size_t pgsize;
+	unsigned long flags;
+	unsigned long bitmap_pgshift;
+	unsigned long bitmap_chunksz;
+	struct mm_struct *mm;
+};
+
+static int vfio_get_dirty_chunk(unsigned long start_offset,
+				unsigned long end_offset, void *arg)
+{
+	struct vfio_get_dirty_args *args = arg;
+	size_t size = end_offset - start_offset;
+	u64 section_index = (start_offset >> args->bitmap_pgshift) *
+		args->bitmap_chunksz;
+	u64 __user *bitmap = args->bitmap + (section_index / sizeof(u64));
+	dma_addr_t iova = args->iova + start_offset;
+
+	return iommu_read_and_clear_dirty(args->domain, bitmap,
+					  iova, size, args->pgsize,
+					  args->flags, args->mm);
+}
+
 static int vfio_iommu_type1_dirty_pages_report(struct vfio_iommu *iommu,
 					       struct vfio_dma *dma,
 					       u64 __user *bitmap,
 					       dma_addr_t iova, size_t size,
 					       size_t pgsize, bool read_only)
 {
+
+	unsigned long iova_bitmap_page_shift =
+		ilog2(dirty_tracking_bitmap_chunk * BITS_PER_BYTE * PAGE_SIZE);
+	unsigned long iova_bitmap_max_alloc = BIT(iova_bitmap_page_shift);
 	unsigned long flags = read_only ? IOMMU_DIRTY_NO_CLEAR : 0;
+	struct padata_mt_job job = {
+		.thread_fn   = vfio_get_dirty_chunk,
+		.fn_arg      = &(struct vfio_get_dirty_args) {
+			.domain = NULL,
+			.bitmap = bitmap,
+			.iova = iova,
+			.size = size,
+			.pgsize = pgsize,
+			.flags = flags,
+			.mm = current->mm,
+			.bitmap_pgshift = iova_bitmap_page_shift,
+			.bitmap_chunksz = dirty_tracking_bitmap_chunk,
+		},
+		.start       = 0,
+		.size        = size,
+		/* 64G i.e. one bitmap PMD_SIZE */
+		.align       = iova_bitmap_max_alloc,
+		.min_chunk   = iova_bitmap_max_alloc,
+		.max_threads = max_dirty_tracking_threads,
+	};
+	struct vfio_get_dirty_args *args =
+		(struct vfio_get_dirty_args *) job.fn_arg;
 	struct vfio_domain *d;
 	int ret = -EINVAL;
 
 	list_for_each_entry(d, &iommu->domain_list, next) {
-		ret = iommu_read_and_clear_dirty(d->domain, bitmap, iova,
-						 size, pgsize, flags);
+		args->domain = d->domain;
+		if (job.max_threads) {
+			padata_do_multithreaded(&job);
+			ret = 0;
+		} else
+			ret = iommu_read_and_clear_dirty(d->domain, bitmap,
+							 iova, size, pgsize,
+							 flags, NULL);
+
 		if (ret)
 			break;
 	}
