@@ -8,6 +8,7 @@
 
 #include <linux/types.h>
 #include <linux/errno.h>
+#include <linux/mm_types.h>
 
 struct iova_bitmap;
 
@@ -19,6 +20,10 @@ typedef int (*iova_bitmap_fn_t)(struct iova_bitmap *bitmap,
 struct iova_bitmap *iova_bitmap_alloc(unsigned long iova, size_t length,
 				      unsigned long page_size,
 				      u64 __user *data);
+struct iova_bitmap *iova_bitmap_alloc_remote(unsigned long iova, size_t length,
+					     unsigned long page_size,
+					     u64 __user *data,
+					     struct mm_struct *mm);
 void iova_bitmap_free(struct iova_bitmap *bitmap);
 int iova_bitmap_for_each(struct iova_bitmap *bitmap, void *opaque,
 			 iova_bitmap_fn_t fn);
@@ -29,6 +34,15 @@ static inline struct iova_bitmap *iova_bitmap_alloc(unsigned long iova,
 						    size_t length,
 						    unsigned long page_size,
 						    u64 __user *data)
+{
+	return NULL;
+}
+
+static inline struct iova_bitmap *iova_bitmap_alloc_remote(unsigned long iova,
+							size_t length,
+							unsigned long page_size,
+							u64 __user *data,
+							struct mm_struct *mm)
 {
 	return NULL;
 }
