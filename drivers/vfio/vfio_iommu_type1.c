@@ -78,6 +78,7 @@ struct vfio_iommu {
 	bool			dirty_page_tracking;
 	bool			container_open;
 	struct list_head	emulated_iommu_groups;
+	bool			dirty_page_hw_supported;
 };
 
 struct vfio_domain {
@@ -1263,16 +1264,78 @@ static int update_user_bitmap(u64 __user *bitmap, struct vfio_iommu *iommu,
 	return 0;
 }
 
+static int vfio_domain_clear_dirty_data(struct vfio_iommu *iommu,
+					struct vfio_domain *d)
+{
+	const struct iommu_dirty_ops *ops = d->domain->dirty_ops;
+	struct iommu_iotlb_gather gather;
+	struct iommu_dirty_bitmap dirty;
+	struct rb_node *n;
+	int ret = 0;
+
+	iommu_dirty_bitmap_init(&dirty, NULL, &gather);
+
+	for (n = rb_first(&iommu->dma_list); n; n = rb_next(n)) {
+		struct vfio_dma *dma = rb_entry(n, struct vfio_dma, node);
+
+		ret = ops->read_and_clear_dirty(d->domain, dma->iova,
+						dma->size, 0, &dirty);
+		if (ret)
+			break;
+	}
+
+	if (gather.start != ULONG_MAX)
+		iommu_iotlb_sync(d->domain, &gather);
+
+	return ret;
+}
+
 static int vfio_iommu_type1_dirty_pages_start(struct vfio_iommu *iommu)
 {
-	size_t pgsize = 1 << __ffs(iommu->pgsize_bitmap);
+	struct vfio_domain *d;
+	int ret = -EOPNOTSUPP;
 
-	return vfio_dma_bitmap_alloc_all(iommu, pgsize);
+	if (!iommu->dirty_page_hw_supported) {
+		size_t pgsize = 1 << __ffs(iommu->pgsize_bitmap);
+
+		return vfio_dma_bitmap_alloc_all(iommu, pgsize);
+	}
+
+	list_for_each_entry(d, &iommu->domain_list, next) {
+		const struct iommu_dirty_ops *ops = d->domain->dirty_ops;
+
+		ret = vfio_domain_clear_dirty_data(iommu, d);
+		if (ret)
+			goto out_err;
+
+		ret = ops->set_dirty_tracking(d->domain, true);
+		if (ret)
+			goto out_err;
+	}
+
+	return 0;
+
+out_err:
+	list_for_each_entry(d, &iommu->domain_list, next)
+		d->domain->dirty_ops->set_dirty_tracking(d->domain, false);
+	return ret;
+
 }
 
 static void vfio_iommu_type1_dirty_pages_stop(struct vfio_iommu *iommu)
 {
-	vfio_dma_bitmap_free_all(iommu);
+	struct vfio_domain *d;
+
+	if (!iommu->dirty_page_hw_supported) {
+		vfio_dma_bitmap_free_all(iommu);
+		return;
+	}
+
+	list_for_each_entry(d, &iommu->domain_list, next) {
+		const struct iommu_dirty_ops *ops = d->domain->dirty_ops;
+
+		ops->set_dirty_tracking(d->domain, false);
+	}
 }
 
 static int vfio_iova_dirty_bitmap(u64 __user *bitmap, struct vfio_iommu *iommu,
@@ -2313,6 +2376,18 @@ static int vfio_iommu_domain_alloc(struct device *dev, void *data)
 	return 1; /* Don't iterate */
 }
 
+static bool vfio_iommu_hw_dirty_page_tracking(struct vfio_iommu *iommu)
+{
+	struct vfio_domain *d;
+	bool supported = true;
+
+	list_for_each_entry(d, &iommu->domain_list, next) {
+		supported = supported && d->domain->dirty_ops;
+	}
+
+	return supported;
+}
+
 static int vfio_iommu_type1_attach_group(void *iommu_data,
 		struct iommu_group *iommu_group, enum vfio_group_type type)
 {
@@ -2477,6 +2552,13 @@ static int vfio_iommu_type1_attach_group(void *iommu_data,
 	}
 
 	list_add(&domain->next, &iommu->domain_list);
+	/*
+	 * Only ever true if /all/ domains support dirty tracking: x86 IOMMUs
+	 * aren't heterogeneous as ARM SMMUv3 embedded, so if one supports it,
+	 * all will do.
+	 */
+	iommu->dirty_page_hw_supported =
+		vfio_iommu_hw_dirty_page_tracking(iommu);
 	vfio_update_pgsize_bitmap(iommu);
 done:
 	/* Delete the old one and insert new iova list */
