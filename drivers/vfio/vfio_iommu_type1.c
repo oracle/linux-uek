@@ -1263,6 +1263,18 @@ static int update_user_bitmap(u64 __user *bitmap, struct vfio_iommu *iommu,
 	return 0;
 }
 
+static int vfio_iommu_type1_dirty_pages_start(struct vfio_iommu *iommu)
+{
+	size_t pgsize = 1 << __ffs(iommu->pgsize_bitmap);
+
+	return vfio_dma_bitmap_alloc_all(iommu, pgsize);
+}
+
+static void vfio_iommu_type1_dirty_pages_stop(struct vfio_iommu *iommu)
+{
+	vfio_dma_bitmap_free_all(iommu);
+}
+
 static int vfio_iova_dirty_bitmap(u64 __user *bitmap, struct vfio_iommu *iommu,
 				  dma_addr_t iova, size_t size, size_t pgsize)
 {
@@ -3053,12 +3065,9 @@ static int vfio_iommu_type1_dirty_pages(struct vfio_iommu *iommu,
 		return -EINVAL;
 
 	if (dirty.flags & VFIO_IOMMU_DIRTY_PAGES_FLAG_START) {
-		size_t pgsize;
-
 		mutex_lock(&iommu->lock);
-		pgsize = 1 << __ffs(iommu->pgsize_bitmap);
 		if (!iommu->dirty_page_tracking) {
-			ret = vfio_dma_bitmap_alloc_all(iommu, pgsize);
+			ret = vfio_iommu_type1_dirty_pages_start(iommu);
 			if (!ret)
 				iommu->dirty_page_tracking = true;
 		}
@@ -3068,7 +3077,7 @@ static int vfio_iommu_type1_dirty_pages(struct vfio_iommu *iommu,
 		mutex_lock(&iommu->lock);
 		if (iommu->dirty_page_tracking) {
 			iommu->dirty_page_tracking = false;
-			vfio_dma_bitmap_free_all(iommu);
+			vfio_iommu_type1_dirty_pages_stop(iommu);
 		}
 		mutex_unlock(&iommu->lock);
 		return 0;
