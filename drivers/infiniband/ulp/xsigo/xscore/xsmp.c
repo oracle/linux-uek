@@ -399,7 +399,6 @@ int xcpm_get_xsmp_session_info(void *xsmp_hndl,
 	ip->ib_device = ctx->port->xs_dev->device;
 	ip->dma_device = ctx->port->xs_dev->device->dma_device;
 	ip->pd = ctx->port->xs_dev->pd;
-	ip->mr = ctx->port->xs_dev->mr;
 	ip->is_shca = ctx->port->xs_dev->is_shca;
 	ip->dguid = ctx->dguid;
 	xsmp_put_ctx(ctx);

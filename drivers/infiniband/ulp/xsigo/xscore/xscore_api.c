@@ -148,7 +148,7 @@ static int xs_dma_map_tx(struct xscore_conn_ctx *ctx,
 		off = 1;
 		tx_sge[0].addr = mapping[0];
 		tx_sge[0].length = skb_headlen(skb);
-		tx_sge[0].lkey = port->xs_dev->mr->lkey;
+		tx_sge[0].lkey = port->xs_dev->pd->local_dma_lkey;
 	} else
 		off = 0;
 
@@ -164,8 +164,8 @@ static int xs_dma_map_tx(struct xscore_conn_ctx *ctx,
 		ib_dma_sync_single_for_device(ca, mapping[i + off],
 					      frag->size, DMA_TO_DEVICE);
 		tx_sge[i + off].addr = mapping[i + off];
-		tx_sge[i + off].length = frag->size;
-		tx_sge[i + off].lkey = port->xs_dev->mr->lkey;
+		tx_sge[i + off].length = frag->bv_len;
+		tx_sge[i + off].lkey = port->xs_dev->pd->local_dma_lkey;
 	}
 	*nfrags = skb_shinfo(skb)->nr_frags + off;
 	return 0;
@@ -310,13 +310,14 @@ int xscore_post_send(struct xscore_conn_ctx *ctx, void *addr, int len,
 
 	list.addr = mapping;
 	list.length = len;
-	list.lkey = port->xs_dev->mr->lkey;
+	list.lkey = port->xs_dev->pd->local_dma_lkey;
 
 	wr.next = NULL;
 	wr.wr_id = ctx->next_xmit;
 	wr.sg_list = &list;
 	wr.num_sge = 1;
 	wr.opcode = IB_WR_SEND;
+	wr.ex.invalidate_rkey = port->xs_dev->pd->unsafe_global_rkey;
 	wr.send_flags = IB_SEND_SIGNALED;
 
 	ctx->next_xmit = (ctx->next_xmit + 1) % ctx->tx_ring_size;
@@ -419,7 +420,7 @@ static int xs_post_recv(struct xscore_conn_ctx *ctx, int offset, int n,
 			}
 			list[0].addr = mapping[0];
 			list[0].length = rsize;
-			list[0].lkey = port->xs_dev->mr->lkey;
+			list[0].lkey = port->xs_dev->pd->local_dma_lkey;
 		} else {
 			for (j = 0; j < (rsize / PAGE_SIZE); ++j) {
 				/*
@@ -444,7 +445,7 @@ static int xs_post_recv(struct xscore_conn_ctx *ctx, int offset, int n,
 				}
 				list[j].addr = mapping[j];
 				list[j].length = PAGE_SIZE;
-				list[j].lkey = port->xs_dev->mr->lkey;
+				list[j].lkey = port->xs_dev->pd->local_dma_lkey;
 			}
 		}
 

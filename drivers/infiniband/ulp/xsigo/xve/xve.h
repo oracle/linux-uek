@@ -705,7 +705,6 @@ struct xve_dev_priv {
 
 	struct ib_device *ca;
 	struct ib_pd *pd;
-	struct ib_mr *mr;
 	struct ib_qp *qp;
 	union ib_gid local_gid;
 	union ib_gid bcast_mgid;

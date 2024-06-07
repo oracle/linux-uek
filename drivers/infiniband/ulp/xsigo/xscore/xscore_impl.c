@@ -920,16 +920,17 @@ static void xscore_add_one(struct ib_device *device)
 	xs_dev->dev_attr = dev_attr;
 	xs_dev->fw_ver = dev_attr.fw_ver;
 	xs_dev->hw_ver = dev_attr.hw_ver;
-	xs_dev->pd = ib_alloc_pd(device);
+	/* Earlier UEK4 kernel use IB_ACCESS_LOCAL_WRITE |IB_ACCESS_REMOTE_READ 
+	 * |IB_ACCESS_REMOTE_WRITE flags inside the ib_get_dma_mr() function.
+	 *
+	 * With the help of IB_PD_UNSAFE_GLOBAL_RKEY, we are enabling IB_ACCESS_REMOTE_READ |
+	 * IB_ACCESS_REMOTE_WRITE access under UEK6 and
+	 * IB_ACCESS_LOCAL_WRITE will be enabled by ~IB_DEVICE_LOCAL_DMA_LKEY.
+	 **/
+	device->attrs.device_cap_flags &= ~IB_DEVICE_LOCAL_DMA_LKEY;
+	xs_dev->pd = ib_alloc_pd(device, IB_PD_UNSAFE_GLOBAL_RKEY);
 	if (IS_ERR(xs_dev->pd))
 		goto free_dev;
-
-	xs_dev->mr = ib_get_dma_mr(xs_dev->pd,
-				   IB_ACCESS_LOCAL_WRITE |
-				   IB_ACCESS_REMOTE_READ |
-				   IB_ACCESS_REMOTE_WRITE);
-	if (IS_ERR(xs_dev->mr))
-		goto err_pd;
 
 	for (p = 1; p <= device->phys_port_cnt; ++p) {
 		port = xscore_add_port(xs_dev, p);
@@ -984,7 +985,6 @@ static void xscore_remove_one(struct ib_device *device)
 		xsmp_cleanup_stale_xsmp_sessions(port, 1);
 		xscore_remove_port(port);
 	}
-	ib_dereg_mr(xs_dev->mr);
 	ib_dealloc_pd(xs_dev->pd);
 	kfree(xs_dev);
 }

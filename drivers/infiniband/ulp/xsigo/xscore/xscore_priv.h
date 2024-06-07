@@ -184,7 +184,6 @@ struct xscore_dev {
 	struct list_head port_list;
 	struct ib_device *device;
 	struct ib_pd *pd;
-	struct ib_mr *mr;
 	struct ib_event_handler event_handler;
 	/* We can remove fw_ver and hw_ver */
 	struct ib_device_attr dev_attr;

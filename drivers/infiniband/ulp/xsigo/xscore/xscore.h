@@ -210,7 +210,6 @@ struct xsmp_session_info {
 	struct ib_device *ib_device;
 	struct device *dma_device;
 	struct ib_pd *pd;
-	struct ib_mr *mr;
 	u8 is_shca;
 	u64 dguid;
 };

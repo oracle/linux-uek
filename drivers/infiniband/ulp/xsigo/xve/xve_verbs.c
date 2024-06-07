@@ -157,18 +157,14 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 	int ret, size = 0, max_sge = MAX_SKB_FRAGS + 1;
 	int i;
 
-	priv->pd = ib_alloc_pd(priv->ca);
+	priv->ca->attrs.device_cap_flags &= IB_DEVICE_LOCAL_DMA_LKEY;
+	priv->pd = ib_alloc_pd(priv->ca, 0);
 	if (IS_ERR(priv->pd)) {
 		pr_warn("%s: failed to allocate PD for %s\n",
 				ca->name, priv->xve_name);
 		return -ENODEV;
 	}
 
-	priv->mr = ib_get_dma_mr(priv->pd, IB_ACCESS_LOCAL_WRITE);
-	if (IS_ERR(priv->mr)) {
-		pr_warn("%s: ib_get_dma_mr failed\n", ca->name);
-		goto out_free_pd;
-	}
 
 	ret = xve_cm_dev_init(dev);
 	if (ret != 0) {
@@ -253,18 +249,18 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 	}
 
 	for (i = 0; i < max_sge; ++i)
-		priv->tx_sge[i].lkey = priv->mr->lkey;
+		priv->tx_sge[i].lkey = priv->pd->local_dma_lkey;
 
 	priv->tx_wr.opcode = IB_WR_SEND;
 	priv->tx_wr.sg_list = priv->tx_sge;
 	priv->tx_wr.send_flags = IB_SEND_SIGNALED;
 
-	priv->rx_sge[0].lkey = priv->mr->lkey;
+	priv->rx_sge[0].lkey = priv->pd->local_dma_lkey;
 	 if (xve_ud_need_sg(priv->admin_mtu)) {
 		priv->rx_sge[0].length = XVE_UD_HEAD_SIZE;
 		for (i = 1; i < xve_ud_rx_sg(priv); i++) {
 			priv->rx_sge[i].length = PAGE_SIZE;
-			priv->rx_sge[i].lkey = priv->mr->lkey;
+			priv->rx_sge[i].lkey = priv->pd->local_dma_lkey;
 		}
 		priv->rx_wr.num_sge = xve_ud_rx_sg(priv);
 	} else {
@@ -284,7 +280,7 @@ out_free_recv_cq:
 	ib_destroy_cq(priv->recv_cq);
 
 out_free_mr:
-	ib_dereg_mr(priv->mr);
+
 	xve_cm_dev_cleanup(dev);
 
 out_free_pd:
@@ -320,11 +316,8 @@ void xve_transport_dev_cleanup(struct net_device *dev)
 
 	xve_cm_dev_cleanup(dev);
 
-	if (ib_dereg_mr(priv->mr))
-		xve_warn(priv, "ib_dereg_mr failed\n");
+	ib_dealloc_pd(priv->pd);
 
-	if (ib_dealloc_pd(priv->pd))
-		xve_warn(priv, "ib_dealloc_pd failed\n");
 }
 
 void xve_event(struct ib_event_handler *handler, struct ib_event *record)

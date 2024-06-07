@@ -421,9 +421,9 @@ int vhba_send_init_blk(struct virtual_hba *vhba)
 	init_blk->entry_size = sizeof(struct cmd_type_7);
 	init_blk->ring_size = ha->request_q_length;
 	init_blk->read_index_addr = ha->req_ring_rindex_dma;
-	init_blk->read_index_rkey = vhba->xsmp_info.mr->rkey;
+	init_blk->read_index_rkey = vhba->xsmp_info.pd->unsafe_global_rkey;
 	init_blk->base_addr = ha->request_dma;
-	init_blk->base_addr_rkey = vhba->xsmp_info.mr->rkey;
+	init_blk->base_addr_rkey = vhba->xsmp_info.pd->unsafe_global_rkey;
 
 	dprintk(TRC_IB, vhba, "base (%Lx), rkey (%0x)\n",
 		init_blk->base_addr, init_blk->base_addr_rkey);

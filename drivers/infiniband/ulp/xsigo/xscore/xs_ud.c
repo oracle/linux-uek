@@ -83,7 +83,7 @@ static int xs_ud_post_recv(struct ib_ud_ctx *ctx, int offset, int n)
 	struct xscore_port *pinfop = ctx->pinfop;
 	struct ib_device *ca = pinfop->xs_dev->device;
 	struct ib_sge list = {
-		.lkey = pinfop->xs_dev->mr->lkey
+		.lkey = pinfop->xs_dev->pd->local_dma_lkey
 	};
 	struct ib_recv_wr wr = {
 		.sg_list = &list,
@@ -215,7 +215,7 @@ int xs_ud_send_msg(struct xscore_port *pinfop, uint8_t *macp, void *msgp,
 	int i;
 	struct ib_sge list = {
 		.length = len,
-		.lkey = pinfop->xs_dev->mr->lkey
+		.lkey = pinfop->xs_dev->pd->local_dma_lkey
 	};
 
 	struct ib_ud_wr ud_wr = {
