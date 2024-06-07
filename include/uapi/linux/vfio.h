@@ -1514,6 +1514,9 @@ struct vfio_iommu_type1_info_cap_iova_range {
 
 struct vfio_iommu_type1_info_cap_migration {
 	struct	vfio_info_cap_header header;
+
+/* Advertise that type1 has hardware IOMMU dirty tracking */
+#define CAP_MIGRATION_HW_DIRTY_TRACKING	     (1 << 16)
 	__u32	flags;
 	__u64	pgsize_bitmap;
 	__u64	max_dirty_bitmap_size;		/* in bytes */
