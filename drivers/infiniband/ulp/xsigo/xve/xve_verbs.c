@@ -233,7 +233,7 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 
 	if (dev->features & NETIF_F_SG) {
 		/*PSIF supports 16 SGE's*/
-		max_sge =  min_t(uint32_t, priv->dev_attr.max_sge,
+		max_sge =  min_t(uint32_t, priv->dev_attr.max_sge_rd,
 				MAX_SKB_FRAGS + 1);
 
 		init_attr.cap.max_send_sge = max_sge;

@@ -833,7 +833,7 @@ static int xscore_create_qpset(struct xscore_conn_ctx *ctx)
 	init_attr.cap.max_recv_wr = ctx->rx_ring_size;
 	init_attr.cap.max_recv_sge = XSCORE_MAX_RXFRAGS;
 
-	max_sge = ctx->port->xs_dev->dev_attr.max_sge;
+	max_sge = ctx->port->xs_dev->dev_attr.max_send_sge;
 	if (max_sge >= (MAX_SKB_FRAGS + 1))
 		max_sge = MAX_SKB_FRAGS + 1;
 
