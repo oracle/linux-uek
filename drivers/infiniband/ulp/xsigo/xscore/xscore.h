@@ -54,6 +54,7 @@
 
 /* Support MAX of 4 PAGES */
 #define	XSCORE_MAX_RXFRAGS	4
+#define XSCORE_DEF_XMIT_CMDS_MAX 128     /* must be power of 2 */
 
 enum xscore_conn_state {
 	XSCORE_CONN_INIT = 1,

@@ -832,6 +832,7 @@ static int xscore_create_qpset(struct xscore_conn_ctx *ctx)
 	init_attr.cap.max_send_wr = ctx->tx_ring_size;
 	init_attr.cap.max_recv_wr = ctx->rx_ring_size;
 	init_attr.cap.max_recv_sge = XSCORE_MAX_RXFRAGS;
+	init_attr.cap.max_rdma_ctxs = XSCORE_DEF_XMIT_CMDS_MAX;
 
 	max_sge = ctx->port->xs_dev->dev_attr.max_send_sge;
 	if (max_sge >= (MAX_SKB_FRAGS + 1))
@@ -845,6 +846,7 @@ static int xscore_create_qpset(struct xscore_conn_ctx *ctx)
 	init_attr.qp_type = IB_QPT_RC;
 	init_attr.send_cq = ctx->scq;
 	init_attr.recv_cq = ctx->rcq;
+	init_attr.port_num = ctx->port->port_num;
 
 	ctx->qp = ib_create_qp(ctx->port->xs_dev->pd, &init_attr);
 	if (IS_ERR(ctx->qp)) {
