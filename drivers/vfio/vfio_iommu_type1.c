@@ -942,7 +942,8 @@ again:
 
 		pages[i] = pfn_to_page(phys_pfn);
 
-		if (iommu->dirty_page_tracking) {
+		if (iommu->dirty_page_tracking &&
+		    !iommu->dirty_page_hw_supported) {
 			unsigned long pgshift = __ffs(iommu->pgsize_bitmap);
 
 			/*
@@ -1970,7 +1971,8 @@ static int vfio_dma_do_map(struct vfio_iommu *iommu,
 	else
 		ret = vfio_pin_map_dma(iommu, dma, size);
 
-	if (!ret && iommu->dirty_page_tracking) {
+	if (!ret && iommu->dirty_page_tracking &&
+	    !iommu->dirty_page_hw_supported) {
 		ret = vfio_dma_bitmap_alloc(dma, pgsize);
 		if (ret)
 			vfio_remove_dma(iommu, dma);
@@ -2870,7 +2872,8 @@ detach_group_done:
 	 */
 	if (update_dirty_scope) {
 		iommu->num_non_pinned_groups--;
-		if (iommu->dirty_page_tracking)
+		if (iommu->dirty_page_tracking &&
+		    !iommu->dirty_page_hw_supported)
 			vfio_iommu_populate_bitmap_full(iommu);
 	}
 	mutex_unlock(&iommu->lock);
@@ -3409,7 +3412,8 @@ static int vfio_iommu_type1_dma_rw_chunk(struct vfio_iommu *iommu,
 	if (write) {
 		*copied = copy_to_user((void __user *)vaddr, data,
 					 count) ? 0 : count;
-		if (*copied && iommu->dirty_page_tracking) {
+		if (*copied && iommu->dirty_page_tracking &&
+		    !iommu->dirty_page_hw_supported) {
 			unsigned long pgshift = __ffs(iommu->pgsize_bitmap);
 			/*
 			 * Bitmap populated with the smallest supported page
