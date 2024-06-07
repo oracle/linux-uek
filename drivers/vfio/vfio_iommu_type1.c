@@ -1338,13 +1338,85 @@ static void vfio_iommu_type1_dirty_pages_stop(struct vfio_iommu *iommu)
 	}
 }
 
+struct iova_bitmap_fn_arg {
+	unsigned long flags;
+	struct iommu_domain *domain;
+	struct iommu_dirty_bitmap *dirty;
+};
+
+static int __iommu_read_and_clear_dirty(struct iova_bitmap *bitmap,
+					unsigned long iova, size_t length,
+					void *opaque)
+{
+	struct iova_bitmap_fn_arg *arg = opaque;
+	struct iommu_domain *domain = arg->domain;
+	struct iommu_dirty_bitmap *dirty = arg->dirty;
+	const struct iommu_dirty_ops *ops = domain->dirty_ops;
+	unsigned long flags = arg->flags;
+
+	return ops->read_and_clear_dirty(domain, iova, length, flags, dirty);
+}
+
+static int iommu_read_and_clear_dirty(struct iommu_domain *domain,
+				      u64 __user *bitmap,
+				      dma_addr_t iova, size_t size,
+				      size_t pgsize, unsigned long flags)
+{
+	const struct iommu_dirty_ops *ops = domain->dirty_ops;
+	struct iommu_iotlb_gather gather;
+	struct iommu_dirty_bitmap dirty;
+	struct iova_bitmap_fn_arg arg;
+	struct iova_bitmap *iter;
+
+	if (!ops || !ops->read_and_clear_dirty)
+		return -EOPNOTSUPP;
+
+	iter = iova_bitmap_alloc(iova, size, pgsize, bitmap);
+	if (IS_ERR(iter))
+		return -ENOMEM;
+
+	iommu_dirty_bitmap_init(&dirty, iter, &gather);
+
+	arg.flags = flags;
+	arg.domain = domain;
+	arg.dirty = &dirty;
+	iova_bitmap_for_each(iter, &arg, __iommu_read_and_clear_dirty);
+
+	if (!(flags & IOMMU_DIRTY_NO_CLEAR) &&
+	    gather.start != ULONG_MAX)
+		iommu_iotlb_sync(domain, &gather);
+
+	iova_bitmap_free(iter);
+	return 0;
+}
+
+static int vfio_iommu_type1_dirty_pages_report(struct vfio_iommu *iommu,
+					       struct vfio_dma *dma,
+					       u64 __user *bitmap,
+					       dma_addr_t iova, size_t size,
+					       size_t pgsize, bool read_only)
+{
+	unsigned long flags = read_only ? IOMMU_DIRTY_NO_CLEAR : 0;
+	struct vfio_domain *d;
+	int ret = -EINVAL;
+
+	list_for_each_entry(d, &iommu->domain_list, next) {
+		ret = iommu_read_and_clear_dirty(d->domain, bitmap, iova,
+						 size, pgsize, flags);
+		if (ret)
+			break;
+	}
+
+	return ret;
+}
+
 static int vfio_iova_dirty_bitmap(u64 __user *bitmap, struct vfio_iommu *iommu,
 				  dma_addr_t iova, size_t size, size_t pgsize)
 {
 	struct vfio_dma *dma;
 	struct rb_node *n;
 	unsigned long pgshift = __ffs(pgsize);
-	int ret;
+	int ret = -EINVAL;
 
 	/*
 	 * GET_BITMAP request must fully cover vfio_dma mappings.  Multiple
@@ -1354,12 +1426,13 @@ static int vfio_iova_dirty_bitmap(u64 __user *bitmap, struct vfio_iommu *iommu,
 	 */
 	dma = vfio_find_dma(iommu, iova, 1);
 	if (dma && dma->iova != iova)
-		return -EINVAL;
+		return ret;
 
 	dma = vfio_find_dma(iommu, iova + size - 1, 0);
 	if (dma && dma->iova + dma->size != iova + size)
-		return -EINVAL;
+		return ret;
 
+	ret = 0;
 	for (n = rb_first(&iommu->dma_list); n; n = rb_next(n)) {
 		struct vfio_dma *dma = rb_entry(n, struct vfio_dma, node);
 
@@ -1368,6 +1441,16 @@ static int vfio_iova_dirty_bitmap(u64 __user *bitmap, struct vfio_iommu *iommu,
 
 		if (dma->iova > iova + size - 1)
 			break;
+
+		if (iommu->dirty_page_hw_supported) {
+			ret = vfio_iommu_type1_dirty_pages_report(iommu, dma,
+							 bitmap, iova, size,
+							 pgsize, false);
+			if (!ret)
+				continue;
+			else
+				break;
+		}
 
 		ret = update_user_bitmap(bitmap, iommu, dma, iova, pgsize);
 		if (ret)
@@ -1381,7 +1464,7 @@ static int vfio_iova_dirty_bitmap(u64 __user *bitmap, struct vfio_iommu *iommu,
 		bitmap_clear(dma->bitmap, 0, dma->size >> pgshift);
 		vfio_dma_populate_bitmap(dma, pgsize);
 	}
-	return 0;
+	return ret;
 }
 
 static int verify_bitmap_size(uint64_t npages, uint64_t bitmap_size)
@@ -1547,8 +1630,14 @@ again:
 		}
 
 		if (unmap->flags & VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP) {
-			ret = update_user_bitmap(bitmap->data, iommu, dma,
-						 iova, pgsize);
+			if (iommu->dirty_page_hw_supported)
+				ret = vfio_iommu_type1_dirty_pages_report(iommu,
+							 dma, bitmap->data, iova,
+							 size, pgsize, true);
+			else
+				ret = update_user_bitmap(bitmap->data, iommu,
+							 dma, iova, pgsize);
+
 			if (ret)
 				break;
 		}
