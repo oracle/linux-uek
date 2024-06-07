@@ -477,7 +477,7 @@ int xscore_query_xds_xcm_rec(struct xscore_port *port)
 
 	port->send_buf = ib_create_send_mad(port->mad_agent, 1, 0, 0,
 					    IB_MGMT_SA_HDR, IB_MGMT_SA_DATA,
-					    GFP_KERNEL);
+					    GFP_KERNEL, IB_MGMT_BASE_VERSION);
 	port->rec_poller_state = XDS_RECP_CREATEMAD_DONE;
 	if (IS_ERR(port->send_buf)) {
 		ret = PTR_ERR(port->send_buf);
