@@ -151,6 +151,7 @@ struct ivmd_header {
 
 bool amd_iommu_dump;
 bool amd_iommu_irq_remap __read_mostly;
+bool amd_iommu_had_support __read_mostly;
 
 enum io_pgtable_fmt amd_iommu_pgtable = AMD_IOMMU_V1;
 /* Guest page table level */
@@ -2203,6 +2204,9 @@ static int __init amd_iommu_init_pci(void)
 
 	for_each_iommu(iommu)
 		amd_iommu_flush_all_caches(iommu);
+
+	amd_iommu_had_support =
+		check_feature(FEATURE_HASUP) && check_feature(FEATURE_HDSUP);
 
 	print_iommu_info();
 
