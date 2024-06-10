@@ -41,7 +41,6 @@
 #include <linux/etherdevice.h>
 #include <linux/ethtool.h>
 #include <linux/skbuff.h>
-#include <linux/inet_lro.h>
 #include <linux/dma-mapping.h>
 #include <linux/workqueue.h>
 
@@ -143,12 +142,6 @@ struct xsvnic_control_msg {
 	u16 length;
 	u32 data;
 } __packed;
-
-/*lro specifics*/
-enum {
-	XSVNIC_MAX_LRO_DESCRIPTORS = 8,
-	XSVNIC_LRO_MAX_AGGR = 64,
-};
 
 /*
  * Types for the control messages, events, and statistics
@@ -325,10 +318,6 @@ struct ether_addr {
 	unsigned char addr[ETH_ALEN];
 };
 
-struct xsvnic_lro {
-	struct net_lro_mgr lro_mgr;
-	struct net_lro_desc lro_desc[XSVNIC_MAX_LRO_DESCRIPTORS];
-};
 
 struct xsvnic {
 	spinlock_t lock;
@@ -370,8 +359,7 @@ struct xsvnic {
 	struct net_device *netdev;
 	struct net_device_stats stats;
 	struct napi_struct napi;
-	u8 lro_mode;
-	struct xsvnic_lro lro;
+	u8 gro_mode;
 #define	XSVNIC_RECLAIM_COUNT	4
 	int reclaim_count;
 	u8 send_hbeat_flag;

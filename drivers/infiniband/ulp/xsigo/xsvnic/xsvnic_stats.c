@@ -298,8 +298,6 @@ static int xsvnic_proc_read_device(struct seq_file *m, void *data)
 		   (vp->netdev->
 		    features & NETIF_F_TSO) ? "Enabled" : "Disabled");
 
-	seq_printf(m, "LRO:\t\t\t\t%s\n",
-		   (vp->lro_mode) ? "Enabled" : "Disabled");
 
 	seq_printf(m, "RX batching :\t\t\t%s\n",
 		   (vp->is_rxbatching) ? "Enabled" : "Disabled");
@@ -443,22 +441,6 @@ static int xsvnic_proc_read_device(struct seq_file *m, void *data)
 		strcat(tmp_buf, " +  No RX Quota");
 
 	seq_printf(m, "%s\n\n", tmp_buf);
-
-	/* Get LRO statistics */
-	if (vp->lro_mode) {
-		vp->counters[XSVNIC_RX_LRO_AGGR_PKTS] +=
-		    vp->lro.lro_mgr.stats.aggregated;
-		vp->counters[XSVNIC_RX_LRO_FLUSHED_PKT] +=
-		    vp->lro.lro_mgr.stats.flushed;
-		if (vp->lro.lro_mgr.stats.flushed)
-			vp->counters[XSVNIC_RX_LRO_AVG_AGGR_PKTS] +=
-			    vp->lro.lro_mgr.stats.aggregated /
-			    vp->lro.lro_mgr.stats.flushed;
-		else
-			vp->counters[XSVNIC_RX_LRO_AVG_AGGR_PKTS] = 0;
-		vp->counters[XSVNIC_RX_LRO_NO_DESCRIPTORS] +=
-		    vp->lro.lro_mgr.stats.no_desc;
-	}
 
 	seq_printf(m, "Counters cleared count:\t\t%u\n", vp->counters_cleared);
 	return 0;

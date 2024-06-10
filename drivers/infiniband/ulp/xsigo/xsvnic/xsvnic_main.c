@@ -66,14 +66,10 @@ module_param(xsvnic_debug, int, 0644);
 static int xsvnic_force_csum_offload = 0x0;
 module_param(xsvnic_force_csum_offload, int, 0644);
 
-/*lro specifics*/
-int lro;
-static int lro_max_aggr = XSVNIC_LRO_MAX_AGGR;
-module_param(lro, int, 0444);
-module_param(lro_max_aggr, int, 0644);
-MODULE_PARM_DESC(lro, "Enable LRO (Large Receive Offload)");
-MODULE_PARM_DESC(lro_max_aggr,
-		 "LRO: Max packets to be aggregated (default = 64)");
+/*gro specifics*/
+int gro;
+module_param(gro, int, 0444);
+MODULE_PARM_DESC(gro, "Enable GRO (Generic Receive Offload) ( default gro = 0)");
 
 static int multicast_list_disable;
 module_param(multicast_list_disable, int, 0644);
@@ -2050,8 +2046,8 @@ void xsvnic_send_skb(struct xsvnic *xsvnicp, struct sk_buff *skb,
 			xsvnicp->counters[XSVNIC_RX_SENDTO_VLANGRP]++;
 		}
 
-		if (netdev->features & NETIF_F_LRO)
-			lro_receive_skb(&xsvnicp->lro.lro_mgr, skb, NULL);
+		if (netdev->features & NETIF_F_GRO)
+			napi_gro_receive(&xsvnicp->napi, skb);
 		else
 			netif_receive_skb(skb);
 	}
@@ -2148,8 +2144,6 @@ again:
 		}
 	}
 	if (done < budget) {
-		if (xsvnicp->netdev->features & NETIF_F_LRO)
-			lro_flush_all(&xsvnicp->lro.lro_mgr);
 		napi_complete(&xsvnicp->napi);
 		clear_bit(XSVNIC_OVER_QUOTA, &xsvnicp->state);
 	} else {
@@ -2172,46 +2166,6 @@ again:
 	}
 	spin_unlock_irqrestore(&xsvnicp->lock, flags);
 	return done;
-}
-
-static int get_skb_hdr(struct sk_buff *skb, void **iphdr,
-		       void **tcph, u64 *hdr_flags, void *xsvnicp)
-{
-	unsigned int ip_len;
-	struct iphdr *iph;
-
-	if (unlikely(skb->protocol != htons(ETH_P_IP)))
-		return -1;
-
-	/* Check for non-TCP packet */
-	skb_reset_network_header(skb);
-	iph = ip_hdr(skb);
-	if (iph->protocol != IPPROTO_TCP)
-		return -1;
-
-	ip_len = ip_hdrlen(skb);
-	skb_set_transport_header(skb, ip_len);
-	*tcph = tcp_hdr(skb);
-
-	/* check if IP header and TCP header are complete */
-	if (ntohs(iph->tot_len) < ip_len + tcp_hdrlen(skb))
-		return -1;
-
-	*hdr_flags = LRO_IPV4 | LRO_TCP;
-	*iphdr = iph;
-
-	return 0;
-}
-
-static void xsvnic_lro_setup(struct xsvnic *xsvnicp)
-{
-	xsvnicp->lro.lro_mgr.max_aggr = lro_max_aggr;
-	xsvnicp->lro.lro_mgr.max_desc = XSVNIC_MAX_LRO_DESCRIPTORS;
-	xsvnicp->lro.lro_mgr.lro_arr = xsvnicp->lro.lro_desc;
-	xsvnicp->lro.lro_mgr.get_skb_header = get_skb_hdr;
-	xsvnicp->lro.lro_mgr.features = LRO_F_NAPI;
-	xsvnicp->lro.lro_mgr.dev = xsvnicp->netdev;
-	xsvnicp->lro.lro_mgr.ip_summed_aggr = CHECKSUM_UNNECESSARY;
 }
 
 static struct net_device_ops xsvnic_netdev_ops = {
@@ -2246,8 +2200,8 @@ static int setup_netdev_info(struct net_device *netdev)
 		pr_info("[xsvnic %s]\n", xsvnicp->vnic_name);
 		netdev->features |= NETIF_F_HW_VLAN_CTAG_RX;
 	}
-	if (lro)
-		xsvnicp->lro_mode = 1;
+	if (gro)
+		xsvnicp->gro_mode = 1;
 	/*
 	 * based on install_flag setting setup TSO flag.
 	 * Checksun & SG must be enabled by default
@@ -2259,9 +2213,8 @@ static int setup_netdev_info(struct net_device *netdev)
 	    || xsvnic_force_csum_offload)
 		netdev->features |= NETIF_F_IP_CSUM;
 
-	if (xsvnicp->lro_mode) {
-		xsvnic_lro_setup(xsvnicp);
-		netdev->features |= NETIF_F_LRO;
+	if (xsvnicp->gro_mode) {
+		netdev->features |= NETIF_F_GRO;
 	}
 	xg_setup_pseudo_device(netdev, hca);
 
