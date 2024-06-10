@@ -66,7 +66,7 @@ static struct ib_send_wr xve_cm_rx_drain_wr = {
 };
 
 static int xve_cm_tx_handler(struct ib_cm_id *cm_id,
-		struct ib_cm_event *event);
+		const struct ib_cm_event *event);
 static void __xve_cm_tx_reap(struct xve_dev_priv *priv);
 
 static void xve_cm_dma_unmap_rx(struct xve_dev_priv *priv, int frags,
@@ -320,7 +320,7 @@ static void xve_cm_init_rx_wr(struct net_device *dev,
 }
 
 static int xve_cm_send_rep(struct net_device *dev, struct ib_cm_id *cm_id,
-			   struct ib_qp *qp, struct ib_cm_req_event_param *req,
+			   struct ib_qp *qp, const struct ib_cm_req_event_param *req,
 			   unsigned psn)
 {
 	struct xve_dev_priv *priv = netdev_priv(dev);
@@ -341,7 +341,7 @@ static int xve_cm_send_rep(struct net_device *dev, struct ib_cm_id *cm_id,
 }
 
 static int xve_cm_req_handler(struct ib_cm_id *cm_id,
-		struct ib_cm_event *event)
+		const struct ib_cm_event *event)
 {
 	struct net_device *dev = cm_id->context;
 	struct xve_dev_priv *priv = netdev_priv(dev);
@@ -417,7 +417,7 @@ err_qp:
 }
 
 static int xve_cm_rx_handler(struct ib_cm_id *cm_id,
-		struct ib_cm_event *event)
+		const struct ib_cm_event *event)
 {
 	struct xve_cm_ctx *p;
 	struct xve_dev_priv *priv;
@@ -874,7 +874,7 @@ void xve_cm_dev_stop(struct net_device *dev)
 
 }
 
-static int xve_cm_rep_handler(struct ib_cm_id *cm_id, struct ib_cm_event *event)
+static int xve_cm_rep_handler(struct ib_cm_id *cm_id, const struct ib_cm_event *event)
 {
 	struct xve_cm_ctx *p = cm_id->context;
 	struct xve_dev_priv *priv = netdev_priv(p->netdev);
@@ -1190,7 +1190,7 @@ static void xve_cm_tx_destroy(struct xve_cm_ctx *p)
 }
 
 static int xve_cm_tx_handler(struct ib_cm_id *cm_id,
-		struct ib_cm_event *event)
+		const struct ib_cm_event *event)
 {
 	struct xve_cm_ctx *tx = cm_id->context;
 	struct xve_dev_priv *priv;

@@ -94,7 +94,7 @@ static int rdma_responder_resources = 16;
 
 module_param(rdma_responder_resources, int, 0644);
 
-static int xscore_cm_handler(struct ib_cm_id *cm_id, struct ib_cm_event *event);
+static int xscore_cm_handler(struct ib_cm_id *cm_id, const struct ib_cm_event *event);
 static void _xscore_conn_disconnect(struct xscore_conn_ctx *ctx, int flags);
 
 static void xscore_qp_event(struct ib_event *event, void *context)
@@ -1512,7 +1512,7 @@ static void handle_cm_rep(struct xscore_conn_ctx *ctx)
 	}
 }
 
-static int xscore_cm_handler(struct ib_cm_id *cm_id, struct ib_cm_event *event)
+static int xscore_cm_handler(struct ib_cm_id *cm_id, const struct ib_cm_event *event)
 {
 	struct xscore_conn_ctx *ctx = cm_id->context;
 	int comp = 0;
