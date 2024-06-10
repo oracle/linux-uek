@@ -162,7 +162,7 @@ static int xs_dma_map_tx(struct xscore_conn_ctx *ctx,
 		if (unlikely(ib_dma_mapping_error(ca, mapping[i + off])))
 			goto partial_error;
 		ib_dma_sync_single_for_device(ca, mapping[i + off],
-					      frag->size, DMA_TO_DEVICE);
+					      frag->bv_len, DMA_TO_DEVICE);
 		tx_sge[i + off].addr = mapping[i + off];
 		tx_sge[i + off].length = frag->bv_len;
 		tx_sge[i + off].lkey = port->xs_dev->pd->local_dma_lkey;

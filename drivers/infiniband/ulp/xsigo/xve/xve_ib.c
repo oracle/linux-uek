@@ -116,7 +116,7 @@ static void xve_ud_skb_put_frags(struct xve_dev_priv *priv,
 		} else {
 			size = min_t(unsigned, length, PAGE_SIZE);
 
-			frag->size = size;
+			frag->bv_len = size;
 			skb->data_len += size;
 			skb->truesize += size;
 			skb->len += size;
@@ -449,7 +449,7 @@ static int xve_dma_map_tx(struct ib_device *ca, struct xve_tx_buf *tx_req)
 
 		mapping[i + off] = ib_dma_map_page(ca, skb_frag_page(frag),
 						   frag->page_offset,
-						   frag->size, DMA_TO_DEVICE);
+						   frag->bv_len, DMA_TO_DEVICE);
 		if (unlikely(ib_dma_mapping_error(ca, mapping[i + off])))
 			goto partial_error;
 	}
@@ -459,7 +459,7 @@ partial_error:
 	for (; i > 0; --i) {
 		skb_frag_t *frag = &skb_shinfo(skb)->frags[i - 1];
 
-		ib_dma_unmap_page(ca, mapping[i - !off], frag->size,
+		ib_dma_unmap_page(ca, mapping[i - !off], frag->bv_len,
 				  DMA_TO_DEVICE);
 	}
 
@@ -487,7 +487,7 @@ static void xve_dma_unmap_tx(struct ib_device *ca, struct xve_tx_buf *tx_req)
 	for (i = 0; i < skb_shinfo(skb)->nr_frags; ++i) {
 		skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
 
-		ib_dma_unmap_page(ca, mapping[i + off], frag->size,
+		ib_dma_unmap_page(ca, mapping[i + off], frag->bv_len,
 				  DMA_TO_DEVICE);
 	}
 }
@@ -751,8 +751,8 @@ static inline int post_send(struct xve_dev_priv *priv,
 
 	for (i = 0; i < nr_frags; ++i) {
 		priv->tx_sge[i + off].addr = mapping[i + off];
-		priv->tx_sge[i + off].length = frags[i].size;
-		total_size += frags[i].size;
+		priv->tx_sge[i + off].length = frags[i].bv_len;
+		total_size += frags[i].bv_len;
 	}
 	wr->num_sge = nr_frags + off;
 	wr->wr_id = wr_id;

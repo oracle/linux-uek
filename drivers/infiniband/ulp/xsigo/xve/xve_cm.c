@@ -487,7 +487,7 @@ static inline void skb_put_frags(struct sk_buff *skb,
 		} else {
 			size = min_t(unsigned, length, (unsigned)PAGE_SIZE);
 
-			frag->size = size;
+			frag->bv_len = size;
 			skb->data_len += size;
 			skb->truesize += size;
 			skb->len += size;
