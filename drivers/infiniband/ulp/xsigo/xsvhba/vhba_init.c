@@ -1716,11 +1716,9 @@ vhba_build_scsi_iocbs(struct srb *sp, struct cmd_type_7 *cmd_pkt, u16 tot_dsds)
 					return;
 				}
 				remaining_length =
-				    ib_sg_dma_len(vhba->xsmp_info.ib_device,
-						  cur_seg);
+				    sg_dma_len(cur_seg);
 				cur_map_ptr =
-				    ib_sg_dma_address(vhba->xsmp_info.ib_device,
-						      cur_seg) & fmr_page_mask;
+				    sg_dma_address(cur_seg) & fmr_page_mask;
 				dprintk(TRC_FMR, vhba,
 				"new dsd rem len %d ", remaining_length);
 				dprintk(TRC_FMR, vhba,
@@ -1728,20 +1726,14 @@ vhba_build_scsi_iocbs(struct srb *sp, struct cmd_type_7 *cmd_pkt, u16 tot_dsds)
 					(unsigned long)cur_map_ptr);
 				if (cntr == 0) {
 					page_list[pg_list_cntr] =
-					    ib_sg_dma_address(vhba->
-							xsmp_info.ib_device,
-							      cur_seg) &
+					    sg_dma_address(cur_seg) &
 					    fmr_page_mask;
 					first_pg_offset =
-					    (ib_sg_dma_address
-					     (vhba->xsmp_info.ib_device,
-					      cur_seg) -
+					    (sg_dma_address(cur_seg) -
 					     page_list[pg_list_cntr]) &
 					    ~fmr_page_mask;
 					remaining_length =
-					    ib_sg_dma_len(vhba->
-							  xsmp_info.ib_device,
-							  cur_seg)
+					    sg_dma_len(cur_seg)
 					    - (PAGE_SIZE - first_pg_offset);
 					dprintk(TRC_FMR, vhba,
 						"offset %d rem len in ",
@@ -1798,9 +1790,7 @@ vhba_build_scsi_iocbs(struct srb *sp, struct cmd_type_7 *cmd_pkt, u16 tot_dsds)
 					"%lx\n",
 					(unsigned long)cur_map_ptr);
 				mapped_len +=
-				    (int)ib_sg_dma_len(vhba->
-						       xsmp_info.ib_device,
-						       cur_seg);
+				    (int)sg_dma_len(cur_seg);
 				dprintk(TRC_FMR, vhba,
 					"hndl %d: mapped len is %u\n",
 					(int)cmd_pkt->handle, mapped_len);
