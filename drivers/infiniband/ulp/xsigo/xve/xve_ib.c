@@ -649,9 +649,6 @@ poll_more:
 	}
 
 	if (done < budget) {
-		if (dev->features & NETIF_F_LRO)
-			lro_flush_all(&priv->lro.lro_mgr);
-
 		napi_complete(napi);
 		clear_bit(XVE_OVER_QUOTA, &priv->state);
 		if (test_bit(XVE_OS_ADMIN_UP, &priv->state) &&

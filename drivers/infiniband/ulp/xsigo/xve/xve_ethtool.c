@@ -125,7 +125,7 @@ static void xve_get_ethtool_stats(struct net_device *dev,
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	int index = 0;
 
-	/* Get LRO statistics */
+	/* Get statistics */
 	data[index++] = dev->stats.rx_packets;
 	data[index++] = dev->stats.rx_bytes;
 	data[index++] = dev->stats.rx_errors;
@@ -135,15 +135,6 @@ static void xve_get_ethtool_stats(struct net_device *dev,
 	data[index++] = dev->stats.tx_bytes;
 	data[index++] = dev->stats.tx_errors;
 	data[index++] = dev->stats.tx_dropped;
-
-	data[index++] = priv->lro.lro_mgr.stats.aggregated;
-	data[index++] = priv->lro.lro_mgr.stats.flushed;
-	if (priv->lro.lro_mgr.stats.flushed)
-		data[index++] = priv->lro.lro_mgr.stats.aggregated /
-		    priv->lro.lro_mgr.stats.flushed;
-	else
-		data[index++] = 0;
-	data[index++] = priv->lro.lro_mgr.stats.no_desc;
 }
 
 static int xve_get_settings(struct net_device *netdev, struct ethtool_cmd *ecmd)

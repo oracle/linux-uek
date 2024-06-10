@@ -51,7 +51,6 @@
 #include <linux/list.h>
 #include <linux/jhash.h>
 #include <linux/if_arp.h>
-#include <linux/inet_lro.h>
 #include <linux/kernel.h>
 #include <linux/ethtool.h>
 #include <linux/init.h>
@@ -171,8 +170,6 @@ enum {
 	XVE_MCAST_FLAG_SENDONLY = 1,
 	XVE_MCAST_FLAG_BUSY = 2,	/* joining or already joined */
 	XVE_MCAST_FLAG_ATTACHED = 3,
-	XVE_MAX_LRO_DESCRIPTORS = 8,
-	XVE_LRO_MAX_AGGR = 64,
 	MAX_SEND_CQE = 32,
 	SENDQ_LOW_WMARK = 32,
 	XVE_CM_COPYBREAK = 256,
@@ -626,10 +623,6 @@ struct xve_ethtool_st {
 	u16 max_coalesced_frames;
 };
 
-struct xve_lro {
-	struct net_lro_mgr lro_mgr;
-	struct net_lro_desc lro_desc[XVE_MAX_LRO_DESCRIPTORS];
-};
 
 struct xve_fwt_entry {
 	struct list_head list;
@@ -723,8 +716,7 @@ struct xve_dev_priv {
 	struct napi_struct napi;
 	struct xve_ethtool_st ethtool;
 	struct timer_list poll_timer;
-	u8 lro_mode;
-	struct xve_lro lro;
+	u8 gro_mode;
 	unsigned long flags;
 	unsigned long state;
 
@@ -1029,9 +1021,8 @@ static inline void xve_send_skb(struct xve_dev_priv *priv, struct sk_buff *skb)
 {
 	struct net_device *netdev = priv->netdev;
 
-	if (netdev->features & NETIF_F_LRO)
-		lro_receive_skb(&priv->lro.lro_mgr, skb, NULL);
-	else if (netdev->features & NETIF_F_GRO)
+
+	if (netdev->features & NETIF_F_GRO)
 		napi_gro_receive(&priv->napi, skb);
 	else
 		netif_receive_skb(skb);

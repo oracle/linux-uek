@@ -66,14 +66,9 @@ module_param(napi_weight, int, 0644);
 static int xve_no_tx_checksum_offload;
 module_param(xve_no_tx_checksum_offload, int, 0644);
 
-int lro;
-module_param(lro, bool, 0444);
-MODULE_PARM_DESC(lro, "Enable LRO (Large Receive Offload)");
-
-static int lro_max_aggr = XVE_LRO_MAX_AGGR;
-module_param(lro_max_aggr, int, 0644);
-MODULE_PARM_DESC(lro_max_aggr,
-		 "LRO: Max packets to be aggregated (default = 64)");
+int gro;
+module_param(gro, bool, 0444);
+MODULE_PARM_DESC(gro, "Enable GRO (Generic Receive Offload) (default = 0)");
 
 static int xve_hbeat_enable;
 module_param(xve_hbeat_enable, int, 0644);
@@ -1161,46 +1156,6 @@ void xve_dev_cleanup(struct net_device *dev)
 	xve_fwt_cleanup(priv);
 }
 
-static int get_skb_hdr(struct sk_buff *skb, void **iphdr,
-		       void **tcph, u64 *hdr_flags, void *priv)
-{
-	unsigned int ip_len;
-	struct iphdr *iph;
-
-	if (unlikely(skb->protocol != htons(ETH_P_IP)))
-		return -1;
-
-	/* Check for non-TCP packet */
-	skb_reset_network_header(skb);
-	iph = ip_hdr(skb);
-	if (iph->protocol != IPPROTO_TCP)
-		return -1;
-
-	ip_len = ip_hdrlen(skb);
-	skb_set_transport_header(skb, ip_len);
-	*tcph = tcp_hdr(skb);
-
-	/* check if IP header and TCP header are complete */
-	if (ntohs(iph->tot_len) < ip_len + tcp_hdrlen(skb))
-		return -1;
-
-	*hdr_flags = LRO_IPV4 | LRO_TCP;
-	*iphdr = iph;
-
-	return 0;
-}
-
-static void xve_lro_setup(struct xve_dev_priv *priv)
-{
-	priv->lro.lro_mgr.max_aggr = lro_max_aggr;
-	priv->lro.lro_mgr.max_desc = XVE_MAX_LRO_DESCRIPTORS;
-	priv->lro.lro_mgr.lro_arr = priv->lro.lro_desc;
-	priv->lro.lro_mgr.get_skb_header = get_skb_hdr;
-	priv->lro.lro_mgr.features = LRO_F_NAPI;
-	priv->lro.lro_mgr.dev = priv->netdev;
-	priv->lro.lro_mgr.ip_summed_aggr = CHECKSUM_UNNECESSARY;
-}
-
 static struct net_device_ops xve_netdev_ops = {
 	.ndo_open = xve_open,
 	.ndo_stop = xve_stop,
@@ -1774,11 +1729,10 @@ xve_set_ovn_features(struct xve_dev_priv *priv)
 		set_bit(XVE_FLAG_CSUM, &priv->flags);
 	}
 
-	if (priv->lro_mode && lro) {
-		priv->netdev->features |= NETIF_F_LRO;
-		xve_lro_setup(priv);
+	if (priv->gro_mode && gro) {
+		priv->netdev->features |= NETIF_F_GRO;
 	} else
-		priv->lro_mode = 0;
+		priv->gro_mode = 0;
 }
 
 void
@@ -1813,7 +1767,7 @@ int xve_set_dev_features(struct xve_dev_priv *priv, struct ib_device *hca)
 	priv->netdev->watchdog_timeo = 1000 * HZ;
 	priv->netdev->tx_queue_len = priv->xve_sendq_size * 2;
 
-	priv->lro_mode = 1;
+	priv->gro_mode = 1;
 	if (priv->vnet_mode == XVE_VNET_MODE_RC) {
 		strcpy(priv->mode, "connected(RC)");
 		set_bit(XVE_FLAG_ADMIN_CM, &priv->flags);
@@ -1825,7 +1779,7 @@ int xve_set_dev_features(struct xve_dev_priv *priv, struct ib_device *hca)
 		if (!priv->is_jumbo &&
 			(priv->netdev->mtu > XVE_UD_MTU(priv->max_ib_mtu)))
 			priv->netdev->mtu = XVE_UD_MTU(priv->max_ib_mtu);
-		priv->lro_mode = 0;
+		priv->gro_mode = 0;
 	}
 	xve_info(priv, "%s Mode:%d MTU:%d", __func__,
 			priv->vnet_mode, priv->netdev->mtu);
@@ -1853,7 +1807,6 @@ int xve_set_dev_features(struct xve_dev_priv *priv, struct ib_device *hca)
 	priv->dev_attr = device_attr;
 	priv->hca_caps = device_attr.device_cap_flags;
 
-	xve_lro_setup(priv);
 	if (xve_is_ovn(priv))
 		xve_set_ovn_features(priv);
 	else
