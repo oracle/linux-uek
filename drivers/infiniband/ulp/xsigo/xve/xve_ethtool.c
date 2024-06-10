@@ -137,27 +137,28 @@ static void xve_get_ethtool_stats(struct net_device *dev,
 	data[index++] = dev->stats.tx_dropped;
 }
 
-static int xve_get_settings(struct net_device *netdev, struct ethtool_cmd *ecmd)
+static int xve_get_ksettings(struct net_device *netdev, struct ethtool_link_ksettings *ecmd)
 {
 	struct xve_dev_priv *xvep = netdev_priv(netdev);
-
-	ecmd->autoneg = 0;
-	ecmd->speed = SPEED_10000;
-	ecmd->duplex = DUPLEX_FULL;	/* Duplex is hard coded */
+	ecmd->base.autoneg = 0;
+	ecmd->base.speed = SPEED_10000;
+	ecmd->base.duplex = DUPLEX_FULL;	/* Duplex is hard coded */
 	if (netif_carrier_ok(netdev)) {
-		ecmd->speed = xvep->port_speed;
-		ecmd->advertising = ADVERTISED_10000baseT_Full;
-		ecmd->supported = SUPPORTED_10000baseT_Full |
-		    SUPPORTED_FIBRE | SUPPORTED_Autoneg;
-		ecmd->port = PORT_FIBRE;
-		ecmd->transceiver = XCVR_EXTERNAL;
+		ecmd->base.speed = xvep->port_speed;
+		ethtool_link_ksettings_add_link_mode(ecmd, advertising, 10000baseT_Full);
+		ethtool_link_ksettings_add_link_mode(ecmd, advertising, FIBRE);
+		ethtool_link_ksettings_add_link_mode(ecmd, supported, 10000baseT_Full);
+		ethtool_link_ksettings_add_link_mode(ecmd, supported, FIBRE);
+		ethtool_link_ksettings_add_link_mode(ecmd, supported, Autoneg);
+		ecmd->base.port = PORT_FIBRE;
+		ecmd->base.transceiver = XCVR_EXTERNAL;
 
 	}
 	return 0;
 }
 
 static const struct ethtool_ops xve_ethtool_ops = {
-	.get_settings = xve_get_settings,
+	.get_link_ksettings = xve_get_ksettings,
 	.get_drvinfo = xve_get_drvinfo,
 	.get_coalesce = xve_get_coalesce,
 	.set_coalesce = xve_set_coalesce,
