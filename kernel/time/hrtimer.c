@@ -952,6 +952,9 @@ void hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
 	unsigned long flags;
 	int leftmost;
 
+	if (WARN_ON_ONCE(!timer->function))
+		return;
+
 	base = lock_hrtimer_base(timer, &flags);
 
 	/* Remove an active timer from the queue: */
