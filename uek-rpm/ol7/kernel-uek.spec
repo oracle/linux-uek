@@ -135,7 +135,13 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 5
 # --strict-build-id : ensure all ELF files have build IDs. This is similar to
 #                     the OL8 _missing_build_ids_terminate_build macro.
 # -n                : do not regenerate build IDs! Use the preexisting ones.
+# The mips64 build doesn't produce a build ID for vmlinux, so it cannot use
+# --strict-build-id. And since editbuildid only really exists to fix the
+# mismatch in the vmlinux build ID, there's no reason to include either flag on
+# mips64.
+%ifnarch mips64
 %define debuginfo_args -n $RPM_SOURCE_DIR/editbuildid --strict-build-id
+%endif
 
 # Additional options for user-friendly one-off kernel building:
 #
