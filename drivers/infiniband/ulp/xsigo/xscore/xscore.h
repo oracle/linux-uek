@@ -178,7 +178,7 @@ struct xscore_port *xscore_get_port(unsigned long hndl);
 int xscore_read_buf(struct xscore_conn_ctx *ctx, struct xscore_buf_info *bp);
 int xscore_poll_send(struct xscore_conn_ctx *ctx, struct xscore_buf_info *bp);
 int xscore_refill_recv(struct xscore_conn_ctx *ctx, int gfp_flags);
-u8 xscore_port_num(struct xscore_port *port);
+u32 xscore_port_num(struct xscore_port *port);
 int xscore_modify_cq(struct ib_cq *cq, u16 cq_count, u16 cq_period);
 int xscore_wait_for_sessions(u8 calc_time);
 

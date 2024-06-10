@@ -721,7 +721,7 @@ static void xscore_remove_port(struct xscore_port *port)
  * Initialize a port context
  */
 static struct xscore_port *xscore_add_port(struct xscore_dev *device,
-					   u8 port_num)
+					   u32 port_num)
 {
 	struct xscore_port *port;
 	char name[32];

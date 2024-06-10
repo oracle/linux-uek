@@ -751,7 +751,7 @@ struct xve_dev_priv {
 	unsigned int cm_supported;
 
 	struct ib_port_attr port_attr;
-	u8 port;
+	u32 port;
 	u16 pkey;
 	u16 pkey_index;
 	int port_speed;

@@ -234,7 +234,7 @@ struct xscore_port {
 #define	XSCORE_SP_NOT_PRESENT		5
 #define XSCORE_FORCE_SM_CHANGE		6
 #define XSCORE_PORT_SMLID_CHANGE	7
-	u8 port_num;
+	u32 port_num;
 	struct workqueue_struct *port_wq;
 	struct delayed_work poll_work;
 	enum ib_event_type pevent;

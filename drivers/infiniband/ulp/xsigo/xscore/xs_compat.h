@@ -258,7 +258,7 @@ static inline void iboe_mac_vlan_to_ll(union ib_gid *gid, u8 *mac, u16 vid)
 #endif /*IB_REV_106_CHECK */
 
 static inline enum rdma_link_layer rdma_port_link_layer(struct ib_device
-							*device, u8 port_num)
+							*device, u32 port_num)
 {
 	return IB_LINK_LAYER_INFINIBAND;
 }

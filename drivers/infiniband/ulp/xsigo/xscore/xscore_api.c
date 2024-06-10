@@ -1032,7 +1032,7 @@ err:
 }
 EXPORT_SYMBOL(xscore_conn_init);
 
-u8 xscore_port_num(struct xscore_port *port)
+u32 xscore_port_num(struct xscore_port *port)
 {
 	return port->port_num;
 }

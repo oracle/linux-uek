@@ -1928,7 +1928,7 @@ static int xcpm_check_vnic_from_same_pvi(xsmp_cookie_t xsmp_hndl,
 	struct xsmp_session_info xsmp_info;
 	union ib_gid local_gid;
 	struct ib_device *hca;
-	u8 port;
+	u32 port;
 	char gid_buf[64];
 
 	if ((xcpm_get_xsmp_session_info(xsmp_hndl, &xsmp_info) != 0)) {
@@ -2180,7 +2180,7 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 	int update_state = 0;
 	int result = -ENOMEM;
 	struct ib_device *hca;
-	u8 port;
+	u32 port;
 	__be16 pkey_be;
 	__be32 net_id_be;
 	u8 ecode = 0;
