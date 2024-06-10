@@ -156,7 +156,7 @@ static int xs_dma_map_tx(struct xscore_conn_ctx *ctx,
 		skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
 
 		mapping[i + off] = ib_dma_map_page(ca, skb_frag_page(frag),
-						   frag->page_offset,
+						   frag->bv_offset,
 						   skb_frag_size(frag),
 						   DMA_TO_DEVICE);
 		if (unlikely(ib_dma_mapping_error(ca, mapping[i + off])))
