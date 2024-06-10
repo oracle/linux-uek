@@ -1569,43 +1569,48 @@ int xsvnic_change_rxbatch(struct xsvnic *xsvnicp, int flag)
 
 	return 1;
 }
-/*
-static int xsvnic_get_settings(struct net_device *netdev,
-			       struct ethtool_cmd *ecmd)
+static int xsvnic_get_ksettings(struct net_device *netdev,
+			       struct ethtool_link_ksettings *kcmd)
 {
 	struct xsvnic *xsvnicp = netdev_priv(netdev);
 
-	ecmd->autoneg = 0;
-	ecmd->speed = SPEED_1000;
-	ecmd->duplex = DUPLEX_FULL;
+	kcmd->base.autoneg = 0;
+	kcmd->base.speed = SPEED_10000;
+	kcmd->base.duplex = DUPLEX_FULL;
 	if (netif_carrier_ok(netdev)) {
 		if ((xsvnicp->port_speed == SPEED_1000) && xsvnic_report_10gbps)
-			ecmd->speed = SPEED_10000;
+			kcmd->base.speed = SPEED_10000;
 		else
-			ecmd->speed = xsvnicp->port_speed;
+			kcmd->base.speed = xsvnicp->port_speed;
 
-		if (ecmd->speed > SPEED_1000) {
-			ecmd->advertising = ADVERTISED_10000baseT_Full;
-			ecmd->supported = SUPPORTED_10000baseT_Full |
-			    SUPPORTED_FIBRE | SUPPORTED_Autoneg;
-			ecmd->port = PORT_FIBRE;
-			ecmd->transceiver = XCVR_EXTERNAL;
+		if (kcmd->base.speed > SPEED_1000) {
+			ethtool_link_ksettings_add_link_mode(kcmd, advertising, 10000baseT_Full);
+			ethtool_link_ksettings_add_link_mode(kcmd, supported, 10000baseT_Full);
+			ethtool_link_ksettings_add_link_mode(kcmd, supported, FIBRE);
+			ethtool_link_ksettings_add_link_mode(kcmd, supported, Autoneg);
+			kcmd->base.port = PORT_FIBRE;
+			kcmd->base.transceiver = XCVR_EXTERNAL;
 		} else {
-			ecmd->advertising = ADVERTISED_1000baseT_Full |
-			    ADVERTISED_100baseT_Full;
-			ecmd->supported =
-			    SUPPORTED_10baseT_Full | SUPPORTED_10baseT_Half |
-			    SUPPORTED_100baseT_Full | SUPPORTED_100baseT_Half |
-			    SUPPORTED_1000baseT_Full | SUPPORTED_1000baseT_Half
-			    | SUPPORTED_TP | SUPPORTED_Autoneg;
-			ecmd->transceiver = XCVR_INTERNAL;
-			ecmd->port = PORT_TP;
+			ethtool_link_ksettings_add_link_mode(kcmd, advertising, 100baseT_Full);
+			ethtool_link_ksettings_add_link_mode(kcmd, advertising, 1000baseT_Full);
+
+			ethtool_link_ksettings_add_link_mode(kcmd, supported, 10baseT_Full);
+			ethtool_link_ksettings_add_link_mode(kcmd, supported, 100baseT_Full);
+			ethtool_link_ksettings_add_link_mode(kcmd, supported, 1000baseT_Full);
+
+			ethtool_link_ksettings_add_link_mode(kcmd, supported, FIBRE);
+			ethtool_link_ksettings_add_link_mode(kcmd, supported, Autoneg);
+
+			ethtool_link_ksettings_add_link_mode(kcmd, supported, 10baseT_Half);
+			ethtool_link_ksettings_add_link_mode(kcmd, supported, 100baseT_Half);
+			ethtool_link_ksettings_add_link_mode(kcmd, supported, 1000baseT_Half);
+
+			kcmd->base.port = PORT_TP;
+			kcmd->base.transceiver = XCVR_EXTERNAL;
 		}
 	}
 	return 0;
 }
-*/
-/*
 static int xsvnic_set_ringparam(struct net_device *netdev,
 				struct ethtool_ringparam *ering)
 {
@@ -1623,8 +1628,6 @@ static int xsvnic_set_ringparam(struct net_device *netdev,
 	xsvnic_set_oper_down(xsvnicp, 1);
 	return 0;
 }
-*/
-/*
 static void xsvnic_get_ringparam(struct net_device *netdev,
 				 struct ethtool_ringparam *ering)
 {
@@ -1639,8 +1642,6 @@ static void xsvnic_get_ringparam(struct net_device *netdev,
 	ering->tx_max_pending = 2048;
 	ering->tx_pending = xsvnicp->data_conn.ctx.tx_ring_size;
 }
-*/
-/*
 static void xsvnic_get_drvinfo(struct net_device *netdev,
 			       struct ethtool_drvinfo *drvinfo)
 {
@@ -1649,7 +1650,6 @@ static void xsvnic_get_drvinfo(struct net_device *netdev,
 	strncpy(drvinfo->fw_version, "N/A", 32);
 	strncpy(drvinfo->bus_info, "N/A", 32);
 }
-*/
 
 u32 xsvnic_op_get_rx_csum(struct net_device *dev)
 {
@@ -1731,16 +1731,14 @@ int xsvnic_set_coalesce(struct net_device *dev, struct ethtool_coalesce *coal)
 	return 0;
 }
 
-/*
 static struct ethtool_ops xsvnic_ethtool_ops = {
-	.get_settings = xsvnic_get_settings,
+	.get_link_ksettings = xsvnic_get_ksettings,
 	.get_drvinfo = xsvnic_get_drvinfo,
 	.get_link = ethtool_op_get_link,
 	.get_ringparam = xsvnic_get_ringparam,
 	.set_ringparam = xsvnic_set_ringparam,
 	.set_coalesce = xsvnic_set_coalesce,
 };
-*/
 
 static int xsvnic_ioctl(struct net_device *netdev, struct ifreq *ifr, int cmd)
 {
