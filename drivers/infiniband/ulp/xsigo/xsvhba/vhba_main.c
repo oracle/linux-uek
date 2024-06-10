@@ -192,8 +192,6 @@ static int __init vhba_module_init(void)
 	dprintk(TRC_INIT, NULL, "Driver queue depth is %d\n", cmds_per_lun);
 	dprintk(TRC_INIT, NULL, "Driver max transfer size is %dKB\n",
 		vhba_max_transfer_size / 2);
-	dprintk(TRC_INIT,
-		NULL, "\nBuild date: " __DATE__ " @ " __TIME__ "\n\n");
 
 	/* Probably needs to be added to the regular linux driver */
 	vhba_transport_template =

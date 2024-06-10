@@ -187,7 +187,6 @@ int vhba_purge_pending_ios(struct virtual_hba *vhba)
 			if (sp->timer.function != NULL) {
 				del_timer(&sp->timer);
 				sp->timer.function = NULL;
-				sp->timer.data = (unsigned long)NULL;
 			}
 			ha->outstanding_cmds[i] = NULL;
 			CMD_SP(sp->cmd) = NULL;
@@ -233,7 +232,6 @@ void vhba_taskmgmt_flush_ios(struct virtual_hba *vhba, int tgt_id, int lun,
 				if (sp->timer.function != NULL) {
 					del_timer(&sp->timer);
 					sp->timer.function = NULL;
-					sp->timer.data = (unsigned long)NULL;
 				}
 				ha->outstanding_cmds[i] = NULL;
 				CMD_SP(sp->cmd) = NULL;
@@ -375,7 +373,6 @@ void process_status_entry(struct virtual_hba *vhba, struct sts_entry_24xx *sts)
 	if (sp->timer.function != NULL) {
 		del_timer(&sp->timer);
 		sp->timer.function = NULL;
-		sp->timer.data = (unsigned long)NULL;
 	}
 
 	if (sts->entry_type == COMMAND_TYPE_7) {
@@ -529,7 +526,7 @@ void process_status_entry(struct virtual_hba *vhba, struct sts_entry_24xx *sts)
 				"scsi(%ld:%d:%d:%d) cmd=%p pid=%ld\n",
 				ha->host_no, cp->device->channel,
 				(int)cp->device->id, (int)cp->device->lun, cp,
-				cp->serial_number);
+				cp->state);
 
 		} else {
 
@@ -583,7 +580,7 @@ void process_status_entry(struct virtual_hba *vhba, struct sts_entry_24xx *sts)
 		dprintk(TRC_SCSI_ERRS, vhba, " 0x%x\n", cp->cmnd[5]);
 
 		dprintk(TRC_SCSI_ERRS, vhba, "PID=0x%lx req=0x%x xtra=0x%x --",
-			cp->serial_number, request_bufflen, resid_len);
+			cp->state, request_bufflen, resid_len);
 		dprintk(TRC_SCSI_ERRS, vhba, "\nreturning DID_ERROR status\n");
 		cp->result = DID_ERROR << 16;
 		break;

@@ -488,12 +488,12 @@ struct scsi_host_template xg_vhba_driver_template = {
 #endif
 	.this_id = -1,
 	.cmd_per_lun = 1,
-	.use_clustering = ENABLE_CLUSTERING,
 /* Xsigo limit is 6 */
 	.sg_tablesize = 1,
 /* 512 secs * 512 bytes = VH limit (256 KB) */
 	.max_sectors = VHBA_DEFAULT_TRANSFER_SIZE,
-	.use_blk_tags = 1,
+	.max_segment_size = UINT_MAX,
+	.dma_boundary  = PAGE_SIZE - 1,
 };
 
 void sp_put(struct virtual_hba *vhba, struct srb *sp)
@@ -662,7 +662,6 @@ static int xg_vhba_eh_abort(struct scsi_cmnd *cmd)
 		if (sp->timer.function != NULL) {
 			del_timer(&sp->timer);
 			sp->timer.function = NULL;
-			sp->timer.data = (unsigned long)NULL;
 		}
 		sp->state = VHBA_IO_STATE_ABORT_FAILED;
 		spin_unlock_irqrestore(&ha->io_lock, flags);
@@ -674,7 +673,6 @@ success:
 	if (sp->timer.function != NULL) {
 		del_timer(&sp->timer);
 		sp->timer.function = NULL;
-		sp->timer.data = (unsigned long)NULL;
 	}
 	sp->cmd->result = DID_ABORT << 16;
 	/*
