@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2023 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2025, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -369,6 +369,7 @@ static void rds_rdma_free_dev_rs_worker(struct work_struct *work)
 		 */
 		kref_put(&rrds->rrds_kref, rds_rrds_free);
 		mutex_unlock(&rs->rs_trans_lock);
+		return;
 	}
 
 	complete(&rrds->rrds_work_done);
