@@ -854,7 +854,9 @@ static void rds_rdma_dev_rs_drop(struct rds_ib_device *rds_ibdev)
 		 * knows that this rrds has been dissociated.
 		 */
 		list_del_init(&rrds->rrds_list);
-		queue_work(rds_ibdev->rid_dev_wq, &rrds->rrds_free_work);
+		rds_sock_addref(rrds->rrds_rs);
+		if (!queue_work(rds_ibdev->rid_dev_wq, &rrds->rrds_free_work))
+			rds_sock_put(rrds->rrds_rs);
 	}
 	spin_unlock_irqrestore(&rds_ibdev->rid_rs_list_lock, flags);
 }
