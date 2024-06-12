@@ -948,7 +948,7 @@ static int rvu_setup_cpt_hw_resource(struct rvu *rvu, int blkaddr)
 		return 0;
 	blkid = (blkaddr == BLKADDR_CPT0) ? 0 : 1;
 	cfg = rvu_read64(rvu, blkaddr, CPT_AF_CONSTANTS0);
-	block->lf.max = cfg & 0xFF;
+	block->lf.max = cfg & 0x1FF;
 	block->addr = blkaddr;
 	block->type = BLKTYPE_CPT;
 	block->multislot = true;
