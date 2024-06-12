@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2023, Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2025, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -1157,6 +1157,7 @@ void rds_sock_addref(struct rds_sock *rs)
 {
 	debug_sock_hold(rds_rs_to_sk(rs));
 }
+EXPORT_SYMBOL_GPL(rds_sock_addref);
 
 void debug_sock_put(struct sock *sk)
 {
@@ -1180,6 +1181,7 @@ void rds_sock_put(struct rds_sock *rs)
 {
 	debug_sock_put(rds_rs_to_sk(rs));
 }
+EXPORT_SYMBOL_GPL(rds_sock_put);
 
 static struct net_proto_family rds_family_ops = {
 	.family =	AF_RDS,
