@@ -1162,8 +1162,9 @@ static int setup_hw_port_stats(struct ib_port *port,
 	group->attrs[pos] = &attr->attr.attr;
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
-	i++;
-	attr = &data->attrs[i];
+	/* Extra attr is allocated in alloc_hw_stats_port() */
+	pos++;
+	attr = &data->attrs[pos];
 	sysfs_attr_init(&attr->attr.attr);
 	attr->attr.attr.name = "clear_counters";
 	attr->attr.attr.mode = S_IWUSR | S_IRUSR;
@@ -1171,7 +1172,7 @@ static int setup_hw_port_stats(struct ib_port *port,
 	attr->show = show_clear_hw_port_stats;
 	attr->attr.store = hw_stat_port_store;
 	attr->store = set_clear_hw_port_stats;
-	group->attrs[i] = &attr->attr.attr;
+	group->attrs[pos] = &attr->attr.attr;
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	port->hw_stats_data = data;
