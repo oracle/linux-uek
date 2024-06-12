@@ -232,6 +232,8 @@ void rds_tcp_set_callbacks(struct socket *sock, struct rds_conn_path *cp)
 		sock->sk->sk_data_ready = sock->sk->sk_user_data;
 
 	tc->t_sock = sock;
+	if (!tc->t_rtn)
+		tc->t_rtn = net_generic(sock_net(sock->sk), rds_tcp_netid);
 	tc->t_orig_data_ready = sock->sk->sk_data_ready;
 	tc->t_orig_write_space = sock->sk->sk_write_space;
 	tc->t_orig_state_change = sock->sk->sk_state_change;
@@ -378,6 +380,7 @@ static int rds_tcp_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 
 		mutex_init(&tc->t_conn_path_lock);
 		tc->t_sock = NULL;
+		tc->t_rtn = NULL;
 		tc->t_tinc = NULL;
 		tc->t_tinc_hdr_rem = sizeof(struct rds_header);
 		tc->t_tinc_data_rem = 0;
@@ -444,6 +447,7 @@ struct rds_transport rds_tcp_transport = {
 	.recv_path		= rds_tcp_recv_path,
 	.conn_alloc		= rds_tcp_conn_alloc,
 	.conn_free		= rds_tcp_conn_free,
+	.conn_slots_available	= rds_tcp_conn_slots_available,
 	.conn_path_connect	= rds_tcp_conn_path_connect,
 	.conn_path_shutdown	= rds_tcp_conn_path_shutdown,
 	.inc_copy_to_user	= rds_tcp_inc_copy_to_user,
@@ -458,7 +462,7 @@ struct rds_transport rds_tcp_transport = {
 	.t_conn_count		= ATOMIC_INIT(0),
 };
 
-static int rds_tcp_netid;
+int rds_tcp_netid;
 
 /* All module specific customizations to the RDS-TCP socket should be done in
  * rds_tcp_tune() and applied after socket creation.
@@ -491,15 +495,12 @@ static void rds_tcp_accept_worker(struct work_struct *work)
 	trace_rds_queue_worker(NULL, NULL, rtn->rds_tcp_accept_wq, work, 0,
 			       "tcp accept worker");
 
-	while (rds_tcp_accept_one(rtn->rds_tcp_listen_sock) == 0)
+	while (rds_tcp_accept_one(rtn) == 0)
 		cond_resched();
 }
 
-void rds_tcp_accept_work(struct sock *sk)
+void rds_tcp_accept_work(struct rds_tcp_net *rtn)
 {
-	struct net *net = sock_net(sk);
-	struct rds_tcp_net *rtn = net_generic(net, rds_tcp_netid);
-
 	rds_queue_work(NULL, rtn->rds_tcp_accept_wq,
 		       &rtn->rds_tcp_accept_w, "tcp accept");
 }
@@ -511,6 +512,8 @@ static __net_init int rds_tcp_init_net(struct net *net)
 	int err = 0;
 
 	memset(rtn, 0, sizeof(*rtn));
+
+	mutex_init(&rtn->rds_tcp_accept_lock);
 
 	rtn->rds_tcp_accept_wq =
 		create_singlethread_workqueue("rds_tcp_accept");
@@ -598,6 +601,8 @@ static void rds_tcp_kill_sock(struct net *net, struct rds_tcp_net *rtn)
 
 	rtn->rds_tcp_listen_sock = NULL;
 	rds_tcp_listen_stop(lsock, &rtn->rds_tcp_accept_w);
+	if (rtn->rds_tcp_accepted_sock)
+		sock_release(rtn->rds_tcp_accepted_sock);
 	spin_lock_irq(&rds_tcp_conn_lock);
 	list_for_each_entry_safe(tc, _tc, &rds_tcp_conn_list, t_tcp_node) {
 		struct net *c_net = tc->t_cpath->cp_conn->c_net;
