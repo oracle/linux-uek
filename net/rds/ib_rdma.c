@@ -349,6 +349,8 @@ static void rds_rdma_free_dev_rs_worker(struct work_struct *work)
 	mutex_lock(&rs->rs_trans_lock);
 	rs_released = rrds->rrds_rs_released;
 	rrds->rrds_dev_released = true;
+	if (!rs_released)
+		rs->rs_trans_private = NULL;
 	mutex_unlock(&rs->rs_trans_lock);
 
 	/* Release all the ibmrs if we are the only or first to be called.
@@ -361,14 +363,10 @@ static void rds_rdma_free_dev_rs_worker(struct work_struct *work)
 	if (!rs_released) {
 		rds_rdma_drop_keys(rs);
 
-		mutex_lock(&rs->rs_trans_lock);
-		rs->rs_trans_private = NULL;
-
 		/* The rds_sock may find rrds before rs_trans_private is unset.
 		 * So we cannot simply free this rrds.
 		 */
 		kref_put(&rrds->rrds_kref, rds_rrds_free);
-		mutex_unlock(&rs->rs_trans_lock);
 		return;
 	}
 
