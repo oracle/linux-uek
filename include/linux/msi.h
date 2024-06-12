@@ -210,7 +210,6 @@ struct msi_desc {
 	unsigned int			nvec_used;
 	struct device			*dev;
 	struct msi_msg			msg;
-	UEK_KABI_FILL_HOLE(u16		msi_index)
 	struct irq_affinity_desc	*affinity;
 #ifdef CONFIG_IRQ_MSI_IOMMU
 	const void			*iommu_cookie;
@@ -241,7 +240,9 @@ struct msi_desc {
 			};
 		};
 
-		struct platform_msi_desc        platform;
+		UEK_KABI_REPLACE2(struct platform_msi_desc platform,
+				  struct platform_msi_priv_data *msi_priv_data,
+				  u16 msi_index)
 		struct fsl_mc_msi_desc		fsl_mc;
 		struct ti_sci_inta_msi_desc	inta;
 	};
