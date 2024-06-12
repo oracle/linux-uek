@@ -33,6 +33,8 @@
 #include <linux/kernel.h>
 #include <linux/in.h>
 #include <net/tcp.h>
+#include <net/net_namespace.h>
+#include <net/netns/generic.h>
 
 #include "trace.h"
 
@@ -67,19 +69,12 @@ rds_tcp_accept_one_path(struct rds_connection *conn)
 	int i;
 	int npaths = max_t(int, 1, conn->c_npaths);
 
-	if (rds_addr_cmp(&conn->c_faddr, &conn->c_laddr) >= 0) {
-		if (npaths <= 1)
-			rds_conn_path_connect_if_down(&conn->c_path[0]);
-		return NULL;
-	}
-
 	for (i = 0; i < npaths; i++) {
 		struct rds_conn_path *cp = &conn->c_path[i];
 
 		if (rds_conn_path_transition(cp, RDS_CONN_DOWN,
-					     RDS_CONN_CONNECTING, DR_DEFAULT)) {
+					     RDS_CONN_CONNECTING, DR_DEFAULT))
 			return cp->cp_transport_data;
-		}
 	}
 	return NULL;
 }
@@ -89,8 +84,37 @@ void rds_tcp_set_linger(struct socket *sock)
 	sock_no_linger(sock->sk);
 }
 
-int rds_tcp_accept_one(struct socket *sock)
+void rds_tcp_conn_slots_available(struct rds_connection *conn)
 {
+	struct rds_tcp_connection *tc;
+	struct rds_tcp_net *rtn;
+
+	smp_rmb();
+	if (conn->c_destroy_in_prog)
+		return;
+
+	tc = conn->c_path->cp_transport_data;
+	rtn = tc->t_rtn;
+	if (!rtn)
+		return;
+
+	/* As soon as a connection went down,
+	 * it is safe to schedule a "rds_tcp_accept_one"
+	 * attempt even if there are no connections pending:
+	 * Function "rds_tcp_accept_one" won't block
+	 * but simply return -EAGAIN in that case.
+	 *
+	 * Doing so is necessary to address the case where an
+	 * incoming connection on "rds_tcp_listen_sock" is ready
+	 * to be acccepted prior to a free slot being available:
+	 * the -ENOBUFS case in "rds_tcp_accept_one".
+	 */
+	rds_tcp_accept_work(rtn);
+}
+
+int rds_tcp_accept_one(struct rds_tcp_net *rtn)
+{
+	struct socket *listen_sock = rtn->rds_tcp_listen_sock;
 	struct socket *new_sock = NULL;
 	struct rds_connection *conn = NULL;
 	int ret;
@@ -109,43 +133,52 @@ int rds_tcp_accept_one(struct socket *sock)
 	int dev_if = 0;
 	char *reason = NULL;
 
-	if (!sock) {
+	mutex_lock(&rtn->rds_tcp_accept_lock);
+
+	if (!listen_sock) {
 		reason = "module unload/netns delete in progress";
 		ret = -ENETUNREACH;
 		goto out;
 	}
 
-	ret = sock_create_lite(sock->sk->sk_family,
-			       sock->sk->sk_type, sock->sk->sk_protocol,
-			       &new_sock);
-	if (ret) {
-		reason = "socket creation failed";
-		goto out;
+	new_sock = rtn->rds_tcp_accepted_sock;
+	rtn->rds_tcp_accepted_sock = NULL;
+
+	if (!new_sock) {
+		ret = sock_create_lite(listen_sock->sk->sk_family,
+				       listen_sock->sk->sk_type,
+				       listen_sock->sk->sk_protocol,
+				       &new_sock);
+		if (ret) {
+			reason = "socket creation failed";
+			goto out;
+		}
+
+		/* Function "rds_tcp_conn_slots_available" depends on O_NONBLOCK */
+		ret = listen_sock->ops->accept(listen_sock, new_sock, &accept_arg);
+		if (ret < 0) {
+			reason = "accept sock op failed";
+			goto out;
+		}
+
+		/* sock_create_lite() does not get a hold on the owner module so we
+		 * need to do it here.  Note that sock_release() uses sock->ops to
+		 * determine if it needs to decrement the reference count.  So set
+		 * sock->ops after calling accept() in case that fails.  And there's
+		 * no need to do try_module_get() as the listener should have a hold
+		 * already.
+		 */
+		new_sock->ops = listen_sock->ops;
+		__module_get(new_sock->ops->owner);
+
+		ret = rds_tcp_keepalive(new_sock);
+		if (ret < 0) {
+			reason = "keepalive setting failed";
+			goto out;
+		}
+
+		rds_tcp_tune(new_sock);
 	}
-
-	ret = sock->ops->accept(sock, new_sock, &accept_arg);
-	if (ret < 0) {
-		reason = "accept sock op failed";
-		goto out;
-	}
-
-	/* sock_create_lite() does not get a hold on the owner module so we
-	 * need to do it here.  Note that sock_release() uses sock->ops to
-	 * determine if it needs to decrement the reference count.  So set
-	 * sock->ops after calling accept() in case that fails.  And there's
-	 * no need to do try_module_get() as the listener should have a hold
-	 * already.
-	 */
-	new_sock->ops = sock->ops;
-	__module_get(new_sock->ops->owner);
-
-	ret = rds_tcp_keepalive(new_sock);
-	if (ret < 0) {
-		reason = "keepalive setting failed";
-		goto out;
-	}
-
-	rds_tcp_tune(new_sock);
 
 
 #if IS_ENABLED(CONFIG_IPV6)
@@ -175,13 +208,13 @@ int rds_tcp_accept_one(struct socket *sock)
 	}
 #endif
 
-	if (!rds_tcp_laddr_check(sock_net(sock->sk), peer_addr, dev_if)) {
+	if (!rds_tcp_laddr_check(sock_net(listen_sock->sk), peer_addr, dev_if)) {
 		/* local address connection is only allowed via loopback */
 		ret = -EOPNOTSUPP;
 		goto out;
 	}
 
-	conn = rds_conn_create(sock_net(sock->sk),
+	conn = rds_conn_create(sock_net(listen_sock->sk),
 			       my_addr, peer_addr,
 			       &rds_tcp_transport, 0, GFP_KERNEL, dev_if);
 	if (IS_ERR(conn)) {
@@ -189,21 +222,57 @@ int rds_tcp_accept_one(struct socket *sock)
 		ret = PTR_ERR(conn);
 		goto out;
 	}
+
 	/* An incoming SYN request came in, and TCP just accepted it.
 	 *
 	 * If the client reboots, this conn will need to be cleaned up.
 	 * rds_tcp_state_change() will do that cleanup
 	 */
-	rs_tcp = rds_tcp_accept_one_path(conn);
-	if (!rs_tcp) {
+	if (rds_addr_cmp(&conn->c_faddr, &conn->c_laddr) < 0) {
+		/* Try to obtain a free connection slot.
+		 * If unsuccessful, we need to preserve "new_sock"
+		 * that we just accepted, since its "sk_receive_queue"
+		 * may contain messages already that have been acknowledged
+		 * to and discarded by the sender.
+		 * We must not throw those away!
+		 */
+		rs_tcp = rds_tcp_accept_one_path(conn);
+		if (!rs_tcp) {
+			/* It's okay to stash "new_sock", since
+			 * "rds_tcp_conn_slots_available" triggers "rds_tcp_accept_one"
+			 * again as soon as one of the connection slots
+			 * becomes available again
+			 */
+			rtn->rds_tcp_accepted_sock = new_sock;
+			new_sock = NULL;
+			reason = "no connection slot available right now";
+			ret = -ENOBUFS;
+			goto out;
+		}
+	} else {
+		/* This connection request came from a peer with
+		 * a larger address.
+		 * Function "rds_tcp_state_change" makes sure
+		 * that the connection doesn't transition
+		 * to state "RDS_CONN_UP", and therefore
+		 * we should not have received any messages
+		 * on this socket yet.
+		 * This is the only case where it's okay to
+		 * not dequeue messages from "sk_receive_queue".
+		 */
+		if (conn->c_npaths <= 1)
+			rds_conn_path_connect_if_down(&conn->c_path[0]);
+		rs_tcp = NULL;
 		reason = "force reconnect from smaller IP";
 		goto rst_nsk;
 	}
+
 	mutex_lock(&rs_tcp->t_conn_path_lock);
 	cp = rs_tcp->t_cpath;
 	conn_state = rds_conn_path_state(cp);
 	BUG_ON(conn_state == RDS_CONN_UP);
 	if (conn_state != RDS_CONN_CONNECTING && conn_state != RDS_CONN_ERROR) {
+		rds_conn_path_drop(cp, DR_INV_CONN_STATE, 0);
 		reason = "unexpected conn state";
 		goto rst_nsk;
 	}
@@ -239,13 +308,16 @@ rst_nsk:
 out:
 	if (ret)
 		trace_rds_tcp_accept_err(conn, cp, rs_tcp,
-					 sock ? sock->sk : NULL, reason, ret);
+					 listen_sock ? listen_sock->sk : NULL,
+					 reason, ret);
 	else
-		trace_rds_tcp_accept(conn, cp, rs_tcp, sock->sk, "accept", ret);
+		trace_rds_tcp_accept(conn, cp, rs_tcp, listen_sock->sk, "accept", ret);
 	if (rs_tcp)
 		mutex_unlock(&rs_tcp->t_conn_path_lock);
 	if (new_sock)
 		sock_release(new_sock);
+
+	mutex_unlock(&rtn->rds_tcp_accept_lock);
 
 	return ret;
 }
@@ -273,7 +345,7 @@ void rds_tcp_listen_data_ready(struct sock *sk)
 	 * the listen socket is being torn down.
 	 */
 	if (sk->sk_state == TCP_LISTEN)
-		rds_tcp_accept_work(sk);
+		rds_tcp_accept_work(net_generic(sock_net(sk), rds_tcp_netid));
 	else
 		ready = rds_tcp_listen_sock_def_readable(sock_net(sk));
 
