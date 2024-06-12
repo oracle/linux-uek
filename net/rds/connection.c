@@ -514,6 +514,9 @@ static void rds_conn_shutdown_final(struct rds_conn_path *cp)
 
 	if (cp->cp_shutdown_final)
 		complete(cp->cp_shutdown_final);
+
+	if (conn->c_trans->conn_slots_available)
+		conn->c_trans->conn_slots_available(conn);
 }
 
 static void rds_conn_shutdown_check_wait(struct work_struct *work)
