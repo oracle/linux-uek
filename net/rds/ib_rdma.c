@@ -367,10 +367,12 @@ static void rds_rdma_free_dev_rs_worker(struct work_struct *work)
 		 * So we cannot simply free this rrds.
 		 */
 		kref_put(&rrds->rrds_kref, rds_rrds_free);
-		return;
+		goto out;
 	}
 
 	complete(&rrds->rrds_work_done);
+out:
+	rds_sock_put(rs);
 }
 
 /* Given an IP address, find the RDMA device associated with that address
