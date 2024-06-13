@@ -103,10 +103,10 @@ static struct rpc_task *_nfs41_proc_sequence(struct nfs_client *clp,
 		const struct cred *cred,
 		struct nfs4_slot *slot,
 		bool is_privileged);
-static int nfs41_test_stateid(struct nfs_server *, nfs4_stateid *,
-		const struct cred *);
+static int nfs41_test_stateid(struct nfs_server *, const nfs4_stateid *,
+			      const struct cred *);
 static int nfs41_free_stateid(struct nfs_server *, const nfs4_stateid *,
-		const struct cred *, bool);
+			      const struct cred *, bool);
 #endif
 static void nfs4_bitmask_set(__u32 bitmask[NFS4_BITMASK_SZ],
 			     const __u32 *src, struct inode *inode,
@@ -2814,16 +2814,16 @@ static int nfs40_open_expired(struct nfs4_state_owner *sp, struct nfs4_state *st
 }
 
 static int nfs40_test_and_free_expired_stateid(struct nfs_server *server,
-		nfs4_stateid *stateid,
-		const struct cred *cred)
+					       const nfs4_stateid *stateid,
+					       const struct cred *cred)
 {
 	return -NFS4ERR_BAD_STATEID;
 }
 
 #if defined(CONFIG_NFS_V4_1)
 static int nfs41_test_and_free_expired_stateid(struct nfs_server *server,
-		nfs4_stateid *stateid,
-		const struct cred *cred)
+					       const nfs4_stateid *stateid,
+					       const struct cred *cred)
 {
 	int status;
 
@@ -10160,12 +10160,12 @@ out:
 }
 
 static int _nfs41_test_stateid(struct nfs_server *server,
-		nfs4_stateid *stateid,
-		const struct cred *cred)
+			       const nfs4_stateid *stateid,
+			       const struct cred *cred)
 {
 	int status;
 	struct nfs41_test_stateid_args args = {
-		.stateid = stateid,
+		.stateid = *stateid,
 	};
 	struct nfs41_test_stateid_res res;
 	struct rpc_message msg = {
@@ -10221,8 +10221,8 @@ static void nfs4_handle_delay_or_session_error(struct nfs_server *server,
  * failed or the state ID is not currently valid.
  */
 static int nfs41_test_stateid(struct nfs_server *server,
-		nfs4_stateid *stateid,
-		const struct cred *cred)
+			      const nfs4_stateid *stateid,
+			      const struct cred *cred)
 {
 	struct nfs4_exception exception = {
 		.interruptible = true,
