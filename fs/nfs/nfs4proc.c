@@ -9738,6 +9738,11 @@ static void nfs4_layoutreturn_done(struct rpc_task *task, void *calldata)
 	if (!nfs41_sequence_process(task, &lrp->res.seq_res))
 		return;
 
+	if (task->tk_rpc_status == -ETIMEDOUT) {
+		lrp->rpc_status = -EAGAIN;
+		lrp->res.lrs_present = 0;
+		return;
+	}
 	/*
 	 * Was there an RPC level error? Assume the call succeeded,
 	 * and that we need to release the layout
@@ -9761,6 +9766,15 @@ static void nfs4_layoutreturn_done(struct rpc_task *task, void *calldata)
 		fallthrough;
 	case 0:
 		break;
+	case -NFS4ERR_BADSESSION:
+	case -NFS4ERR_DEADSESSION:
+	case -NFS4ERR_CONN_NOT_BOUND_TO_SESSION:
+		nfs4_schedule_session_recovery(server->nfs_client->cl_session,
+					       task->tk_status);
+		lrp->res.lrs_present = 0;
+		lrp->rpc_status = -EAGAIN;
+		task->tk_status = 0;
+		break;
 	case -NFS4ERR_DELAY:
 		if (nfs4_async_handle_error(task, server, NULL, NULL) ==
 		    -EAGAIN)
@@ -9782,8 +9796,13 @@ static void nfs4_layoutreturn_release(void *calldata)
 	struct pnfs_layout_hdr *lo = lrp->args.layout;
 
 	dprintk("--> %s\n", __func__);
-	pnfs_layoutreturn_free_lsegs(lo, &lrp->args.stateid, &lrp->args.range,
+	if (lrp->rpc_status == 0 || !lrp->inode)
+		pnfs_layoutreturn_free_lsegs(
+			lo, &lrp->args.stateid, &lrp->args.range,
 			lrp->res.lrs_present ? &lrp->res.stateid : NULL);
+	else
+		pnfs_layoutreturn_retry_later(lo, &lrp->args.stateid,
+					      &lrp->args.range);
 	nfs4_sequence_free_slot(&lrp->res.seq_res);
 	if (lrp->ld_private.ops && lrp->ld_private.ops->free)
 		lrp->ld_private.ops->free(&lrp->ld_private);
