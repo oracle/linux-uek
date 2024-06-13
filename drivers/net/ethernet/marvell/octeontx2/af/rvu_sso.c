@@ -1521,6 +1521,36 @@ static irqreturn_t rvu_sso_af_err0_intr_handler(int irq, void *ptr)
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_ERR0);
 	dev_err_ratelimited(rvu->dev, "Received SSO_AF_ERR0 irq : 0x%llx", reg);
 
+	if (reg & BIT_ULL(21)) {
+		dev_err_ratelimited(rvu->dev,
+				    "NCB detected poison on EVA load data.");
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_EVA_POISON);
+	}
+
+	if (reg & BIT_ULL(20)) {
+		dev_err_ratelimited(rvu->dev,
+				    "Event Aggregation encountered an Error while tying to store the contents of a VWQE to main memory.");
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_VWQE_ST_DIGEST);
+	}
+
+	if (reg & BIT_ULL(19)) {
+		dev_err_ratelimited(rvu->dev,
+				    "Event Aggregation received aggregation request from Guest Groups, for which SSO_LF()_AGGR_CFG[VWQE_ENA] was not set,");
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_AGGRDIS_DIGEST);
+	}
+
+	if (reg & BIT_ULL(18)) {
+		dev_err_ratelimited(rvu->dev,
+				    "Event Aggregation encountered an Error while tying to read the Context Structure of an Aggregation Queue from main memory.");
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_AGGR_CTX_DIGEST);
+	}
+
+	if (reg & BIT_ULL(17)) {
+		dev_err_ratelimited(rvu->dev,
+				    "The NPA Pointer Fetch from Event Aggregation returned an error indication.");
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_AGGR_NPA_DIGEST);
+	}
+
 	if (reg & BIT_ULL(16)) {
 		dev_err_ratelimited(rvu->dev, "Fault when performing a stash request");
 		SSO_AF_INT_DIGEST_PRNT(SSO_AF_BAD_STASH_DIGEST)
@@ -1672,9 +1702,16 @@ static irqreturn_t rvu_sso_af_ras_intr_handler(int irq, void *ptr)
 	block = &rvu->hw->block[blkaddr];
 
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_RAS);
-	dev_err_ratelimited(rvu->dev, "received SSO_AF_RAS irq : 0x%llx", reg);
+	if (reg & BIT_ULL(1)) {
+		dev_err_ratelimited(rvu->dev, "	An EVA read returned poison.");
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_EVA_POISON)
+	}
+
+	if (reg & BIT_ULL(0)) {
+		dev_err_ratelimited(rvu->dev, "An XAQ read returned poison.");
+		SSO_AF_INT_DIGEST_PRNT(SSO_AF_POISON)
+	}
 	rvu_write64(rvu, blkaddr, SSO_AF_RAS, reg);
-	SSO_AF_INT_DIGEST_PRNT(SSO_AF_POISON)
 
 	return IRQ_HANDLED;
 }
