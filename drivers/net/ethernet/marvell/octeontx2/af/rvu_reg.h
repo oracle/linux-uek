@@ -551,6 +551,8 @@
 #define SSO_AF_HWSX_LSW_CFG(a)		(0x400300 | (a) << 12)
 #define SSO_AF_HWSX_SX_GRPMSKX(a, b, c) \
 				(0x400400 | (a) << 12 | (b) << 5 | (c) << 3)
+#define SSO_AF_HWSX_SX_GRPMSKX_EXT(a, b, c) \
+				(0x400400 | (a) << 12 | (b) << 6 | (c) << 3)
 #define SSO_AF_TAQX_LINK(a)		(0xc00000 | (a) << 3)
 #define SSO_AF_TAQX_WAEY_TAG(a, b)	(0xe00000 | (a) << 8 | (b) << 4)
 #define SSO_AF_TAQX_WAEY_WQP(a, b)	(0xe00008 | (a) << 8 | (b) << 4)
@@ -597,8 +599,8 @@
 #define SSO_AF_HWGRP_IU_ACCNT_MAX_THR	0x7FFFull
 #define SSO_AF_BP_TEST_CFG3_MASK	GENMASK_ULL(23, 22)
 
-#define SSO_AF_TAQ_FREE_CNT_MASK	0x7FFull
-#define SSO_AF_TAQ_RSVD_FREE_MASK	0x7FFull
+#define SSO_AF_TAQ_FREE_CNT_MASK	0xFFFull
+#define SSO_AF_TAQ_RSVD_FREE_MASK	0xFFFull
 #define SSO_AF_TAQ_RSVD_FREE_SHIFT	16
 #define SSO_AF_TAQ_FREE_CNT_MAX		SSO_AF_TAQ_FREE_CNT_MASK
 #define SSO_AF_TAQ_ADD_RSVD_FREE_MASK	0x1FFFull
@@ -615,9 +617,9 @@
 #define SSO_HWGRP_PRI_MASK		0x7ull
 #define SSO_HWGRP_PRI_AFF_MASK		0xFull
 #define SSO_HWGRP_PRI_AFF_SHIFT		8
-#define SSO_HWGRP_PRI_WGT_MASK		0x3Full
+#define SSO_HWGRP_PRI_WGT_MASK		0XFFull
 #define SSO_HWGRP_PRI_WGT_SHIFT		16
-#define SSO_HWGRP_PRI_WGT_LEFT_MASK	0x3Full
+#define SSO_HWGRP_PRI_WGT_LEFT_MASK	0x1FFull
 #define SSO_HWGRP_PRI_WGT_LEFT_SHIFT	24
 
 #define SSO_HWGRP_AW_CFG_RWEN		BIT_ULL(0)

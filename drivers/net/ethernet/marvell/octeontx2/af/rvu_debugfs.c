@@ -4133,7 +4133,7 @@ static void sso_hwgrp_display_taq_list(struct rvu *rvu, int ssolf, u8 wae_head,
 				 SSO_AF_TAQX_LINK(ent_head));
 		pr_info("SSO HWGGRP[%d] TAQ[%d] LINK         0x%llx\n",
 			ssolf, ent_head, reg);
-		ent_head = reg & 0x7FF;
+		ent_head = reg & 0xFFF;
 		pr_info("--------------------------------------------------\n");
 	} while (ent_head && wae_used);
 }
@@ -4342,8 +4342,8 @@ static void read_sso_hwgrp_taq_list(struct rvu *rvu, int ssolf, bool all)
 		reg = rvu_read64(rvu, blkaddr, SSO_AF_TOAQX_STATUS(ssolf));
 		pr_info("SSO HWGGRP[%d] TOAQ Status          0x%llx\n", ssolf,
 			reg);
-		ent_head = (reg >> 12) & 0x7FF;
-		cl_used = (reg >> 32) & 0x7FF;
+		ent_head = (reg >> 12) & 0xFFF;
+		cl_used = (reg >> 32) & 0xFFF;
 		if (reg & BIT_ULL(61) && cl_used) {
 			pr_info("SSO HWGGRP[%d] TOAQ CL_USED         0x%x\n",
 				ssolf, cl_used);
@@ -4359,7 +4359,7 @@ static void read_sso_hwgrp_taq_list(struct rvu *rvu, int ssolf, bool all)
 			reg);
 		wae_head = (reg >> 60) & 0xF;
 		cl_used = (reg >> 32) & 0x7FFF;
-		ent_head = (reg >> 12) & 0x7FF;
+		ent_head = (reg >> 12) & 0xFFF;
 		if (reg & BIT_ULL(61) && cl_used) {
 			pr_info("SSO HWGGRP[%d] TIAQ WAE_USED         0x%x\n",
 				ssolf, cl_used);

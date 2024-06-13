@@ -669,6 +669,32 @@ int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	return 0;
 }
 
+static void rvu_sso_grp_mask_set(struct rvu *rvu, int blkaddr, int hws, u8 set,
+				 u64 grpmsk, u64 val)
+{
+	struct sso_rsrc *sso = &rvu->hw->sso;
+
+	if (sso->sso_hwgrps > 256)
+		rvu_write64(rvu, blkaddr,
+			    SSO_AF_HWSX_SX_GRPMSKX_EXT(hws, set, grpmsk), val);
+	else
+		rvu_write64(rvu, blkaddr,
+			    SSO_AF_HWSX_SX_GRPMSKX(hws, set, grpmsk), val);
+}
+
+static u64 rvu_sso_grp_mask_get(struct rvu *rvu, int blkaddr, int hws, u8 set,
+				u64 grpmsk)
+{
+	struct sso_rsrc *sso = &rvu->hw->sso;
+
+	if (sso->sso_hwgrps > 256)
+		return rvu_read64(rvu, blkaddr,
+				  SSO_AF_HWSX_SX_GRPMSKX_EXT(hws, set, grpmsk));
+	else
+		return rvu_read64(rvu, blkaddr,
+				  SSO_AF_HWSX_SX_GRPMSKX(hws, set, grpmsk));
+}
+
 int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 {
 	bool has_prefetch, has_lsw, has_hw_flr;
@@ -757,12 +783,8 @@ skip_hw_flr_steps:
 
 	/* Unset the HWS Hardware Group Mask. */
 	for (grpmsk = 0; grpmsk < (sso->sso_hwgrps / 64); grpmsk++) {
-		rvu_write64(rvu, blkaddr,
-			    SSO_AF_HWSX_SX_GRPMSKX(lf, 0, grpmsk),
-			    0x0);
-		rvu_write64(rvu, blkaddr,
-			    SSO_AF_HWSX_SX_GRPMSKX(lf, 1, grpmsk),
-			    0x0);
+		rvu_sso_grp_mask_set(rvu, blkaddr, lf, 0, grpmsk, 0x0);
+		rvu_sso_grp_mask_set(rvu, blkaddr, lf, 1, grpmsk, 0x0);
 	}
 
 	rvu_bar2_sel_write64(rvu, ssow_blkaddr, SSOW_AF_BAR2_SEL, 0x0);
@@ -825,7 +847,6 @@ void rvu_sso_deinit_xaq_aura(struct rvu *rvu, int blkaddr, int npa_blkaddr,
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_AW_STATUS(lf));
 	if (reg & SSO_HWGRP_AW_STS_TPTR_NEXT_VLD) {
 		reg = rvu_read64(rvu, blkaddr, SSO_AF_XAQX_TAIL_NEXT(lf));
-		reg &= ~0x7F;
 		if (npa_blkaddr && reg)
 			rvu_sso_store_pair(reg, (u64)aura, free_addr);
 
@@ -837,7 +858,7 @@ void rvu_sso_deinit_xaq_aura(struct rvu *rvu, int blkaddr, int npa_blkaddr,
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_AW_STATUS(lf));
 	if (reg & SSO_HWGRP_AW_STS_TPTR_VLD) {
 		reg = rvu_read64(rvu, blkaddr, SSO_AF_XAQX_TAIL_PTR(lf));
-		reg &= ~0x7F;
+		reg &= ~0x3F;
 		if (npa_blkaddr && reg)
 			rvu_sso_store_pair(reg, (u64)aura, free_addr);
 
@@ -1363,17 +1384,13 @@ int rvu_mbox_handler_ssow_chng_mship(struct rvu *rvu,
 		pos = ssolf / 64;
 		bit = ssolf % 64;
 
-		reg = rvu_read64(rvu, blkaddr, SSO_AF_HWSX_SX_GRPMSKX(ssowlf,
-								      req->set,
-								      pos));
+		reg = rvu_sso_grp_mask_get(rvu, blkaddr, ssowlf, req->set, pos);
 		if (req->enable)
 			reg |= BIT_ULL(bit);
 		else
 			reg &= ~BIT_ULL(bit);
 
-		rvu_write64(rvu, blkaddr, SSO_AF_HWSX_SX_GRPMSKX(ssowlf,
-								 req->set,
-								 pos), reg);
+		rvu_sso_grp_mask_set(rvu, blkaddr, ssowlf, req->set, pos, reg);
 	}
 
 	return 0;
@@ -1831,14 +1848,8 @@ int rvu_sso_init(struct rvu *rvu)
 	 * using SSOW_LF_GWS_GRPMSK_CHG based on the LF allocations.
 	 */
 	for (grpmsk = 0; grpmsk < (sso->sso_hwgrps / 64); grpmsk++) {
-		for (hws = 0; hws < sso->sso_hws; hws++) {
-			rvu_write64(rvu, blkaddr,
-				    SSO_AF_HWSX_SX_GRPMSKX(hws, 0, grpmsk),
-				    0x0);
-			rvu_write64(rvu, blkaddr,
-				    SSO_AF_HWSX_SX_GRPMSKX(hws, 1, grpmsk),
-				    0x0);
-		}
+		for (hws = 0; hws < sso->sso_hws; hws++)
+			rvu_sso_grp_mask_set(rvu, blkaddr, hws, 0, grpmsk, 0);
 	}
 
 	/* Allocate SSO_AF_CONST::HWS + 1. As the total number of pf/vf are
