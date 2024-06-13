@@ -936,6 +936,9 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 		rds_ibdev = ic->rds_ibdev;
 		iinfo->max_send_sge = rds_ibdev->max_sge;
 		rds_ib_get_mr_info(rds_ibdev, iinfo);
+
+		iinfo->scq_irq = ib_get_vector_irqn(rds_ibdev->dev, ic->i_scq_vector);
+		iinfo->rcq_irq = ib_get_vector_irqn(rds_ibdev->dev, ic->i_rcq_vector);
 	}
 
 	iinfo->tos = conn->c_tos;
@@ -1006,6 +1009,9 @@ static int rds6_ib_conn_info_visitor(struct rds_connection *conn,
 		rds_ibdev = ic->rds_ibdev;
 		iinfo6->max_send_sge = rds_ibdev->max_sge;
 		rds6_ib_get_mr_info(rds_ibdev, iinfo6);
+
+		iinfo6->scq_irq = ib_get_vector_irqn(rds_ibdev->dev, ic->i_scq_vector);
+		iinfo6->rcq_irq = ib_get_vector_irqn(rds_ibdev->dev, ic->i_rcq_vector);
 	}
 
 	iinfo6->tos = conn->c_tos;
