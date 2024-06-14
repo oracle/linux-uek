@@ -233,6 +233,9 @@ M(SSO_CONFIG_LSW,	0x612, ssow_config_lsw,			\
 M(SSO_HWS_CHNG_MSHIP,   0x613, ssow_chng_mship, ssow_chng_mship, msg_rsp)\
 M(SSO_GRP_STASH_CONFIG, 0x614, sso_grp_stash_config, sso_grp_stash_cfg, \
 				msg_rsp)				\
+M(SSO_AGGR_SET_CONFIG,	0x615, sso_aggr_setconfig, sso_aggr_setconfig, msg_rsp)\
+M(SSO_AGGR_GET_STATS,	0x616, sso_aggr_get_stats, sso_info_req,	\
+				sso_aggr_stats)				\
 /* TIM mbox IDs (range 0x800 - 0x9FF) */				\
 M(TIM_LF_ALLOC,		0x800, tim_lf_alloc,				\
 				tim_lf_alloc_req, tim_lf_alloc_rsp)	\
@@ -1701,6 +1704,13 @@ struct sso_grp_priority {
 	u8 weight;
 };
 
+struct sso_aggr_setconfig {
+	struct mbox_msghdr hdr;
+	u16	npa_pf_func;
+	u16	hwgrp;
+	u64	rsvd[2];
+};
+
 /* SSOW mailbox error codes
  * Range 601 - 700.
  */
@@ -1782,6 +1792,16 @@ struct sso_hws_stats {
 	struct mbox_msghdr hdr;
 	u16 hws;
 	u64 arbitration;
+};
+
+struct sso_aggr_stats {
+	struct mbox_msghdr hdr;
+	u16 grp;
+	u64 flushed;
+	u64 completed;
+	u64 npa_fail;
+	u64 timeout;
+	u64 rsvd[4];
 };
 
 /* NPC mbox message structs */

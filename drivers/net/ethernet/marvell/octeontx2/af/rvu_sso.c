@@ -1190,6 +1190,63 @@ int rvu_mbox_handler_sso_hws_get_stats(struct rvu *rvu,
 	return 0;
 }
 
+int rvu_mbox_handler_sso_aggr_setconfig(struct rvu *rvu,
+					struct sso_aggr_setconfig *req,
+					struct msg_rsp *rsp)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	u16 pcifunc = req->hdr.pcifunc;
+	int lf, blkaddr;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, pcifunc);
+	if (blkaddr < 0)
+		return SSO_AF_ERR_LF_INVALID;
+
+	/* Check if requested 'SSOLF <=> NPALF' mapping is valid */
+	if (req->npa_pf_func) {
+		/* If default, use 'this' SSOLF's PFFUNC */
+		if (req->npa_pf_func == RVU_DEFAULT_PF_FUNC)
+			req->npa_pf_func = pcifunc;
+		if (!is_pffunc_map_valid(rvu, req->npa_pf_func, BLKTYPE_NPA))
+			return SSO_AF_INVAL_NPA_PF_FUNC;
+	}
+
+	lf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, req->hwgrp);
+	if (lf < 0)
+		return SSO_AF_ERR_LF_INVALID;
+
+	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_AGGR_GMCTL(lf),
+		    req->npa_pf_func);
+
+	return 0;
+}
+
+int rvu_mbox_handler_sso_aggr_get_stats(struct rvu *rvu,
+					struct sso_info_req *req,
+					struct sso_aggr_stats *rsp)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	u16 pcifunc = req->hdr.pcifunc;
+	int lf, blkaddr;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, pcifunc);
+	if (blkaddr < 0)
+		return SSO_AF_ERR_LF_INVALID;
+
+	lf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, req->grp);
+	if (lf < 0)
+		return SSO_AF_ERR_LF_INVALID;
+
+	rsp->flushed = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_VWQE_FLUSHED(lf));
+	rsp->completed =
+		rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_VWQE_NORM_COMPL(lf));
+	rsp->npa_fail =
+		rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_VWQE_NPA_FAIL(lf));
+	rsp->timeout = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_VWQE_TIMEOUT(lf));
+
+	return 0;
+}
+
 int rvu_mbox_handler_sso_lf_alloc(struct rvu *rvu, struct sso_lf_alloc_req *req,
 				  struct sso_lf_alloc_rsp *rsp)
 {
