@@ -1098,6 +1098,17 @@ cp_vmlinux()
   eu-strip --remove-comment -o "$2" "$1"
 }
 
+# We rely on CONFIG_BUILD_SALT to get unique build IDs for the kernel
+# and modules with different versions, yet identical code. But for
+# host programs, the build salt is not applied so we still get build
+# ID collisions. Fall back to using UUID-based build IDs in this case,
+# which is less reproducible, but is simple and avoids collisions.
+
+%define build_hostcflags  %{?build_cflags}
+%define build_hostldflags %{?build_ldflags} -Wl,--build-id=uuid
+
+%define make %{__make} %{?make_opts} HOSTCFLAGS="%{?build_hostcflags}" HOSTLDFLAGS="%{?build_hostldflags}"
+
 # adapted from scripts/subarch.incl
 Arch=$(echo %{_target_cpu} | sed -e s/i.86/x86/ -e s/x86_64/x86/ \
 				 -e s/sun4u/sparc64/ \
@@ -1118,11 +1129,15 @@ BuildContainerKernel() {
 
     perl -p -i -e "s/^EXTRAVERSION.*/EXTRAVERSION = ${ExtraVer}/" Makefile
 
-    make %{?make_opts} mrproper
+    %{make} mrproper
     cp configs/config-container .config
 
-    make %{?make_opts} ARCH=$Arch %{?_kernel_cc} olddefconfig > /dev/null
-    make %{?make_opts} %{?container_cflags} %{?_smp_mflags} ARCH=$Arch %{?_kernel_cc} %{?sparse_mflags} || exit 1
+    %{make} ARCH=$Arch %{?_kernel_cc} olddefconfig > /dev/null
+
+    # This ensures build-ids are unique to allow parallel debuginfo
+    perl -p -i -e "s/^CONFIG_BUILD_SALT.*/CONFIG_BUILD_SALT=\"%{KVERREL}\"/" .config
+
+    %{make} %{?container_cflags} %{?_smp_mflags} ARCH=$Arch %{?_kernel_cc} %{?sparse_mflags} || exit 1
 
     # Install
     KernelVer=%{kversion}-%{release}
@@ -1166,10 +1181,7 @@ BuildKernel() {
     perl -p -i -e "s/^EXTRAVERSION.*/EXTRAVERSION = %{?stablerev}-%{release}.%{_target_cpu}${Flavour:+.${Flavour}}/" Makefile
     #perl -p -i -e "s/^SUBLEVEL.*/SUBLEVEL = %{base_sublevel}/" Makefile
 
-    # This ensures build-ids are unique to allow parallel debuginfo
-    perl -p -i -e "s/^CONFIG_BUILD_SALT.*/CONFIG_BUILD_SALT=\"%{KVERREL}\"/" .config
-
-    make %{?make_opts} mrproper
+    %{make} mrproper
 
 %if %{signkernel}%{signmodules}
     cp %{SOURCE10} certs/.
@@ -1200,16 +1212,20 @@ BuildKernel() {
     fi
 
     echo USING ARCH=$Arch
-    make %{?make_opts} ARCH=$Arch %{?_kernel_cc} olddefconfig > /dev/null
+    %{make} ARCH=$Arch %{?_kernel_cc} olddefconfig > /dev/null
+
+    # This ensures build-ids are unique to allow parallel debuginfo
+    perl -p -i -e "s/^CONFIG_BUILD_SALT.*/CONFIG_BUILD_SALT=\"%{KVERREL}\"/" .config
+
     if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb3" ] && [ "$Flavour" != "emb3debug" ]; then
-       make %{?make_opts} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
+       %{make} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
     else
-       make %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
+       %{make} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
     fi
     mkdir -p $RPM_BUILD_ROOT/%{image_install_path}
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
 %ifarch %{arm} aarch64
-    make %{?make_opts} ARCH=$Arch %{?_kernel_cc} dtbs dtbs_install INSTALL_DTBS_PATH=$RPM_BUILD_ROOT/%{image_install_path}/dtb-$KernelVer
+    %{make} ARCH=$Arch %{?_kernel_cc} dtbs dtbs_install INSTALL_DTBS_PATH=$RPM_BUILD_ROOT/%{image_install_path}/dtb-$KernelVer
     cp -r $RPM_BUILD_ROOT/%{image_install_path}/dtb-$KernelVer $RPM_BUILD_ROOT/lib/modules/$KernelVer/dtb
     find arch/$Arch/boot/dts -name '*.dtb' -type f | xargs rm -f
 %endif
@@ -1250,11 +1266,11 @@ BuildKernel() {
     cp $RPM_BUILD_ROOT/%{image_install_path}/.vmlinuz-$KernelVer.hmac $RPM_BUILD_ROOT/lib/modules/$KernelVer/.vmlinuz.hmac
 
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
-    make %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT modules_install KERNELRELEASE=$KernelVer
+    %{make} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT modules_install KERNELRELEASE=$KernelVer
     # check if the modules are being signed
 
 %ifarch %{vdso_arches}
-    make %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT vdso_install KERNELRELEASE=$KernelVer
+    %{make} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT vdso_install KERNELRELEASE=$KernelVer
 %endif
 
     # And save the headers/makefiles etc for building modules against
@@ -1591,7 +1607,7 @@ BuildKernel %make_target %kernel_image emb3debug
 %endif
 
 %global bpftool_make \
-  make %{?make_opts} EXTRA_CFLAGS="${RPM_OPT_FLAGS//redhat-annobin-cc1/redhat-annobin-select-annobin-built-plugin}" EXTRA_LDFLAGS="%{__global_ldflags}" DESTDIR=$RPM_BUILD_ROOT
+  %{make} EXTRA_CFLAGS="${RPM_OPT_FLAGS//redhat-annobin-cc1/redhat-annobin-select-annobin-built-plugin}" EXTRA_LDFLAGS="%{__global_ldflags}" DESTDIR=$RPM_BUILD_ROOT
 %if %{with_bpftool}
 pushd tools/bpf/bpftool
 %{bpftool_make}
@@ -1604,7 +1620,7 @@ popd
     # build tools/perf:
     if [ -d tools/perf ]; then
         pushd tools/perf
-        make %{?make_opts} %{?_smp_mflags} NO_LIBPERL=1 EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow" all
+        %{make} %{?_smp_mflags} NO_LIBPERL=1 EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow" all
         popd
     fi
 %endif
@@ -1614,14 +1630,14 @@ popd
     # build tools/power/x86/x86_energy_perf_policy:
     if [ -d tools/power/x86/x86_energy_perf_policy ]; then
        pushd tools/power/x86/x86_energy_perf_policy
-       make %{?make_opts} %{?_smp_mflags} EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow"
+       %{make} %{?_smp_mflags} EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow"
        popd
     fi
 
     # build tools/power/x86/turbostat:
     if [ -d tools/power/x86/turbostat ]; then
        pushd tools/power/x86/turbostat
-       make %{?make_opts} %{?_smp_mflags} EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow"
+       %{make} %{?_smp_mflags} EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow"
        popd
     fi
 %endif
@@ -1629,7 +1645,7 @@ popd
 
 %if %{with_doc}
 # Make the HTML pages.
-make %{?make_opts} %{?_smp_mflags} htmldocs || %{doc_build_fail}
+%{make} %{?_smp_mflags} htmldocs || %{doc_build_fail}
 %endif
 
 %define dgst $((grep '^CONFIG_MODULE_SIG_SHA512=y$' .config >/dev/null && grep '^CONFIG_MODULE_SIG_HASH=\"sha512\"$' .config >/dev/null && echo sha512) || (grep '^CONFIG_MODULE_SIG_SHA256=y$' .config >/dev/null && grep '^CONFIG_MODULE_SIG_HASH=\"sha256\"$' .config >/dev/null && echo sha256))
@@ -1774,7 +1790,7 @@ ln -sf turbostat.%{KVERREL} $RPM_BUILD_ROOT/usr/libexec/turbostat.%{KVERREL}.deb
 
 %if %{with_headers}
 # Install kernel headers
-make %{?make_opts} ARCH=%{hdrarch} INSTALL_HDR_PATH=$RPM_BUILD_ROOT/usr headers_install
+%{make} ARCH=%{hdrarch} INSTALL_HDR_PATH=$RPM_BUILD_ROOT/usr headers_install
 
 find $RPM_BUILD_ROOT/usr/include \
      \( -name .install -o -name .check -o \
