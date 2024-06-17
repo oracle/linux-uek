@@ -2850,7 +2850,7 @@ static int octeon3_ioctl_hwtstamp(struct net_device *netdev,
 	return 0;
 }
 
-static int octeon3_adjfreq(struct ptp_clock_info *ptp, s32 ppb)
+static int octeon3_adjfine(struct ptp_clock_info *ptp, long ppb)
 {
 	struct octeon3_ethernet	*priv;
 	u64			comp;
@@ -3301,7 +3301,7 @@ static int octeon3_eth_probe(struct platform_device *pdev)
 	priv->ptp_info.n_ext_ts = 0;
 	priv->ptp_info.n_per_out = 0;
 	priv->ptp_info.pps = 0;
-	priv->ptp_info.adjfreq = octeon3_adjfreq;
+	priv->ptp_info.adjfine = octeon3_adjfine;
 	priv->ptp_info.adjtime = octeon3_adjtime;
 	priv->ptp_info.gettime64 = octeon3_gettime;
 	priv->ptp_info.settime64 = octeon3_settime;
