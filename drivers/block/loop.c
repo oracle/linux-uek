@@ -2055,7 +2055,7 @@ static int lo_open(struct block_device *bdev, fmode_t mode)
 	err = mutex_lock_killable(&lo->lo_mutex);
 	if (err)
 		return err;
-	if (lo->lo_state == Lo_deleting)
+	if ((lo->lo_state == Lo_deleting) || (lo->lo_state == Lo_rundown))
 		err = -ENXIO;
 	else
 		atomic_inc(&lo->lo_refcnt);
