@@ -234,8 +234,9 @@ int rvu_mbox_handler_tim_config_ring(struct rvu *rvu,
 				     struct msg_rsp *rsp)
 {
 	u16 pcifunc = req->hdr.pcifunc;
-	u64 intvl_cyc, intvl_ns;
+	u64 intvl_cyc, intvl_ns, intvl;
 	int lf, blkaddr;
+	u8 intvl_ext;
 	u64 regval;
 	int rc;
 
@@ -246,6 +247,16 @@ int rvu_mbox_handler_tim_config_ring(struct rvu *rvu,
 	lf = rvu_get_lf(rvu, &rvu->hw->block[blkaddr], pcifunc, req->ring);
 	if (lf < 0)
 		return TIM_AF_LF_INVALID;
+
+	/* Check if extended interval is supported. */
+	regval = rvu_read64(rvu, blkaddr, TIM_AF_CONST);
+	if (regval & BIT(25))
+		intvl_ext = 1;
+
+	/* Error out if the ring is already running. */
+	regval = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf));
+	if (regval & TIM_AF_RINGX_CTL1_ENA)
+		return TIM_AF_RING_STILL_RUNNING;
 
 	/* Check the inputs. */
 	/* bigendian can only be 1 or 0. */
@@ -281,12 +292,16 @@ int rvu_mbox_handler_tim_config_ring(struct rvu *rvu,
 	if (req->chunksize > TIM_CHUNKSIZE_MAX)
 		return TIM_AF_CSIZE_TOO_BIG;
 
+	if (req->interval_hi && !intvl_ext)
+		return TIM_AF_INTERVAL_EXT_NOT_SUPPORTED;
+
 	rc = tim_get_min_intvl(rvu, req->clocksource, req->clockfreq,
 			       &intvl_ns, &intvl_cyc);
 	if (rc)
 		return rc;
 
-	if (req->interval < intvl_cyc || req->intervalns < intvl_ns)
+	intvl = req->interval_lo | ((u64)req->interval_hi << 32);
+	if (intvl < intvl_cyc || req->intervalns < intvl_ns)
 		return TIM_AF_INTERVAL_TOO_SMALL;
 
 	/* Configure edge of GPIO clock source */
@@ -315,8 +330,11 @@ int rvu_mbox_handler_tim_config_ring(struct rvu *rvu,
 
 	/* CTL0 */
 	/* EXPIRE_OFFSET = 0 and is set correctly when enabling. */
-	regval = req->interval;
-	rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL0(lf), regval);
+	regval = intvl;
+	if (intvl_ext)
+		rvu_write64(rvu, blkaddr, TIM_AF_RINGX_INTRVL(lf), regval);
+	else
+		rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL0(lf), regval);
 
 	/* CTL1 */
 	regval = (((u64)req->bigendian) << 53) |
@@ -335,6 +353,65 @@ int rvu_mbox_handler_tim_config_ring(struct rvu *rvu,
 	/* CTL2 */
 	regval = ((u64)req->chunksize / TIM_CHUNKSIZE_MULTIPLE) << 40;
 	rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL2(lf), regval);
+
+	return 0;
+}
+
+int rvu_mbox_handler_tim_config_hwwqe(struct rvu *rvu,
+				      struct tim_cfg_hwwqe_req *req,
+				      struct msg_rsp *rsp)
+{
+	u16 pcifunc = req->hdr.pcifunc;
+	int lf, blkaddr;
+	u64 reg;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_TIM, pcifunc);
+	if (blkaddr < 0)
+		return TIM_AF_LF_INVALID;
+
+	lf = rvu_get_lf(rvu, &rvu->hw->block[blkaddr], pcifunc, req->ring);
+	if (lf < 0)
+		return TIM_AF_LF_INVALID;
+
+	/* Error out if the ring is already running. */
+	reg = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf));
+	if (reg & TIM_AF_RINGX_CTL1_ENA)
+		return TIM_AF_RING_STILL_RUNNING;
+
+	/* Check if HWWQE is supported. */
+	/* TODO bits are TBA. */
+	reg = rvu_read64(rvu, blkaddr, TIM_AF_CONST);
+	if (!(reg & BIT(24)))
+		return TIM_AF_HWWQE_NOT_SUPPORTED;
+
+	/* Check the inputs. */
+	if (req->hwwqe_ena & ~1)
+		return TIM_AF_INVALID_HWWQE_ENA_VALUE;
+
+	if (req->wqe_rd_clr_ena & ~1)
+		return TIM_AF_INVALID_WQE_RD_CLR_VALUE;
+
+	if (req->grp_ena & ~1)
+		return TIM_AF_INVALID_GRP_ENA_VALUE;
+
+	if (req->flw_ctrl_ena & ~1)
+		return TIM_AF_INVALID_FLW_CTRL_ENA_VALUE;
+
+	reg = req->hwwqe_ena | (req->wqe_rd_clr_ena << 1) |
+	      (req->grp_ena << 2) | (req->flw_ctrl_ena << 4);
+	reg |= ((u64)req->grp_tmo_cntr & 0xFFFF) << 8 |
+	       ((u64)req->ins_min_gap & 0xFF) << 24 |
+	       ((u64)req->npa_tmo_cntr & 0xFFFF) << 32;
+
+	rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL3(lf), reg);
+
+	reg = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf));
+	reg &= ~BIT_ULL(48);
+	rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf), reg);
+
+	reg = req->result_offset;
+	reg |= ((u64)req->event_count_offset << 16);
+	rvu_write64(rvu, blkaddr, TIM_AF_RINGX_HWWQE_RES_EC_OFF(lf), reg);
 
 	return 0;
 }
@@ -401,6 +478,17 @@ int rvu_mbox_handler_tim_enable_ring(struct rvu *rvu,
 	if (ret)
 		return ret;
 
+	/* Check if extended interval is supported. */
+	ctl0 = rvu_read64(rvu, blkaddr, TIM_AF_CONST);
+	if (ctl0 & BIT(25)) {
+		ctl1 |= TIM_AF_RINGX_CTL1_ENA;
+		ctl1 &= ~GENMASK_ULL(39, 20);
+		rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf), ctl1);
+		rsp->currentbucket = 0;
+
+		return 0;
+	}
+
 	ctl0 = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL0(lf));
 	intvl = ctl0 & GENMASK_ULL(31, 0);
 
@@ -429,6 +517,8 @@ int rvu_mbox_handler_tim_enable_ring(struct rvu *rvu,
 		    ctl0 == intvl) {
 			ctl1 &= ~TIM_AF_RINGX_CTL1_ENA;
 			rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf), ctl1);
+			rvu_poll_reg(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf),
+				     TIM_AF_RINGX_CTL1_RCF_BUSY, true);
 			rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL0(lf), intvl);
 			start_cyc += end_cyc;
 		}

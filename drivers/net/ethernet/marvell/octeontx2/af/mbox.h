@@ -244,6 +244,8 @@ M(TIM_GET_MIN_INTVL,	0x805, tim_get_min_intvl, tim_intvl_req,	\
 			       tim_intvl_rsp)				\
 M(TIM_CAPTURE_COUNTERS,	0x806, tim_capture_counters, msg_req,		\
 			       tim_capture_rsp)				\
+M(TIM_CONFIG_HWWQE,	0x807, tim_config_hwwqe, tim_cfg_hwwqe_req,	\
+			       msg_rsp)					\
 /* CPT mbox IDs (range 0xA00 - 0xBFF) */				\
 M(CPT_LF_ALLOC,		0xA00, cpt_lf_alloc, cpt_lf_alloc_req_msg,	\
 			       msg_rsp)					\
@@ -2134,6 +2136,12 @@ enum tim_af_status {
 	TIM_AF_ENA_DONTFRE_NSET_PERIODIC	= -816,
 	TIM_AF_RING_ALREADY_DISABLED		= -817,
 	TIM_AF_LF_START_SYNC_FAIL		= -818,
+	TIM_AF_HWWQE_NOT_SUPPORTED		= -819,
+	TIM_AF_INVALID_HWWQE_ENA_VALUE		= -820,
+	TIM_AF_INVALID_WQE_RD_CLR_VALUE		= -821,
+	TIM_AF_INVALID_GRP_ENA_VALUE		= -822,
+	TIM_AF_INVALID_FLW_CTRL_ENA_VALUE	= -823,
+	TIM_AF_INTERVAL_EXT_NOT_SUPPORTED	= -824,
 };
 
 enum tim_clk_srcs {
@@ -2177,11 +2185,27 @@ struct tim_config_req {
 	u8	enabledontfreebuffer;
 	u32	bucketsize;
 	u32	chunksize;
-	u32	interval;   /* Cycles between traversal */
+	u32	interval_lo;   /* Cycles between traversal */
 	u8	gpioedge;
-	u8	rsvd[7];
+	u8	rsvd[3];
+	u32	interval_hi;
 	u64	intervalns; /* Nanoseconds between traversal */
 	u64	clockfreq;
+};
+
+struct tim_cfg_hwwqe_req {
+	struct mbox_msghdr hdr;
+	u16	ring;
+	u8	grp_ena;
+	u8	hwwqe_ena;
+	u8	ins_min_gap;
+	u8	flw_ctrl_ena;
+	u8	wqe_rd_clr_ena;
+	u16	grp_tmo_cntr;
+	u16	npa_tmo_cntr;
+	u16	result_offset;
+	u16	event_count_offset;
+	u64	rsvd[2];
 };
 
 struct tim_lf_alloc_rsp {

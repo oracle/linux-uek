@@ -737,6 +737,9 @@
 #define TIM_AF_RVU_INT_ENA_W1S		(0x10210)
 #define TIM_AF_RVU_INT_ENA_W1C		(0x10218)
 #define TIM_PRIV_AF_INT_CFG		(0x22000)
+#define TIM_AF_RINGX_CTL3(a)		(0x48000 | (a) << 3)
+#define TIM_AF_RINGX_INTRVL(a)		(0x52000 | (a) << 3)
+#define TIM_AF_RINGX_HWWQE_RES_EC_OFF(a)	(0x54000 | (a) << 3)
 
 /* CPT */
 #define CPT_AF_CONSTANTS0               (0x0000)
