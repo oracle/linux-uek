@@ -121,10 +121,18 @@ int check_sg_alignment(struct srb *sp, struct scatterlist *sg)
 		ret = 1;
 		goto out;
 	}
-	SG_NEXT(sg);
+
+	if((sg = sg_next(sg)) == NULL) {
+		ret = 1;
+		goto out;
+	}
 
 	/* Check from second entry */
-	for (i = 1; i < scsi_sg_count(sp->cmd); i++, SG_NEXT(sg)) {
+	for (i = 1; i < scsi_sg_count(sp->cmd); i++, sg = sg_next(sg)) {
+		if(!sg) {
+			ret = 1;
+			goto out;
+		}
 		sg_offset = SG_OFFSET(sg);
 		/* All intermediate sg ptrs should be page (4k) aligned */
 		if (sg_offset) {

@@ -1627,7 +1627,7 @@ vhba_build_scsi_iocbs(struct srb *sp, struct cmd_type_7 *cmd_pkt, u16 tot_dsds)
 	cmd_pkt->entry_type = COMMAND_TYPE_7;
 
 	/* No data transfer */
-	if (request_bufflen == 0 || cmd->sc_data_direction == DMA_NONE) {
+	if (request_bufflen == 0 || cmd->sc_data_direction == DMA_NONE || tot_dsds == 0) {
 		cmd_pkt->byte_count = cpu_to_le32(0);
 		sp->ha->stats.io_stats.total_task_mgmt_reqs++;
 		dprintk(TRC_SCSI_ERRS, vhba, "Task Mgmt Req. Returning\n");
@@ -1701,7 +1701,7 @@ vhba_build_scsi_iocbs(struct srb *sp, struct cmd_type_7 *cmd_pkt, u16 tot_dsds)
 
 			mapped_len = 0;
 
-			for (cntr = 0; cntr < tot_dsds; cntr++) {
+			for (cntr = 0; cntr < tot_dsds && cur_seg ; cntr++) {
 				if (pg_list_cntr > vhba_max_dsds_in_fmr) {
 					eprintk(vhba,
 					"%s: Page list ptrs ", __func__);
@@ -1720,7 +1720,7 @@ vhba_build_scsi_iocbs(struct srb *sp, struct cmd_type_7 *cmd_pkt, u16 tot_dsds)
 				cur_map_ptr =
 				    sg_dma_address(cur_seg) & fmr_page_mask;
 				dprintk(TRC_FMR, vhba,
-				"new dsd rem len %d ", remaining_length);
+				"new dsd remaining len %d \n", remaining_length);
 				dprintk(TRC_FMR, vhba,
 					"cur_map_ptr %lx\n",
 					(unsigned long)cur_map_ptr);
@@ -1784,7 +1784,7 @@ vhba_build_scsi_iocbs(struct srb *sp, struct cmd_type_7 *cmd_pkt, u16 tot_dsds)
 				}
 
 				dprintk(TRC_FMR, vhba,
-					"final rem len %d cntr %d cur_map_ptr ",
+					"final rem len %d cntr %d cur_map_ptr \n ",
 					remaining_length, pg_list_cntr);
 				dprintk(TRC_FMR, vhba,
 					"%lx\n",
@@ -1794,7 +1794,9 @@ vhba_build_scsi_iocbs(struct srb *sp, struct cmd_type_7 *cmd_pkt, u16 tot_dsds)
 				dprintk(TRC_FMR, vhba,
 					"hndl %d: mapped len is %u\n",
 					(int)cmd_pkt->handle, mapped_len);
-				SG_NEXT(cur_seg);
+				cur_seg = sg_next(cur_seg);
+				if(!cur_seg)
+					break;
 			}
 
 			for (t_cntr = 0; t_cntr < pg_list_cntr; t_cntr++)
@@ -2105,7 +2107,7 @@ int vhba_report_luns_cmd(struct srb *sp, u32 t, u32 l)
 		dprintk(TRC_SCSI, vhba, "total response size = 0x%x\n",
 			total_size);
 
-		while (total_size > 0) {
+		while (total_size > 0 && sg) {
 			unsigned int sg_offset = SG_OFFSET(sg);
 			unsigned int sg_length = SG_LENGTH(sg);
 
@@ -2132,7 +2134,8 @@ int vhba_report_luns_cmd(struct srb *sp, u32 t, u32 l)
 				dprintk(TRC_SCSI, vhba,
 					"More data 0x%x\n", total_size);
 				data_ptr += copy_len;
-				SG_NEXT(sg);
+				/* assing next sg */
+				sg = sg_next(sg);
 			}
 		}
 		SG_RESET(sg);
