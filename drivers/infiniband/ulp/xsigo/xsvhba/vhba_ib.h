@@ -100,7 +100,7 @@ int vhba_conn_init(struct virtual_hba *vhba);
 void vhba_unmap_buf_fmr(struct virtual_hba *vhba, struct srb *sp, int tot_dsds);
 void sp_put(struct virtual_hba *vhba, struct srb *sp);
 int vhba_map_buf_fmr(struct virtual_hba *vhba, u64 *phys_addr, int num_pgs,
-		     u64 *mapped_fmr_iova, struct srb *sp, int index);
+		     u64 mapped_fmr_iova, struct srb *sp, int index);
 int vhba_send_write_index(struct virtual_hba *vhba);
 int readjust_io_addr(struct srb *sp);
 int vhba_alloc_fmr_pool(struct virtual_hba *vhba);

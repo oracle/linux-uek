@@ -1820,7 +1820,7 @@ vhba_build_scsi_iocbs(struct srb *sp, struct cmd_type_7 *cmd_pkt, u16 tot_dsds)
 				(unsigned long)sp, (unsigned long)sp_index,
 				(unsigned long)sp->pool_fmr[sp_index]);
 			ret = vhba_map_buf_fmr(vhba, page_list,
-					       pg_list_cntr, &mapped_addr, sp,
+					       pg_list_cntr, mapped_addr, sp,
 					       sp_index);
 			if (ret == -1) {
 				dprintk(TRC_FMR_ERRS, vhba,
@@ -1925,7 +1925,7 @@ vhba_build_scsi_iocbs(struct srb *sp, struct cmd_type_7 *cmd_pkt, u16 tot_dsds)
 			mapped_addr = page_list[0];
 
 			ret = vhba_map_buf_fmr(vhba, page_list, num_pages,
-					       &mapped_addr, sp, sp_index);
+					       mapped_addr, sp, sp_index);
 
 			if (ret == -1) {
 				dprintk(TRC_ERRORS, vhba,

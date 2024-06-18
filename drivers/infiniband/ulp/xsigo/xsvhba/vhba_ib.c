@@ -361,7 +361,7 @@ void vhba_dealloc_fmr_pool(struct virtual_hba *vhba)
 }
 
 int vhba_map_buf_fmr(struct virtual_hba *vhba, u64 *phys_addr, int num_pgs,
-		     u64 *mapped_fmr_iova, struct srb *sp, int index)
+		     u64 mapped_fmr_iova, struct srb *sp, int index)
 {
 	struct scsi_xg_vhba_host *ha = vhba->ha;
 
@@ -373,7 +373,7 @@ int vhba_map_buf_fmr(struct virtual_hba *vhba, u64 *phys_addr, int num_pgs,
 	}
 	sp->pool_fmr[index] = ib_fmr_pool_map_phys(ha->fmr_pool,
 						   phys_addr, num_pgs,
-						   *mapped_fmr_iova);
+						   mapped_fmr_iova);
 
 	if (IS_ERR(sp->pool_fmr[index])) {
 		eprintk(vhba, "Error - pool fmr index map failed [%ld/%p]\n",

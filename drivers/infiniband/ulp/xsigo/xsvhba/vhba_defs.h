@@ -67,7 +67,7 @@ extern int vhba_remove_target_proc_entry(struct virtual_hba *vhba);
 extern void vhba_remove_proc_entry(struct virtual_hba *vhba);
 extern void add_to_defer_list(struct scsi_xg_vhba_host *ha, struct srb *sp);
 extern int vhba_map_buf_fmr(struct virtual_hba *vhba, u64 *phys_addr,
-			    int num_pgs, u64 *mapped_fmr_iova, struct srb *sp,
+			    int num_pgs, u64 mapped_fmr_iova, struct srb *sp,
 			    int index);
 extern void extend_timeout(struct scsi_cmnd *cmd, struct srb *sp, int timeout);
 extern void ib_link_down(struct scsi_xg_vhba_host *ha);
