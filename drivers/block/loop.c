@@ -1856,6 +1856,12 @@ static int lo_open(struct block_device *bdev, fmode_t mode)
 		goto out;
 	}
 
+	/* Return error if the loop dev is being detached */
+	if (lo->lo_state == Lo_rundown) {
+		err = -ENXIO;
+		goto out;
+	}
+
 	atomic_inc(&lo->lo_refcnt);
 out:
 	mutex_unlock(&loop_ctl_mutex);
