@@ -285,8 +285,6 @@ static int cptvf_lf_init(struct otx2_cptvf_dev *cptvf)
 
 	lfs_num = cptvf->lfs.kvf_limits;
 
-	otx2_cptlf_set_dev_info(lfs, cptvf->pdev, cptvf->reg_base,
-				&cptvf->pfvf_mbox, cptvf->blkaddr);
 	ret = otx2_cptlf_init(lfs, 0xF, OTX2_CPT_QUEUE_HI_PRIO,
 			      lfs_num);
 	if (ret)
@@ -400,6 +398,9 @@ static int otx2_cptvf_probe(struct pci_dev *pdev,
 	}
 	if (cptvf->eng_caps[OTX2_CPT_SE_TYPES] & BIT_ULL(35))
 		cptvf->lfs.ops->cpt_sg_info_create = cn10k_sgv2_info_create;
+
+	otx2_cptlf_set_dev_info(&cptvf->lfs, cptvf->pdev, cptvf->reg_base,
+				&cptvf->pfvf_mbox, cptvf->blkaddr);
 
 	/* Initialize CPT LFs */
 	ret = cptvf_lf_init(cptvf);
