@@ -66,7 +66,7 @@ unsigned int rds_tcp_stats_info_copy(struct rds_info_iterator *iter,
 	rns = rds_ns(iter->net);
 	per_cpu_ns_ptr = __rds_get_mod_stats(rns, RDS_MOD_TCP);
 
-	for_each_online_cpu(cpu) {
+	for_each_possible_cpu(cpu) {
 		src = (uint64_t *)per_cpu_ptr(per_cpu_ns_ptr, cpu);
 		sum = (uint64_t *)&stats;
 		for (i = 0; i < sizeof(stats) / sizeof(uint64_t); i++)
