@@ -120,7 +120,7 @@ unsigned int rds_ib_stats_info_copy(struct rds_info_iterator *iter,
 	if (avail < ARRAY_SIZE(rds_ib_stat_names))
 		goto out;
 
-	for_each_online_cpu(cpu) {
+	for_each_possible_cpu(cpu) {
 		src = (uint64_t *)&(per_cpu(rds_ib_stats, cpu));
 		sum = (uint64_t *)&stats;
 		for (i = 0; i < sizeof(stats) / sizeof(uint64_t); i++)
@@ -142,7 +142,7 @@ void rds_ib_stats_print(const char *where)
 	int cpu;
 	size_t nibstats = sizeof(ibstats) / sizeof(uint64_t);
 
-	for_each_online_cpu(cpu) {
+	for_each_possible_cpu(cpu) {
 		src = (uint64_t *)&(per_cpu(rds_ib_stats, cpu));
 		sum = (uint64_t *)&ibstats;
 		for (i = 0; i < nibstats; i++)
