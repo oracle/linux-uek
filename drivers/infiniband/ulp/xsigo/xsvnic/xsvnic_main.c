@@ -2049,7 +2049,6 @@ void xsvnic_send_skb(struct xsvnic *xsvnicp, struct sk_buff *skb,
 		else
 			netif_receive_skb(skb);
 	}
-	netdev->last_rx = jiffies;
 }
 
 void xsvnic_count_segs(struct xsvnic *xsvnicp, char nr_segs, int pkt_len)

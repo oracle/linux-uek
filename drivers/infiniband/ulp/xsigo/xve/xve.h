@@ -1027,7 +1027,6 @@ static inline void xve_send_skb(struct xve_dev_priv *priv, struct sk_buff *skb)
 	else
 		netif_receive_skb(skb);
 
-	netdev->last_rx = jiffies;
 	INC_RX_BYTE_STATS(priv, netdev, skb->len);
 	INC_RX_PKT_STATS(priv, netdev);
 }
