@@ -1379,7 +1379,7 @@ static int xsvnic_stop(struct net_device *netdev)
 
 #ifdef __VMKLNX__
 	/* set trans_start so we don't get spurious watchdogs during reset */
-	netdev->trans_start = jiffies;
+	netif_trans_update(netdev);
 #endif
 
 	xsvnicp->counters[XSVNIC_STOP_COUNTER]++;
@@ -1925,7 +1925,7 @@ int xsvnic_start_xmit(struct sk_buff *skb, struct net_device *netdev)
 		skb_need_tofree = 1;
 		goto free_skb;
 	}
-	netdev->trans_start = jiffies;
+	netif_trans_update(netdev);
 	xsvnicp->send_hbeat_flag = 0;
 	xsvnicp->stats.tx_packets++;
 	xsvnicp->stats.tx_bytes += slen;

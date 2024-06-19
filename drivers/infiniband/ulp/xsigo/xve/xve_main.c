@@ -1070,7 +1070,7 @@ unlock:
 		INC_TX_DROP_STATS(priv, dev);
 
 	if (!queued_pkt)
-		dev->trans_start = jiffies;
+		netif_trans_update(dev);
 	if (skb_need_tofree)
 		dev_kfree_skb_any(skb);
 
@@ -1090,7 +1090,7 @@ static void xve_timeout(struct net_device *dev)
 	struct xve_dev_priv *priv = netdev_priv(dev);
 
 	xve_warn(priv, "transmit timeout: latency %d msecs\n",
-		 jiffies_to_msecs(jiffies - dev->trans_start));
+		 jiffies_to_msecs(jiffies - dev_trans_start(dev)));
 	xve_warn(priv, "queue stopped %d, tx_head %u, tx_tail %u\n",
 		 netif_queue_stopped(dev), priv->tx_head, priv->tx_tail);
 	priv->counters[XVE_WDOG_TIMEOUT_COUNTER]++;

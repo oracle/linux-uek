@@ -715,7 +715,7 @@ int xve_cm_send(struct net_device *dev, struct sk_buff *skb,
 		INC_TX_ERROR_STATS(priv, dev);
 		xve_cm_tx_buf_free(priv, tx_req, tx, 0, tx->qp->qp_num);
 	} else {
-		dev->trans_start = jiffies;
+		netif_trans_update(dev);
 		++tx->tx_head;
 		if (++priv->tx_outstanding == priv->xve_sendq_size) {
 			xve_dbg_data(priv,
