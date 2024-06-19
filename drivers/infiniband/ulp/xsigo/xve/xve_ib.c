@@ -111,7 +111,7 @@ static void xve_ud_skb_put_frags(struct xve_dev_priv *priv,
 		skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
 
 		if (length == 0) {
-			__free_page(skb_shinfo(skb)->frags[i].page.p);
+			__free_page(skb_shinfo(skb)->frags[i].bv_page);
 			--skb_shinfo(skb)->nr_frags;
 		} else {
 			size = min_t(unsigned, length, PAGE_SIZE);
@@ -191,7 +191,7 @@ static struct sk_buff *xve_alloc_rx_skb(struct net_device *dev, int id)
 		skb_fill_page_desc(skb, i-1, page, 0, PAGE_SIZE);
 		mapping[i] =
 			ib_dma_map_page(priv->ca,
-					skb_shinfo(skb)->frags[i-1].page.p,
+					skb_shinfo(skb)->frags[i-1].bv_page,
 					0, PAGE_SIZE, DMA_FROM_DEVICE);
 		if (unlikely(ib_dma_mapping_error(priv->ca, mapping[i])))
 			goto partial_error;
