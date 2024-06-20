@@ -107,6 +107,9 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 #build kernel with 4k & 64k page size for aarch64
 %define with_64k_ps %{?_with_64k_ps: %{_with_64k_ps}} %{?!_with_64k_ps: 0}
 %define with_64k_ps_debug %{?_with_64k_ps_debug: %{_with_64k_ps_debug}} %{?!_with_64k_ps_debug: 0}
+# build pensando kernel
+%define with_embedded %{?_without_embedded: 0} %{?!_without_embedded: 1}
+
 # verbose build, i.e. no silent rules and V=1
 %define with_verbose %{?_with_verbose:        1} %{?!_with_verbose:      0}
 
@@ -138,6 +141,9 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 
 # Only build the 64k page size kernel (--with 64konly):
 %define with_64konly    %{?_with_64konly:       1} %{?!_with_64konly:       0}
+
+# Only build the embedded kernel (--with embeddedonly)
+%define with_embeddedonly %{?_with_embeddedonly: 1} %{?!_with_embeddedonly: 0}
 
 # should we do C=1 builds with sparse
 %define with_sparse	%{?_with_sparse:      1} %{?!_with_sparse:      0}
@@ -222,6 +228,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define with_debug 0
 %define with_64k_ps 0
 %define with_64k_ps_debug 0
+%define with_embedded 0
 %endif
 
 %define all_x86 i386 i686
@@ -238,10 +245,11 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define with_debug 0
 %endif
 
-# don't do 4k/64k page size kernels for arch except aarch64
+# don't do 4k/64k page size or embedded kernels for arch except aarch64
 %ifnarch aarch64
 %define with_64k_ps       0
 %define with_64k_ps_debug 0
+%define with_embedded 0
 %endif
 
 # only package docs noarch
@@ -312,6 +320,17 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define with_up 0
 %define with_container 0
 %define with_debug 0
+%define with_embedded 0
+%define with_headers 0
+%define with_perf 0
+%define with_bpftool 0
+%else
+%if %{with_embeddedonly}
+%define with_embedded 1
+%define with_up 0
+%define with_container 0
+%define with_64k_ps 0
+%define with_debug 0
 %define with_headers 0
 %define with_perf 0
 %define with_bpftool 0
@@ -319,6 +338,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define with_headers 1
 %define with_perf 1
 %define with_bpftool 1
+%endif
 %endif
 %endif
 
@@ -475,6 +495,7 @@ Source43: generate_bls_conf.sh
 Source44: core-x86_64.list
 Source45: core-aarch64.list
 Source46: filter-modules.sh
+Source47: core-emb2-aarch64.list
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
@@ -482,6 +503,7 @@ Source1002: config-x86_64-container
 Source1007: config-aarch64
 Source1008: config-aarch64-debug
 Source1009: config-aarch64-container
+Source1010: config-aarch64-embedded2
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -793,6 +815,11 @@ This package includes 64k page size for aarch64 kernel.
 %description -n kernel%{?variant}64kdebug-core
 This package include debug kernel for 64k page size.
 
+%define variant_summary A kernel for another embedded platform
+%kernel_variant_package -o emb2
+%description -n kernel%{?variant}emb2-core
+This package includes an embedded kernel.
+
 %define variant_summary The Linux kernel compiled with extra debugging enabled
 %kernel_variant_package debug
 %description debug-core
@@ -972,6 +999,7 @@ mkdir -p configs
 	cp %{SOURCE1009} configs/config-container
 	cp %{SOURCE1008} configs/config-debug
 	cp %{SOURCE1007} configs/config
+	cp %{SOURCE1010} configs/config-emb2
 %endif
 
 	echo 'CONFIG_DTRACE=y' >> configs/config
@@ -1076,6 +1104,9 @@ BuildKernel() {
 	echo 'CONFIG_ARM64_64K_PAGES=y' >> configs/config-debug
 	cp configs/config-debug .config
 	modlistVariant=../kernel%{?variant}64kdebug
+    elif [ "$Flavour" == "emb2" ]; then
+        cp configs/config-emb2 .config
+        modlistVariant=../kernel%{?variant}emb2
     else
 	cp configs/config .config
 	modlistVariant=../kernel%{?variant}${Flavour:+-${Flavour}}
@@ -1084,7 +1115,7 @@ BuildKernel() {
     Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
     echo USING ARCH=$Arch
     make %{?make_opts} ARCH=$Arch %{?_kernel_cc} olddefconfig > /dev/null
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ]; then
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb2" ]; then
        make %{?make_opts} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
     else
        make %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
@@ -1220,7 +1251,7 @@ BuildKernel() {
     %_sourcedir/kabitool -s Module.symvers -o %{_tmppath}/kernel-$KernelVer-kabideps
 
 %if %{with_kabichk}
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ]; then
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb2" ]; then
        # Create symbol type data which can be used to introspect kABI breakages
        python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
 
@@ -1401,7 +1432,11 @@ BuildKernel() {
     find lib/modules/$KernelVer/kernel -name *.ko | sort -n > modules.list
 
     cp $RPM_SOURCE_DIR/filter-modules.sh .
-    cp $RPM_SOURCE_DIR/core-%{_target_cpu}.list core.list
+    if [ "$Flavour" == "emb2" ]; then
+      cp $RPM_SOURCE_DIR/core-emb2-%{_target_cpu}.list core.list
+    else
+      cp $RPM_SOURCE_DIR/core-%{_target_cpu}.list core.list
+    fi
 
     # Append full path to the beginning of each line.
     sed -i "s/^/lib\/modules\/$KernelVer\//" core.list
@@ -1503,6 +1538,10 @@ BuildKernel %make_target %kernel_image 64k
 BuildKernel %make_target %kernel_image 64kdebug
 %endif
 
+%if %{with_embedded}
+BuildKernel %make_target %kernel_image emb2
+%endif
+
 %global bpftool_make \
   make %{?make_opts} EXTRA_CFLAGS="${RPM_OPT_FLAGS}" EXTRA_LDFLAGS="%{__global_ldflags}" DESTDIR=$RPM_BUILD_ROOT
 %if %{with_bpftool}
@@ -1540,6 +1579,11 @@ make %{?make_opts} %{?_smp_mflags} htmldocs || %{doc_build_fail}
        mv certs/signing_key.x509.sign.64kdebug certs/signing_key.x509 \
        %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.64kdebug/ %{dgst} \
      fi \
+    if [ "%{with_embedded}" -ne "0" ]; then \
+       mv certs/signing_key.pem.sign.emb2 certs/signing_key.pem \
+       mv certs/signing_key.x509.sign.emb2 certs/signing_key.x509 \
+       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb2/ %{dgst} \
+    fi \
   fi \
 %{nil}
 
@@ -1839,6 +1883,11 @@ fi\
 %kernel_variant_postun -o 64kdebug
 %kernel_variant_post -o -v 64kdebug
 
+%kernel_variant_pre -o emb2
+%kernel_variant_preun -o emb2
+%kernel_variant_postun -o emb2
+%kernel_variant_post -o -v emb2
+
 if [ -x /sbin/ldconfig ]
 then
     /sbin/ldconfig -X || exit $?
@@ -1982,5 +2031,7 @@ fi
 
 %kernel_variant_files -o %{with_64k_ps} 64k
 %kernel_variant_files -o %{with_64k_ps_debug} 64kdebug
+
+%kernel_variant_files -o %{with_embedded} emb2
 
 %changelog
