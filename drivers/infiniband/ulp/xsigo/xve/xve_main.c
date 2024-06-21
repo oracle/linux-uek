@@ -2370,13 +2370,7 @@ static int xve_xsmp_install(xsmp_cookie_t xsmp_hndl, struct xve_xsmp_msg *xmsgp,
 	}
 
 	INIT_IB_EVENT_HANDLER(&priv->event_handler, priv->ca, xve_event);
-	result = ib_register_event_handler(&priv->event_handler);
-	if (result < 0) {
-		pr_warn("%s: ib_register_event_handler failed for ", hca->name);
-		pr_warn("port %d net_id %d (ret = %d)\n",
-			port, priv->net_id, result);
-		goto event_failed;
-	}
+	ib_register_event_handler(&priv->event_handler);
 
 	xve_fwt_init(&priv->xve_fwt);
 
@@ -2439,7 +2433,6 @@ sysfs_failed:
 register_failed:
 proc_error:
 	ib_unregister_event_handler(&priv->event_handler);
-event_failed:
 	xve_dev_cleanup(priv->netdev);
 device_init_failed:
 	free_netdev(priv->netdev);
