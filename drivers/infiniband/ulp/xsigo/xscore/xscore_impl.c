@@ -92,7 +92,7 @@ struct list_head xscore_port_list;
 struct mutex xscore_port_mutex;
 
 static void xscore_add_one(struct ib_device *device);
-static void xscore_remove_one(struct ib_device *device);
+static void xscore_remove_one(struct ib_device *device, void *client_data);
 static void xds_send_handler(struct ib_mad_agent *agent,
 			     struct ib_mad_send_wc *mad_send_wc);
 static void xds_recv_handler(struct ib_mad_agent *mad_agent,
@@ -960,16 +960,19 @@ free_dev:
  * Remove a HCA from the system, happens during driver unload when we unregister
  * from IB stack
  */
-static void xscore_remove_one(struct ib_device *device)
+static void xscore_remove_one(struct ib_device *device, void *client_data)
 {
-	struct xscore_dev *xs_dev;
+	struct xscore_dev *xs_dev = client_data;
 	struct xscore_port *port;
 	struct xscore_port *tmp_port;
 	unsigned long flags;
 
 	IB_FUNCTION("%s: device: %s\n", __func__, device->name);
+	if (!xs_dev) {
+		IB_ERROR("xs_dev null IB client\n");
+		return;
+	}
 
-	xs_dev = ib_get_client_data(device, &xscore_client);
 	ib_unregister_event_handler(&xs_dev->event_handler);
 	/*
 	 * Now go through the port list and shut down everything you can
