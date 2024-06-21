@@ -1240,8 +1240,7 @@ int xve_ib_dev_init(struct net_device *dev, struct ib_device *ca, int port)
 		return -ENODEV;
 	}
 
-	setup_timer(&priv->poll_timer, xve_ib_tx_timer_func,
-			(unsigned long)dev);
+	timer_setup(&priv->poll_timer, xve_ib_tx_timer_func, 0);
 
 	if (dev->flags & IFF_UP) {
 		if (xve_ib_dev_open(dev) != 0) {
