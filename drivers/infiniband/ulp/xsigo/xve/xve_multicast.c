@@ -174,10 +174,10 @@ static int xve_mcast_join_finish(struct xve_mcast *mcast,
 		}
 		priv->qkey = be32_to_cpu(priv->broadcast->mcmember.qkey);
 		spin_unlock_irq(&priv->lock);
-		priv->tx_wr.wr.ud.remote_qkey = (priv->is_eoib == 1) ?
+		priv->tx_wr.remote_qkey = (priv->is_eoib == 1) ?
 						priv->port_qkey : priv->qkey;
 		xve_dbg_mcast(priv, "setting remote_qkey %x",
-				priv->tx_wr.wr.ud.remote_qkey);
+				priv->tx_wr.remote_qkey);
 
 		set_qkey = 1;
 	}

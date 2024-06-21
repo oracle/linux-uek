@@ -764,7 +764,7 @@ struct xve_dev_priv {
 	unsigned tx_tail;
 	unsigned tx_outstanding;
 	struct ib_sge tx_sge[MAX_SKB_FRAGS + 1];
-	struct ib_send_wr tx_wr;
+	struct ib_ud_wr tx_wr;
 	struct ib_wc send_wc[MAX_SEND_CQE];
 	struct ib_recv_wr rx_wr;
 	uint32_t max_send_sge;

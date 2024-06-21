@@ -647,10 +647,10 @@ static inline int post_send(struct xve_dev_priv *priv,
 	priv->tx_sge[0].addr = addr;
 	priv->tx_sge[0].length = len;
 
-	priv->tx_wr.num_sge = 1;
-	priv->tx_wr.wr_id = wr_id | XVE_OP_CM;
+	priv->tx_wr.wr.num_sge = 1;
+	priv->tx_wr.wr.wr_id = wr_id | XVE_OP_CM;
 
-	return ib_post_send(tx->qp, &priv->tx_wr, &bad_wr);
+	return ib_post_send(tx->qp, &priv->tx_wr.wr, &bad_wr);
 }
 
 static void xve_cm_tx_buf_free(struct xve_dev_priv *priv,

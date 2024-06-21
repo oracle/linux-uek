@@ -730,7 +730,7 @@ static inline int post_send(struct xve_dev_priv *priv,
 			    struct xve_tx_buf *tx_req, void *head, int hlen)
 {
 	const struct ib_send_wr *bad_wr;
-	struct ib_send_wr *wr = &priv->tx_wr;
+	struct ib_ud_wr *ud_wr = &priv->tx_wr;
 	int i, off;
 	struct sk_buff *skb = tx_req->skb;
 	skb_frag_t *frags = skb_shinfo(skb)->frags;
@@ -751,29 +751,29 @@ static inline int post_send(struct xve_dev_priv *priv,
 		priv->tx_sge[i + off].length = frags[i].bv_len;
 		total_size += frags[i].bv_len;
 	}
-	wr->num_sge = nr_frags + off;
-	wr->wr_id = wr_id;
-	wr->wr.ud.remote_qpn = qpn;
+	ud_wr->wr.num_sge = nr_frags + off;
+	ud_wr->wr.wr_id = wr_id;
+	ud_wr->remote_qpn = qpn;
 	if (priv->is_eoib) {
-		wr->wr.ud.remote_qkey =  priv->port_qkey;
+		ud_wr->remote_qkey =  priv->port_qkey;
 		xve_debug(DEBUG_TX_INFO, priv, "%s qkey to use %x",
-				__func__, wr->wr.ud.remote_qkey);
+				__func__, ud_wr->remote_qkey);
 	}
-	wr->wr.ud.ah = address;
+	ud_wr->ah = address;
 	if (head) {
-		wr->wr.ud.mss = skb_shinfo(skb)->gso_size;
-		wr->wr.ud.header = head;
-		wr->wr.ud.hlen = hlen;
-		wr->opcode = IB_WR_LSO;
+		ud_wr->mss = skb_shinfo(skb)->gso_size;
+		ud_wr->header = head;
+		ud_wr->hlen = hlen;
+		ud_wr->wr.opcode = IB_WR_LSO;
 	} else {
-		wr->opcode = IB_WR_SEND;
+		ud_wr->wr.opcode = IB_WR_SEND;
 	}
 
 	xve_debug(DEBUG_TXDATA_INFO, priv, "wr_id %d Frags %d size %d\n",
-			wr_id, wr->num_sge, total_size);
+			wr_id, ud_wr->wr.num_sge, total_size);
 	dumppkt(skb->data + sizeof(struct xve_eoib_hdr), total_size,
 			"Post Send Dump");
-	return ib_post_send(priv->qp, &priv->tx_wr, &bad_wr);
+	return ib_post_send(priv->qp, &priv->tx_wr.wr, &bad_wr);
 }
 /* Always called with priv->lock held
  * type argument is used to differentiate between the GATEWAY
@@ -878,14 +878,14 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 	skb_dst_drop(skb);
 
 	if (skb->ip_summed == CHECKSUM_PARTIAL)
-		priv->tx_wr.send_flags |= IB_SEND_IP_CSUM;
+		priv->tx_wr.wr.send_flags |= IB_SEND_IP_CSUM;
 	else
-		priv->tx_wr.send_flags &= ~IB_SEND_IP_CSUM;
+		priv->tx_wr.wr.send_flags &= ~IB_SEND_IP_CSUM;
 
 	xve_debug(DEBUG_TX_INFO, priv,
 			"%s sending packet, length=%d csum=%x address=%p qpn=0x%06x flags%x\n",
 			__func__, skb->len, skb->ip_summed,
-			address, qpn, priv->tx_wr.send_flags);
+			address, qpn, priv->tx_wr.wr.send_flags);
 
 	if (unlikely(post_send(priv, priv->tx_head & (priv->xve_sendq_size - 1),
 			       address->ah, qpn, tx_req, phead, hlen))) {
