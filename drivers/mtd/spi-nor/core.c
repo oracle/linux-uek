@@ -3456,6 +3456,18 @@ static const struct spi_device_id spi_nor_dev_ids[] = {
 	{ "mr25h256" }, /* 256 Kib, 40 MHz */
 	{ "mr25h10" },  /*   1 Mib, 40 MHz */
 	{ "mr25h40" },  /*   4 Mib, 40 MHz */
+	{ "mt25ql064" },
+	{ "mt25qu064" },
+	{ "mt25ql128" },
+	{ "mt25qu128" },
+	{ "mt25ql256" },
+	{ "mt25qu256" },
+	{ "mt25ql512" },
+	{ "mt25qu512" },
+	{ "mt25ql01g" },
+	{ "mt25qu01g" },
+	{ "mt25ql02g" },
+	{ "mt25qu02g" },
 
 	{ },
 };
