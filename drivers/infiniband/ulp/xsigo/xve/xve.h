@@ -83,7 +83,6 @@
 #include <rdma/ib_pack.h>
 #include <rdma/ib_sa.h>
 #include <rdma/ib_cache.h>
-#include <rdma/sif_verbs.h>
 
 #include "xscore.h"
 #include "hash.h"

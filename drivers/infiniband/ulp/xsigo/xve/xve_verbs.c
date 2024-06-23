@@ -234,7 +234,7 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 		init_attr.create_flags |= IB_QP_CREATE_BLOCK_MULTICAST_LOOPBACK;
 
 	if (priv->is_eoib && priv->is_titan) {
-		init_attr.create_flags |= IB_QP_CREATE_EOIB;
+		pr_warn("%s: failed no create eoib flag \n", ca->name);
 		init_attr.cap.max_inline_data = xve_max_inline_data;
 	}
 
