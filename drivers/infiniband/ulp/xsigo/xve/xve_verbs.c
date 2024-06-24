@@ -191,7 +191,7 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 	/* Create Receive CompletionQueue */
 	cq_attr.cqe = priv->xve_rcq_size;
 	cq_attr.comp_vector = (req_vec) % priv->ca->num_comp_vectors;
-	priv->recv_cq = ib_create_cq(priv->ca, xve_ib_completion, NULL,
+	priv->recv_cq = ib_create_cq(priv->ca, xve_ib_rx_completion, NULL,
 				     priv, &cq_attr);
 	if (IS_ERR(priv->recv_cq)) {
 		pr_warn("%s: failed to create receive CQ for %s size%d\n",
@@ -202,8 +202,8 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 	/* Create Send CompletionQueue */
 	cq_attr.cqe = priv->xve_scq_size;
 	cq_attr.comp_vector = (req_vec + 1) % priv->ca->num_comp_vectors;
-	priv->send_cq = ib_create_cq(priv->ca, xve_send_comp_handler, NULL,
-				     dev, &cq_attr);
+	priv->send_cq = ib_create_cq(priv->ca, xve_ib_tx_completion, NULL,
+				     priv, &cq_attr);
 	if (IS_ERR(priv->send_cq)) {
 		pr_warn("%s: failed to create send CQ for %s size%d\n",
 			ca->name, priv->xve_name, priv->xve_scq_size);

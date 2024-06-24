@@ -736,27 +736,36 @@ int xve_cm_send(struct net_device *dev, struct sk_buff *skb,
 	}
 	tx_req->mapping[0] = addr;
 
+	if ((priv->tx_head - priv->tx_tail) == priv->xve_sendq_size -1) {
+		xve_dbg_data(priv,
+				"TX ring 0x%x full, stopping kernel net queue\n",
+				tx->qp->qp_num);
+			priv->counters[XVE_TX_RING_FULL_COUNTER]++;
+			priv->counters[XVE_TX_QUEUE_STOP_COUNTER]++;
+			netif_stop_queue(dev);
+	}
+
+	if (netif_queue_stopped(dev)) {
+		if (ib_req_notify_cq(priv->send_cq, IB_CQ_NEXT_COMP |
+				     IB_CQ_REPORT_MISSED_EVENTS) < 0) {
+			xve_warn(priv, "request notify on send CQ failed \n");
+		} else {
+			xve_ib_tx_completion(priv->send_cq, dev);
+		}
+	}
+
 	if (unlikely(post_send(priv, tx, wr_id,
 			       addr, skb->len))) {
-		xve_warn(priv, "QP[%d] post_send failed wr_id:%d ctx:%p",
+		xve_warn(priv, "QP[%d] post_send failed wr_id:%d ctx:%p \n",
 				tx->qp->qp_num, wr_id, tx);
 		INC_TX_ERROR_STATS(priv, dev);
 		xve_cm_tx_buf_free(priv, tx_req, tx, 0, tx->qp->qp_num);
+		if (netif_queue_stopped(dev))
+			netif_wake_queue(dev);
 	} else {
 		netif_trans_update(dev);
 		++tx->tx_head;
 		++priv->tx_head;
-		if ((priv->tx_head - priv->tx_tail) == priv->xve_sendq_size) {
-			xve_dbg_data(priv,
-				     "TX ring 0x%x full, stopping kernel net queue\n",
-				     tx->qp->qp_num);
-			if (ib_req_notify_cq(priv->send_cq, IB_CQ_NEXT_COMP))
-				xve_warn(priv,
-					 "request notify on send CQ failed");
-			priv->counters[XVE_TX_RING_FULL_COUNTER]++;
-			priv->counters[XVE_TX_QUEUE_STOP_COUNTER]++;
-			netif_stop_queue(dev);
-		}
 	}
 	priv->send_hbeat_flag = 0;
 	return ret;
@@ -786,9 +795,9 @@ void xve_cm_handle_tx_wc(struct net_device *dev,
 	++tx->tx_tail;
 	priv->counters[XVE_RC_TXCOMPL_COUNTER]++;
 	++priv->tx_tail;
-	if (unlikely((priv->tx_head - priv->tx_tail) == priv->xve_sendq_size >> 1) &&
-	    netif_queue_stopped(dev) &&
-	    test_bit(XVE_FLAG_ADMIN_UP, &priv->flags)) {
+	if (unlikely(netif_queue_stopped(dev) &&
+		     ((priv->tx_head - priv->tx_tail) <= priv->xve_sendq_size >> 1) &&
+	    test_bit(XVE_FLAG_ADMIN_UP, &priv->flags))) {
 		priv->counters[XVE_TX_WAKE_UP_COUNTER]++;
 		netif_wake_queue(dev);
 	}
@@ -981,7 +990,7 @@ static struct ib_qp *xve_cm_create_tx_qp(struct net_device *dev,
 {
 	struct xve_dev_priv *priv = netdev_priv(dev);
 	struct ib_qp_init_attr attr = {
-		.send_cq = priv->recv_cq,
+		.send_cq = priv->send_cq,
 		.recv_cq = priv->recv_cq,
 		.srq = priv->cm.srq,
 		.cap.max_send_wr = priv->xve_sendq_size,
@@ -1300,11 +1309,11 @@ void xve_cm_destroy_tx_deferred(struct xve_cm_ctx *tx)
 	unsigned long flags = 0;
 
 	spin_lock_irqsave(&priv->lock, flags);
-	clear_bit(XVE_FLAG_OPER_UP, &tx->flags);
 	if (test_and_clear_bit(XVE_FLAG_INITIALIZED, &tx->flags)) {
 		list_move(&tx->list, &priv->cm.reap_list);
 		xve_queue_work(priv, XVE_WQ_START_CMTXREAP);
 	}
+	clear_bit(XVE_FLAG_OPER_UP, &tx->flags);
 	spin_unlock_irqrestore(&priv->lock, flags);
 }
 

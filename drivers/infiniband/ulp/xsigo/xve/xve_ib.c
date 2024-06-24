@@ -541,9 +541,9 @@ static void xve_ib_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 
 	++priv->tx_tail;
 
-	if (unlikely((priv->tx_head - priv->tx_tail) == priv->xve_sendq_size >> 1) &&
-	    netif_queue_stopped(dev) &&
-	    test_bit(XVE_FLAG_ADMIN_UP, &priv->flags)) {
+	if (unlikely(netif_queue_stopped(dev) &&
+		    ((priv->tx_head - priv->tx_tail) <= priv->xve_sendq_size >> 1) &&
+		    test_bit(XVE_FLAG_ADMIN_UP, &priv->flags))) {
 		priv->counters[XVE_TX_WAKE_UP_COUNTER]++;
 		netif_wake_queue(dev);
 	}
@@ -558,15 +558,19 @@ static void xve_ib_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 int poll_tx(struct xve_dev_priv *priv)
 {
 	int n, i;
+	struct ib_wc *wc;
 
 	n = ib_poll_cq(priv->send_cq, MAX_SEND_CQE, priv->send_wc);
-	/* handle multiple WC's in one call */
-	for (i = 0; i < n; ++i)
-		xve_ib_handle_tx_wc(priv->netdev,
-				priv->send_wc + i);
-	if (n < 0) {
+	if (n < 0)
 		xve_warn(priv, "%s ib_poll_cq() failed, rc %d\n",
-				__func__, n);
+				 __func__, n);
+	/* handle multiple WC's in one call */
+	for (i = 0; i < n; ++i){
+		wc = priv->send_wc + i;
+		if (wc->wr_id & XVE_OP_CM)
+			xve_cm_handle_tx_wc(priv->netdev, priv->send_wc + i);
+		else
+			xve_ib_handle_tx_wc(priv->netdev, priv->send_wc + i);
 	}
 
 	/* Since, we are not going to be polled again, arm cq */
@@ -602,17 +606,17 @@ static int poll_rx(struct xve_dev_priv *priv, int num_polls, int *done,
 			else
 				xve_ib_handle_rx_wc(priv->netdev,
 						    priv->ibwc + i);
-		} else
-			xve_cm_handle_tx_wc(priv->netdev, priv->ibwc + i);
+		} else {
+			pr_warn("%s: Got unexpected wqe id %lld\n", __func__, priv->ibwc[i].wr_id);
+		}
 	}
 	return n;
 }
 
-int xve_poll(struct napi_struct *napi, int budget)
+int xve_rx_poll(struct napi_struct *napi, int budget)
 {
 	struct xve_dev_priv *priv =
-	    container_of(napi, struct xve_dev_priv, napi);
-	struct net_device *dev = priv->netdev;
+	    container_of(napi, struct xve_dev_priv, recv_napi);
 	int done, n, t;
 
 	done = 0;
@@ -623,7 +627,7 @@ int xve_poll(struct napi_struct *napi, int budget)
 	if (!(test_bit(XVE_OPER_UP, &priv->state) ||
 		test_bit(XVE_HBEAT_LOST, &priv->state))) {
 		priv->counters[XVE_NAPI_DROP_COUNTER]++;
-		napi_complete(&priv->napi);
+		napi_complete(&priv->recv_napi);
 		clear_bit(XVE_INTR_ENABLED, &priv->state);
 		return 0;
 	}
@@ -652,8 +656,9 @@ poll_more:
 				else
 					xve_ib_handle_rx_wc(priv->netdev,
 							wc);
-			} else
-				xve_cm_handle_tx_wc(priv->netdev, wc);
+			} else {
+				pr_warn("%s: Got unexpected wqe id\n", __func__);
+			}
 		}
 		if (n != t)
 			break;
@@ -679,13 +684,38 @@ poll_more:
 	return done;
 }
 
-void xve_ib_completion(struct ib_cq *cq, void *dev_ptr)
+int xve_tx_poll(struct napi_struct *napi, int budget)
 {
-	struct net_device *dev = dev_ptr;
-	struct xve_dev_priv *priv = netdev_priv(dev);
+	struct xve_dev_priv *priv = container_of(napi, struct xve_dev_priv,
+						send_napi);
+	struct net_device *dev = priv->netdev;
+	int n, i;
+	struct ib_wc *wc;
 
+poll_more:
+        n = ib_poll_cq(priv->send_cq, MAX_SEND_CQE, priv->send_wc);
+        for (i = 0; i < n; i++) {
+                wc = priv->send_wc + i;
+                if (wc->wr_id & XVE_OP_CM)
+                        xve_cm_handle_tx_wc(dev, wc);
+                else
+                        xve_ib_handle_tx_wc(dev, wc);
+        }
+
+        if (n < budget) {
+                napi_complete(napi);
+                if (unlikely(ib_req_notify_cq(priv->send_cq, IB_CQ_NEXT_COMP |
+                                              IB_CQ_REPORT_MISSED_EVENTS)) &&
+                    napi_reschedule(napi))
+                        goto poll_more;
+        }
+	return n < 0 ? 0 : n;
+}
+
+void xve_ib_rx_completion(struct ib_cq *cq, void *ctx_ptr)
+{
+	struct xve_dev_priv *priv = ctx_ptr;
 	xve_data_recv_handler(priv);
-
 }
 
 /*
@@ -701,38 +731,33 @@ void xve_data_recv_handler(struct xve_dev_priv *priv)
 			!test_bit(XVE_DELETING, &priv->state)) {
 		priv->counters[XVE_NAPI_SCHED_COUNTER]++;
 		clear_bit(XVE_INTR_ENABLED, &priv->state);
-		napi_schedule(&priv->napi);
+		napi_schedule(&priv->recv_napi);
 	} else {
 		priv->counters[XVE_NAPI_NOTSCHED_COUNTER]++;
 	}
 }
 
-static void xve_ib_tx_timer_func(unsigned long ctx)
+void xve_ib_tx_completion(struct ib_cq *cq, void *ctx_ptr)
 {
-	struct net_device *dev = (struct net_device *)ctx;
-	struct xve_dev_priv *priv = netdev_priv(dev);
-	unsigned long flags = 0;
+	struct xve_dev_priv *priv = ctx_ptr;
 
-	netif_tx_lock(dev);
-	spin_lock_irqsave(&priv->lock, flags);
-	if (test_bit(XVE_OPER_UP, &priv->state) &&
-			!test_bit(XVE_DELETING, &priv->state)) {
-		while (poll_tx(priv))
-			; /* nothing */
-	}
-	spin_unlock_irqrestore(&priv->lock, flags);
-	if (netif_queue_stopped(dev))
-		mod_timer(&priv->poll_timer, jiffies + 1);
-
-	netif_tx_unlock(dev);
+	napi_schedule(&priv->send_napi);
 }
 
-
-void xve_send_comp_handler(struct ib_cq *cq, void *dev_ptr)
+static void xve_napi_enable(struct net_device *dev)
 {
-	struct xve_dev_priv *priv = netdev_priv((struct net_device *)dev_ptr);
+	struct xve_dev_priv *priv = netdev_priv(dev);
 
-	mod_timer(&priv->poll_timer, jiffies);
+	napi_enable(&priv->recv_napi);
+	napi_enable(&priv->send_napi);
+}
+
+static void xve_napi_disable(struct net_device *dev)
+{
+	struct xve_dev_priv *priv = netdev_priv(dev);
+
+	napi_disable(&priv->recv_napi);
+	napi_disable(&priv->send_napi);
 }
 
 static inline int post_send(struct xve_dev_priv *priv,
@@ -896,6 +921,11 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 		priv->tx_wr.wr.send_flags |= IB_SEND_IP_CSUM;
 	else
 		priv->tx_wr.wr.send_flags &= ~IB_SEND_IP_CSUM;
+
+        if (netif_queue_stopped(dev))
+                if (ib_req_notify_cq(priv->send_cq, IB_CQ_NEXT_COMP |
+                                     IB_CQ_REPORT_MISSED_EVENTS) < 0)
+                        xve_warn(priv, "request notify on send CQ failed\n");
 
 	xve_debug(DEBUG_TX_INFO, priv,
 			"%s sending packet, length=%d csum=%x address=%p qpn=0x%06x flags%x\n",
@@ -1146,7 +1176,7 @@ int xve_ib_dev_open(struct net_device *dev)
 			3 * round_jiffies_relative(HZ));
 
 	if (!test_and_set_bit(XVE_FLAG_INITIALIZED, &priv->flags))
-		napi_enable(&priv->napi);
+		xve_napi_enable(dev);
 
 	/* Set IB Dev to open */
 	set_bit(XVE_IB_DEV_OPEN, &priv->flags);
@@ -1171,7 +1201,7 @@ int xve_ib_dev_stop(struct net_device *dev, int flush)
 	}
 
 	if (test_and_clear_bit(XVE_FLAG_INITIALIZED, &priv->flags))
-		napi_disable(&priv->napi);
+		xve_napi_disable(dev);
 
 	xve_cm_dev_stop(dev);
 
@@ -1227,7 +1257,6 @@ int xve_ib_dev_stop(struct net_device *dev, int flush)
 		  __func__);
 timeout:
 	xve_debug(DEBUG_IBDEV_INFO, priv, "Deleting TX timer\n");
-	del_timer_sync(&priv->poll_timer);
 	qp_attr.qp_state = IB_QPS_RESET;
 	if (ib_modify_qp(priv->qp, &qp_attr, IB_QP_STATE))
 		xve_warn(priv, "Failed to modify QP to RESET state\n");
@@ -1255,7 +1284,6 @@ int xve_ib_dev_init(struct net_device *dev, struct ib_device *ca, int port)
 		return -ENODEV;
 	}
 
-	timer_setup(&priv->poll_timer, xve_ib_tx_timer_func, 0);
 
 	if (dev->flags & IFF_UP) {
 		if (xve_ib_dev_open(dev) != 0) {

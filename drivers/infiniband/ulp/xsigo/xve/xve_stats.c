@@ -534,7 +534,8 @@ static int xve_proc_read_device(struct seq_file *m, void *data)
 	seq_puts(m, "\n");
 
 	seq_printf(m, "Netdev state:\t\t\t0x%lu\n", vp->netdev->state);
-	seq_printf(m, "Netdev napi state:\t\t0x%lu\n", vp->napi.state);
+	seq_printf(m, "Netdev send napi state:\t\t0x%lu\n", vp->send_napi.state);
+	seq_printf(m, "Netdev recv napi state:\t\t0x%lu\n", vp->recv_napi.state);
 	seq_printf(m, "VNIC state:\t\t\t0x%x\n", (unsigned int)vp->state);
 	seq_printf(m, "VNIC Flag:\t\t\t0x%x\n", (unsigned int)vp->flags);
 

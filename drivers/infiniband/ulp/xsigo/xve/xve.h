@@ -712,9 +712,9 @@ struct xve_dev_priv {
 	/* Netdev related attributes */
 	struct net_device *netdev;
 	struct net_device_stats stats;
-	struct napi_struct napi;
+	struct napi_struct send_napi;
+	struct napi_struct recv_napi;
 	struct xve_ethtool_st ethtool;
-	struct timer_list poll_timer;
 	u8 gro_mode;
 	unsigned long flags;
 	unsigned long state;
@@ -1021,7 +1021,7 @@ static inline void xve_send_skb(struct xve_dev_priv *priv, struct sk_buff *skb)
 
 
 	if (netdev->features & NETIF_F_GRO)
-		napi_gro_receive(&priv->napi, skb);
+		napi_gro_receive(&priv->recv_napi, skb);
 	else
 		netif_receive_skb(skb);
 
@@ -1132,10 +1132,11 @@ static inline void xve_put_ctx(struct xve_dev_priv *priv)
 
 
 /* functions */
-int xve_poll(struct napi_struct *napi, int budget);
-void xve_ib_completion(struct ib_cq *cq, void *dev_ptr);
 void xve_data_recv_handler(struct xve_dev_priv *priv);
-void xve_send_comp_handler(struct ib_cq *cq, void *dev_ptr);
+int xve_rx_poll(struct napi_struct *napi, int budget);
+int xve_tx_poll(struct napi_struct *napi, int budget);
+void xve_ib_rx_completion(struct ib_cq *cq, void *ctx_ptr);
+void xve_ib_tx_completion(struct ib_cq *cq, void *ctx_ptr);
 struct xve_ah *xve_create_ah(struct net_device *dev,
 			     struct ib_pd *pd, struct rdma_ah_attr *attr);
 void xve_free_ah(struct kref *kref);

@@ -915,6 +915,22 @@ int xve_add_eoib_header(struct xve_dev_priv *priv, struct sk_buff *skb)
 	return 0;
 }
 
+static void xve_napi_add(struct net_device *dev)
+{
+        struct xve_dev_priv *priv = netdev_priv(dev);
+
+        netif_napi_add(dev, &priv->recv_napi, xve_rx_poll, napi_weight);
+        netif_napi_add(dev, &priv->send_napi, xve_tx_poll, MAX_SEND_CQE);
+}
+
+static void xve_napi_del(struct net_device *dev)
+{
+        struct xve_dev_priv *priv = netdev_priv(dev);
+
+	netif_napi_del(&priv->recv_napi);
+	netif_napi_del(&priv->send_napi);
+}
+
 static int xve_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct sk_buff *bcast_skb = NULL;
@@ -1093,7 +1109,7 @@ unlock:
 
 	if (unlikely((priv->tx_head - priv->tx_tail) > SENDQ_LOW_WMARK)) {
 		priv->counters[XVE_TX_WMARK_REACH_COUNTER]++;
-		mod_timer(&priv->poll_timer, jiffies);
+		napi_schedule(&priv->send_napi);
 
 	}
 
@@ -1205,8 +1221,10 @@ static void xve_io_disconnect(struct xve_dev_priv *priv)
 	if (test_bit(XVE_OPER_UP, &priv->state)) {
 		xve_set_oper_down(priv);
 		spin_unlock_irqrestore(&priv->lock, flags);
-		if (test_bit(XVE_OS_ADMIN_UP, &priv->state))
-			napi_synchronize(&priv->napi);
+		if (test_bit(XVE_OS_ADMIN_UP, &priv->state)) {
+			napi_synchronize(&priv->send_napi);
+			napi_synchronize(&priv->recv_napi);
+		}
 		xve_info(priv, "%s Flushing mcast", __func__);
 		xve_queue_work(priv, XVE_WQ_START_FLUSHNORMAL);
 	} else {
@@ -1807,7 +1825,7 @@ int xve_set_dev_features(struct xve_dev_priv *priv, struct ib_device *hca)
 
 	SET_NETDEV_OPS(priv->netdev, &xve_netdev_ops);
 	xve_set_ethtool_ops(priv->netdev);
-	netif_napi_add(priv->netdev, &priv->napi, xve_poll, napi_weight);
+	xve_napi_add(priv->netdev);
 	if (xve_esx_preregister_setup(priv->netdev))
 		return -EINVAL;
 
