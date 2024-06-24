@@ -798,7 +798,7 @@ int xve_cm_dev_open(struct net_device *dev)
 	sid = priv->local_gid.raw[14] << 8 | priv->local_gid.raw[15];
 	sid = XVE_CM_IETF_ID | sid << 32 | priv->net_id;
 
-	ret = ib_cm_listen(priv->cm.id, cpu_to_be64(sid), 0, NULL);
+	ret = ib_cm_listen(priv->cm.id, cpu_to_be64(sid), 0);
 	if (ret) {
 		pr_warn("%s: failed to listen on ID 0x%llx\n",
 			priv->ca->name, sid);
