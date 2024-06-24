@@ -1844,7 +1844,7 @@ void xve_remove_one(struct xve_dev_priv *priv)
 	ib_unregister_event_handler(&priv->event_handler);
 	cancel_delayed_work_sync(&priv->stale_task);
 	rtnl_lock();
-	dev_change_flags(priv->netdev, priv->netdev->flags & ~IFF_UP);
+	dev_change_flags(priv->netdev, priv->netdev->flags & ~IFF_UP, NULL);
 	rtnl_unlock();
 	vmk_notify_uplink(priv->netdev);
 	unregister_netdev(priv->netdev);
