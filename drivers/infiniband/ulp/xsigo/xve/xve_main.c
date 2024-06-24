@@ -1076,7 +1076,7 @@ unlock:
 
 	spin_unlock_irqrestore(&priv->lock, flags);
 
-	if (unlikely(priv->tx_outstanding > SENDQ_LOW_WMARK)) {
+	if (unlikely((priv->tx_head - priv->tx_tail) > SENDQ_LOW_WMARK)) {
 		priv->counters[XVE_TX_WMARK_REACH_COUNTER]++;
 		mod_timer(&priv->poll_timer, jiffies);
 

@@ -717,7 +717,8 @@ int xve_cm_send(struct net_device *dev, struct sk_buff *skb,
 	} else {
 		netif_trans_update(dev);
 		++tx->tx_head;
-		if (++priv->tx_outstanding == priv->xve_sendq_size) {
+		++priv->tx_head;
+		if ((priv->tx_head - priv->tx_tail) == priv->xve_sendq_size) {
 			xve_dbg_data(priv,
 				     "TX ring 0x%x full, stopping kernel net queue\n",
 				     tx->qp->qp_num);
@@ -756,7 +757,8 @@ void xve_cm_handle_tx_wc(struct net_device *dev,
 	netif_tx_lock(dev);
 	++tx->tx_tail;
 	priv->counters[XVE_RC_TXCOMPL_COUNTER]++;
-	if (unlikely(--priv->tx_outstanding == priv->xve_sendq_size >> 1) &&
+	++priv->tx_tail;
+	if (unlikely((priv->tx_head - priv->tx_tail) == priv->xve_sendq_size >> 1) &&
 	    netif_queue_stopped(dev) &&
 	    test_bit(XVE_FLAG_ADMIN_UP, &priv->flags)) {
 		priv->counters[XVE_TX_WAKE_UP_COUNTER]++;
@@ -1170,7 +1172,8 @@ static void xve_cm_tx_destroy(struct xve_cm_ctx *p)
 
 		xve_cm_tx_buf_free(priv, tx_req, p, 0, 0);
 		netif_tx_lock_bh(p->netdev);
-		if (unlikely(--priv->tx_outstanding ==
+		++priv->tx_tail;
+		if (unlikely((priv->tx_head - priv->tx_tail) ==
 					(priv->xve_sendq_size >> 1))
 		    && netif_queue_stopped(p->netdev) &&
 		    test_bit(XVE_FLAG_ADMIN_UP, &priv->flags)) {

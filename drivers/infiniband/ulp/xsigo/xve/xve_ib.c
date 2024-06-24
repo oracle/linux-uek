@@ -530,7 +530,7 @@ static void xve_ib_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 
 	++priv->tx_tail;
 
-	if (unlikely(--priv->tx_outstanding == priv->xve_sendq_size >> 1) &&
+	if (unlikely((priv->tx_head - priv->tx_tail) == priv->xve_sendq_size >> 1) &&
 	    netif_queue_stopped(dev) &&
 	    test_bit(XVE_FLAG_ADMIN_UP, &priv->flags)) {
 		priv->counters[XVE_TX_WAKE_UP_COUNTER]++;
@@ -800,10 +800,10 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 	 * Gateway broadcast packet's can come as that packets are not
 	 * controlled by network layer
 	 */
-	if (priv->tx_outstanding >= priv->xve_sendq_size) {
+	if ((priv->tx_head - priv->tx_tail)  >= priv->xve_sendq_size) {
 		xve_warn(priv, "TX QUEUE FULL %d head%d tail%d out%d type%d",
 				id, priv->tx_head, priv->tx_tail,
-				priv->tx_outstanding, type);
+				(priv->tx_head - priv->tx_tail), type);
 		goto drop_pkt;
 	}
 
@@ -862,11 +862,11 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 	}
 
 	/* Queue almost full */
-	if (++priv->tx_outstanding == priv->xve_sendq_size) {
+	if ((priv->tx_head - priv->tx_tail) == priv->xve_sendq_size) {
 		xve_dbg_data(priv,
 				"%s stop queue id%d head%d tail%d out%d type%d",
 				__func__, id, priv->tx_head, priv->tx_tail,
-				priv->tx_outstanding, type);
+				(priv->tx_head - priv->tx_tail), type);
 		if (ib_req_notify_cq(priv->send_cq, IB_CQ_NEXT_COMP))
 			xve_warn(priv, "%s Req notify on send CQ failed\n",
 					__func__);
@@ -889,10 +889,9 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 
 	if (unlikely(post_send(priv, priv->tx_head & (priv->xve_sendq_size - 1),
 			       address->ah, qpn, tx_req, phead, hlen))) {
-		--priv->tx_outstanding;
 		xve_warn(priv, "%s post_send failed id%d head%d tail%d out%d type%d",
 				__func__, id, priv->tx_head, priv->tx_tail,
-				priv->tx_outstanding, type);
+				(priv->tx_head - priv->tx_tail), type);
 		priv->counters[XVE_TX_RING_FULL_COUNTER]++;
 		xve_put_ah_refcnt(address);
 		xve_free_txbuf_memory(priv, tx_req);
@@ -1058,7 +1057,7 @@ void xve_drain_cq(struct net_device *dev)
 
 	if (test_and_set_bit(XVE_DRAIN_IN_PROGRESS, &priv->flags)) {
 		xve_info(priv, "Drain in progress[%d:%d:%d] state[%lx:%lx]",
-				priv->tx_outstanding, priv->tx_head,
+				(priv->tx_head - priv->tx_tail), priv->tx_head,
 				priv->tx_tail, priv->flags, priv->state);
 		return;
 	}
@@ -1079,7 +1078,7 @@ void xve_drain_cq(struct net_device *dev)
 	netif_tx_lock_bh(dev);
 	spin_lock_irqsave(&priv->lock, flags);
 
-	if (priv->tx_outstanding)
+	if ((priv->tx_head - priv->tx_tail))
 		while (poll_tx(priv))
 			; /* nothing */
 
@@ -1187,7 +1186,6 @@ int xve_ib_dev_stop(struct net_device *dev, int flush)
 					(priv->xve_sendq_size - 1)];
 				xve_free_txbuf_memory(priv, tx_req);
 				++priv->tx_tail;
-				--priv->tx_outstanding;
 			}
 
 			for (i = 0; i < priv->xve_recvq_size; ++i) {

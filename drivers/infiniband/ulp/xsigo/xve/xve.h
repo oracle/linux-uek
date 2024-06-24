@@ -761,7 +761,6 @@ struct xve_dev_priv {
 	struct xve_tx_buf *tx_ring;
 	unsigned tx_head;
 	unsigned tx_tail;
-	unsigned tx_outstanding;
 	struct ib_sge tx_sge[MAX_SKB_FRAGS + 1];
 	struct ib_ud_wr tx_wr;
 	struct ib_wc send_wc[MAX_SEND_CQE];
