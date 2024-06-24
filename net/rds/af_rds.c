@@ -1266,7 +1266,6 @@ static void rds_sock_info(struct socket *sock, unsigned int len,
 			  struct rds_info_iterator *iter,
 			  struct rds_info_lengths *lens)
 {
-	struct rds_info_socket sinfo;
 	struct rds_net *rns;
 	u32 sock_count;
 	struct rds_sock *rs;
@@ -1284,6 +1283,8 @@ static void rds_sock_info(struct socket *sock, unsigned int len,
 	}
 
 	list_for_each_entry(rs, &rns->rns_sock_list, rs_item) {
+		struct rds_info_socket sinfo = {};
+
 		if (!ipv6_addr_any(&rs->rs_bound_addr) &&
 		    !ipv6_addr_v4mapped(&rs->rs_bound_addr))
 			continue;
@@ -1314,7 +1315,6 @@ static void rds6_sock_info(struct socket *sock, unsigned int len,
 			   struct rds_info_iterator *iter,
 			   struct rds_info_lengths *lens)
 {
-	struct rds6_info_socket sinfo6;
 	struct rds_net *rns;
 	struct rds_sock *rs;
 
@@ -1327,6 +1327,8 @@ static void rds6_sock_info(struct socket *sock, unsigned int len,
 		goto out;
 
 	list_for_each_entry(rs, &rns->rns_sock_list, rs_item) {
+		struct rds6_info_socket sinfo6 = {};
+
 		sinfo6.sndbuf = rds_sk_sndbuf(rs);
 		sinfo6.rcvbuf = rds_sk_rcvbuf(rs);
 		sinfo6.bound_addr = rs->rs_bound_addr;
