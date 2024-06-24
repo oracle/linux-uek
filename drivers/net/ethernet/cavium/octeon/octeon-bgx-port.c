@@ -519,6 +519,10 @@ static int bgx_port_probe(struct platform_device *pdev)
 
 	reg = of_get_property(pdev->dev.parent->of_node, "reg", NULL);
 	addr = of_translate_address(pdev->dev.parent->of_node, reg);
+
+	mac=kzalloc(ETH_ALEN*sizeof(u8),GFP_KERNEL);
+	if (!mac)
+		return -ENOMEM;
 	r = of_get_mac_address(pdev->dev.of_node, mac);
 	if (r)
 		return -ENODEV;
@@ -538,7 +542,7 @@ static int bgx_port_probe(struct platform_device *pdev)
 	priv->index = index;
 	priv->xiface = cvmx_helper_node_interface_to_xiface(numa_node, priv->bgx_interface);
 	priv->ipd_port = cvmx_helper_get_ipd_port(priv->xiface, index);
-	if (mac)
+	if (is_valid_ether_addr(mac))
 		priv->mac_addr = mac;
 
 	priv->phy_np = of_parse_phandle(pdev->dev.of_node, "phy-handle", 0);
@@ -562,6 +566,10 @@ static int bgx_port_probe(struct platform_device *pdev)
 static int bgx_port_remove(struct platform_device *pdev)
 {
 	struct bgx_port_priv *priv = dev_get_drvdata(&pdev->dev);
+	if (priv->mac_addr) {
+		kfree(priv->mac_addr);
+		priv->mac_addr = NULL;
+	}
 	kfree(priv);
 	return 0;
 }
