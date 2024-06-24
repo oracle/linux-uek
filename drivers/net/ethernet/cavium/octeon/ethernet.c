@@ -605,7 +605,7 @@ int cvm_oct_common_init(struct net_device *dev)
 	cvmx_pko_port_status_t tx_status;
 	cvmx_pip_port_status_t rx_status;
 	struct octeon_ethernet *priv = netdev_priv(dev);
-	u8 *mac = NULL;
+	u8 mac[ETH_ALEN] = { 0 };
 	struct sockaddr sa;
 	int rc=0;
 
@@ -617,7 +617,7 @@ int cvm_oct_common_init(struct net_device *dev)
 		}
 	}
 
-	if (mac && is_valid_ether_addr(mac)) {
+	if (is_valid_ether_addr(mac)) {
 		memcpy(dev->dev_addr, mac, ETH_ALEN);
 		dev->addr_assign_type &= ~NET_ADDR_RANDOM;
 	} else {
