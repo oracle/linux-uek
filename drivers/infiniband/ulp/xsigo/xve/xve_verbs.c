@@ -311,15 +311,9 @@ void xve_transport_dev_cleanup(struct net_device *dev)
 		clear_bit(XVE_PKEY_ASSIGNED, &priv->flags);
 	}
 
-	ret = ib_destroy_cq(priv->send_cq);
-	if (ret)
-		xve_warn(priv, "%s ib_destroy_cq (sendq) failed ret=%d\n",
-				__func__, ret);
+	ib_destroy_cq(priv->send_cq);
 
-	ret = ib_destroy_cq(priv->recv_cq);
-	if (ret)
-		xve_warn(priv, "%s ib_destroy_cq failed ret=%d\n",
-				__func__, ret);
+	ib_destroy_cq(priv->recv_cq);
 
 	xve_cm_dev_cleanup(dev);
 
