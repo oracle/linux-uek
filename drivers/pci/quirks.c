@@ -5929,6 +5929,7 @@ static void quirk_shared_pcc_and_link_slot(struct pci_dev *pdev)
 }
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x0b60, quirk_shared_pcc_and_link_slot);
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_SOLIDIGM, 0x2b59, quirk_shared_pcc_and_link_slot);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_SOLIDIGM, 0x0b60, quirk_shared_pcc_and_link_slot);
 #endif /* CONFIG_HOTPLUG_PCI_PCIE */
 
 static void rom_bar_overlap_defect(struct pci_dev *dev)
