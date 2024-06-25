@@ -399,6 +399,7 @@ restart:
 				 */
 				list_move_tail(&rm->m_conn_item,
 					       &cp->cp_retrans);
+				rm->m_inc.i_tx_lat = jiffies;
 			}
 
 			spin_unlock_irqrestore(&cp->cp_lock, flags);
@@ -1215,6 +1216,7 @@ static int rds_send_queue_rm(struct rds_sock *rs, struct rds_connection *conn,
 		}
 		rm->m_inc.i_hdr.h_sequence = cpu_to_be64(cp->cp_next_tx_seq++);
 		list_add_tail(&rm->m_conn_item, &cp->cp_send_queue);
+		rm->m_inc.i_tx_lat = jiffies;
 		rds_set_rm_flag_bit(rm, RDS_MSG_ON_CONN);
 
 		spin_unlock(&cp->cp_lock);
@@ -1825,6 +1827,7 @@ static int rds_send_probe(struct rds_conn_path *cp, __be16 sport,
 
 	spin_lock_irqsave(&cp->cp_lock, flags);
 	list_add_tail(&rm->m_conn_item, &cp->cp_send_queue);
+	rm->m_inc.i_tx_lat = jiffies;
 	rds_set_rm_flag_bit(rm, RDS_MSG_ON_CONN);
 	rds_message_addref(rm);
 	rm->m_inc.i_conn = cp->cp_conn;
