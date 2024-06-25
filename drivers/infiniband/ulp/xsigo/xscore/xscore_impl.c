@@ -96,6 +96,7 @@ static void xscore_remove_one(struct ib_device *device, void *client_data);
 static void xds_send_handler(struct ib_mad_agent *agent,
 			     struct ib_mad_send_wc *mad_send_wc);
 static void xds_recv_handler(struct ib_mad_agent *mad_agent,
+			     struct ib_mad_send_buf *send_buf,
 			     struct ib_mad_recv_wc *mad_recv_wc);
 static int xds_check_xcm_record(struct xscore_port *port,
 				struct ib_xds_mad *xds_mad);
@@ -448,6 +449,7 @@ static int xds_check_xcm_record(struct xscore_port *port,
  * Receive completion handler for XDS query
  */
 static void xds_recv_handler(struct ib_mad_agent *mad_agent,
+			     struct ib_mad_send_buf *send_buf,
 			     struct ib_mad_recv_wc *mad_recv_wc)
 {
 	struct xscore_port *port = mad_agent->context;
