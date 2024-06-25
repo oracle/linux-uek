@@ -445,6 +445,21 @@ netdev_tx_t mlx5e_xmit(struct sk_buff *skb, struct net_device *dev)
 	u16 pi = mlx5_wq_cyc_ctr2ix(wq, sq->pc);
 	struct mlx5e_tx_wqe *wqe = mlx5_wq_cyc_get_wqe(wq, pi);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	/* Packet is too small, drop it */
+	if (unlikely(skb->len < ETH_HLEN)) {
+		if (sq->stats)
+			sq->stats->dropped++;
+
+		WARN_ONCE(1, "Packet is too small\n");
+		if (net_ratelimit())
+			netdev_warn(dev, "Packet is too small. len=%d SQ=0x%x\n",
+				    skb->len, sq->sqn);
+		dev_kfree_skb_any(skb);
+		return NETDEV_TX_OK;
+	}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	memset(wqe, 0, sizeof(*wqe));
 
 #ifdef CONFIG_MLX5_EN_IPSEC
