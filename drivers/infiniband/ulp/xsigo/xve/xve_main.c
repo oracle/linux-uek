@@ -49,6 +49,7 @@ MODULE_DESCRIPTION("OVN Virtual Ethernet driver");
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_VERSION(DRIVER_VERSION);
 
+#define XVE_MAX_MTU 9600
 int xve_sendq_size __read_mostly = XVE_TX_RING_SIZE;
 int xve_recvq_size __read_mostly = XVE_RX_RING_SIZE;
 module_param_named(send_queue_size, xve_sendq_size, int, 0444);
@@ -258,7 +259,7 @@ int xve_modify_mtu(struct net_device *netdev, int new_mtu)
 		if (new_mtu > xve_cm_max_mtu(netdev))
 			return -EINVAL;
 
-		netdev->mtu = new_mtu;
+		priv->admin_mtu = netdev->mtu = new_mtu;
 		return 0;
 	}
 
@@ -1785,6 +1786,7 @@ int xve_set_dev_features(struct xve_dev_priv *priv, struct ib_device *hca)
 			priv->vnet_mode, priv->netdev->mtu);
 
 	priv->mcast_mtu = priv->admin_mtu = priv->netdev->mtu;
+	priv->netdev->max_mtu = XVE_MAX_MTU;
 	xg_setup_pseudo_device(priv->netdev, hca);
 
 	SET_NETDEV_OPS(priv->netdev, &xve_netdev_ops);
