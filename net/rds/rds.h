@@ -611,6 +611,8 @@ struct rds_incoming {
 
 	struct rds_inc_usercopy i_usercopy;
 	u64			i_rx_lat_trace[RDS_RX_MAX_TRACES];
+/* use same field for tx and rx as we need only one at a time */
+#define i_tx_lat		i_rx_lat_trace[RDS_MSG_RX_END]
 	struct rds_csum		i_payload_csum;
 };
 
