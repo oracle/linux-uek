@@ -81,6 +81,7 @@ int xve_mcast_attach(struct net_device *dev, u16 mlid, union ib_gid *mgid,
 	xve_dbg_mcast(priv, "Successfully attached to Group mode%d", set_qkey);
 out:
 	kfree(qp_attr);
+	qp_attr = NULL;
 	return ret;
 }
 
@@ -222,6 +223,7 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 		coal->tx_max_coalesced_frames = 16;
 		dev->ethtool_ops->set_coalesce(dev, coal);
 		kfree(coal);
+		coal = NULL;
 	}
 
 	init_attr.send_cq = priv->send_cq;
@@ -282,9 +284,11 @@ int xve_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 
 out_free_send_cq:
 	ib_destroy_cq(priv->send_cq);
+	priv->send_cq = NULL;
 
 out_free_recv_cq:
 	ib_destroy_cq(priv->recv_cq);
+	priv->recv_cq = NULL;
 
 out_free_mr:
 

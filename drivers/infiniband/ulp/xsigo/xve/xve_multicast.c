@@ -79,6 +79,7 @@ static void xve_mcast_free(struct xve_mcast *mcast)
 	netif_tx_unlock_bh(dev);
 
 	kfree(mcast);
+	mcast = NULL;
 }
 
 static struct xve_mcast *xve_mcast_alloc(struct net_device *dev, int can_sleep)
@@ -680,6 +681,7 @@ int xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb,
 	    !test_bit(XVE_MCAST_FLAG_ATTACHED, &priv->broadcast->flags)) {
 		INC_TX_DROP_STATS(priv, dev);
 		dev_kfree_skb_any(skb);
+		skb = NULL;
 		return ret;
 	}
 
@@ -706,6 +708,7 @@ int xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb,
 				"%s unable to allocate memory", __func__);
 			INC_TX_DROP_STATS(priv, dev);
 			dev_kfree_skb_any(skb);
+			skb = NULL;
 			goto out;
 		}
 
@@ -721,6 +724,7 @@ int xve_mcast_send(struct net_device *dev, void *mgid, struct sk_buff *skb,
 		else {
 			INC_TX_DROP_STATS(priv, dev);
 			dev_kfree_skb_any(skb);
+			skb = NULL;
 			return ret;
 		}
 

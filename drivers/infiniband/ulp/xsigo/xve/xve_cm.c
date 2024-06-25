@@ -184,6 +184,7 @@ static void xve_cm_free_rx_ring(struct net_device *dev,
 			xve_cm_dma_unmap_rx(priv, XVE_CM_RX_SG - 1,
 					    rx_ring[i].mapping);
 			xve_dev_kfree_skb_any(priv, rx_ring[i].skb, 0);
+			rx_ring[i].skb = NULL;
 		}
 	}
 	vfree(rx_ring);
@@ -658,11 +659,32 @@ static void xve_cm_tx_buf_free(struct xve_dev_priv *priv,
 			       struct xve_cm_ctx *tx,
 			       uint32_t wr_id, uint32_t qp_num)
 {
-	BUG_ON(tx_req == NULL || tx_req->skb == NULL);
+	BUG_ON(tx_req == NULL);
+	BUG_ON(tx_req->skb == NULL);
+	BUG_ON(tx_req->mapping[0] == 0);
 
-	ib_dma_unmap_single(priv->ca, tx_req->mapping[0],
-			tx_req->skb->len, DMA_TO_DEVICE);
+	struct sk_buff *skb = tx_req->skb;
+	u64 *mapping = tx_req->mapping;
+	int i;
+	int off;
+
+	if(skb_headlen(skb)) {
+	ib_dma_unmap_single(priv->ca, mapping[0],
+			skb_headlen(skb), DMA_TO_DEVICE);
+		off = 1;
+	} else {
+		off = 0;
+	}
+
+	for (i = 0; i < skb_shinfo(skb)->nr_frags; ++i) {
+                const skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
+
+                ib_dma_unmap_page(priv->ca, mapping[i + off],
+                                  skb_frag_size(frag), DMA_TO_DEVICE);
+	}
+
 	xve_dev_kfree_skb_any(priv, tx_req->skb, 1);
+	tx_req->skb = NULL;
 	memset(tx_req, 0, sizeof(struct xve_cm_buf));
 }
 
@@ -697,12 +719,18 @@ int xve_cm_send(struct net_device *dev, struct sk_buff *skb,
 	 * our state is consistent before we call post_send().
 	 */
 	wr_id = tx->tx_head & (priv->xve_sendq_size - 1);
+	if(wr_id >= priv->xve_sendq_size) {
+		xve_warn(priv," wr_id error %d \n",wr_id);
+		return -EIO;
+	}
 	tx_req = &tx->tx_ring[wr_id];
 	tx_req->skb = skb;
+	BUG_ON(tx_req == NULL || tx_req->skb == NULL );
 	addr = ib_dma_map_single(priv->ca, skb->data, skb->len, DMA_TO_DEVICE);
 	if (unlikely(ib_dma_mapping_error(priv->ca, addr))) {
 		INC_TX_ERROR_STATS(priv, dev);
 		dev_kfree_skb_any(skb);
+		tx_req->skb = NULL;
 		memset(tx_req, 0, sizeof(struct xve_cm_buf));
 		return ret;
 	}
@@ -1164,6 +1192,9 @@ static void xve_cm_tx_destroy(struct xve_cm_ctx *p)
 	spin_lock_irqsave(&priv->lock, flags);
 	while ((int)p->tx_tail - (int)p->tx_head < 0) {
 		uint32_t wr_id = p->tx_tail & (priv->xve_sendq_size - 1);
+		if(wr_id >= priv->xve_sendq_size) {
+			xve_warn(priv," wr_id error %d \n",wr_id);
+		}
 
 		tx_req = &p->tx_ring[wr_id];
 
@@ -1343,6 +1374,7 @@ void xve_cm_tx_reap(struct work_struct *work)
 {
 	struct xve_dev_priv *priv =
 	    xve_get_wqctx(work, XVE_WQ_FINISH_CMTXREAP, 0);
+	BUG_ON(priv == NULL);
 	__xve_cm_tx_reap(priv);
 	xve_put_ctx(priv);
 }

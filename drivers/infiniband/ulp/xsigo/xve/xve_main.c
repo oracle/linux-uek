@@ -339,12 +339,18 @@ static int xve_ioctl(struct net_device *netdev, struct ifreq *ifr, int cmd)
 
 inline void xve_get_path(struct xve_path *path)
 {
-	atomic_inc(&path->users);
+	if(path)
+		atomic_inc(&path->users);
+	else
+		pr_warn("error xve_get_path \n");
 }
 
 inline void xve_put_path(struct xve_path *path)
 {
-	atomic_dec_if_positive(&path->users);
+	if(path)
+		atomic_dec_if_positive(&path->users);
+	else
+		pr_warn("error xve_put_path \n");
 }
 
 inline void xve_free_path(struct xve_path *path)
@@ -376,6 +382,7 @@ inline void xve_free_path(struct xve_path *path)
 	spin_unlock_irqrestore(&priv->lock, flags);
 
 	kfree(path);
+	path = NULL;
 }
 
 struct xve_path *__path_find(struct net_device *netdev, void *gid)
@@ -541,6 +548,7 @@ void xve_flush_single_path_by_gid(struct net_device *dev, union ib_gid *gid,
 	list_del(&path->list);
 
 	/* Make sure path is not in use */
+	BUG_ON(path == NULL);
 	if (atomic_dec_if_positive(&path->users) <= 0)
 		xve_free_path(path);
 	else {
@@ -605,6 +613,7 @@ static void path_rec_completion(int status,
 			av.ah_flags = IB_AH_GRH;
 			av.grh.dgid = path->pathrec.dgid;
 			ah = xve_create_ah(dev, priv->pd, &av);
+			BUG_ON(ah == NULL);
 		}
 	}
 
@@ -812,6 +821,7 @@ xve_path_lookup(struct net_device *dev,
 			 * just free that path
 			 */
 			kfree(path);
+			path = NULL;
 			return NULL;
 		}
 	}
@@ -851,6 +861,7 @@ int xve_gw_send(struct net_device *dev, struct sk_buff *skb)
 	path = xve_get_gw_path(dev);
 	if (!path) {
 		dev_kfree_skb_any(skb);
+		skb = NULL;
 		return NETDEV_TX_BUSY;
 	}
 
@@ -870,6 +881,7 @@ int xve_gw_send(struct net_device *dev, struct sk_buff *skb)
 		xve_dbg_data(priv,
 			"No path found to gw - droping the unicast packet\n");
 		dev_kfree_skb_any(skb);
+		skb = NULL;
 		INC_TX_DROP_STATS(priv, dev);
 		goto out;
 	}
@@ -1072,8 +1084,10 @@ unlock:
 
 	if (!queued_pkt)
 		netif_trans_update(dev);
-	if (skb_need_tofree)
+	if (skb_need_tofree) {
 		dev_kfree_skb_any(skb);
+		skb = NULL;
+	}
 
 	spin_unlock_irqrestore(&priv->lock, flags);
 
@@ -1133,9 +1147,11 @@ int xve_dev_init(struct net_device *dev, struct ib_device *ca, int port)
 
 out_tx_ring_cleanup:
 	vfree(priv->tx_ring);
+	priv->tx_ring = NULL;
 
 out_rx_ring_cleanup:
 	kfree(priv->rx_ring);
+	priv->rx_ring = NULL;
 
 out:
 	return -ENOMEM;
@@ -2696,7 +2712,9 @@ static void handle_xve_xsmp_messages_work(struct work_struct *work)
 	(void)handle_xve_xsmp_messages(xwork->xsmp_hndl, xwork->msg,
 				       xwork->len);
 	kfree(xwork->msg);
+	xwork->msg = NULL;
 	kfree(xwork);
+	xwork = NULL;
 }
 
 /*
@@ -2710,6 +2728,7 @@ static void xve_receive_handler(xsmp_cookie_t xsmp_hndl, u8 *msg, int length)
 	work = kmalloc(sizeof(*work), GFP_KERNEL);
 	if (!work) {
 		kfree(msg);
+		msg = NULL;
 		return;
 	}
 	INIT_WORK(&work->work, handle_xve_xsmp_messages_work);

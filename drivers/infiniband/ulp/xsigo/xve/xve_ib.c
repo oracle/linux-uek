@@ -63,6 +63,7 @@ struct xve_ah *xve_create_ah(struct net_device *dev,
 void xve_free_ah(struct kref *kref)
 {
 	struct xve_ah *ah = container_of(kref, struct xve_ah, ref);
+	BUG_ON(ah == NULL);
 	struct xve_dev_priv *priv = netdev_priv(ah->dev);
 
 	list_add_tail(&ah->list, &priv->dead_ahs);
@@ -76,15 +77,18 @@ static void xve_ud_dma_unmap_rx(struct xve_dev_priv *priv,
 	if (xve_ud_need_sg(priv->admin_mtu)) {
 		ib_dma_unmap_single(priv->ca, mapping[0], XVE_UD_HEAD_SIZE,
 				    DMA_FROM_DEVICE);
+		mapping[0] = 0;
 		for (i = 1; i < xve_ud_rx_sg(priv); i++) {
 			ib_dma_unmap_page(priv->ca, mapping[i], PAGE_SIZE,
 					DMA_FROM_DEVICE);
+			mapping[i] = 0;
 			xve_counters[XVE_NUM_PAGES_ALLOCED]--;
 		}
 	} else {
 		ib_dma_unmap_single(priv->ca, mapping[0],
 				    XVE_UD_BUF_SIZE(priv->max_ib_mtu),
 				    DMA_FROM_DEVICE);
+		mapping[0] = 0;
 	}
 }
 
@@ -179,8 +183,10 @@ static struct sk_buff *xve_alloc_rx_skb(struct net_device *dev, int id)
 	mapping = priv->rx_ring[id].mapping;
 	mapping[0] = ib_dma_map_single(priv->ca, skb->data, buf_size,
 				       DMA_FROM_DEVICE);
-	if (unlikely(ib_dma_mapping_error(priv->ca, mapping[0])))
+	if (unlikely(ib_dma_mapping_error(priv->ca, mapping[0]))) {
+		mapping[0] = priv->rx_ring[id].mapping[0] = 0;
 		goto error;
+	}
 
 	for (i = 1; xve_ud_need_sg(priv->admin_mtu) &&
 			i < xve_ud_rx_sg(priv); i++) {
@@ -193,8 +199,10 @@ static struct sk_buff *xve_alloc_rx_skb(struct net_device *dev, int id)
 			ib_dma_map_page(priv->ca,
 					skb_shinfo(skb)->frags[i-1].bv_page,
 					0, PAGE_SIZE, DMA_FROM_DEVICE);
-		if (unlikely(ib_dma_mapping_error(priv->ca, mapping[i])))
+		if (unlikely(ib_dma_mapping_error(priv->ca, mapping[i]))) {
+			mapping[i] = priv->rx_ring[id].mapping[i] = 0;
 			goto partial_error;
+		}
 
 	}
 
@@ -203,6 +211,7 @@ static struct sk_buff *xve_alloc_rx_skb(struct net_device *dev, int id)
 
 partial_error:
 	ib_dma_unmap_single(priv->ca, mapping[0], buf_size, DMA_FROM_DEVICE);
+	mapping[0] = 0;
 error:
 	dev_kfree_skb_any(skb);
 	return NULL;
@@ -495,14 +504,16 @@ static void xve_dma_unmap_tx(struct ib_device *ca, struct xve_tx_buf *tx_req)
 static void xve_free_txbuf_memory(struct xve_dev_priv *priv,
 				  struct xve_tx_buf *tx_req)
 {
+	BUG_ON(tx_req == NULL);
 	if ((tx_req->skb == NULL) || (!tx_req->mapping[0]))
-		xve_debug(DEBUG_DATA_INFO, priv,
+		xve_warn(priv,
 			  "%s [ca %p] tx_req skb %p mapping %lld\n",
 			  __func__, priv->ca, tx_req->skb, tx_req->mapping[0]);
 	else
 		xve_dma_unmap_tx(priv->ca, tx_req);
 
 	xve_dev_kfree_skb_any(priv, tx_req->skb, 1);
+	tx_req->skb = NULL;
 	memset(tx_req, 0, sizeof(struct xve_tx_buf));
 }
 
@@ -729,6 +740,8 @@ static inline int post_send(struct xve_dev_priv *priv,
 			    struct ib_ah *address, u32 qpn,
 			    struct xve_tx_buf *tx_req, void *head, int hlen)
 {
+	BUG_ON(tx_req == NULL || tx_req->skb == NULL);
+
 	const struct ib_send_wr *bad_wr;
 	struct ib_ud_wr *ud_wr = &priv->tx_wr;
 	int i, off;
@@ -769,7 +782,8 @@ static inline int post_send(struct xve_dev_priv *priv,
 		ud_wr->wr.opcode = IB_WR_SEND;
 	}
 
-	xve_debug(DEBUG_TXDATA_INFO, priv, "wr_id %d Frags %d size %d\n",
+	if(wr_id >= priv->xve_sendq_size -1)
+		xve_warn(priv, "ib_post_send wr_id %d Frags %d size %d\n",
 			wr_id, ud_wr->wr.num_sge, total_size);
 	dumppkt(skb->data + sizeof(struct xve_eoib_hdr), total_size,
 			"Post Send Dump");
@@ -857,6 +871,7 @@ int xve_send(struct net_device *dev, struct sk_buff *skb,
 		INC_TX_ERROR_STATS(priv, dev);
 		xve_put_ah_refcnt(address);
 		dev_kfree_skb_any(tx_req->skb);
+		tx_req->skb = NULL;
 		memset(tx_req, 0, sizeof(struct xve_tx_buf));
 		return ret;
 	}
@@ -914,6 +929,7 @@ drop_pkt:
 	INC_TX_DROP_STATS(priv, dev);
 	xve_put_ah_refcnt(address);
 	dev_kfree_skb_any(skb);
+	tx_req->skb = NULL;
 	return ret;
 }
 
@@ -928,6 +944,7 @@ static void __xve_reap_ah(struct net_device *dev)
 	spin_lock_irqsave(&priv->lock, flags);
 
 	list_for_each_entry_safe(ah, tah, &priv->dead_ahs, list) {
+		BUG_ON(ah == NULL);
 		if (atomic_read(&ah->refcnt) == 0) {
 			list_del(&ah->list);
 			rdma_destroy_ah(ah->ah, RDMA_DESTROY_AH_SLEEPABLE);

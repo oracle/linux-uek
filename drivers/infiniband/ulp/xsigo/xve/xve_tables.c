@@ -310,7 +310,7 @@ void xve_remove_fwt_entry(struct xve_dev_priv *priv,
 {
 	struct xve_fwt_s *xve_fwt = &priv->xve_fwt;
 	unsigned long flags = 0;
-
+	BUG_ON(fwt_entry == NULL);
 	spin_lock_irqsave(&xve_fwt->lock, flags);
 	xve_debug(DEBUG_FLUSH_INFO, priv, "%s Deleting FWT[%d] From list %p",
 		  __func__, xve_fwt->num, fwt_entry);
@@ -331,6 +331,7 @@ void xve_fwt_entry_free(struct xve_dev_priv *priv,
 	 */
 	begin = jiffies;
 
+	BUG_ON(fwt_entry == NULL);
 	xve_debug(DEBUG_FLUSH_INFO, priv, "%s Free cache ,FWT %p cnt%d",
 		  __func__, fwt_entry, atomic_read(&fwt_entry->ref_cnt));
 	while (atomic_read(&fwt_entry->ref_cnt)) {
