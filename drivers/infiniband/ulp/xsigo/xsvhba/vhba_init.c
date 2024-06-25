@@ -190,11 +190,12 @@ int vhba_purge_pending_ios(struct virtual_hba *vhba)
 			}
 			ha->outstanding_cmds[i] = NULL;
 			CMD_SP(sp->cmd) = NULL;
+			queue_num = sp->queue_num;
+
 			spin_unlock_irqrestore(&ha->io_lock, flags);
 			complete_cmd_and_callback(vhba, sp, cp);
 			DEC_REF_CNT(vhba);
 			spin_lock_irqsave(&ha->io_lock, flags);
-			queue_num = sp->queue_num;
 
 			dprintk(TRC_SCSI, vhba,
 				"dec q cnt for vhba %p q %d\n",
@@ -235,6 +236,8 @@ void vhba_taskmgmt_flush_ios(struct virtual_hba *vhba, int tgt_id, int lun,
 				}
 				ha->outstanding_cmds[i] = NULL;
 				CMD_SP(sp->cmd) = NULL;
+				queue_num = sp->queue_num;
+
 				spin_unlock_irqrestore(&ha->io_lock, flags);
 
 				complete_cmd_and_callback(vhba, sp, cp);
@@ -242,7 +245,6 @@ void vhba_taskmgmt_flush_ios(struct virtual_hba *vhba, int tgt_id, int lun,
 
 				spin_lock_irqsave(&ha->io_lock, flags);
 
-				queue_num = sp->queue_num;
 
 				dprintk(TRC_SCSI, vhba,
 					"dec q cnt for vhba %p q %d\n",
