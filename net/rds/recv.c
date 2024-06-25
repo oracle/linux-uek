@@ -900,6 +900,7 @@ void rds_inc_info_copy(struct rds_incoming *inc,
 		       __be32 saddr, __be32 daddr, int flip)
 {
 	struct rds_info_message minfo;
+	u64 txrx_ms;
 
 	minfo.seq = be64_to_cpu(inc->i_hdr.h_sequence);
 	minfo.len = be32_to_cpu(inc->i_hdr.h_len);
@@ -910,14 +911,22 @@ void rds_inc_info_copy(struct rds_incoming *inc,
 		minfo.faddr = saddr;
 		minfo.lport = inc->i_hdr.h_dport;
 		minfo.fport = inc->i_hdr.h_sport;
+
+		/* recv queue */
+		txrx_ms = local_clock() - inc->i_rx_lat_trace[RDS_MSG_RX_END];
+		do_div(txrx_ms, 1000000);
 	} else {
 		minfo.laddr = saddr;
 		minfo.faddr = daddr;
 		minfo.lport = inc->i_hdr.h_sport;
 		minfo.fport = inc->i_hdr.h_dport;
+
+		/* send & retrans queue */
+		txrx_ms = jiffies_to_msecs(jiffies - inc->i_tx_lat);
 	}
 
 	minfo.flags = 0;
+	minfo.txrx_ms = txrx_ms;
 
 	rds_info_copy(iter, &minfo, sizeof(minfo));
 }
@@ -929,6 +938,7 @@ void rds6_inc_info_copy(struct rds_incoming *inc,
 			int flip)
 {
 	struct rds6_info_message minfo6;
+	u64 txrx_ms;
 
 	minfo6.seq = be64_to_cpu(inc->i_hdr.h_sequence);
 	minfo6.len = be32_to_cpu(inc->i_hdr.h_len);
@@ -939,14 +949,22 @@ void rds6_inc_info_copy(struct rds_incoming *inc,
 		minfo6.faddr = *saddr;
 		minfo6.lport = inc->i_hdr.h_dport;
 		minfo6.fport = inc->i_hdr.h_sport;
+
+		/* recv queue */
+		txrx_ms = local_clock() - inc->i_rx_lat_trace[RDS_MSG_RX_END];
+		do_div(txrx_ms, 1000000);
 	} else {
 		minfo6.laddr = *saddr;
 		minfo6.faddr = *daddr;
 		minfo6.lport = inc->i_hdr.h_sport;
 		minfo6.fport = inc->i_hdr.h_dport;
+
+		/* send & retrans queue */
+		txrx_ms = jiffies_to_msecs(jiffies - inc->i_tx_lat);
 	}
 
 	minfo6.flags = 0;
+	minfo6.txrx_ms = txrx_ms;
 
 	rds_info_copy(iter, &minfo6, sizeof(minfo6));
 }
