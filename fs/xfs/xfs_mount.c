@@ -622,6 +622,19 @@ xfs_default_resblks(xfs_mount_t *mp)
 	return resblks;
 }
 
+static void
+xfs_unmount_check(
+	struct xfs_mount	*mp)
+{
+	if (XFS_FORCED_SHUTDOWN(mp))
+		return;
+
+	if (percpu_counter_sum(&mp->m_ifree) >
+			percpu_counter_sum(&mp->m_icount)) {
+		xfs_alert(mp, "ifree/icount mismatch at unmount");
+	}
+}
+
 /*
  * This function does the following on an initial mount of a file system:
  *	- reads the superblock from disk and init the mount struct
@@ -1141,6 +1154,7 @@ xfs_unmountfs(
 	if (error)
 		xfs_warn(mp, "Unable to free reserved block pool. "
 				"Freespace may not be correct on next mount.");
+	xfs_unmount_check(mp);
 
 	error = xfs_log_sbcount(mp);
 	if (error)
