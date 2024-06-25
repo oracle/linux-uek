@@ -323,6 +323,20 @@ netdev_tx_t mlx5e_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct mlx5e_priv *priv = netdev_priv(dev);
 	struct mlx5e_sq *sq = priv->txq_to_sq_map[skb_get_queue_mapping(skb)];
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	/* Packet is too small, drop it */
+	if (unlikely(skb->len < ETH_HLEN)) {
+		sq->stats.dropped++;
+
+		WARN_ONCE(1, "Packet is too small\n");
+		if (net_ratelimit())
+			netdev_warn(dev, "Packet is too small. len=%d SQ=0x%x\n",
+				    skb->len, sq->sqn);
+		dev_kfree_skb_any(skb);
+		return NETDEV_TX_OK;
+	}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	return mlx5e_sq_xmit(sq, skb);
 }
 
