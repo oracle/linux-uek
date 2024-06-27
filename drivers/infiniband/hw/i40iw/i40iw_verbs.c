@@ -1068,8 +1068,9 @@ static void i40iw_destroy_cq(struct ib_cq *ib_cq, struct ib_udata *udata)
  */
 static int i40iw_create_cq(struct ib_cq *ibcq,
 			   const struct ib_cq_init_attr *attr,
-			   struct ib_udata *udata)
+			   struct uverbs_attr_bundle *attrs)
 {
+	struct ib_udata *udata = &attrs->driver_udata;
 	struct ib_device *ibdev = ibcq->device;
 	struct i40iw_device *iwdev = to_iwdev(ibdev);
 	struct i40iw_cq *iwcq = to_iwcq(ibcq);

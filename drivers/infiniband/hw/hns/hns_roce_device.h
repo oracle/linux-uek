@@ -1258,7 +1258,7 @@ int to_hr_qp_type(int qp_type);
 
 int hns_roce_ib_create_cq(struct ib_cq *ib_cq,
 			  const struct ib_cq_init_attr *attr,
-			  struct ib_udata *udata);
+			  struct uverbs_attr_bundle *attrs);
 
 void hns_roce_ib_destroy_cq(struct ib_cq *ib_cq, struct ib_udata *udata);
 void hns_roce_free_cq(struct hns_roce_dev *hr_dev, struct hns_roce_cq *hr_cq);
