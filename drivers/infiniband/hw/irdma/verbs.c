@@ -1933,12 +1933,13 @@ static inline int cq_validate_flags(u32 flags, u8 hw_rev)
  * irdma_create_cq - create cq
  * @ibcq: CQ allocated
  * @attr: attributes for cq
- * @udata: user data
+ * @attrs: uverbs attribute bundle
  */
 static int irdma_create_cq(struct ib_cq *ibcq,
 			   const struct ib_cq_init_attr *attr,
-			   struct ib_udata *udata)
+			   struct uverbs_attr_bundle *attrs)
 {
+	struct ib_udata *udata = &attrs->driver_udata;
 	struct ib_device *ibdev = ibcq->device;
 	struct irdma_device *iwdev = to_iwdev(ibdev);
 	struct irdma_pci_f *rf = iwdev->rf;
