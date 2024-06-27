@@ -1433,6 +1433,7 @@ int mlx5_ib_fill_stat_entry(struct sk_buff *msg,
 extern const struct uapi_definition mlx5_ib_devx_defs[];
 extern const struct uapi_definition mlx5_ib_flow_defs[];
 extern const struct uapi_definition mlx5_ib_qos_defs[];
+extern const struct uapi_definition mlx5_ib_create_cq_defs[];
 
 #if IS_ENABLED(CONFIG_INFINIBAND_USER_ACCESS)
 int mlx5_ib_devx_create(struct mlx5_ib_dev *dev, bool is_user);
