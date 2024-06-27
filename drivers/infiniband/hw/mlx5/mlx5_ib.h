@@ -1542,6 +1542,7 @@ extern const struct uapi_definition mlx5_ib_devx_defs[];
 extern const struct uapi_definition mlx5_ib_flow_defs[];
 extern const struct uapi_definition mlx5_ib_qos_defs[];
 extern const struct uapi_definition mlx5_ib_std_types_defs[];
+extern const struct uapi_definition mlx5_ib_create_cq_defs[];
 
 static inline void init_query_mad(struct ib_smp *mad)
 {
