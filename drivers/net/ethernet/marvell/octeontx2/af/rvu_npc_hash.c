@@ -505,7 +505,7 @@ static int rvu_npc_exact_alloc_mem_table_entry(struct rvu *rvu, u8 *way,
 	}
 	mutex_unlock(&table->lock);
 
-	dev_dbg(rvu->dev, "%s: No space in 4 way exact way, weight=%u\n", __func__,
+	dev_dbg(rvu->dev, "%s: No space in 4 way exact way, weight=%lu\n", __func__,
 		bitmap_weight(table->mem_table.bmap, table->mem_table.depth));
 	return -ENOSPC;
 }
@@ -543,7 +543,7 @@ static bool rvu_npc_exact_alloc_id(struct rvu *rvu, u32 *seq_id)
 	idx = find_first_zero_bit(table->id_bmap, table->tot_ids);
 	if (idx == table->tot_ids) {
 		mutex_unlock(&table->lock);
-		dev_err(rvu->dev, "%s: No space in id bitmap (%d)\n",
+		dev_err(rvu->dev, "%s: No space in id bitmap (%lu)\n",
 			__func__, bitmap_weight(table->id_bmap, table->tot_ids));
 
 		return false;
@@ -576,7 +576,7 @@ static int rvu_npc_exact_alloc_cam_table_entry(struct rvu *rvu, int *index)
 	idx = find_first_zero_bit(table->cam_table.bmap, table->cam_table.depth);
 	if (idx == table->cam_table.depth) {
 		mutex_unlock(&table->lock);
-		dev_info(rvu->dev, "%s: No space in exact cam table, weight=%u\n", __func__,
+		dev_info(rvu->dev, "%s: No space in exact cam table, weight=%lu\n", __func__,
 			 bitmap_weight(table->cam_table.bmap, table->cam_table.depth));
 		return -ENOSPC;
 	}
