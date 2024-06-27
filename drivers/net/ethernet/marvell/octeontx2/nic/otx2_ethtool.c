@@ -407,7 +407,9 @@ static int otx2_set_pauseparam(struct net_device *netdev,
 }
 
 static void otx2_get_ringparam(struct net_device *netdev,
-			       struct ethtool_ringparam *ring)
+			       struct ethtool_ringparam *ring,
+			       struct kernel_ethtool_ringparam *kernel_ring,
+			       struct netlink_ext_ack *extack)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
 	struct otx2_qset *qs = &pfvf->qset;
@@ -421,7 +423,9 @@ static void otx2_get_ringparam(struct net_device *netdev,
 }
 
 static int otx2_set_ringparam(struct net_device *netdev,
-			      struct ethtool_ringparam *ring)
+			      struct ethtool_ringparam *ring,
+			      struct kernel_ethtool_ringparam *kernel_ring,
+			      struct netlink_ext_ack *extack)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
 	u32 rx_buf_len = kernel_ring->rx_buf_len;
@@ -1640,8 +1644,8 @@ static const struct ethtool_ops otx2_ethtool_ops = {
 	.get_sset_count		= otx2_get_sset_count,
 	.set_channels		= otx2_set_channels,
 	.get_channels		= otx2_get_channels,
-	.get_ringparam		= otx2_get_ringparam,
-	.set_ringparam		= otx2_set_ringparam,
+	.get_ringparam_new	= otx2_get_ringparam,
+	.set_ringparam_new	= otx2_set_ringparam,
 	.get_coalesce		= otx2_get_coalesce,
 	.set_coalesce		= otx2_set_coalesce,
 	.get_rxnfc		= otx2_get_rxnfc,
@@ -1774,8 +1778,8 @@ static const struct ethtool_ops otx2vf_ethtool_ops = {
 	.set_rxfh		= otx2_set_rxfh,
 	.get_rxfh_context	= otx2_get_rxfh_context,
 	.set_rxfh_context	= otx2_set_rxfh_context,
-	.get_ringparam		= otx2_get_ringparam,
-	.set_ringparam		= otx2_set_ringparam,
+	.get_ringparam_new	= otx2_get_ringparam,
+	.set_ringparam_new	= otx2_set_ringparam,
 	.get_coalesce		= otx2_get_coalesce,
 	.set_coalesce		= otx2_set_coalesce,
 	.get_msglevel		= otx2_get_msglevel,
