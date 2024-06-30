@@ -359,7 +359,7 @@ int rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_CONST1);
 	has_lsw = !!(reg & SSO_AF_CONST1_LSW_PRESENT);
 	has_nsched = !!!(reg & SSO_AF_CONST1_NO_NSCHED);
-	has_prefetch = !!(reg & SSO_AF_CONST1_PRF_PRESENT);
+	has_prefetch = !!(reg & SSO_AF_CONST1_HW_PRF_PRESENT);
 
 	ssow_blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSOW, 0);
 	if (ssow_blkaddr < 0)
@@ -713,7 +713,7 @@ int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 	/* Read hardware capabilities */
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_CONST1);
 	has_lsw = !!(reg & SSO_AF_CONST1_LSW_PRESENT);
-	has_prefetch = !!(reg & SSO_AF_CONST1_PRF_PRESENT);
+	has_prefetch = !!(reg & SSO_AF_CONST1_HW_PRF_PRESENT);
 	has_hw_flr = !!(reg & SSO_AF_CONST1_HW_FLR);
 
 	mutex_lock(&rvu->alias_lock);
@@ -931,6 +931,38 @@ fail:
 	}
 
 	return err;
+}
+
+int rvu_mbox_handler_sso_get_hw_info(struct rvu *rvu, struct msg_req *req,
+				     struct sso_hw_info *rsp)
+{
+	int blkaddr;
+	u64 reg;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, req->hdr.pcifunc);
+	if (blkaddr < 0)
+		return SSO_AF_ERR_LF_INVALID;
+
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_CONST);
+	rsp->hws = (reg >> 56) & 0xFF;
+	rsp->hwgrps = (reg & 0xFFFF);
+	rsp->iue = (reg >> 16) & 0xFFFF;
+	rsp->taq_ent_per_line = (reg >> 48) & 0xFF;
+	rsp->taq_lines = (reg >> 32) & 0xFFFF;
+
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_CONST1);
+	rsp->xaq_wq_entries = (reg >> 16) & 0xFFFF;
+	rsp->xaq_buf_size = (reg & 0xFFFF);
+	rsp->hw_flr = !!(reg & SSO_AF_CONST1_HW_FLR);
+	rsp->lsw = !!(reg & SSO_AF_CONST1_LSW_PRESENT);
+	rsp->no_nsched = !!(reg & SSO_AF_CONST1_NO_NSCHED);
+	rsp->hw_prefetch = !!(reg & SSO_AF_CONST1_HW_PRF_PRESENT);
+	rsp->fwd_grp = !!(reg & SSO_AF_CONST1_GRP_FWD);
+	rsp->tag_cfg = !!(reg & SSO_AF_CONST1_TAG_CFG_PRESENT);
+	rsp->sw_prefetch = !!(reg & SSO_AF_CONST1_SW_PRF_PRESENT);
+	rsp->eva_present = !!(reg & SSO_AF_CONST1_EVA_PRESENT);
+
+	return 0;
 }
 
 int rvu_mbox_handler_sso_hw_release_xaq_aura(struct rvu *rvu,

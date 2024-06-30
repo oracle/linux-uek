@@ -236,6 +236,7 @@ M(SSO_GRP_STASH_CONFIG, 0x614, sso_grp_stash_config, sso_grp_stash_cfg, \
 M(SSO_AGGR_SET_CONFIG,	0x615, sso_aggr_setconfig, sso_aggr_setconfig, msg_rsp)\
 M(SSO_AGGR_GET_STATS,	0x616, sso_aggr_get_stats, sso_info_req,	\
 				sso_aggr_stats)				\
+M(SSO_GET_HW_INFO,	0x617, sso_get_hw_info, msg_req, sso_hw_info)	\
 /* TIM mbox IDs (range 0x800 - 0x9FF) */				\
 M(TIM_LF_ALLOC,		0x800, tim_lf_alloc,				\
 				tim_lf_alloc_req, tim_lf_alloc_rsp)	\
@@ -1708,6 +1709,29 @@ struct sso_aggr_setconfig {
 	struct mbox_msghdr hdr;
 	u16	npa_pf_func;
 	u16	hwgrp;
+	u64	rsvd[2];
+};
+
+struct sso_hw_info {
+	struct mbox_msghdr hdr;
+	u8	hw_flr : 1;
+	u8	hw_prefetch : 1;
+	u8	sw_prefetch : 1;
+	u8	lsw : 1;
+	u8	fwd_grp : 1;
+	u8	eva_present : 1;
+	u8	no_nsched : 1;
+	u8	tag_cfg : 1;
+	u8	gwc_per_core;
+	u16	hws;
+	u16	hwgrps;
+	u16	hwgrps_per_pf;
+	u16	iue;
+	u16 	taq_lines;
+	u16	taq_ent_per_line;
+	u16	xaq_buf_size;
+	u16	xaq_wq_entries;
+	u32	eva_ctx_per_hwgrp;
 	u64	rsvd[2];
 };
 
