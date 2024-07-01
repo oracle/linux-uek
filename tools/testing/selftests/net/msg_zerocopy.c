@@ -81,6 +81,7 @@ static bool cfg_rx;
 static int  cfg_runtime_ms	= 4200;
 static int  cfg_verbose;
 static int  cfg_waittime_ms	= 500;
+static int  cfg_notification_limit = 32;
 static bool cfg_zerocopy;
 
 static socklen_t cfg_alen;
@@ -91,6 +92,7 @@ static char payload[IP_MAXPACKET];
 static long packets, bytes, completions, expected_completions;
 static int  zerocopied = -1;
 static uint32_t next_completion;
+static uint32_t sends_since_notify;
 
 static unsigned long gettimeofday_ms(void)
 {
@@ -182,6 +184,7 @@ static bool do_sendmsg(int fd, struct msghdr *msg, bool do_zerocopy)
 		error(1, errno, "send");
 	if (cfg_verbose && ret != len)
 		fprintf(stderr, "send: ret=%u != %u\n", ret, len);
+	sends_since_notify++;
 
 	if (len) {
 		packets++;
@@ -422,6 +425,7 @@ static bool do_recv_completion(int fd, int domain)
 static void do_recv_completions(int fd, int domain)
 {
 	while (do_recv_completion(fd, domain)) {}
+	sends_since_notify = 0;
 }
 
 /* Wait for all remaining completions on the errqueue */
@@ -503,6 +507,9 @@ static void do_tx(int domain, int type, int protocol)
 			do_sendmsg_corked(fd, &msg);
 		else
 			do_sendmsg(fd, &msg, cfg_zerocopy);
+
+		if (cfg_zerocopy && sends_since_notify >= cfg_notification_limit)
+			do_recv_completions(fd, domain);
 
 		while (!do_poll(fd, POLLOUT)) {
 			if (cfg_zerocopy)
@@ -661,7 +668,7 @@ static void parse_opts(int argc, char **argv)
 
 	cfg_payload_len = max_payload_len;
 
-	while ((c = getopt(argc, argv, "46c:C:D:i:mp:rs:S:t:vz")) != -1) {
+	while ((c = getopt(argc, argv, "46c:C:D:i:l:mp:rs:S:t:vz")) != -1) {
 		switch (c) {
 		case '4':
 			if (cfg_family != PF_UNSPEC)
@@ -688,6 +695,9 @@ static void parse_opts(int argc, char **argv)
 			cfg_ifindex = if_nametoindex(optarg);
 			if (cfg_ifindex == 0)
 				error(1, errno, "invalid iface: %s", optarg);
+			break;
+		case 'l':
+			cfg_notification_limit = strtoul(optarg, NULL, 0);
 			break;
 		case 'm':
 			cfg_cork_mixed = true;
