@@ -56,6 +56,33 @@ based, 6.10 based, etc.)
   kernel-ueknext-modules-extra-6.9.0-2.el9ueknext.x86_64.rpm
   ```
 
+- Introduction of the upstream extensible scheduler class "sched_ext"
+
+  This new scheduler provides a means to write additional CPU schedulers using
+  BPF, meaning that it can be introduced or updated on a live system. It is not
+  on by default, but requires the writing of a BPF custom scheduler. The
+  upstream changes were brought in to enable developers using UEK to try it
+  out.
+
+- Set UEK-next as default kernel post-install
+
+  Because UEK-next is not a production kernel, it was decided not autoselect it as the
+  default kernel on installation. Should you prefer it to be the default kernel, you
+  may do so by either:
+
+  - Prior to installation, if not already done, setting the default
+    kernel in `/etc/sysconfig/kernel` using the line:
+
+    ```
+	DEFAULTKERNEL=kernel-ueknext-core
+	```
+
+  - Post installation, set it as the default using `grubby` as:
+
+    ```
+	sudo grubby --set-default=/boot/vmlinuz-6.9.0-2.el9ueknext.$(name -p)
+	```
+
 ## Known Problems
 
 - Due to a bug in `v6.8`, a `dnf upgrade` of kernel-ueknext `v6.8` to `v6.9` may
