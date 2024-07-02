@@ -302,6 +302,7 @@ struct rds_info_rdma_connection {
 	__u32		rdma_mr_size;
 	__u8		tos;
 	__u8		sl;
+	__u8		conn_state;
 	__u32		cache_allocs;
 	__u32		frag;
 	__u16		flow_ctl_post_credit;
@@ -339,6 +340,7 @@ struct rds6_info_rdma_connection {
 	__u32		rdma_mr_size;
 	__u8		tos;
 	__u8		sl;
+	__u8		conn_state;
 	__u32		cache_allocs;
 	__u32		frag;
 	__u16		flow_ctl_post_credit;
@@ -505,4 +507,13 @@ struct rds_rdma_send_notify {
 #define RDS_RDMA_REMOTE_COMPLETE 0x0080 /* Notify when data is available */
 #define RDS_SEND_NOTIFY_ME      0x0100  /* Notify when operation completes */
 
+
+enum {
+	CONN_STATE_DOWN = 0,
+	CONN_STATE_CONNECTING,
+	CONN_STATE_DISCONNECTING,
+	CONN_STATE_UP,
+	CONN_STATE_RESETTING,
+	CONN_STATE_ERROR,
+};
 #endif /* IB_RDS_H */
