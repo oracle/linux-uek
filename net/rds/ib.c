@@ -669,13 +669,15 @@ static void rds_ib_dev_free(struct work_struct *work)
 		rds_ib_destroy_mr_pool(rds_ibdev->mr_8k_pool);
 	if (rds_ibdev->mr_1m_pool)
 		rds_ib_destroy_mr_pool(rds_ibdev->mr_1m_pool);
-	trace_rds_ib_queue_cancel_work(rds_ibdev, NULL,
-				       &rds_ibdev->fastreg_reset_w, 0,
-				       "dev free, cancel reset work");
-	cancel_work_sync(&rds_ibdev->fastreg_reset_w);
-	down_write(&rds_ibdev->fastreg_lock);
-	rds_ib_destroy_fastreg(rds_ibdev);
-	up_write(&rds_ibdev->fastreg_lock);
+	if (rds_ibdev->fastreg_reset_w.func) {
+		trace_rds_ib_queue_cancel_work(rds_ibdev, NULL,
+					       &rds_ibdev->fastreg_reset_w, 0,
+					       "dev free, cancel reset work");
+		cancel_work_sync(&rds_ibdev->fastreg_reset_w);
+		down_write(&rds_ibdev->fastreg_lock);
+		rds_ib_destroy_fastreg(rds_ibdev);
+		up_write(&rds_ibdev->fastreg_lock);
+	}
 	if (rds_ibdev->mr)
 		ib_dereg_mr(rds_ibdev->mr);
 	if (rds_ibdev->rid_dev_wq)
