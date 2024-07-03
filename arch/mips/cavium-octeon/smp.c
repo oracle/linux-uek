@@ -361,6 +361,9 @@ static int octeon_cpu_disable(void)
 {
 	unsigned int cpu = smp_processor_id();
 
+	if (cpu == 0)
+		return -EBUSY;
+
 	set_cpu_online(cpu, false);
 	calculate_cpu_foreign_map();
 	octeon_fixup_irqs();
