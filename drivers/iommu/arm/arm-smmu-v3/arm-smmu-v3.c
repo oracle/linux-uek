@@ -1145,7 +1145,8 @@ static __le64 *arm_smmu_get_cd_ptr(struct arm_smmu_domain *smmu_domain,
 }
 
 int arm_smmu_write_ctx_desc(struct arm_smmu_domain *smmu_domain, int ssid,
-			    struct arm_smmu_ctx_desc *cd)
+			    struct arm_smmu_ctx_desc *cd,
+			    struct io_pgtable_cfg *pgtbl_cfg)
 {
 	/*
 	 * This function handles the following cases:
@@ -1184,6 +1185,9 @@ int arm_smmu_write_ctx_desc(struct arm_smmu_domain *smmu_domain, int ssid,
 		 * this substream's traffic
 		 */
 	} else { /* (1) and (2) */
+		if (pgtbl_cfg && pgtbl_cfg->quirks & IO_PGTABLE_QUIRK_ARM_HD)
+			cdptr[0] |= cpu_to_le64(CTXDESC_CD_0_TCR_HA |
+						CTXDESC_CD_0_TCR_HD);
 		cdptr[1] = cpu_to_le64(cd->ttbr & CTXDESC_CD_1_TTB0_MASK);
 		cdptr[2] = 0;
 		cdptr[3] = cpu_to_le64(cd->mair);
@@ -2110,6 +2114,13 @@ static const struct iommu_flush_ops arm_smmu_flush_ops = {
 	.tlb_add_page	= arm_smmu_tlb_inv_page_nosync,
 };
 
+static bool arm_smmu_dbm_capable(struct arm_smmu_device *smmu)
+{
+	u32 features = (ARM_SMMU_FEAT_HD | ARM_SMMU_FEAT_COHERENCY);
+
+	return (smmu->features & features) == features;
+}
+
 /* IOMMU API */
 static bool arm_smmu_capable(enum iommu_cap cap)
 {
@@ -2241,7 +2252,7 @@ static int arm_smmu_domain_finalise_s1(struct arm_smmu_domain *smmu_domain,
 	 * the master has been added to the devices list for this domain.
 	 * This isn't an issue because the STE hasn't been installed yet.
 	 */
-	ret = arm_smmu_write_ctx_desc(smmu_domain, 0, &cfg->cd);
+	ret = arm_smmu_write_ctx_desc(smmu_domain, 0, &cfg->cd, pgtbl_cfg);
 	if (ret)
 		goto out_free_cd_tables;
 
@@ -2295,7 +2306,7 @@ static int arm_smmu_domain_finalise(struct iommu_domain *domain,
 				 struct io_pgtable_cfg *);
 	struct arm_smmu_domain *smmu_domain = to_smmu_domain(domain);
 	struct arm_smmu_device *smmu = smmu_domain->smmu;
-	bool enable_dirty = false;
+	bool enable_dirty = arm_smmu_dbm_capable(master->smmu);
 
 	/*
 	 * A master with a pasid capability might need a CD table, so only set
