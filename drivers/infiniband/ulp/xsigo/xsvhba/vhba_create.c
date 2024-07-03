@@ -120,7 +120,7 @@ int vhba_create(xsmp_cookie_t xsmp_hndl, struct vhba_xsmp_msg *msg)
 	if (vhba_max_transfer_size != VHBA_DEFAULT_TRANSFER_SIZE)
 		xg_vhba_driver_template.max_sectors = vhba_max_transfer_size;
 
-	host = scsi_host_alloc(&xg_vhba_driver_template, sizeof(int));
+	host = scsi_host_alloc(&xg_vhba_driver_template, sizeof(unsigned long));
 
 	if (host == NULL) {
 		eprintk(NULL, "scsi host alloc failed\n");
