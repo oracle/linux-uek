@@ -270,18 +270,18 @@ static const struct midr_range cavium_erratum_30115_cpus[] = {
 
 #ifdef CONFIG_MARVELL_ERRATUM_38627
 static const struct midr_range marvell_erratum_38627_cpus[] = {
-	/* Marvell OcteonTX 2, 95xx all passes */
-	MIDR_ALL_VERSIONS(MIDR_OCTX2_95XX),
-	/* Marvell OcteonTX 2, 95MM all passes */
-	MIDR_ALL_VERSIONS(MIDR_OCTX2_95XXMM),
+	/* Marvell OcteonTX 2, 95xx pass 1.x - 2.0 */
+	MIDR_RANGE(MIDR_OCTX2_95XX, 0, 0, 1, 0),
+	/* Marvell OcteonTX 2, 95MM pass 1.0 */
+	MIDR_REV(MIDR_OCTX2_95XXMM, 0, 0),
 	/* Marvell OcteonTX 2, LOKI all passes */
 	MIDR_ALL_VERSIONS(MIDR_OCTX2_95XXN),
-	/* Marvell OcteonTX 2, 96xx all passes */
-	MIDR_ALL_VERSIONS(MIDR_OCTX2_96XX),
+	/* Marvell OcteonTX 2, 96xx pass 1.x - 3.1 */
+	MIDR_RANGE(MIDR_OCTX2_96XX, 0, 0, 2, 1),
 	/* Marvell OcteonTX 2, 98xx pass 1.0 */
 	MIDR_REV(MIDR_OCTX2_98XX, 0, 0),
-	/* Marvell OcteonTX 2, 95O pass 1.0 */
-	MIDR_REV(MIDR_OCTX2_95XXO, 0, 0),
+	/* Marvell OcteonTX 2, 95O all passes */
+	MIDR_ALL_VERSIONS(MIDR_OCTX2_95XXO),
 	{},
 };
 #endif
