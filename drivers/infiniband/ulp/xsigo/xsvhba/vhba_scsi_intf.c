@@ -321,6 +321,7 @@ no_lun_mask:
 			if (xg_sp == NULL) {
 				cmd->result = DID_ERROR << 16;
 				eprintk(vhba, "Error - allocate SRB failed\n");
+				spin_unlock_irqrestore(&ha->io_lock, flags);
 				goto release_return;
 			}
 			memset(xg_sp, 0, sizeof(struct srb));
@@ -580,7 +581,6 @@ static int xg_vhba_eh_abort(struct scsi_cmnd *cmd)
 	 */
 	if ((sp->state == VHBA_IO_STATE_ABORTED) ||
 	    (sp->state == VHBA_IO_STATE_ABORT_NEEDED)) {
-		spin_unlock_irqrestore(&ha->io_lock, flags);
 		goto success;
 	}
 
