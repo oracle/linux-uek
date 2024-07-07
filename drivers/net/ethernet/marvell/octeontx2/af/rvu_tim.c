@@ -596,6 +596,25 @@ int rvu_mbox_handler_tim_capture_counters(struct rvu *rvu, struct msg_req *req,
 	return 0;
 }
 
+int rvu_mbox_handler_tim_get_hw_info(struct rvu *rvu, struct msg_req *req,
+				     struct tim_hw_info *rsp)
+{
+	int blkaddr;
+	u64 reg;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_TIM, 0);
+	if (blkaddr < 0)
+		return TIM_AF_LF_INVALID;
+
+	reg = rvu_read64(rvu, blkaddr, TIM_AF_CONST);
+	rsp->rings = reg & 0xFFFF;
+	rsp->engines = (reg >> 16) & 0xFF;
+	rsp->hwwqe = (reg >> 24) & 0x1;
+	rsp->intvl_ext = (reg >> 25) & 0x1;
+
+	return 0;
+}
+
 int rvu_tim_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
 {
 	int blkaddr;

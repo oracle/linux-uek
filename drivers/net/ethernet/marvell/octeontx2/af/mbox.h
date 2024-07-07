@@ -246,6 +246,7 @@ M(TIM_CAPTURE_COUNTERS,	0x806, tim_capture_counters, msg_req,		\
 			       tim_capture_rsp)				\
 M(TIM_CONFIG_HWWQE,	0x807, tim_config_hwwqe, tim_cfg_hwwqe_req,	\
 			       msg_rsp)					\
+M(TIM_GET_HW_INFO,	0x808, tim_get_hw_info, msg_req, tim_hw_info)	\
 /* CPT mbox IDs (range 0xA00 - 0xBFF) */				\
 M(CPT_LF_ALLOC,		0xA00, cpt_lf_alloc, cpt_lf_alloc_req_msg,	\
 			       msg_rsp)					\
@@ -2206,6 +2207,16 @@ struct tim_cfg_hwwqe_req {
 	u16	result_offset;
 	u16	event_count_offset;
 	u64	rsvd[2];
+};
+
+struct tim_hw_info {
+	struct mbox_msghdr hdr;
+	u16	rings;
+	u8	engines;
+	u8	hwwqe : 1;
+	u8	intvl_ext : 1;
+	u8	rsvd8[4];
+	u64 rsvd[2];
 };
 
 struct tim_lf_alloc_rsp {
