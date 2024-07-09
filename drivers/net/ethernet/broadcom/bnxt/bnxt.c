@@ -50,8 +50,6 @@
 #include <linux/log2.h>
 #include <linux/aer.h>
 #include <linux/bitmap.h>
-#include <linux/ptp_clock_kernel.h>
-#include <linux/timecounter.h>
 #include <linux/cpu_rmap.h>
 #include <linux/cpumask.h>
 #include <net/pkt_cls.h>
@@ -4830,7 +4828,7 @@ int bnxt_hwrm_func_drv_rgtr(struct bnxt *bp, unsigned long *bmap, int bmap_size,
 	return rc;
 }
 
-static int bnxt_hwrm_func_drv_unrgtr(struct bnxt *bp)
+int bnxt_hwrm_func_drv_unrgtr(struct bnxt *bp)
 {
 	struct hwrm_func_drv_unrgtr_input *req;
 	int rc;
@@ -7407,7 +7405,7 @@ static void bnxt_free_ctx_pg_tbls(struct bnxt *bp,
 	ctx_pg->nr_pages = 0;
 }
 
-static void bnxt_free_ctx_mem(struct bnxt *bp)
+void bnxt_free_ctx_mem(struct bnxt *bp)
 {
 	struct bnxt_ctx_mem_info *ctx = bp->ctx;
 	int i;
@@ -9484,7 +9482,7 @@ static char *bnxt_report_fec(struct bnxt_link_info *link_info)
 	}
 }
 
-static void bnxt_report_link(struct bnxt *bp)
+void bnxt_report_link(struct bnxt *bp)
 {
 	if (bp->link_info.link_up) {
 		const char *signal = "";
@@ -9932,8 +9930,6 @@ static int bnxt_hwrm_shutdown_link(struct bnxt *bp)
 	req->flags = cpu_to_le32(PORT_PHY_CFG_REQ_FLAGS_FORCE_LINK_DWN);
 	return hwrm_req_send(bp, req);
 }
-
-static int bnxt_fw_init_one(struct bnxt *bp);
 
 static int bnxt_fw_reset_via_optee(struct bnxt *bp)
 {
@@ -10581,7 +10577,7 @@ void bnxt_half_close_nic(struct bnxt *bp)
 	clear_bit(BNXT_STATE_HALF_OPEN, &bp->state);
 }
 
-static void bnxt_reenable_sriov(struct bnxt *bp)
+void bnxt_reenable_sriov(struct bnxt *bp)
 {
 	if (BNXT_PF(bp)) {
 		struct bnxt_pf_info *pf = &bp->pf;
@@ -12276,7 +12272,7 @@ static void bnxt_fw_init_one_p3(struct bnxt *bp)
 
 static int bnxt_probe_phy(struct bnxt *bp, bool fw_dflt);
 
-static int bnxt_fw_init_one(struct bnxt *bp)
+int bnxt_fw_init_one(struct bnxt *bp)
 {
 	int rc;
 
