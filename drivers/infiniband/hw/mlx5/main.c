@@ -3953,6 +3953,9 @@ static int mlx5_ib_stage_init_init(struct mlx5_ib_dev *dev)
 		get_ext_port_caps(dev);
 
 	dev->ib_dev.num_comp_vectors    = mlx5_comp_vectors_max(mdev);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	dev->ib_dev.can_balance_comp_vectors = true;
+#endif
 
 	mutex_init(&dev->cap_mask_mutex);
 	INIT_LIST_HEAD(&dev->qp_list);
