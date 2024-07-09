@@ -1214,8 +1214,14 @@ static int create_cq(struct uverbs_attr_bundle *attrs,
 	struct ib_cq_init_attr attr = {};
 	struct ib_device *ib_dev;
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (cmd->comp_vector >= attrs->ufile->device->num_comp_vectors &&
+	    !((int)cmd->comp_vector == -1 && attrs->ufile->device->can_balance_comp_vectors))
+		return -EINVAL;
+#else /* WITHOUT_ORACLE_EXTENSIONS */
 	if (cmd->comp_vector >= attrs->ufile->device->num_comp_vectors)
 		return -EINVAL;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 	if (!cmd->cqe)
 		return -EINVAL;
