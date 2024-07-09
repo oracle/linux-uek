@@ -378,10 +378,6 @@ enum ib_cq_attr_mask {
 	IB_CQ_MODERATE = 1 << 0,
 };
 
-enum ib_cq_comp_vector_zero {
-	IB_CQ_FORCE_ZERO_CV = U32_MAX,
-};
-
 struct ib_cq_caps {
 	u16     max_cq_moderation_count;
 	u16     max_cq_moderation_period;
@@ -2776,6 +2772,9 @@ struct ib_device {
 	struct ib_port_data *port_data;
 
 	int			      num_comp_vectors;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	bool                          can_balance_comp_vectors;
+#endif
 
 	union {
 		struct device		dev;

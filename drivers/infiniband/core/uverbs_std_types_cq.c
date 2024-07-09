@@ -104,10 +104,18 @@ static int UVERBS_HANDLER(UVERBS_METHOD_CQ_CREATE)(
 	obj->uevent.event_file = ib_uverbs_get_async_event(
 		attrs, UVERBS_ATTR_CREATE_CQ_EVENT_FD);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (attr.comp_vector >= attrs->ufile->device->num_comp_vectors &&
+	    !((int)attr.comp_vector == -1 && attrs->ufile->device->can_balance_comp_vectors)) {
+		ret = -EINVAL;
+		goto err_event_file;
+	}
+#else /* WITHOUT_ORACLE_EXTENSIONS */
 	if (attr.comp_vector >= attrs->ufile->device->num_comp_vectors) {
 		ret = -EINVAL;
 		goto err_event_file;
 	}
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 	INIT_LIST_HEAD(&obj->comp_list);
 	INIT_LIST_HEAD(&obj->uevent.event_list);
