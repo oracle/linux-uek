@@ -78,4 +78,8 @@
 #define RVU_MBOX_VF_INT_ENA_W1C			(0x38)
 
 #define RVU_MBOX_VF_VFAF_TRIGX(a)		(0x2000 | (a) << 3)
+
+/* NPC registers */
+#define NPC_AF_MCAM_SECTIONX_CFG_EXT(a)        (0xC000000ull | (a) << 3)
+
 #endif /* RVU_MBOX_REG_H */

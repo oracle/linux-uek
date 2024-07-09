@@ -1,0 +1,1706 @@
+// SPDX-License-Identifier: GPL-2.0
+/* Marvell RVU Admin Function driver
+ *
+ * Copyright (C) 2024 Marvell.
+ *
+ */
+#include <linux/xarray.h>
+#include <linux/bitfield.h>
+
+#include "cn20k/npc.h"
+#include "cn20k/reg.h"
+
+static struct npc_priv_t npc_priv = {
+	.num_banks = MAX_NUM_BANKS,
+	.num_subbanks = MAX_NUM_SUB_BANKS,
+};
+
+const char *npc_kw_name[NPC_MCAM_KEY_MAX] = {
+	[NPC_MCAM_KEY_DYN] = "DYNAMIC",
+	[NPC_MCAM_KEY_X2] = "X2",
+	[NPC_MCAM_KEY_X4] = "X4",
+};
+
+struct npc_priv_t *npc_priv_get(void)
+{
+	return &npc_priv;
+}
+
+static int npc_subbank_idx_2_mcam_idx(struct rvu *rvu, struct npc_subbank *sb,
+				      u16 sub_off, u16 *mcam_idx)
+{
+	int off, bot;
+
+	/* for x4 section, maximum allowed subbank index =
+	 * subsection depth - 1
+	 */
+	if (sb->key_type == NPC_MCAM_KEY_X4 &&
+	    sub_off >= npc_priv.subbank_depth) {
+		dev_err(rvu->dev, "%s:%d bad params\n",
+			__func__, __LINE__);
+		return -EINVAL;
+	}
+
+	/* for x2 section, maximum allowed subbank index =
+	 * 2 * subsection depth - 1
+	 */
+	if (sb->key_type == NPC_MCAM_KEY_X2 &&
+	    sub_off >= npc_priv.subbank_depth * 2) {
+		dev_err(rvu->dev, "%s:%d bad params\n",
+			__func__, __LINE__);
+		return -EINVAL;
+	}
+
+	/* Find subbank offset from respective subbank (w.r.t bank) */
+	off = sub_off & (npc_priv.subbank_depth - 1);
+
+	/* if subsection idx is in bank1, add bank depth,
+	 * which is part of sb->b1b
+	 */
+	bot = sub_off >= npc_priv.subbank_depth ? sb->b1b : sb->b0b;
+
+	*mcam_idx = bot + off;
+	return 0;
+}
+
+int npc_mcam_idx_2_key_type(struct rvu *rvu, u16 mcam_idx, u8 *key_type)
+{
+	struct npc_subbank *sb;
+	int bank_off, sb_id;
+
+	/* mcam_idx should be less than (2 * bank depth) */
+	if (mcam_idx >= npc_priv.bank_depth * 2) {
+		dev_err(rvu->dev, "%s:%d bad params\n",
+			__func__, __LINE__);
+		return -EINVAL;
+	}
+
+	/* find mcam offset per bank */
+	bank_off = mcam_idx & (npc_priv.bank_depth - 1);
+
+	/* Find subbank id */
+	sb_id = bank_off / npc_priv.subbank_depth;
+
+	/* Check if subbank id is more than maximum
+	 * number of subbanks available
+	 */
+	if (sb_id >= npc_priv.num_subbanks) {
+		dev_err(rvu->dev, "%s:%d invalid subbank %d\n",
+			__func__, __LINE__, sb_id);
+		return -EINVAL;
+	}
+
+	sb = &npc_priv.sb[sb_id];
+
+	*key_type = sb->key_type;
+
+	return 0;
+}
+
+static int npc_mcam_idx_2_subbank_idx(struct rvu *rvu, u16 mcam_idx,
+				      struct npc_subbank **sb,
+				      int *sb_off)
+{
+	int bank_off, sb_id;
+
+	/* mcam_idx should be less than (2 * bank depth) */
+	if (mcam_idx >= npc_priv.bank_depth * 2) {
+		dev_err(rvu->dev, "%s:%d bad params\n",
+			__func__, __LINE__);
+		return -EINVAL;
+	}
+
+	/* find mcam offset per bank */
+	bank_off = mcam_idx & (npc_priv.bank_depth - 1);
+
+	/* Find subbank id */
+	sb_id = bank_off / npc_priv.subbank_depth;
+
+	/* Check if subbank id is more than maximum
+	 * number of subbanks available
+	 */
+	if (sb_id >= npc_priv.num_subbanks) {
+		dev_err(rvu->dev, "%s:%d invalid subbank %d\n",
+			__func__, __LINE__, sb_id);
+		return -EINVAL;
+	}
+
+	*sb = &npc_priv.sb[sb_id];
+
+	/* Subbank offset per bank */
+	*sb_off = bank_off % npc_priv.subbank_depth;
+
+	/* Index in a subbank should add subbank depth
+	 * if it is in bank1
+	 */
+	if (mcam_idx >= npc_priv.bank_depth)
+		*sb_off += npc_priv.subbank_depth;
+
+	return 0;
+}
+
+static int __npc_subbank_contig_alloc(struct rvu *rvu,
+				      struct npc_subbank *sb,
+				      int key_type, int sidx,
+				      int eidx, int prio,
+				      int count, int t, int b,
+				      unsigned long *bmap,
+				      u16 *save)
+{
+	int k, offset, delta = 0;
+	int cnt = 0, sbd;
+
+	sbd = npc_priv.subbank_depth;
+
+	if (sidx >= npc_priv.bank_depth)
+		delta = sbd;
+
+	switch (prio) {
+	case NPC_MCAM_LOWER_PRIO:
+	case NPC_MCAM_ANY_PRIO:
+		/* Find an area of size 'count' from sidx to eidx */
+		offset = bitmap_find_next_zero_area(bmap, sbd, sidx - b,
+						    count, 0);
+
+		if (offset >= sbd) {
+			dev_err(rvu->dev,
+				"%s:%d Could not find contigious(%d) entries\n",
+				__func__, __LINE__, count);
+			return -EFAULT;
+		}
+
+		dev_dbg(rvu->dev,
+			"%s:%d sidx=%d eidx=%d t=%d b=%d offset=%d count=%d delta=%d\n",
+			__func__, __LINE__, sidx, eidx, t, b, offset, count, delta);
+
+		for (cnt = 0; cnt < count; cnt++)
+			save[cnt] = offset + cnt + delta;
+
+		break;
+
+	case NPC_MCAM_HIGHER_PRIO:
+		/* Find an area of 'count' from eidx to sidx */
+		for (k = eidx - b; cnt < count && k >= (sidx - b); k--) {
+			/* If an intermediate slot is not free,
+			 * reset the counter (cnt) to zero as
+			 * request is for contigious.
+			 */
+			if (test_bit(k, bmap)) {
+				cnt = 0;
+				continue;
+			}
+
+			save[cnt++] = k + delta;
+		}
+		break;
+	}
+
+	/* Found 'count' number of free slots */
+	if (cnt == count)
+		return 0;
+
+	dev_dbg(rvu->dev,
+		"%s:%d Could not find contigious(%d) entries in subbbank=%u\n",
+		__func__, __LINE__, count, sb->idx);
+	return -EFAULT;
+}
+
+static int __npc_subbank_non_contig_alloc(struct rvu *rvu,
+					  struct npc_subbank *sb,
+					  int key_type, int sidx,
+					  int eidx, int prio,
+					  int t, int b,
+					  unsigned long *bmap,
+					  int count, u16 *save,
+					  bool max_alloc, int *alloc_cnt)
+{
+	unsigned long index;
+	int cnt = 0, delta;
+	int k, sbd;
+
+	sbd = npc_priv.subbank_depth;
+	delta = sidx >= npc_priv.bank_depth ? sbd : 0;
+
+	switch (prio) {
+	/* Find an area of size 'count' from sidx to eidx */
+	case NPC_MCAM_LOWER_PRIO:
+	case NPC_MCAM_ANY_PRIO:
+		index = find_next_zero_bit(bmap, sbd, sidx - b);
+		if (index >= sbd) {
+			dev_err(rvu->dev,
+				"%s:%d Error happened to alloc %u, bitmap_weight=%u, sb->idx=%u\n",
+				__func__, __LINE__, count,
+				bitmap_weight(bmap, sbd),
+				sb->idx);
+			break;
+		}
+
+		for (k = index; cnt < count && k <= (eidx - b); k++) {
+			/* Skip used slots */
+			if (test_bit(k, bmap))
+				continue;
+
+			save[cnt++] = k + delta;
+		}
+		break;
+
+	/* Find an area of 'count' from eidx to sidx */
+	case NPC_MCAM_HIGHER_PRIO:
+		for (k = eidx - b; cnt < count && k >= (sidx - b); k--) {
+			/* Skip used slots */
+			if (test_bit(k, bmap))
+				continue;
+
+			save[cnt++] = k + delta;
+		}
+		break;
+	}
+
+	/* Update allocated 'cnt' to alloc_cnt */
+	*alloc_cnt = cnt;
+
+	/* Successfully allocated requested count slots */
+	if (cnt == count)
+		return 0;
+
+	/* Allocation successful for cnt < count */
+	if (max_alloc && cnt > 0)
+		return 0;
+
+	dev_dbg(rvu->dev,
+		"%s:%d Could not find non contigious entries(%u) in subbank(%u) cnt=%d max_alloc=%d\n",
+		__func__, __LINE__, count, sb->idx, cnt, max_alloc);
+
+	return -EFAULT;
+}
+
+static void __npc_subbank_sboff_2_off(struct rvu *rvu, struct npc_subbank *sb,
+				      int sb_off, unsigned long **bmap, int *off)
+{
+	int sbd;
+
+	sbd = npc_priv.subbank_depth;
+
+	*off = sb_off & (sbd - 1);
+	*bmap = (sb_off >= sbd) ? sb->b1map : sb->b0map;
+}
+
+/* set/clear bitmap */
+static bool __npc_subbank_mark_slot(struct rvu *rvu,
+				    struct npc_subbank *sb,
+				    int sb_off, bool set)
+{
+	unsigned long *bmap;
+	int off;
+
+	/* if sb_off >= subbank.depth, then slots are in
+	 * bank1
+	 */
+	__npc_subbank_sboff_2_off(rvu, sb, sb_off, &bmap, &off);
+
+	dev_dbg(rvu->dev,
+		"%s:%d Marking set=%d sb_off=%d sb->idx=%d off=%d\n",
+		__func__, __LINE__, set, sb_off, sb->idx, off);
+
+	if (set) {
+		/* Slot is already used */
+		if (test_bit(off, bmap))
+			return false;
+
+		sb->free_cnt--;
+		set_bit(off, bmap);
+		return true;
+	}
+
+	/* Slot is already free */
+	if (!test_bit(off, bmap))
+		return false;
+
+	sb->free_cnt++;
+	clear_bit(off, bmap);
+	return true;
+}
+
+static int __npc_subbank_mark_free(struct rvu *rvu, struct npc_subbank *sb)
+{
+	int rc, blkaddr;
+	void *val;
+
+	sb->flags = NPC_SUBBANK_FLAG_FREE;
+	sb->key_type = 0;
+
+	bitmap_clear(sb->b0map, 0, npc_priv.subbank_depth);
+	bitmap_clear(sb->b1map, 0, npc_priv.subbank_depth);
+
+	if (!xa_erase(&npc_priv.xa_sb_used, sb->arr_idx)) {
+		dev_err(rvu->dev, "%s:%d Error to delete from xa_sb_used array\n",
+			__func__, __LINE__);
+		return -EFAULT;
+	}
+
+	rc = xa_insert(&npc_priv.xa_sb_free, sb->arr_idx,
+		       xa_mk_value(sb->idx), GFP_KERNEL);
+	if (rc) {
+		val = xa_load(&npc_priv.xa_sb_free, sb->arr_idx);
+		dev_err(rvu->dev,
+			"%s:%d Error to add sb(%u) to xa_sb_free array at arr_idx=%d, val=%lu\n",
+			__func__, __LINE__, sb->idx, sb->arr_idx, xa_to_value(val));
+	}
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+	rvu_write64(rvu, blkaddr,
+		    NPC_AF_MCAM_SECTIONX_CFG_EXT(sb->idx),
+		    NPC_MCAM_KEY_X2);
+
+	return rc;
+}
+
+static int __npc_subbank_mark_used(struct rvu *rvu, struct npc_subbank *sb,
+				   int key_type)
+
+{
+	int rc;
+
+	sb->flags = NPC_SUBBANK_FLAG_USED;
+	sb->key_type = key_type;
+	if (key_type == NPC_MCAM_KEY_X4)
+		sb->free_cnt = npc_priv.subbank_depth;
+	else
+		sb->free_cnt = 2 * npc_priv.subbank_depth;
+
+	bitmap_clear(sb->b0map, 0, npc_priv.subbank_depth);
+	bitmap_clear(sb->b1map, 0, npc_priv.subbank_depth);
+
+	if (!xa_erase(&npc_priv.xa_sb_free, sb->arr_idx)) {
+		dev_err(rvu->dev, "%s:%d Error to delete from xa_sb_free array\n",
+			__func__, __LINE__);
+		return -EFAULT;
+	}
+
+	rc = xa_insert(&npc_priv.xa_sb_used, sb->arr_idx,
+		       xa_mk_value(sb->idx), GFP_KERNEL);
+	if (rc)
+		dev_err(rvu->dev, "%s:%d Error to add to xa_sb_used array\n",
+			__func__, __LINE__);
+
+	return rc;
+}
+
+static bool __npc_subbank_free(struct rvu *rvu, struct npc_subbank *sb,
+			       u16 sb_off)
+{
+	bool deleted = false;
+	unsigned long *bmap;
+	int rc, off;
+
+	deleted = __npc_subbank_mark_slot(rvu, sb, sb_off, false);
+	if (!deleted)
+		goto done;
+
+	__npc_subbank_sboff_2_off(rvu, sb, sb_off, &bmap, &off);
+
+	/* Check whether we can mark whole subbank as free */
+	if (sb->key_type == NPC_MCAM_KEY_X4) {
+		if (sb->free_cnt < npc_priv.subbank_depth)
+			goto done;
+	} else {
+		if (sb->free_cnt < 2 * npc_priv.subbank_depth)
+			goto done;
+	}
+
+	/* All slots in subbank are unused. Mark the subbank as free
+	 * and add to free pool
+	 */
+	rc = __npc_subbank_mark_free(rvu, sb);
+	if (rc)
+		dev_err(rvu->dev, "%s:%d Error to free subbank\n",
+			__func__, __LINE__);
+
+done:
+	return deleted;
+}
+
+static int npc_subbank_free(struct rvu *rvu, struct npc_subbank *sb, u16 sb_off)
+{
+	bool deleted;
+
+	mutex_lock(&sb->lock);
+	deleted = __npc_subbank_free(rvu, sb, sb_off);
+	mutex_unlock(&sb->lock);
+
+	return deleted ? 0 : -EFAULT;
+}
+
+static int __npc_subbank_alloc(struct rvu *rvu, struct npc_subbank *sb,
+			       int key_type, int ref, int limit, int prio,
+			       bool contig, int count, u16 *mcam_idx,
+			       int idx_sz, bool max_alloc, int *alloc_cnt)
+{
+	int cnt, t, b, i, blkaddr;
+	bool new_sub_bank = false;
+	unsigned long *bmap;
+	u16 *save = NULL;
+	int sidx, eidx;
+	bool diffbank;
+	int bw, bfree;
+	int rc = 0;
+	bool ret;
+
+	/* Check if enough space is there to return requested number of
+	 * mcam indexes incase of contigious allocation
+	 */
+	if (!max_alloc && count > idx_sz) {
+		dev_err(rvu->dev,
+			"%s:%d Less space, count=%d idx_sz=%d sb_id=%d\n",
+			__func__, __LINE__, count, idx_sz, sb->idx);
+		return -ENOSPC;
+	}
+
+	/* Allocation on mutliple subbank is not supported by this function.
+	 * it means that ref and limit should be on same subbank.
+	 *
+	 * ref and limit values should be validated w.r.t prio as below.
+	 * say ref = 100, limit = 200,
+	 * if NPC_MCAM_LOWER_PRIO, allocate index 100
+	 * if NPC_MCAM_HIGHER_PRIO, below sanity test returns error.
+	 * if NPC_MCAM_ANY_PRIO, allocate index 100
+	 *
+	 * say ref = 200, limit = 100
+	 * if NPC_MCAM_LOWER_PRIO, below sanity test returns error.
+	 * if NPC_MCAM_HIGHER_PRIO, allocate index 200
+	 * if NPC_MCAM_ANY_PRIO, allocate index 100
+	 *
+	 * Please note that NPC_MCAM_ANY_PRIO does not have any restriction
+	 * on "ref" and "limit" values. ie, ref > limit and limit > ref
+	 * are valid cases.
+	 */
+	if ((prio == NPC_MCAM_LOWER_PRIO && ref > limit) ||
+	    (prio == NPC_MCAM_HIGHER_PRIO && ref < limit)) {
+		dev_err(rvu->dev, "%s:%d Wrong ref_enty(%d) or limit(%d)\n",
+			__func__, __LINE__, ref, limit);
+		return -EINVAL;
+	}
+
+	/* x4 indexes are from 0 to bank size as it combines two x2 banks */
+	if (key_type == NPC_MCAM_KEY_X4 &&
+	    (ref >= npc_priv.bank_depth || limit >= npc_priv.bank_depth)) {
+		dev_err(rvu->dev, "%s:%d Wrong ref_enty(%d) or limit(%d) for x4\n",
+			__func__, __LINE__, ref, limit);
+		return -EINVAL;
+	}
+
+	/* This function is called either bank0 or bank1 portion of a subbank.
+	 * so ref and limit should be on same bank.
+	 */
+	diffbank = !!((ref & npc_priv.bank_depth) ^ (limit & npc_priv.bank_depth));
+	if (diffbank) {
+		dev_err(rvu->dev, "%s:%d request ref and limit should be from same bank\n",
+			__func__, __LINE__);
+		return -EINVAL;
+	}
+
+	sidx = min_t(int, limit, ref);
+	eidx = max_t(int, limit, ref);
+
+	/* Find total number of slots available; both used and free */
+	cnt = eidx - sidx + 1;
+	if (contig && cnt < count) {
+		dev_err(rvu->dev, "%s:%d Wrong ref_enty(%d) or limit(%d) for count(%d)\n",
+			__func__, __LINE__, ref, limit, count);
+		return -EINVAL;
+	}
+
+	/* If subbank is free, check if requested number of indexes is less than
+	 * or equal to mcam entries available in the subbank if contig.
+	 */
+	if (sb->flags & NPC_SUBBANK_FLAG_FREE) {
+		if (contig && count > npc_priv.subbank_depth) {
+			dev_err(rvu->dev, "%s:%d Less number of entries\n",
+				__func__, __LINE__);
+			goto err;
+		}
+
+		new_sub_bank = true;
+		goto process;
+	}
+
+	/* Flag should be set for all used subbanks */
+	WARN_ONCE(!(sb->flags & NPC_SUBBANK_FLAG_USED),
+		  "Used flag is not set(%#x)\n", sb->flags);
+
+	/* If subbank key type does not match with requested key_type,
+	 * return error
+	 */
+	if (sb->key_type != key_type) {
+		dev_dbg(rvu->dev, "%s:%d subbank key_type mismatch\n",
+			__func__, __LINE__);
+		rc = -EINVAL;
+		goto err;
+	}
+
+process:
+	/* if ref or limit >= npc_priv.bank_depth, index are in bank1.
+	 * else bank0.
+	 */
+	if (ref >= npc_priv.bank_depth) {
+		bmap = sb->b1map;
+		t = sb->b1t;
+		b = sb->b1b;
+	} else {
+		bmap = sb->b0map;
+		t = sb->b0t;
+		b = sb->b0b;
+	}
+
+	/* Calculate free slots */
+	bw = bitmap_weight(bmap, npc_priv.subbank_depth);
+	bfree = npc_priv.subbank_depth - bw;
+
+	if (!bfree) {
+		rc = -ENOSPC;
+		goto err;
+	}
+
+	/* If request is for contigious, then max we can allocate is
+	 * equal to subbank_depth
+	 */
+	if (contig && bfree < count) {
+		rc = -ENOSPC;
+		dev_err(rvu->dev, "%s:%d no space for entry\n",
+			__func__, __LINE__);
+		goto err;
+	}
+
+	/* 'save' array stores available indexes temporarily before
+	 * marking it as allocated
+	 */
+	save = kcalloc(count, sizeof(u16), GFP_KERNEL);
+	if (!save) {
+		rc = -ENOMEM;
+		goto err;
+	}
+
+	if (contig) {
+		rc =  __npc_subbank_contig_alloc(rvu, sb, key_type,
+						 sidx, eidx, prio,
+						 count, t, b,
+						 bmap, save);
+		/* contigious allocation success means that
+		 * requested number of free slots got
+		 * allocated
+		 */
+		if (!rc)
+			*alloc_cnt = count;
+
+	} else {
+		rc =  __npc_subbank_non_contig_alloc(rvu, sb, key_type,
+						     sidx, eidx, prio,
+						     t, b, bmap,
+						     count, save,
+						     max_alloc, alloc_cnt);
+	}
+
+	if (rc)
+		goto err;
+
+	/* Mark new subbank bank as used */
+	if (new_sub_bank) {
+		blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+		if (blkaddr < 0) {
+			dev_err(rvu->dev,
+				"%s:%d NPC block not implemented\n",
+				__func__, __LINE__);
+			goto err;
+		}
+
+		rc =  __npc_subbank_mark_used(rvu, sb, key_type);
+		if (rc) {
+			dev_err(rvu->dev, "%s:%d Error to mark subbank as used\n",
+				__func__, __LINE__);
+			goto err;
+		}
+
+		/* Configure section type to key_type */
+		rvu_write64(rvu, blkaddr,
+			    NPC_AF_MCAM_SECTIONX_CFG_EXT(sb->idx),
+			    key_type);
+	}
+
+	for (i = 0; i < *alloc_cnt; i++) {
+		rc = npc_subbank_idx_2_mcam_idx(rvu, sb, save[i], &mcam_idx[i]);
+		if (rc) {
+			dev_err(rvu->dev, "%s:%d Error to find mcam idx for %u\n",
+				__func__, __LINE__, save[i]);
+			/* TODO: handle err case gracefully */
+			goto err;
+		}
+
+		/* Mark all slots as used */
+		ret = __npc_subbank_mark_slot(rvu, sb, save[i], true);
+		if (!ret) {
+			dev_err(rvu->dev, "%s:%d Error to mark mcam_idx %u\n",
+				__func__, __LINE__, mcam_idx[i]);
+			rc = -EFAULT;
+			goto err;
+		}
+	}
+
+err:
+	kfree(save);
+	return rc;
+}
+
+static int npc_subbank_alloc(struct rvu *rvu, struct npc_subbank *sb,
+			     int key_type, int ref, int limit, int prio,
+			     bool contig, int count, u16 *mcam_idx,
+			     int idx_sz, bool max_alloc, int *alloc_cnt)
+{
+	int rc;
+
+	mutex_lock(&sb->lock);
+	rc = __npc_subbank_alloc(rvu, sb, key_type, ref, limit, prio,
+				 contig, count, mcam_idx, idx_sz,
+				 max_alloc, alloc_cnt);
+	mutex_unlock(&sb->lock);
+
+	return rc;
+}
+
+static int npc_del_from_pf_maps(struct rvu *rvu, u16 mcam_idx)
+{
+	int pcifunc, idx;
+	void *map;
+
+	map = xa_erase(&npc_priv.xa_idx2pf_map, mcam_idx);
+	if (!map) {
+		dev_err(rvu->dev,
+			"%s:%d failed to erase mcam_idx(%u) from xa_idx2pf map\n",
+			__func__, __LINE__, mcam_idx);
+		return -EFAULT;
+	}
+
+	pcifunc = xa_to_value(map);
+	map = xa_load(&npc_priv.xa_pf_map, pcifunc);
+	idx = xa_to_value(map);
+
+	map = xa_erase(&npc_priv.xa_pf2idx_map[idx], mcam_idx);
+	if (!map) {
+		dev_err(rvu->dev,
+			"%s:%d failed to erase mcam_idx(%u) from xa_pf2idx_map map\n",
+			__func__, __LINE__, mcam_idx);
+		return -EFAULT;
+	}
+	return 0;
+}
+
+static int npc_add_to_pf_maps(struct rvu *rvu, u16 mcam_idx, int pcifunc)
+{
+	int rc, idx;
+	void *map;
+
+	dev_dbg(rvu->dev,
+		"%s:%d add2maps mcam_idx(%u) to xa_idx2pf map pcifunc=%#x\n",
+		__func__, __LINE__, mcam_idx, pcifunc);
+
+	rc = xa_insert(&npc_priv.xa_idx2pf_map, mcam_idx,
+		       xa_mk_value(pcifunc), GFP_KERNEL);
+
+	if (rc) {
+		map = xa_load(&npc_priv.xa_idx2pf_map, mcam_idx);
+		dev_err(rvu->dev,
+			"%s:%d failed to insert mcam_idx(%u) to xa_idx2pf map, existing value=%lu\n",
+			__func__, __LINE__, mcam_idx, xa_to_value(map));
+		return -EFAULT;
+	}
+
+	map = xa_load(&npc_priv.xa_pf_map, pcifunc);
+	idx = xa_to_value(map);
+
+	rc = xa_insert(&npc_priv.xa_pf2idx_map[idx], mcam_idx,
+		       xa_mk_value(pcifunc), GFP_KERNEL);
+
+	if (rc) {
+		map = xa_load(&npc_priv.xa_pf2idx_map[idx], mcam_idx);
+		dev_err(rvu->dev,
+			"%s:%d failed to insert mcam_idx(%u) to xa_pf2idx_map map, earlier value=%lu idx=%u\n",
+			__func__, __LINE__, mcam_idx, xa_to_value(map), idx);
+		return -EFAULT;
+	}
+
+	return 0;
+}
+
+static bool npc_subbank_suits(struct npc_subbank *sb, int key_type)
+{
+	mutex_lock(&sb->lock);
+
+	if (!sb->key_type) {
+		mutex_unlock(&sb->lock);
+		return true;
+	}
+
+	if (sb->key_type == key_type) {
+		mutex_unlock(&sb->lock);
+		return true;
+	}
+
+	mutex_unlock(&sb->lock);
+	return false;
+}
+
+#define SB_ALIGN_UP(val)   (((val) + npc_priv.subbank_depth) & \
+			    ~((npc_priv.subbank_depth) - 1))
+#define SB_ALIGN_DOWN(val) ALIGN_DOWN((val), npc_priv.subbank_depth)
+
+static void npc_subbank_iter_down(struct rvu *rvu,
+				  int ref, int limit,
+				  int *cur_ref, int *cur_limit,
+				  bool *start, bool *stop)
+{
+	int align;
+
+	*stop = false;
+
+	/* ALIGN_DOWN the limit to current subbank boundary bottom index */
+	if (*start) {
+		*start = false;
+		*cur_ref = ref;
+		align = SB_ALIGN_DOWN(ref);
+		if (align < limit) {
+			*stop = true;
+			*cur_limit = limit;
+			return;
+		}
+		*cur_limit = align;
+		return;
+	}
+
+	*cur_ref = *cur_limit - 1;
+	align = *cur_ref - npc_priv.subbank_depth + 1;
+	if (align <= limit) {
+		*stop = true;
+		*cur_limit = limit;
+		return;
+	}
+
+	*cur_limit = align;
+}
+
+static void npc_subbank_iter_up(struct rvu *rvu,
+				int ref, int limit,
+				int *cur_ref, int *cur_limit,
+				bool *start, bool *stop)
+{
+	int align;
+
+	*stop = false;
+
+	/* ALIGN_UP the limit to current subbank boundary top index */
+	if (*start) {
+		*start = false;
+		*cur_ref = ref;
+
+		/* Find next lower prio subbank's bottom index */
+		align = SB_ALIGN_UP(ref);
+
+		/* Crosses limit ? */
+		if (align - 1 > limit) {
+			*stop = true;
+			*cur_limit = limit;
+			return;
+		}
+
+		/* Current subbank's top index */
+		*cur_limit = align - 1;
+		return;
+	}
+
+	*cur_ref = *cur_limit + 1;
+	align = *cur_ref + npc_priv.subbank_depth - 1;
+
+	if (align >= limit) {
+		*stop = true;
+		*cur_limit = limit;
+		return;
+	}
+
+	*cur_limit = align;
+}
+
+static int npc_subbank_iter(struct rvu *rvu, int key_type,
+			    int ref, int limit, int prio,
+			    int *cur_ref, int *cur_limit,
+			    bool *start, bool *stop)
+{
+	if (prio != NPC_MCAM_HIGHER_PRIO)
+		npc_subbank_iter_up(rvu, ref, limit,
+				    cur_ref, cur_limit,
+				    start, stop);
+	else
+		npc_subbank_iter_down(rvu, ref, limit,
+				      cur_ref, cur_limit,
+				      start, stop);
+
+	/* limit and ref should < bank_depth for x4 */
+	if (key_type == NPC_MCAM_KEY_X4) {
+		if (*cur_ref >= npc_priv.bank_depth)
+			return -EINVAL;
+
+		if (*cur_limit >= npc_priv.bank_depth)
+			return -EINVAL;
+	}
+	/* limit and ref should < 2 * bank_depth, for x2 */
+	if (*cur_ref >= 2 * npc_priv.bank_depth)
+		return -EINVAL;
+
+	if (*cur_limit >= 2 * npc_priv.bank_depth)
+		return -EINVAL;
+
+	return 0;
+}
+
+static int npc_idx_free(struct rvu *rvu, u16 *mcam_idx, int count,
+			bool maps_del)
+{
+	struct npc_subbank *sb;
+	int idx, i;
+	bool ret;
+	int rc;
+
+	for (i = 0; i < count; i++) {
+		rc =  npc_mcam_idx_2_subbank_idx(rvu, mcam_idx[i],
+						 &sb, &idx);
+		if (rc)
+			return rc;
+
+		ret = npc_subbank_free(rvu, sb, idx);
+		if (ret)
+			return -EINVAL;
+
+		if (!maps_del)
+			continue;
+
+		rc = npc_del_from_pf_maps(rvu, mcam_idx[i]);
+		if (rc)
+			return rc;
+	}
+
+	return 0;
+}
+
+static int npc_multi_subbank_ref_alloc(struct rvu *rvu, int key_type,
+				       int ref, int limit, int prio,
+				       bool contig, int count,
+				       u16 *mcam_idx)
+{
+	struct npc_subbank *sb;
+	unsigned long *bmap;
+	int sb_off, off, rc;
+	int cnt = 0;
+	bool bitset;
+
+	if (prio != NPC_MCAM_HIGHER_PRIO) {
+		while (ref <= limit) {
+			/* Calculate subbank and subbank index */
+			rc =  npc_mcam_idx_2_subbank_idx(rvu, ref,
+							 &sb, &sb_off);
+			if (rc)
+				goto err;
+
+			/* If subbank is not suitable for requested key type
+			 * restart search from next subbank
+			 */
+			if (!npc_subbank_suits(sb, key_type)) {
+				ref = SB_ALIGN_UP(ref);
+				if (contig) {
+					rc = npc_idx_free(rvu, mcam_idx, cnt, false);
+					if (rc)
+						return rc;
+					cnt = 0;
+				}
+				continue;
+			}
+
+			mutex_lock(&sb->lock);
+
+			/* If subbank is free; mark it as used */
+			if (sb->flags & NPC_SUBBANK_FLAG_FREE) {
+				rc =  __npc_subbank_mark_used(rvu, sb, key_type);
+				if (rc) {
+					mutex_unlock(&sb->lock);
+					dev_err(rvu->dev,
+						"%s:%d Error to add to use array\n",
+						__func__, __LINE__);
+					goto err;
+				}
+			}
+
+			/* Find correct bmap */
+			__npc_subbank_sboff_2_off(rvu, sb, sb_off, &bmap, &off);
+
+			/* if bit is already set, resset 'cnt' */
+			bitset = test_bit(off, bmap);
+			if (bitset) {
+				mutex_unlock(&sb->lock);
+				if (contig) {
+					rc = npc_idx_free(rvu, mcam_idx, cnt, false);
+					if (rc)
+						return rc;
+					cnt = 0;
+				}
+
+				ref++;
+				continue;
+			}
+
+			set_bit(off, bmap);
+			sb->free_cnt--;
+			mcam_idx[cnt++] = ref;
+			mutex_unlock(&sb->lock);
+
+			if (cnt == count)
+				return 0;
+			ref++;
+		}
+
+		/* Could not allocate request count slots */
+		goto err;
+	}
+	while (ref >= limit) {
+		rc =  npc_mcam_idx_2_subbank_idx(rvu, ref,
+						 &sb, &sb_off);
+		if (rc)
+			goto err;
+
+		if (!npc_subbank_suits(sb, key_type)) {
+			ref = SB_ALIGN_DOWN(ref) - 1;
+			if (contig) {
+				rc = npc_idx_free(rvu, mcam_idx, cnt, false);
+				if (rc)
+					return rc;
+
+				cnt = 0;
+			}
+			continue;
+		}
+
+		mutex_lock(&sb->lock);
+
+		if (sb->flags & NPC_SUBBANK_FLAG_FREE) {
+			rc =  __npc_subbank_mark_used(rvu, sb, key_type);
+			if (rc) {
+				mutex_unlock(&sb->lock);
+				dev_err(rvu->dev,
+					"%s:%d Error to add to use array\n",
+					__func__, __LINE__);
+				goto err;
+			}
+		}
+
+		__npc_subbank_sboff_2_off(rvu, sb, sb_off, &bmap, &off);
+		bitset = test_bit(off, bmap);
+		if (bitset) {
+			mutex_unlock(&sb->lock);
+			if (contig) {
+				cnt = 0;
+				rc = npc_idx_free(rvu, mcam_idx, cnt, false);
+				if (rc)
+					return rc;
+			}
+			ref--;
+			continue;
+		}
+
+		mcam_idx[cnt++] = ref;
+		sb->free_cnt--;
+		set_bit(off, bmap);
+		mutex_unlock(&sb->lock);
+
+		if (cnt == count)
+			return 0;
+		ref--;
+	}
+
+err:
+	rc = npc_idx_free(rvu, mcam_idx, cnt, false);
+	if (rc)
+		dev_err(rvu->dev,
+			"%s:%d Error happend while freeing cnt=%u indexes\n",
+			__func__, __LINE__, cnt);
+
+	return -ENOSPC;
+}
+
+static int npc_subbank_free_cnt(struct rvu *rvu, struct npc_subbank *sb,
+				int key_type)
+{
+	int cnt, spd;
+
+	spd = npc_priv.subbank_depth;
+	mutex_lock(&sb->lock);
+
+	if (sb->flags & NPC_SUBBANK_FLAG_FREE)
+		cnt = key_type == NPC_MCAM_KEY_X4 ? spd : 2 * spd;
+	else
+		cnt = sb->free_cnt;
+
+	mutex_unlock(&sb->lock);
+	return cnt;
+}
+
+static int npc_subbank_ref_alloc(struct rvu *rvu, int key_type,
+				 int ref, int limit, int prio,
+				 bool contig, int count,
+				 u16 *mcam_idx)
+{
+	struct npc_subbank *sb1, *sb2;
+	bool max_alloc, start, stop;
+	int r, l, sb_idx1, sb_idx2;
+	int tot = 0, rc;
+	int alloc_cnt;
+
+	max_alloc = !contig;
+
+	start = true;
+	stop = false;
+
+	/* Loop until we cross the ref/limit boundary */
+	while (!stop) {
+		rc = npc_subbank_iter(rvu, key_type, ref, limit, prio,
+				      &r, &l, &start, &stop);
+
+		dev_dbg(rvu->dev,
+			"%s:%d ref=%d limit=%d r=%d l=%d start=%d stop=%d tot=%d count=%d rc=%d\n",
+			__func__, __LINE__, ref, limit, r, l, start, stop, tot, count, rc);
+
+		if (rc)
+			goto err;
+
+		/* Find subbank and subbank index for ref */
+		rc = npc_mcam_idx_2_subbank_idx(rvu, r, &sb1,
+						&sb_idx1);
+		if (rc)
+			goto err;
+
+		dev_dbg(rvu->dev,
+			"%s:%d ref subbank=%d off=%d\n",
+			__func__, __LINE__, sb1->idx, sb_idx1);
+
+		/* Skip subbank if it is not available for the keytype */
+		if (!npc_subbank_suits(sb1, key_type)) {
+			dev_dbg(rvu->dev,
+				"%s:%d not suitable sb=%d key_type=%d\n",
+				__func__, __LINE__, sb1->idx, key_type);
+			continue;
+		}
+
+		/* Find subbank and subbank index for limit */
+		rc = npc_mcam_idx_2_subbank_idx(rvu, l, &sb2,
+						&sb_idx2);
+		if (rc)
+			goto err;
+
+		dev_dbg(rvu->dev,
+			"%s:%d limit subbank=%d off=%d\n",
+			__func__, __LINE__, sb_idx1, sb_idx2);
+
+		/* subbank of ref and limit should be same */
+		if (sb1 != sb2) {
+			dev_err(rvu->dev,
+				"%s:%d l(%d) and r(%d) are not in same subbank\n",
+				__func__, __LINE__, r, l);
+			goto err;
+		}
+
+		if (contig && npc_subbank_free_cnt(rvu, sb1, key_type) < count) {
+			dev_dbg(rvu->dev, "%s:%d less count =%d\n",
+				__func__, __LINE__,
+				npc_subbank_free_cnt(rvu, sb1, key_type));
+			continue;
+		}
+
+		/* Try in one bank of a subbank */
+		alloc_cnt = 0;
+		rc =  npc_subbank_alloc(rvu, sb1, key_type,
+					r, l, prio, contig,
+					count - tot, mcam_idx + tot,
+					count - tot, max_alloc,
+					&alloc_cnt);
+
+		tot += alloc_cnt;
+
+		dev_dbg(rvu->dev, "%s:%d Allocated tot=%d alloc_cnt=%d\n",
+			__func__, __LINE__, tot, alloc_cnt);
+
+		if (!rc && count == tot)
+			return 0;
+	}
+err:
+	dev_dbg(rvu->dev, "%s:%d Error to allocate\n",
+		__func__, __LINE__);
+
+	/* non contigous allocation fails. We need to do clean up */
+	if (max_alloc) {
+		rc = npc_idx_free(rvu, mcam_idx, tot, false);
+		if (rc)
+			dev_err(rvu->dev,
+				"%s:%d failed to free %u indexes\n",
+				 __func__, __LINE__, tot);
+	}
+
+	return -EFAULT;
+}
+
+/* Minimize allocation from bottom and top subbanks for noref allocations.
+ * Default allocations are ref based, and will be allocated from top
+ * subbanks (least priority subbanks). Since default allocation is at very
+ * early stage of kernel netdev probes, this subbanks will be moved to
+ * used subbanks list. This will pave a way for noref allocation from these
+ * used subbanks. Skip allocation for these top and bottom, and try free
+ * bank next. If none slot is available, come back and search in these
+ * subbanks.
+ */
+static const int npc_subbank_restricted_idxs[] = {31, /* subbank 31 */
+						  0, /* subbank 0 */};
+
+static bool npc_subbank_restrict_usage(struct rvu *rvu, int index)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(npc_subbank_restricted_idxs); i++) {
+		if (index == npc_subbank_restricted_idxs[i])
+			return true;
+	}
+
+	return false;
+}
+
+static int npc_subbank_noref_alloc(struct rvu *rvu, int key_type, bool contig,
+				   int count, u16 *mcam_idx)
+{
+	struct npc_subbank *sb;
+	unsigned long index;
+	int tot = 0, rc;
+	bool max_alloc;
+	int alloc_cnt;
+	int idx, i;
+	void *val;
+
+	max_alloc = !contig;
+
+	/* Check used subbanks for free slots */
+	xa_for_each(&npc_priv.xa_sb_used, index, val) {
+		idx = xa_to_value(val);
+
+		/* Minimize allocation from restricted subbanks
+		 * in noref allocations.
+		 */
+		if (npc_subbank_restrict_usage(rvu, index))
+			continue;
+
+		sb = &npc_priv.sb[idx];
+
+		/* Skip if not suitable subbank */
+		if (!npc_subbank_suits(sb, key_type))
+			continue;
+
+		if (contig && npc_subbank_free_cnt(rvu, sb, key_type) < count)
+			continue;
+
+		/* try in bank 0. Try passing ref and limit equal to
+		 * subbank boundaries
+		 */
+		alloc_cnt = 0;
+		rc =  npc_subbank_alloc(rvu, sb, key_type,
+					sb->b0b, sb->b0t, 0,
+					contig, count - tot,
+					mcam_idx + tot,
+					count - tot,
+					max_alloc, &alloc_cnt);
+
+		/* Non contigious allocation may allocate less than
+		 * requested 'count'.
+		 */
+		tot += alloc_cnt;
+
+		dev_dbg(rvu->dev,
+			"%s:%d Allocated %d from subbank %d, tot=%d count=%d\n",
+			__func__, __LINE__, alloc_cnt, sb->idx, tot, count);
+
+		/* Successfully allocated */
+		if (!rc && count == tot)
+			return 0;
+
+		/* x4 entries can be allocated from bank 0 only */
+		if (key_type == NPC_MCAM_KEY_X4)
+			continue;
+
+		/* try in bank 1 for x2 */
+		alloc_cnt = 0;
+		rc =  npc_subbank_alloc(rvu, sb, key_type,
+					sb->b1b, sb->b1t, 0,
+					contig, count - tot,
+					mcam_idx + tot,
+					count - tot, max_alloc,
+					&alloc_cnt);
+
+		tot += alloc_cnt;
+
+		dev_dbg(rvu->dev,
+			"%s:%d Allocated %d from subbank %d, tot=%d count=%d\n",
+			__func__, __LINE__, alloc_cnt, sb->idx, tot, count);
+
+		if (!rc && count == tot)
+			return 0;
+	}
+
+	/* Allocate in free subbanks */
+	xa_for_each(&npc_priv.xa_sb_free, index, val) {
+		idx = xa_to_value(val);
+		sb = &npc_priv.sb[idx];
+
+		/* Minimize allocation from restricted subbanks
+		 * in noref allocations.
+		 */
+		if (npc_subbank_restrict_usage(rvu, index))
+			continue;
+
+		if (!npc_subbank_suits(sb, key_type))
+			continue;
+
+		/* try in bank 0 */
+		alloc_cnt = 0;
+		rc =  npc_subbank_alloc(rvu, sb, key_type,
+					sb->b0b, sb->b0t, 0,
+					contig, count - tot,
+					mcam_idx + tot,
+					count - tot,
+					max_alloc, &alloc_cnt);
+
+		tot += alloc_cnt;
+
+		dev_dbg(rvu->dev,
+			"%s:%d Allocated %d from subbank %d, tot=%d count=%d\n",
+			__func__, __LINE__, alloc_cnt, sb->idx, tot, count);
+
+		/* Successfully allocated */
+		if (!rc && count == tot)
+			return 0;
+
+		/* x4 entries can be allocated from bank 0 only */
+		if (key_type == NPC_MCAM_KEY_X4)
+			continue;
+
+		/* try in bank 1 for x2 */
+		alloc_cnt = 0;
+		rc =  npc_subbank_alloc(rvu, sb,
+					key_type, sb->b1b, sb->b1t, 0,
+					contig, count - tot,
+					mcam_idx + tot, count - tot,
+					max_alloc, &alloc_cnt);
+
+		tot += alloc_cnt;
+
+		dev_dbg(rvu->dev,
+			"%s:%d Allocated %d from subbank %d, tot=%d count=%d\n",
+			__func__, __LINE__, alloc_cnt, sb->idx, tot, count);
+
+		if (!rc && count == tot)
+			return 0;
+	}
+
+	/* Allocate from restricted subbanks */
+	for (i = 0; i < ARRAY_SIZE(npc_subbank_restricted_idxs); i++) {
+		idx = npc_subbank_restricted_idxs[i];
+		sb = &npc_priv.sb[idx];
+
+		/* Skip if not suitable subbank */
+		if (!npc_subbank_suits(sb, key_type))
+			continue;
+
+		if (contig && npc_subbank_free_cnt(rvu, sb, key_type) < count)
+			continue;
+
+		/* try in bank 0. Try passing ref and limit equal to
+		 * subbank boundaries
+		 */
+		alloc_cnt = 0;
+		rc =  npc_subbank_alloc(rvu, sb, key_type,
+					sb->b0b, sb->b0t, 0,
+					contig, count - tot,
+					mcam_idx + tot,
+					count - tot,
+					max_alloc, &alloc_cnt);
+
+		/* Non contigious allocation may allocate less than
+		 * requested 'count'.
+		 */
+		tot += alloc_cnt;
+
+		dev_dbg(rvu->dev,
+			"%s:%d Allocated %d from subbank %d, tot=%d count=%d\n",
+			__func__, __LINE__, alloc_cnt, sb->idx, tot, count);
+
+		/* Successfully allocated */
+		if (!rc && count == tot)
+			return 0;
+
+		/* x4 entries can be allocated from bank 0 only */
+		if (key_type == NPC_MCAM_KEY_X4)
+			continue;
+
+		/* try in bank 1 for x2 */
+		alloc_cnt = 0;
+		rc =  npc_subbank_alloc(rvu, sb, key_type,
+					sb->b1b, sb->b1t, 0,
+					contig, count - tot,
+					mcam_idx + tot,
+					count - tot, max_alloc,
+					&alloc_cnt);
+
+		tot += alloc_cnt;
+
+		dev_dbg(rvu->dev,
+			"%s:%d Allocated %d from subbank %d, tot=%d count=%d\n",
+			__func__, __LINE__, alloc_cnt, sb->idx, tot, count);
+
+		if (!rc && count == tot)
+			return 0;
+	}
+
+	/* non contigous allocation fails. We need to do clean up */
+	if (max_alloc)
+		npc_idx_free(rvu, mcam_idx, tot, false);
+
+	dev_dbg(rvu->dev, "%s:%d non-contig allocation fails\n",
+		__func__, __LINE__);
+
+	return -EFAULT;
+}
+
+int npc_cn20k_idx_free(struct rvu *rvu, u16 *mcam_idx, int count)
+{
+	return npc_idx_free(rvu, mcam_idx, count, true);
+}
+
+int npc_cn20k_ref_idx_alloc(struct rvu *rvu, int pcifunc, int key_type,
+			    int prio, u16 *mcam_idx, int ref, int limit,
+			    bool contig, int count)
+{
+	int i, eidx, rc, bd;
+	bool ref_valid;
+
+	bd = npc_priv.bank_depth;
+
+	/* Special case: ref == 0 && limit= 0 && prio == HIGH && count == 1
+	 * Here user wants to allocate 0th entry
+	 */
+	if (!ref && !limit && prio == NPC_MCAM_HIGHER_PRIO &&
+	    count == 1) {
+		rc = npc_subbank_ref_alloc(rvu, key_type, ref, limit,
+					   prio, contig, count, mcam_idx);
+
+		if (rc)
+			return rc;
+		goto add2map;
+	}
+
+	ref_valid = !!(limit || ref);
+	if (!ref_valid) {
+		if (contig && count > npc_priv.subbank_depth)
+			goto try_noref_multi_subbank;
+
+		rc = npc_subbank_noref_alloc(rvu, key_type, contig,
+					     count, mcam_idx);
+		if (!rc)
+			goto add2map;
+
+try_noref_multi_subbank:
+		eidx = (key_type == NPC_MCAM_KEY_X4) ? bd - 1 : 2 * bd - 1;
+
+		if (prio == NPC_MCAM_HIGHER_PRIO)
+			rc = npc_multi_subbank_ref_alloc(rvu, key_type,
+							 eidx, 0,
+							 NPC_MCAM_HIGHER_PRIO,
+							 contig, count,
+							 mcam_idx);
+		else
+			rc = npc_multi_subbank_ref_alloc(rvu, key_type,
+							 0, eidx,
+							 NPC_MCAM_LOWER_PRIO,
+							 contig, count,
+							 mcam_idx);
+
+		if (!rc)
+			goto add2map;
+
+		return rc;
+	}
+
+	if ((prio == NPC_MCAM_LOWER_PRIO && ref > limit) ||
+	    (prio == NPC_MCAM_HIGHER_PRIO && ref < limit)) {
+		dev_err(rvu->dev, "%s:%d Wrong ref_enty(%d) or limit(%d)\n",
+			__func__, __LINE__, ref, limit);
+		return -EINVAL;
+	}
+
+	if ((key_type == NPC_MCAM_KEY_X4 && (ref >= bd || limit >= bd)) ||
+	    (key_type == NPC_MCAM_KEY_X2 && (ref >= 2 * bd || limit >= 2 * bd))) {
+		dev_err(rvu->dev, "%s:%d Wrong ref_enty(%d) or limit(%d)\n",
+			__func__, __LINE__, ref, limit);
+		return -EINVAL;
+	}
+
+	if (contig && count > npc_priv.subbank_depth)
+		goto try_ref_multi_subbank;
+
+	rc = npc_subbank_ref_alloc(rvu, key_type, ref, limit,
+				   prio, contig, count, mcam_idx);
+	if (!rc)
+		goto add2map;
+
+try_ref_multi_subbank:
+	rc = npc_multi_subbank_ref_alloc(rvu, key_type,
+					 ref, limit, prio,
+					 contig, count, mcam_idx);
+	if (!rc)
+		goto add2map;
+
+	return rc;
+
+add2map:
+	for (i = 0; i < count; i++) {
+		rc = npc_add_to_pf_maps(rvu, mcam_idx[i], pcifunc);
+		if (rc)
+			return rc;
+	}
+
+	return 0;
+}
+
+void npc_cn20k_subbank_calc_free(struct rvu *rvu, int *x2_free, int *x4_free, int *sb_free)
+{
+	struct npc_subbank *sb;
+	int i;
+
+	/* Reset all stats to zero */
+	*x2_free = 0;
+	*x4_free = 0;
+	*sb_free = 0;
+
+	for (i = 0; i < npc_priv.num_subbanks; i++) {
+		sb = &npc_priv.sb[i];
+		mutex_lock(&sb->lock);
+
+		/* Count number of free subbanks */
+		if (sb->flags & NPC_SUBBANK_FLAG_FREE) {
+			(*sb_free)++;
+			goto next;
+		}
+
+		/* Sumup x4 free count */
+		if (sb->key_type == NPC_MCAM_KEY_X4) {
+			(*x4_free) += sb->free_cnt;
+			goto next;
+		}
+
+		/* Sumup x2 free counts */
+		(*x2_free) += sb->free_cnt;
+next:
+		mutex_unlock(&sb->lock);
+	}
+}
+
+static const int
+subbank_srch_order[MAX_NUM_SUB_BANKS] = {
+					/* 30th index subbank 0 */
+					    /*[0]*/ 30,
+					 /*[1]*/15, /*[2]*/17,
+					 /*[3]*/14, /*[4]*/18,
+					 /*[5]*/13, /*[6]*/19,
+					 /*[7]*/12, /*[8]*/20,
+					 /*[9]*/11, /*[10]*/21,
+					 /*[11]*/10, /*[12]*/22,
+					 /*[13]*/9, /*[14]*/23,
+					 /*[15]*/8, /*[16]*/24,
+					 /*[17]*/7, /*[18]*/25,
+					 /*[19]*/6, /*[20]*/26,
+					 /*[21]*/5, /*[22]*/27,
+					 /*[23]*/4, /*[24]*/28,
+					 /*[25]*/3, /*[26]*/29,
+					 /*[27]*/2, /*[28]*/16,
+					 /*[29]*/1, /*[30]*/0,
+					     /*[31]*/31,
+					/* 31th index subbank 31 */};
+
+static void npc_subbank_init(struct rvu *rvu, struct npc_subbank *sb, int idx)
+{
+	mutex_init(&sb->lock);
+
+	sb->b0b = idx * npc_priv.subbank_depth;
+	sb->b0t = sb->b0b + npc_priv.subbank_depth - 1;
+
+	sb->b1b = npc_priv.bank_depth + idx * npc_priv.subbank_depth;
+	sb->b1t = sb->b1b + npc_priv.subbank_depth - 1;
+
+	sb->flags = NPC_SUBBANK_FLAG_FREE;
+	sb->idx = idx;
+	sb->arr_idx = subbank_srch_order[idx];
+
+	 dev_dbg(rvu->dev, "%s:%d sb->idx=%u sb->arr_idx=%u\n",
+		 __func__, __LINE__, sb->idx, sb->arr_idx);
+
+	/* Keep first and last subbank at end of free array; so that
+	 * it will be used at last
+	 */
+	xa_store(&npc_priv.xa_sb_free, sb->arr_idx,
+		 xa_mk_value(sb->idx), GFP_KERNEL);
+}
+
+static int npc_pcifunc_map_create(struct rvu *rvu)
+{
+	int pf, vf, numvfs;
+	int cnt = 0;
+	u16 pcifunc;
+	u64 cfg;
+
+	for (pf = 0; pf < rvu->hw->total_pfs; pf++) {
+		cfg = rvu_read64(rvu, BLKADDR_RVUM, RVU_PRIV_PFX_CFG(pf));
+		numvfs = (cfg >> 12) & 0xFF;
+
+		/* Skip not enabled PFs */
+		if (!(cfg & BIT_ULL(20)))
+			goto chk_vfs;
+
+		/* If Admin function, check on VFs */
+		if (cfg & BIT_ULL(21))
+			goto chk_vfs;
+
+		pcifunc = pf << 9;
+
+		xa_store(&npc_priv.xa_pf_map, (unsigned long)pcifunc,
+			 xa_mk_value(cnt), GFP_KERNEL);
+
+		cnt++;
+
+chk_vfs:
+		for (vf = 0; vf < numvfs; vf++) {
+			pcifunc = (pf << 9) | (vf + 1);
+
+			xa_store(&npc_priv.xa_pf_map, (unsigned long)pcifunc,
+				 xa_mk_value(cnt), GFP_KERNEL);
+			cnt++;
+		}
+	}
+
+	return cnt;
+}
+
+static int npc_priv_init(struct rvu *rvu)
+{
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	int blkaddr, num_banks, bank_depth;
+	int num_subbanks, subbank_depth;
+	u64 npc_const1, npc_const2 = 0;
+	struct npc_subbank *sb;
+	u64 cfg;
+	int i;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+	if (blkaddr < 0) {
+		dev_err(rvu->dev, "%s:%d NPC block not implemented\n",
+			__func__, __LINE__);
+		return -ENODEV;
+	}
+
+	npc_const1 = rvu_read64(rvu, blkaddr, NPC_AF_CONST1);
+	if (npc_const1 & BIT_ULL(63))
+		npc_const2 = rvu_read64(rvu, blkaddr, NPC_AF_CONST2);
+
+	num_banks = mcam->banks;
+	bank_depth = mcam->banksize;
+
+	num_subbanks = FIELD_GET(GENMASK_ULL(39, 32), npc_const2);
+	if (npc_priv.num_subbanks != num_subbanks) {
+		dev_err(rvu->dev, "%s:%d number of subbanks(%d) should be %u\n",
+			__func__, __LINE__, num_subbanks, MAX_NUM_SUB_BANKS);
+		return -EINVAL;
+	}
+
+	subbank_depth =	bank_depth / num_subbanks;
+	if (subbank_depth != MAX_SUBBANK_DEPTH) {
+		dev_err(rvu->dev,
+			"%s:%d subbank depth(%d) is not equal to %u\n",
+			__func__, __LINE__, subbank_depth, MAX_SUBBANK_DEPTH);
+	}
+
+	npc_priv.bank_depth = bank_depth;
+	npc_priv.subbank_depth = subbank_depth;
+
+	/* Get kex configured key size */
+	cfg = rvu_read64(rvu, blkaddr, NPC_AF_INTFX_KEX_CFG(0));
+	npc_priv.kw = FIELD_GET(GENMASK_ULL(34, 32), cfg);
+
+	dev_info(rvu->dev,
+		 "banks=%u depth=%u, subbanks=%u depth=%u, key type=%s\n",
+		 num_banks, bank_depth, num_subbanks, subbank_depth,
+		 npc_kw_name[npc_priv.kw]);
+
+	npc_priv.sb = kcalloc(num_subbanks, sizeof(struct npc_subbank), GFP_KERNEL);
+	if (!npc_priv.sb)
+		return -ENOMEM;
+
+	xa_init_flags(&npc_priv.xa_sb_used, XA_FLAGS_ALLOC);
+	xa_init_flags(&npc_priv.xa_sb_free, XA_FLAGS_ALLOC);
+	xa_init_flags(&npc_priv.xa_idx2pf_map, XA_FLAGS_ALLOC);
+	xa_init_flags(&npc_priv.xa_pf_map, XA_FLAGS_ALLOC);
+
+	/* Initialize subbanks */
+	for (i = 0, sb = npc_priv.sb; i < num_subbanks; i++, sb++)
+		npc_subbank_init(rvu, sb, i);
+
+	/* Get number of pcifuncs in the system */
+	npc_priv.pf_cnt = npc_pcifunc_map_create(rvu);
+	npc_priv.xa_pf2idx_map = kcalloc(npc_priv.pf_cnt, sizeof(struct xarray),
+					 GFP_KERNEL);
+	if (!npc_priv.xa_pf2idx_map)
+		return -ENOMEM;
+
+	for (i = 0; i < npc_priv.pf_cnt; i++)
+		xa_init_flags(&npc_priv.xa_pf2idx_map[i], XA_FLAGS_ALLOC);
+
+	return 0;
+}
+
+int npc_cn20k_deinit(struct rvu *rvu)
+{
+	int i;
+
+	xa_destroy(&npc_priv.xa_sb_used);
+	xa_destroy(&npc_priv.xa_sb_free);
+	xa_destroy(&npc_priv.xa_idx2pf_map);
+	xa_destroy(&npc_priv.xa_pf_map);
+
+	for (i = 0; i < npc_priv.pf_cnt; i++)
+		xa_destroy(&npc_priv.xa_pf2idx_map[i]);
+
+	kfree(npc_priv.xa_pf2idx_map);
+	kfree(npc_priv.sb);
+	return 0;
+}
+
+int npc_cn20k_init(struct rvu *rvu)
+{
+	int err;
+
+	err = npc_priv_init(rvu);
+	if (err) {
+		dev_err(rvu->dev, "%s:%d Error to init\n",
+			__func__, __LINE__);
+		return err;
+	}
+
+	npc_priv.init_done = true;
+
+	return 0;
+}
