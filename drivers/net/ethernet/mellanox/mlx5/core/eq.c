@@ -1089,8 +1089,8 @@ struct mlx5_eq_comp *mlx5_comp_eqn_get_low(struct mlx5_core_dev *dev, u32 vector
 	struct mlx5_eq_table *table = dev->priv.eq_table;
 	struct mlx5_eq_comp *ret_eq = NULL;
 	u32 min_cq_count = U32_MAX;
-	int i_min = vector == IB_CQ_FORCE_ZERO_CV ? 0 : vector;
-	int i_max = vector ? i_min : table->max_comp_eqs - 1;
+	int i_min = (int)vector >= 0 ? vector : 0;
+	int i_max = (int)vector >= 0 ? vector : table->max_comp_eqs - 1;
 	int chosen_vector = -1;
 	int i, err;
 

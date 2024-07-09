@@ -99,6 +99,9 @@ ib_uverbs_init_udata_buf_or_null(struct ib_udata *udata,
 struct ib_uverbs_device {
 	refcount_t				refcount;
 	u32					num_comp_vectors;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	bool					can_balance_comp_vectors;
+#endif
 	struct completion			comp;
 	struct device				dev;
 	/* First group for device attributes, NULL terminated array */
