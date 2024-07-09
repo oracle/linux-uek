@@ -1572,10 +1572,7 @@ int mlx4_choose_vector(struct mlx4_dev *dev, u32 vector, int num_comp)
 	struct mlx4_eq *chosen;
 	int k;
 
-	if (vector) {
-		if (vector == IB_CQ_FORCE_ZERO_CV)
-			vector = 0;
-
+	if ((int)vector >= 0 && (int)vector < num_comp) {
 		spin_lock(&dev->eq_accounting_lock);
 		mlx4_priv(dev)->eq_table.eq[vector].ncqs++;
 		spin_unlock(&dev->eq_accounting_lock);
