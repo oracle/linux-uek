@@ -1152,6 +1152,9 @@ static int ib_uverbs_add_one(struct ib_device *device)
 	INIT_LIST_HEAD(&uverbs_dev->uverbs_file_list);
 	rcu_assign_pointer(uverbs_dev->ib_dev, device);
 	uverbs_dev->num_comp_vectors = device->num_comp_vectors;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	uverbs_dev->can_balance_comp_vectors = device->can_balance_comp_vectors;
+#endif
 
 	devnum = ida_alloc_max(&uverbs_ida, IB_UVERBS_MAX_DEVICES - 1,
 			       GFP_KERNEL);
