@@ -1099,9 +1099,8 @@ mlx5_comp_eqn_get_low(struct mlx5_core_dev *dev, int vecidx, int *eqn)
 
 	mutex_lock(&table->comp_lock);
 
-	if (vecidx) {
-		i_min = vecidx == IB_CQ_FORCE_ZERO_CV ? 0 : vecidx;
-		i_max = i_min;
+	if (vecidx >= 0) {
+		i_min = i_max = vecidx;
 	} else {
 		i_min = 0;
 		i_max = table->max_comp_eqs - 1;
