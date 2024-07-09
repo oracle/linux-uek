@@ -132,6 +132,8 @@ kernel/drivers/edac/skx_edac_common.ko
 kernel/drivers/edac/skx_edac.ko
 kernel/drivers/firmware/iscsi_ibft.ko
 kernel/drivers/firmware/qemu_fw_cfg.ko
+kernel/drivers/fwctl/fwctl.ko
+kernel/drivers/fwctl/mlx5/mlx5_fwctl.ko
 kernel/drivers/gnss/gnss.ko
 kernel/drivers/gpu/drm/ast/ast.ko
 kernel/drivers/gpu/drm/drm_kms_helper.ko
