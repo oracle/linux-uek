@@ -53,6 +53,14 @@
 #define MBOX_DIR_VFPF_UP	7  /* VF replies to PF */
 
 enum {
+	NPC_MCAM_KEY_X1 = 0,
+	NPC_MCAM_KEY_DYN = NPC_MCAM_KEY_X1,
+	NPC_MCAM_KEY_X2,
+	NPC_MCAM_KEY_X4,
+	NPC_MCAM_KEY_MAX,
+};
+
+enum {
 	TYPE_AFVF,
 	TYPE_AFPF,
 };
@@ -1884,7 +1892,7 @@ struct npc_mcam_free_entry_req {
 };
 
 struct mcam_entry {
-#define NPC_MAX_KWS_IN_KEY	7 /* Number of keywords in max keywidth */
+#define NPC_MAX_KWS_IN_KEY	8 /* Number of keywords in max keywidth */
 	u64	kw[NPC_MAX_KWS_IN_KEY];
 	u64	kw_mask[NPC_MAX_KWS_IN_KEY];
 	u64	action;
