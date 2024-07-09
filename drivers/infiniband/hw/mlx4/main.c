@@ -2535,6 +2535,9 @@ static void mlx4_ib_alloc_eqs(struct mlx4_dev *dev, struct mlx4_ib_dev *ibdev)
 
 	/* Advertise the new number of EQs to clients */
 	ibdev->ib_dev.num_comp_vectors = eq;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	ibdev->ib_dev.can_balance_comp_vectors = true;
+#endif
 }
 
 static void mlx4_ib_free_eqs(struct mlx4_dev *dev, struct mlx4_ib_dev *ibdev)
@@ -2548,6 +2551,9 @@ static void mlx4_ib_free_eqs(struct mlx4_dev *dev, struct mlx4_ib_dev *ibdev)
 
 	/* Reset the advertised EQ number */
 	ibdev->ib_dev.num_comp_vectors = 0;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	ibdev->ib_dev.can_balance_comp_vectors = false;
+#endif
 
 	for (i = 0; i < total_eqs; i++)
 		mlx4_release_eq(dev, ibdev->eq_table[i]);
@@ -2762,6 +2768,9 @@ static int mlx4_ib_probe(struct auxiliary_device *adev,
 						1 : ibdev->num_ports;
 	ibdev->ib_dev.num_comp_vectors	= dev->caps.num_comp_vectors;
 	ibdev->ib_dev.dev.parent	= &dev->persist->pdev->dev;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	ibdev->ib_dev.can_balance_comp_vectors = true;
+#endif
 
 	ib_set_device_ops(&ibdev->ib_dev, &mlx4_ib_dev_ops);
 
