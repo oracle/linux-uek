@@ -488,7 +488,7 @@ static netdev_tx_t bnxt_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		prod = NEXT_TX(prod);
 		tx_push->doorbell =
 			cpu_to_le32(DB_KEY_TX_PUSH | DB_LONG_TX_PUSH | prod);
-		txr->tx_prod = prod;
+		WRITE_ONCE(txr->tx_prod, prod);
 
 		tx_buf->is_push = 1;
 		netdev_tx_sent_queue(txq, skb->len);
@@ -599,7 +599,7 @@ normal_tx:
 	wmb();
 
 	prod = NEXT_TX(prod);
-	txr->tx_prod = prod;
+	WRITE_ONCE(txr->tx_prod, prod);
 
 	if (!netdev_xmit_more() || netif_xmit_stopped(txq))
 		bnxt_txr_db_kick(bp, txr, prod);
@@ -709,7 +709,7 @@ next_tx_int:
 	}
 
 	netdev_tx_completed_queue(txq, nr_pkts, tx_bytes);
-	txr->tx_cons = cons;
+	WRITE_ONCE(txr->tx_cons, cons);
 
 	/* Need to make the tx_cons update visible to bnxt_start_xmit()
 	 * before checking for netif_tx_queue_stopped().  Without the
