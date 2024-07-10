@@ -6,12 +6,18 @@
  */
 #include <linux/xarray.h>
 #include <linux/bitfield.h>
-
-#include "cn20k/npc.h"
-#include "cn20k/reg.h"
+#include "rvu.h"
+#include "npc.h"
+#include "npc_profile.h"
+#include "rvu_npc_hash.h"
 #include "rvu_npc.h"
 
 #define KPU_OFFSET	8
+#define KEX_EXTR_CFG(bytesm1, hdr_ofs, ena, key_ofs)		\
+		     (((bytesm1) << 16) | ((hdr_ofs) << 8) | ((ena) << 7) | \
+		     ((key_ofs) & 0x3F))
+
+static const char cn20k_def_pfl_name[] = "default";
 
 static struct npc_priv_t npc_priv = {
 	.num_banks = MAX_NUM_BANKS,
@@ -23,6 +29,166 @@ const char *npc_kw_name[NPC_MCAM_KEY_MAX] = {
 	[NPC_MCAM_KEY_X2] = "X2",
 	[NPC_MCAM_KEY_X4] = "X4",
 };
+
+static struct npc_mcam_kex_extr npc_mkex_extr_default = {
+	.mkex_sign = MKEX_SIGN,
+	.name = "default",
+	.kpu_version = NPC_KPU_PROFILE_VER,
+	.keyx_cfg = {
+		/* nibble: LA..LE (ltype only) + Error code + Channel */
+		[NIX_INTF_RX] = ((u64)NPC_MCAM_KEY_X2 << 32) | NPC_PARSE_NIBBLE_INTF_RX |
+						(u64)NPC_EXACT_NIBBLE_HIT,
+		/* nibble: LA..LE (ltype only) */
+		[NIX_INTF_TX] = ((u64)NPC_MCAM_KEY_X2 << 32) | NPC_PARSE_NIBBLE_INTF_TX,
+	},
+	.intf_extr_lid = {
+	/* Default RX MCAM KEX profile */
+	[NIX_INTF_RX] = { NPC_LID_LA, NPC_LID_LA, NPC_LID_LB, NPC_LID_LB,
+			  NPC_LID_LC, NPC_LID_LC, NPC_LID_LD },
+	[NIX_INTF_TX] = { NPC_LID_LA, NPC_LID_LA, NPC_LID_LB, NPC_LID_LB,
+			  NPC_LID_LC, NPC_LID_LD },
+	},
+	.intf_extr_lt = {
+	/* Default RX MCAM KEX profile */
+	[NIX_INTF_RX] = {
+		[0] = {
+			/* Layer A: Ethernet: */
+			[NPC_LT_LA_ETHER] =
+				/* DMAC: 6 bytes, KW1[55:8] */
+				KEX_EXTR_CFG(0x05, 0x0, 0x1, NPC_KEXOF_DMAC),
+			[NPC_LT_LA_CPT_HDR] =
+				/* DMAC: 6 bytes, KW1[55:8] */
+				KEX_EXTR_CFG(0x05, 0x0, 0x1, NPC_KEXOF_DMAC),
+		},
+		[1] = {
+			/* Layer A: Ethernet: */
+			[NPC_LT_LA_ETHER] =
+				/* Ethertype: 2 bytes, KW0[55:40] */
+				KEX_EXTR_CFG(0x01, 0xc, 0x1, 0x5),
+			[NPC_LT_LA_CPT_HDR] =
+				/* Ethertype: 2 bytes, KW0[55:40] */
+				KEX_EXTR_CFG(0x01, 0xc, 0x1, 0x5),
+		},
+		[2] = {
+			/* Layer B: Single VLAN (CTAG) */
+			[NPC_LT_LB_CTAG] =
+				/* CTAG VLAN: 2 bytes, KW1[7:0], KW0[63:56] */
+				KEX_EXTR_CFG(0x01, 0x2, 0x1, 0x7),
+			/* Layer B: Stacked VLAN (STAG|QinQ) */
+			[NPC_LT_LB_STAG_QINQ] =
+				/* Outer VLAN: 2 bytes, KW1[7:0], KW0[63:56] */
+				KEX_EXTR_CFG(0x01, 0x2, 0x1, 0x7),
+			[NPC_LT_LB_FDSA] =
+				/* SWITCH PORT: 1 byte, KW0[63:56] */
+				KEX_EXTR_CFG(0x0, 0x1, 0x1, 0x7),
+		},
+		[3] = {
+			[NPC_LT_LB_CTAG] =
+				/* Ethertype: 2 bytes, KW0[55:40] */
+				KEX_EXTR_CFG(0x01, 0x4, 0x1, 0x5),
+			[NPC_LT_LB_STAG_QINQ] =
+				/* Ethertype: 2 bytes, KW0[55:40] */
+				KEX_EXTR_CFG(0x01, 0x8, 0x1, 0x5),
+			[NPC_LT_LB_FDSA] =
+				/* Ethertype: 2 bytes, KW0[55:40] */
+				KEX_EXTR_CFG(0x01, 0x4, 0x1, 0x5),
+		},
+		[4] = {
+			/* Layer C: IPv4 */
+			[NPC_LT_LC_IP] =
+				/* SIP+DIP: 8 bytes, KW2[63:0] */
+				KEX_EXTR_CFG(0x07, 0xc, 0x1, 0x10),
+			/* Layer C: IPv6 */
+			[NPC_LT_LC_IP6] =
+				/* Everything up to SADDR: 8 bytes, KW2[63:0] */
+				KEX_EXTR_CFG(0x07, 0x0, 0x1, 0x10),
+		},
+		[5] = {
+			[NPC_LT_LC_IP] =
+				/* TOS: 1 byte, KW1[63:56] */
+				KEX_EXTR_CFG(0x0, 0x1, 0x1, 0xf),
+		},
+		[6] = {
+			/* Layer D:UDP */
+			[NPC_LT_LD_UDP] =
+				/* SPORT+DPORT: 4 bytes, KW3[31:0] */
+				KEX_EXTR_CFG(0x3, 0x0, 0x1, 0x18),
+			/* Layer D:TCP */
+			[NPC_LT_LD_TCP] =
+				/* SPORT+DPORT: 4 bytes, KW3[31:0] */
+				KEX_EXTR_CFG(0x3, 0x0, 0x1, 0x18),
+		},
+	},
+
+	/* Default TX MCAM KEX profile */
+	[NIX_INTF_TX] = {
+		[0] = {
+			/* Layer A: NIX_INST_HDR_S + Ethernet */
+			/* NIX appends 8 bytes of NIX_INST_HDR_S at the
+			 * start of each TX packet supplied to NPC.
+			 */
+			[NPC_LT_LA_IH_NIX_ETHER] =
+				/* PF_FUNC: 2B , KW0 [47:32] */
+				KEX_EXTR_CFG(0x01, 0x0, 0x1, 0x4),
+			/* Layer A: HiGig2: */
+			[NPC_LT_LA_IH_NIX_HIGIG2_ETHER] =
+				/* PF_FUNC: 2B , KW0 [47:32] */
+				KEX_EXTR_CFG(0x01, 0x0, 0x1, 0x4),
+		},
+		[1] = {
+			[NPC_LT_LA_IH_NIX_ETHER] =
+				/* SQ_ID 3 bytes, KW1[63:16] */
+				KEX_EXTR_CFG(0x02, 0x02, 0x1, 0xa),
+			[NPC_LT_LA_IH_NIX_HIGIG2_ETHER] =
+				/* VID: 2 bytes, KW1[31:16] */
+				KEX_EXTR_CFG(0x01, 0x10, 0x1, 0xa),
+		},
+		[2] = {
+			/* Layer B: Single VLAN (CTAG) */
+			[NPC_LT_LB_CTAG] =
+				/* CTAG VLAN[2..3] KW0[63:48] */
+				KEX_EXTR_CFG(0x01, 0x2, 0x1, 0x6),
+			/* Layer B: Stacked VLAN (STAG|QinQ) */
+			[NPC_LT_LB_STAG_QINQ] =
+				/* Outer VLAN: 2 bytes, KW0[63:48] */
+				KEX_EXTR_CFG(0x01, 0x2, 0x1, 0x6),
+		},
+		[3] = {
+			[NPC_LT_LB_CTAG] =
+				/* CTAG VLAN[2..3] KW1[15:0] */
+				KEX_EXTR_CFG(0x01, 0x4, 0x1, 0x8),
+			[NPC_LT_LB_STAG_QINQ] =
+				/* Outer VLAN: 2 Bytes, KW1[15:0] */
+				KEX_EXTR_CFG(0x01, 0x8, 0x1, 0x8),
+		},
+		[4] = {
+			/* Layer C: IPv4 */
+			[NPC_LT_LC_IP] =
+				/* SIP+DIP: 8 bytes, KW2[63:0] */
+				KEX_EXTR_CFG(0x07, 0xc, 0x1, 0x10),
+			/* Layer C: IPv6 */
+			[NPC_LT_LC_IP6] =
+				/* Everything up to SADDR: 8 bytes, KW2[63:0] */
+				KEX_EXTR_CFG(0x07, 0x0, 0x1, 0x10),
+		},
+		[5] = {
+			/* Layer D:UDP */
+			[NPC_LT_LD_UDP] =
+				/* SPORT+DPORT: 4 bytes, KW3[31:0] */
+				KEX_EXTR_CFG(0x3, 0x0, 0x1, 0x18),
+			/* Layer D:TCP */
+			[NPC_LT_LD_TCP] =
+				/* SPORT+DPORT: 4 bytes, KW3[31:0] */
+				KEX_EXTR_CFG(0x3, 0x0, 0x1, 0x18),
+		},
+	},
+	},
+};
+
+struct npc_mcam_kex_extr *npc_mkex_extr_default_get(void)
+{
+	return &npc_mkex_extr_default;
+}
 
 struct npc_priv_t *npc_priv_get(void)
 {
@@ -1887,6 +2053,130 @@ void npc_cn20k_parser_profile_init(struct rvu *rvu, int blkaddr)
 	npc_program_kpm_profile(rvu, blkaddr, hw->npc_kpms);
 }
 
+static void npc_program_mkex_rx(struct rvu *rvu, int blkaddr,
+				struct npc_mcam_kex_extr *mkex_extr,
+				u8 intf)
+{
+	u8 num_extr = rvu->hw->npc_kex_extr;
+	int extr, lt;
+
+	if (is_npc_intf_tx(intf))
+		return;
+
+	rvu_write64(rvu, blkaddr, NPC_AF_INTFX_KEX_CFG(intf),
+		    mkex_extr->keyx_cfg[NIX_INTF_RX]);
+
+	/* Program EXTRACTOR */
+	for (extr = 0; extr < num_extr; extr++)
+		rvu_write64(rvu, blkaddr, NPC_AF_INTFX_EXTRACTORX_CFG(intf, extr),
+			    mkex_extr->intf_extr_lid[intf][extr]);
+
+	/* Program EXTRACTOR_LTYPE */
+	for (extr = 0; extr < num_extr; extr++)
+		for (lt = 0; lt < NPC_MAX_LT; lt++)
+			CN20K_SET_EXTR_LT(intf, extr, lt,
+					  mkex_extr->intf_extr_lt[intf][extr][lt]);
+}
+
+static void npc_program_mkex_tx(struct rvu *rvu, int blkaddr,
+				struct npc_mcam_kex_extr *mkex_extr,
+				u8 intf)
+{
+	u8 num_extr = rvu->hw->npc_kex_extr;
+	int extr, lt;
+
+	if (is_npc_intf_rx(intf))
+		return;
+
+	rvu_write64(rvu, blkaddr, NPC_AF_INTFX_KEX_CFG(intf),
+		    mkex_extr->keyx_cfg[NIX_INTF_TX]);
+
+	/* Program EXTRACTOR */
+	for (extr = 0; extr < num_extr; extr++)
+		rvu_write64(rvu, blkaddr, NPC_AF_INTFX_EXTRACTORX_CFG(intf, extr),
+			    mkex_extr->intf_extr_lid[intf][extr]);
+
+	/* Program EXTRACTOR_LTYPE */
+	for (extr = 0; extr < num_extr; extr++)
+		for (lt = 0; lt < NPC_MAX_LT; lt++)
+			CN20K_SET_EXTR_LT(intf, extr, lt,
+					  mkex_extr->intf_extr_lt[intf][extr][lt]);
+}
+
+static void npc_program_mkex_profile(struct rvu *rvu, int blkaddr,
+				     struct npc_mcam_kex_extr *mkex_extr)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	u8 intf;
+
+	for (intf = 0; intf < hw->npc_intfs; intf++) {
+		npc_program_mkex_rx(rvu, blkaddr, mkex_extr, intf);
+		npc_program_mkex_tx(rvu, blkaddr, mkex_extr, intf);
+	}
+
+	/* Programme mkex hash profile */
+	npc_program_mkex_hash(rvu, blkaddr);
+}
+
+void npc_cn20k_load_mkex_profile(struct rvu *rvu, int blkaddr,
+				 const char *mkex_profile)
+{
+	struct npc_mcam_kex_extr *mcam_kex_extr;
+	struct device *dev = &rvu->pdev->dev;
+	void __iomem *mkex_prfl_addr = NULL;
+	u64 prfl_sz;
+	int ret;
+
+	/* If user not selected mkex profile */
+	if (rvu->kpu_fwdata_sz ||
+	    !strncmp(mkex_profile, cn20k_def_pfl_name, MKEX_NAME_LEN))
+		goto program_mkex_extr;
+
+	/* Setting up the mapping for mkex profile image */
+	ret = npc_fwdb_prfl_img_map(rvu, &mkex_prfl_addr, &prfl_sz);
+	if (ret < 0)
+		goto program_mkex_extr;
+
+	mcam_kex_extr = (struct npc_mcam_kex_extr __force *)mkex_prfl_addr;
+
+	while (((s64)prfl_sz > 0) && (mcam_kex_extr->mkex_sign != MKEX_END_SIGN)) {
+		/* Compare with mkex mod_param name string */
+		if (mcam_kex_extr->mkex_sign == MKEX_SIGN &&
+		    !strncmp(mcam_kex_extr->name, mkex_profile, MKEX_NAME_LEN)) {
+			rvu->kpu.mcam_kex_prfl.mkex_extr = mcam_kex_extr;
+			goto program_mkex_extr;
+		}
+
+		mcam_kex_extr++;
+		prfl_sz -= sizeof(struct npc_mcam_kex);
+	}
+	dev_warn(dev, "Failed to load requested profile: %s\n", mkex_profile);
+
+program_mkex_extr:
+	dev_info(rvu->dev, "Using %s mkex profile\n", rvu->kpu.mcam_kex_prfl.mkex_extr->name);
+	/* Program selected mkex profile */
+	npc_program_mkex_profile(rvu, blkaddr, rvu->kpu.mcam_kex_prfl.mkex_extr);
+	if (mkex_prfl_addr)
+		iounmap(mkex_prfl_addr);
+}
+
+static int npc_setup_mcam_section(struct rvu *rvu, int key_type)
+{
+	int blkaddr, sec;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+	if (blkaddr < 0) {
+		dev_err(rvu->dev, "%s: NPC block not implemented\n", __func__);
+		return -ENODEV;
+	}
+
+	for (sec = 0; sec < npc_priv.num_subbanks; sec++)
+		rvu_write64(rvu, blkaddr,
+			    NPC_AF_MCAM_SECTIONX_CFG_EXT(sec), key_type);
+
+	return 0;
+}
+
 int npc_cn20k_deinit(struct rvu *rvu)
 {
 	int i;
@@ -1907,6 +2197,13 @@ int npc_cn20k_deinit(struct rvu *rvu)
 int npc_cn20k_init(struct rvu *rvu)
 {
 	int err;
+
+	err = npc_setup_mcam_section(rvu, NPC_MCAM_KEY_X2);
+	if (err) {
+		dev_err(rvu->dev, "%s: mcam section configuration failure\n",
+			__func__);
+		return err;
+	}
 
 	err = npc_priv_init(rvu);
 	if (err) {

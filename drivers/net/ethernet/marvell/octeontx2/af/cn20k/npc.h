@@ -11,6 +11,24 @@
 #define MAX_NUM_BANKS 2
 #define MAX_NUM_SUB_BANKS 32
 #define MAX_SUBBANK_DEPTH 256
+#define NPC_CN20K_BYTESM GENMASK_ULL(18, 16)
+#define NPC_CN20K_PARSE_NIBBLE GENMASK_ULL(22, 0)
+#define NPC_CN20K_TOTAL_NIBBLE 23
+
+#define CN20K_GET_KEX_CFG(intf)	\
+	rvu_read64(rvu, BLKADDR_NPC, NPC_AF_INTFX_KEX_CFG(intf))
+
+#define CN20K_GET_EXTR_LID(intf, extr)	\
+	rvu_read64(rvu, BLKADDR_NPC,	\
+		   NPC_AF_INTFX_EXTRACTORX_CFG(NIX_INTF_RX, extr))
+
+#define CN20K_SET_EXTR_LT(intf, extr, ltype, cfg)	\
+	rvu_write64(rvu, BLKADDR_NPC,	\
+		    NPC_AF_INTFX_EXTRACTORX_LTX_CFG(intf, extr, ltype), cfg)
+
+#define CN20K_GET_EXTR_LT(intf, extr, ltype)	\
+	rvu_read64(rvu, BLKADDR_NPC,	\
+		   NPC_AF_INTFX_EXTRACTORX_LTX_CFG(intf, extr, ltype))
 
 enum npc_subbank_flag {
 	NPC_SUBBANK_FLAG_UNINIT,	// npc_subbank is not initialized yet.
@@ -45,6 +63,23 @@ struct npc_priv_t {
 	int pf_cnt;
 	bool init_done;
 };
+
+struct npc_mcam_kex_extr {
+	/* MKEX Profle Header */
+	u64 mkex_sign; /* "mcam-kex-profile" (8 bytes/ASCII characters) */
+	u8 name[MKEX_NAME_LEN];   /* MKEX Profile name */
+	u64 cpu_model;   /* Format as profiled by CPU hardware */
+	u64 kpu_version; /* KPU firmware/profile version */
+	u64 reserved; /* Reserved for extension */
+
+	/* MKEX Profle Data */
+	u64 keyx_cfg[NPC_MAX_INTF]; /* NPC_AF_INTF(0..1)_KEX_CFG */
+#define NPC_MAX_EXTRACTOR	24
+	/* MKEX Extractor data */
+	u64 intf_extr_lid[NPC_MAX_INTF][NPC_MAX_EXTRACTOR];
+	/* KEX configuration per extractor */
+	u64 intf_extr_lt[NPC_MAX_INTF][NPC_MAX_EXTRACTOR][NPC_MAX_LT];
+} __packed;
 
 struct npc_kpm_action0 {
 #if defined(__BIG_ENDIAN_BITFIELD)
@@ -94,6 +129,8 @@ int npc_cn20k_ref_idx_alloc(struct rvu *rvu, int pcifunc, int key_type,
 			    bool contig, int count);
 int npc_cn20k_idx_free(struct rvu *rvu, u16 *mcam_idx, int count);
 void npc_cn20k_parser_profile_init(struct rvu *rvu, int blkaddr);
+struct npc_mcam_kex_extr *npc_mkex_extr_default_get(void);
+void npc_cn20k_load_mkex_profile(struct rvu *rvu, int blkaddr, const char *mkex_profile);
 
 int npc_mcam_idx_2_key_type(struct rvu *rvu, u16 mcam_idx, u8 *key_type);
 

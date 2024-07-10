@@ -7,8 +7,6 @@
 
 #ifndef RVU_MBOX_REG_H
 #define RVU_MBOX_REG_H
-#include "../rvu.h"
-#include "../rvu_reg.h"
 
 /* RVUM block registers */
 #define RVU_PF_DISC				(0x0)

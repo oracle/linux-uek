@@ -8,6 +8,9 @@
 #ifndef NPC_H
 #define NPC_H
 
+#include "cn20k/npc.h"
+#include "cn20k/reg.h"
+
 #define NPC_KEX_CHAN_MASK	0xFFFULL
 
 #define SET_KEX_LD(intf, lid, ltype, ld, cfg)	\
@@ -436,6 +439,7 @@ struct nix_rx_action {
 
 /* NPC_AF_INTFX_KEX_CFG field masks */
 #define NPC_PARSE_NIBBLE		GENMASK_ULL(30, 0)
+#define NPC_TOTAL_NIBBLE		31
 
 /* NPC_PARSE_KEX_S nibble definitions for each field */
 #define NPC_PARSE_NIBBLE_CHAN		GENMASK_ULL(2, 0)
