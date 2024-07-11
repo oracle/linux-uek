@@ -93,4 +93,50 @@
 #define NPC_AF_KPMX_PASS2_OFFSET(a)	(0x190000ull | (a) << 3)
 #define NPC_AF_MCAM_SECTIONX_CFG_EXT(a)	(0xC000000ull | (a) << 3)
 
+#define NIX_AF_LSO_ALT_FLAGS_CFG(a)	(0x4B00 | (a) << 3)
+#define NIX_AF_LSO_ALT_FLAGS_CFG1(a)	(0x4B20 | (a) << 3)
+
+/* NIX Registers */
+#define NIX_AF_RX_DEF_INLINEX(a)		(0x2c0 | (a) << 3)
+#define NIX_AF_RX_INLINE_GEN_CFGX(a)		(0x340 | (a) << 3)
+#define NIX_AF_RX_EXTRACT_INLINEX(a)		(0x380 | (a) << 3)
+#define NIX_AF_RX_PROT_FIELDX_INLINEX(a, b)	(0x4c00 | (a) << 6 | (b) << 3)
+#define NPC_AF_CN20K_MCAMEX_BANKX_CAMX_INTF_EXT(a, b, c) ({		\
+	u64 offset;							\
+	offset = (0x8000000ull | (a) << 8 | (b) << 22 | (c) << 3);	\
+	offset; })
+
+#define NPC_AF_CN20K_MCAMEX_BANKX_CAMX_W0_EXT(a, b, c) ({		\
+	u64 offset;							\
+	offset = (0x8000010ull | (a) << 8 | (b) << 22 | (c) << 3);	\
+	offset; })
+
+#define NPC_AF_CN20K_MCAMEX_BANKX_CAMX_W1_EXT(a, b, c) ({		\
+	u64 offset;							\
+	offset = (0x8000020ull | (a) << 8 | (b) << 22 | (c) << 3);	\
+	offset; })
+
+#define NPC_AF_CN20K_MCAMEX_BANKX_CAMX_W2_EXT(a, b, c) ({		\
+	u64 offset;							\
+	offset = (0x8000030ull | (a) << 8 | (b) << 22 | (c) << 3);	\
+	offset; })
+
+#define NPC_AF_CN20K_MCAMEX_BANKX_CAMX_W3_EXT(a, b, c) ({		\
+	u64 offset;							\
+	offset = (0x8000040ull | (a) << 8 | (b) << 22 | (c) << 3);	\
+	offset; })
+
+#define NPC_AF_CN20K_MCAMEX_BANKX_CFG_EXT(a, b) ({		\
+	u64 offset;						\
+	offset = (0x8000050ull | (a) << 8 | (b) << 22);		\
+	offset; })
+
+#define NPC_AF_CN20K_MCAMEX_BANKX_ACTIONX_EXT(a, b, c) ({		   \
+	u64 offset;							   \
+									   \
+	offset = (0x8000060ull | (a) << 8 | (b) << 22 | (c) << 3);	   \
+	offset; })
+
+#define NPC_AF_INTFX_MISS_ACTX(a, b)	(0x1a00000 | (a) << 6 | (b) << 4)
+
 #endif /* RVU_MBOX_REG_H */

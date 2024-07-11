@@ -193,9 +193,12 @@ int npc_get_nixlf_mcam_index(struct rvu *rvu, struct npc_mcam *mcam,
 	return npc_get_ucast_mcam_index(mcam, pcifunc, nixlf);
 }
 
-int npc_get_bank(struct npc_mcam *mcam, int index)
+int npc_get_bank(struct rvu *rvu, struct npc_mcam *mcam, int index)
 {
 	int bank = index / mcam->banksize;
+
+	if (is_cn20k(rvu->pdev))
+		return bank;
 
 	/* 0,1 & 2,3 banks are combined for this keysize */
 	if (mcam->keysize == NPC_MCAM_KEY_X2)
@@ -207,19 +210,26 @@ int npc_get_bank(struct npc_mcam *mcam, int index)
 bool is_mcam_entry_enabled(struct rvu *rvu, struct npc_mcam *mcam,
 			   int blkaddr, int index)
 {
-	int bank = npc_get_bank(mcam, index);
+	int bank = npc_get_bank(rvu, mcam, index);
 	u64 cfg;
 
 	index &= (mcam->banksize - 1);
-	cfg = rvu_read64(rvu, blkaddr, NPC_AF_MCAMEX_BANKX_CFG(index, bank));
+	if (is_cn20k(rvu->pdev))
+		cfg = rvu_read64(rvu, blkaddr, NPC_AF_CN20K_MCAMEX_BANKX_CFG_EXT(index, bank));
+	else
+		cfg = rvu_read64(rvu, blkaddr, NPC_AF_MCAMEX_BANKX_CFG(index, bank));
+
 	return (cfg & 1);
 }
 
 void npc_enable_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
 			   int blkaddr, int index, bool enable)
 {
-	int bank = npc_get_bank(mcam, index);
+	int bank = npc_get_bank(rvu, mcam, index);
 	int actbank = bank;
+
+	if (is_cn20k(rvu->pdev))
+		return npc_cn20k_enable_mcam_entry(rvu, blkaddr, index, enable);
 
 	index &= (mcam->banksize - 1);
 	for (; bank < (actbank + mcam->banks_per_entry); bank++) {
@@ -232,7 +242,7 @@ void npc_enable_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
 static void npc_clear_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
 				 int blkaddr, int index)
 {
-	int bank = npc_get_bank(mcam, index);
+	int bank = npc_get_bank(rvu, mcam, index);
 	int actbank = bank;
 
 	index &= (mcam->banksize - 1);
@@ -389,6 +399,7 @@ static u64 npc_get_default_entry_action(struct rvu *rvu, struct npc_mcam *mcam,
 					int blkaddr, u16 pf_func)
 {
 	int bank, nixlf, index;
+	u64 reg;
 
 	/* get ucast entry rule entry index */
 	if (nix_get_nixlf(rvu, pf_func, &nixlf, NULL)) {
@@ -400,11 +411,15 @@ static u64 npc_get_default_entry_action(struct rvu *rvu, struct npc_mcam *mcam,
 
 	index = npc_get_nixlf_mcam_index(rvu, mcam, pf_func, nixlf,
 					 NIXLF_UCAST_ENTRY);
-	bank = npc_get_bank(mcam, index);
+	bank = npc_get_bank(rvu, mcam, index);
 	index &= (mcam->banksize - 1);
 
-	return rvu_read64(rvu, blkaddr,
-			  NPC_AF_MCAMEX_BANKX_ACTION(index, bank));
+	if (is_cn20k(rvu->pdev))
+		reg = NPC_AF_CN20K_MCAMEX_BANKX_ACTIONX_EXT(index, bank, 0);
+	else
+		reg = NPC_AF_MCAMEX_BANKX_ACTION(index, bank);
+
+	return rvu_read64(rvu, blkaddr, reg);
 }
 
 static void npc_fixup_vf_rule(struct rvu *rvu, struct npc_mcam *mcam,
@@ -454,7 +469,7 @@ static void npc_config_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
 				  int blkaddr, int index, u8 intf,
 				  struct mcam_entry *entry, bool enable)
 {
-	int bank = npc_get_bank(mcam, index);
+	int bank = npc_get_bank(rvu, mcam, index);
 	int kw = 0, actbank, actindex;
 	u8 tx_intf_mask = ~intf & 0x3;
 	u8 tx_intf = intf;
@@ -529,7 +544,7 @@ void npc_read_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
 			 int blkaddr, u16 src,
 			 struct mcam_entry *entry, u8 *intf, u8 *ena)
 {
-	int sbank = npc_get_bank(mcam, src);
+	int sbank = npc_get_bank(rvu, mcam, src);
 	int bank, kw = 0;
 	u64 cam0, cam1;
 
@@ -564,10 +579,13 @@ void npc_read_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
 static void npc_copy_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
 				int blkaddr, u16 src, u16 dest)
 {
-	int dbank = npc_get_bank(mcam, dest);
-	int sbank = npc_get_bank(mcam, src);
+	int dbank = npc_get_bank(rvu, mcam, dest);
+	int sbank = npc_get_bank(rvu, mcam, src);
 	u64 cfg, sreg, dreg;
 	int bank, i;
+
+	if (is_cn20k(rvu->pdev))
+		return npc_cn20k_copy_mcam_entry(rvu, blkaddr, src, dest);
 
 	src &= (mcam->banksize - 1);
 	dest &= (mcam->banksize - 1);
@@ -604,21 +622,31 @@ static void npc_copy_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
 u64 npc_get_mcam_action(struct rvu *rvu, struct npc_mcam *mcam,
 			int blkaddr, int index)
 {
-	int bank = npc_get_bank(mcam, index);
+	int bank = npc_get_bank(rvu, mcam, index);
+	u64 reg;
 
 	index &= (mcam->banksize - 1);
-	return rvu_read64(rvu, blkaddr,
-			  NPC_AF_MCAMEX_BANKX_ACTION(index, bank));
+	if (is_cn20k(rvu->pdev))
+		reg = NPC_AF_CN20K_MCAMEX_BANKX_ACTIONX_EXT(index, bank, 0);
+	else
+		reg = NPC_AF_MCAMEX_BANKX_ACTION(index, bank);
+
+	return rvu_read64(rvu, blkaddr, reg);
 }
 
 void npc_set_mcam_action(struct rvu *rvu, struct npc_mcam *mcam,
 			 int blkaddr, int index, u64 cfg)
 {
-	int bank = npc_get_bank(mcam, index);
+	int bank = npc_get_bank(rvu, mcam, index);
+	u64 reg;
 
 	index &= (mcam->banksize - 1);
-	return rvu_write64(rvu, blkaddr,
-			   NPC_AF_MCAMEX_BANKX_ACTION(index, bank), cfg);
+	if (is_cn20k(rvu->pdev))
+		reg = NPC_AF_CN20K_MCAMEX_BANKX_ACTIONX_EXT(index, bank, 0);
+	else
+		reg = NPC_AF_MCAMEX_BANKX_ACTION(index, bank);
+
+	return rvu_write64(rvu, blkaddr, reg, cfg);
 }
 
 u32 rvu_get_cpt_chan_mask(struct rvu *rvu)
@@ -976,7 +1004,7 @@ static void npc_update_vf_flow_entry(struct rvu *rvu, struct npc_mcam *mcam,
 			}
 			if (!update)
 				continue;
-			bank = npc_get_bank(mcam, index);
+			bank = npc_get_bank(rvu, mcam, index);
 			actindex = index;
 			entry = index & (mcam->banksize - 1);
 
@@ -987,9 +1015,15 @@ static void npc_update_vf_flow_entry(struct rvu *rvu, struct npc_mcam *mcam,
 			npc_enable_mcam_entry(rvu, mcam, blkaddr, actindex,
 					      false);
 			/* update 'action' */
-			rvu_write64(rvu, blkaddr,
-				    NPC_AF_MCAMEX_BANKX_ACTION(entry, bank),
-				    rx_action);
+			if (is_cn20k(rvu->pdev))
+				rvu_write64(rvu, blkaddr,
+					    NPC_AF_CN20K_MCAMEX_BANKX_ACTIONX_EXT(entry, bank, 0),
+					    rx_action);
+			else
+				rvu_write64(rvu, blkaddr,
+					    NPC_AF_MCAMEX_BANKX_ACTION(entry, bank),
+					    rx_action);
+
 			if (enable)
 				npc_enable_mcam_entry(rvu, mcam, blkaddr,
 						      actindex, true);
@@ -1006,24 +1040,28 @@ static void npc_update_rx_action_with_alg_idx(struct rvu *rvu, struct nix_rx_act
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct rvu_hwinfo *hw = rvu->hw;
 	int bank, op_rss;
+	u64 reg;
 
 	if (!is_mcam_entry_enabled(rvu, mcam, blkaddr, mcam_index))
 		return;
 
 	op_rss = (!hw->cap.nix_rx_multicast || !pfvf->use_mce_list);
 
-	bank = npc_get_bank(mcam, mcam_index);
+	bank = npc_get_bank(rvu, mcam, mcam_index);
 	mcam_index &= (mcam->banksize - 1);
+
+	if (is_cn20k(rvu->pdev))
+		reg = NPC_AF_CN20K_MCAMEX_BANKX_ACTIONX_EXT(mcam_index, bank, 0);
+	else
+		reg = NPC_AF_MCAMEX_BANKX_ACTION(mcam_index, bank);
 
 	/* If Rx action is MCAST update only RSS algorithm index */
 	if (!op_rss) {
-		*(u64 *)&action = rvu_read64(rvu, blkaddr,
-				NPC_AF_MCAMEX_BANKX_ACTION(mcam_index, bank));
+		*(u64 *)&action = rvu_read64(rvu, blkaddr, reg);
 
 		action.flow_key_alg = alg_idx;
 	}
-	rvu_write64(rvu, blkaddr,
-		    NPC_AF_MCAMEX_BANKX_ACTION(mcam_index, bank), *(u64 *)&action);
+	rvu_write64(rvu, blkaddr, reg, *(u64 *)&action);
 }
 
 void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
@@ -1033,6 +1071,7 @@ void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 	struct nix_rx_action action;
 	int blkaddr, index, bank;
 	struct rvu_pfvf *pfvf;
+	u64 reg;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0)
@@ -1052,11 +1091,15 @@ void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 	if (index >= mcam->total_entries)
 		return;
 
-	bank = npc_get_bank(mcam, index);
+	bank = npc_get_bank(rvu, mcam, index);
 	index &= (mcam->banksize - 1);
 
-	*(u64 *)&action = rvu_read64(rvu, blkaddr,
-				     NPC_AF_MCAMEX_BANKX_ACTION(index, bank));
+	if (is_cn20k(rvu->pdev))
+		reg = NPC_AF_CN20K_MCAMEX_BANKX_ACTIONX_EXT(index, bank, 0);
+	else
+		reg = NPC_AF_MCAMEX_BANKX_ACTION(index, bank);
+
+	*(u64 *)&action = rvu_read64(rvu, blkaddr, reg);
 	/* Ignore if no action was set earlier */
 	if (!*(u64 *)&action)
 		return;
@@ -1066,8 +1109,7 @@ void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 	action.index = group;
 	action.flow_key_alg = alg_idx;
 
-	rvu_write64(rvu, blkaddr,
-		    NPC_AF_MCAMEX_BANKX_ACTION(index, bank), *(u64 *)&action);
+	rvu_write64(rvu, blkaddr, reg, *(u64 *)&action);
 
 	/* update the action change in default rule */
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
@@ -2081,15 +2123,14 @@ static void rvu_npc_setup_interfaces(struct rvu *rvu, int blkaddr)
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct rvu_hwinfo *hw = rvu->hw;
 	u64 nibble_ena, rx_kex, tx_kex;
-	u64 *keyx_cfg;
+	u64 *keyx_cfg, reg;
 	u8 intf;
 
-	if (is_cn20k(rvu->pdev)) {
+	if (is_cn20k(rvu->pdev))
 		keyx_cfg = mkex_extr->keyx_cfg;
-		goto skip_miss_cntr;
-	}
+	else
+		keyx_cfg = mkex->keyx_cfg;
 
-	keyx_cfg = mkex->keyx_cfg;
 	/* Reserve last counter for MCAM RX miss action which is set to
 	 * drop packet. This way we will know how many pkts didn't match
 	 * any MCAM entry.
@@ -2097,7 +2138,6 @@ static void rvu_npc_setup_interfaces(struct rvu *rvu, int blkaddr)
 	mcam->counters.max--;
 	mcam->rx_miss_act_cntr = mcam->counters.max;
 
-skip_miss_cntr:
 	rx_kex = keyx_cfg[NIX_INTF_RX];
 	tx_kex = keyx_cfg[NIX_INTF_TX];
 	nibble_ena = FIELD_GET(NPC_PARSE_NIBBLE, rx_kex);
@@ -2119,14 +2159,18 @@ skip_miss_cntr:
 			    rx_kex);
 
 		if (is_cn20k(rvu->pdev))
-			continue;
+			reg = NPC_AF_INTFX_MISS_ACTX(intf, 0);
+		else
+			reg = NPC_AF_INTFX_MISS_ACT(intf);
 
 		/* If MCAM lookup doesn't result in a match, drop the received
 		 * packet. And map this action to a counter to count dropped
 		 * packets.
 		 */
-		rvu_write64(rvu, blkaddr,
-			    NPC_AF_INTFX_MISS_ACT(intf), NIX_RX_ACTIONOP_DROP);
+		rvu_write64(rvu, blkaddr, reg, NIX_RX_ACTIONOP_DROP);
+
+		if (is_cn20k(rvu->pdev))
+			continue;
 
 		/* NPC_AF_INTFX_MISS_STAT_ACT[14:12] - counter[11:9]
 		 * NPC_AF_INTFX_MISS_STAT_ACT[8:0] - counter[8:0]
@@ -2146,12 +2190,15 @@ skip_miss_cntr:
 		rvu_write64(rvu, blkaddr, NPC_AF_INTFX_KEX_CFG(intf),
 			    tx_kex);
 
+		if (is_cn20k(rvu->pdev))
+			reg = NPC_AF_INTFX_MISS_ACTX(intf, 0);
+		else
+			reg = NPC_AF_INTFX_MISS_ACT(intf);
+
 		/* Set TX miss action to UCAST_DEFAULT i.e
 		 * transmit the packet on NIX LF SQ's default channel.
 		 */
-		rvu_write64(rvu, blkaddr,
-			    NPC_AF_INTFX_MISS_ACT(intf),
-			    NIX_TX_ACTIONOP_UCAST_DEFAULT);
+		rvu_write64(rvu, blkaddr, reg, NIX_TX_ACTIONOP_UCAST_DEFAULT);
 	}
 }
 
@@ -2340,12 +2387,15 @@ static void npc_map_mcam_entry_and_cntr(struct rvu *rvu, struct npc_mcam *mcam,
 					int blkaddr, u16 entry, u16 cntr)
 {
 	u16 index = entry & (mcam->banksize - 1);
-	u32 bank = npc_get_bank(mcam, entry);
+	u32 bank = npc_get_bank(rvu, mcam, entry);
 	struct rvu_hwinfo *hw = rvu->hw;
 
 	/* Set mapping and increment counter's refcnt */
 	mcam->entry2cntr_map[entry] = cntr;
 	mcam->cntr_refcnt[cntr]++;
+	if (is_cn20k(rvu->pdev))
+		return;
+
 	/* Enable stats */
 	rvu_write64(rvu, blkaddr,
 		    NPC_AF_MCAMEX_BANKX_STAT_ACT(index, bank),
@@ -2357,11 +2407,14 @@ static void npc_unmap_mcam_entry_and_cntr(struct rvu *rvu,
 					  int blkaddr, u16 entry, u16 cntr)
 {
 	u16 index = entry & (mcam->banksize - 1);
-	u32 bank = npc_get_bank(mcam, entry);
+	u32 bank = npc_get_bank(rvu, mcam, entry);
 
 	/* Remove mapping and reduce counter's refcnt */
 	mcam->entry2cntr_map[entry] = NPC_MCAM_INVALID_MAP;
 	mcam->cntr_refcnt[cntr]--;
+	if (is_cn20k(rvu->pdev))
+		return;
+
 	/* Disable stats */
 	rvu_write64(rvu, blkaddr,
 		    NPC_AF_MCAMEX_BANKX_STAT_ACT(index, bank), 0x00);
@@ -2995,9 +3048,14 @@ int rvu_mbox_handler_npc_mcam_read_entry(struct rvu *rvu,
 	mutex_lock(&mcam->lock);
 	rc = npc_mcam_verify_entry(mcam, pcifunc, req->entry);
 	if (!rc) {
-		npc_read_mcam_entry(rvu, mcam, blkaddr, req->entry,
-				    &rsp->entry_data,
-				    &rsp->intf, &rsp->enable);
+		if (is_cn20k(rvu->pdev))
+			npc_cn20k_read_mcam_entry(rvu, blkaddr, req->entry,
+						  &rsp->entry_data, &rsp->intf,
+						  &rsp->enable, &rsp->hw_prio);
+		else
+			npc_read_mcam_entry(rvu, mcam, blkaddr, req->entry,
+					    &rsp->entry_data,
+					    &rsp->intf, &rsp->enable);
 	}
 
 	mutex_unlock(&mcam->lock);
@@ -3043,8 +3101,13 @@ int rvu_mbox_handler_npc_mcam_write_entry(struct rvu *rvu,
 	if (is_pffunc_af(req->hdr.pcifunc))
 		nix_intf = req->intf;
 
-	npc_config_mcam_entry(rvu, mcam, blkaddr, req->entry, nix_intf,
-			      &req->entry_data, req->enable_entry);
+	if (is_cn20k(rvu->pdev))
+		npc_cn20k_config_mcam_entry(rvu, blkaddr, req->entry, nix_intf,
+					    &req->entry_data, req->enable_entry,
+					    req->hw_prio);
+	else
+		npc_config_mcam_entry(rvu, mcam, blkaddr, req->entry, nix_intf,
+				      &req->entry_data, req->enable_entry);
 
 	if (req->set_cntr)
 		npc_map_mcam_entry_and_cntr(rvu, mcam, blkaddr,
@@ -3501,8 +3564,13 @@ write_entry:
 	else
 		nix_intf = pfvf->nix_rx_intf;
 
-	npc_config_mcam_entry(rvu, mcam, blkaddr, entry, nix_intf,
-			      &req->entry_data, req->enable_entry);
+	if (is_cn20k(rvu->pdev))
+		npc_cn20k_config_mcam_entry(rvu, blkaddr, entry, nix_intf,
+					    &req->entry_data, req->enable_entry,
+					    req->hw_prio);
+	else
+		npc_config_mcam_entry(rvu, mcam, blkaddr, entry, nix_intf,
+				      &req->entry_data, req->enable_entry);
 
 	if (req->alloc_cntr)
 		npc_map_mcam_entry_and_cntr(rvu, mcam, blkaddr, entry, cntr);
@@ -3685,8 +3753,8 @@ int rvu_mbox_handler_npc_read_base_steer_rule(struct rvu *rvu,
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	int index, blkaddr, nixlf, rc = 0;
 	u16 pcifunc = req->hdr.pcifunc;
+	u8 intf, enable, hw_prio;
 	struct rvu_pfvf *pfvf;
-	u8 intf, enable;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0)
@@ -3717,8 +3785,13 @@ int rvu_mbox_handler_npc_read_base_steer_rule(struct rvu *rvu,
 					 NIXLF_UCAST_ENTRY);
 read_entry:
 	/* Read the mcam entry */
-	npc_read_mcam_entry(rvu, mcam, blkaddr, index, &rsp->entry, &intf,
-			    &enable);
+	if (is_cn20k(rvu->pdev))
+		npc_cn20k_read_mcam_entry(rvu, blkaddr, index,
+					  &rsp->entry, &intf,
+					  &enable, &hw_prio);
+	else
+		npc_read_mcam_entry(rvu, mcam, blkaddr, index, &rsp->entry, &intf,
+				    &enable);
 	mutex_unlock(&mcam->lock);
 out:
 	return rc;
@@ -3741,7 +3814,7 @@ int rvu_mbox_handler_npc_mcam_entry_stats(struct rvu *rvu,
 	mutex_lock(&mcam->lock);
 
 	index = req->entry & (mcam->banksize - 1);
-	bank = npc_get_bank(mcam, req->entry);
+	bank = npc_get_bank(rvu, mcam, req->entry);
 
 	/* read MCAM entry STAT_ACT register */
 	regval = rvu_read64(rvu, blkaddr, NPC_AF_MCAMEX_BANKX_STAT_ACT(index, bank));
