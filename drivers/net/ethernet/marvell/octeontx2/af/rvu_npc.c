@@ -666,6 +666,9 @@ void rvu_npc_install_ucast_entry(struct rvu *rvu, u16 pcifunc,
 	req.match_id = action.match_id;
 	req.flow_key_alg = action.flow_key_alg;
 
+	if (is_cn20k(rvu->pdev))
+		req.hw_prio = pfvf->hw_prio;
+
 	rvu_mbox_handler_npc_install_flow(rvu, &req, &rsp);
 }
 
@@ -744,6 +747,9 @@ void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
 	req.index = action.index;
 	req.match_id = action.match_id;
 	req.flow_key_alg = flow_key_alg;
+
+	if (is_cn20k(rvu->pdev))
+		req.hw_prio = pfvf->hw_prio;
 
 	rvu_mbox_handler_npc_install_flow(rvu, &req, &rsp);
 }
@@ -824,6 +830,8 @@ void rvu_npc_install_bcast_match_entry(struct rvu *rvu, u16 pcifunc,
 	req.entry = index;
 	req.hdr.pcifunc = 0; /* AF is requester */
 	req.vf = pcifunc;
+	if (is_cn20k(rvu->pdev))
+		req.hw_prio = pfvf->hw_prio;
 
 	rvu_mbox_handler_npc_install_flow(rvu, &req, &rsp);
 }
@@ -903,6 +911,8 @@ void rvu_npc_install_allmulti_entry(struct rvu *rvu, u16 pcifunc, int nixlf,
 	req.index = action.index;
 	req.match_id = action.match_id;
 	req.flow_key_alg = flow_key_alg;
+	if (is_cn20k(rvu->pdev))
+		req.hw_prio = pfvf->hw_prio;
 
 	rvu_mbox_handler_npc_install_flow(rvu, &req, &rsp);
 }

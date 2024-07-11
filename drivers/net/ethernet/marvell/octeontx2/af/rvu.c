@@ -960,7 +960,6 @@ static int rvu_setup_cpt_hw_resource(struct rvu *rvu, int blkaddr)
 	return rvu_alloc_bitmap(&block->lf);
 }
 
-
 static void rvu_get_lbk_bufsize(struct rvu *rvu)
 {
 	struct pci_dev *pdev = NULL;
@@ -1560,6 +1559,12 @@ static int rvu_detach_rsrcs(struct rvu *rvu, struct rsrc_detach *detach,
 			else if ((blkid == BLKADDR_REE1) && !detach->reelfs)
 				continue;
 		}
+
+		if (detach_all ||
+		    (detach && (blkid == BLKADDR_NIX0 || blkid == BLKADDR_NIX1) &&
+		     detach->nixlf))
+			npc_cn20k_dft_rules_free(rvu, pcifunc);
+
 		rvu_detach_block(rvu, pcifunc, block->type);
 	}
 
@@ -1868,6 +1873,11 @@ int rvu_mbox_handler_attach_resources(struct rvu *rvu,
 		err = rvu_attach_block(rvu, pcifunc, BLKTYPE_NIX, 1, attach);
 		if (err)
 			goto fail2;
+		if (is_cn20k(rvu->pdev)) {
+			err = npc_cn20k_dft_rules_alloc(rvu, pcifunc);
+			if (err)
+				goto fail3;
+		}
 	}
 
 	if (attach->sso) {

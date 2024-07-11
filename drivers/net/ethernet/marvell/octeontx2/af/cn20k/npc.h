@@ -36,6 +36,15 @@ enum npc_subbank_flag {
 	NPC_SUBBANK_FLAG_USED = BIT(1), // At least one slot allocated
 };
 
+enum npc_dft_rule_id {
+	NPC_DFT_RULE_START_ID = 1,
+	NPC_DFT_RULE_PROMISC_ID = NPC_DFT_RULE_START_ID,
+	NPC_DFT_RULE_MCAST_ID,
+	NPC_DFT_RULE_BCAST_ID,
+	NPC_DFT_RULE_UCAST_ID,
+	NPC_DFT_RULE_MAX_ID,
+};
+
 struct npc_subbank {
 	u16 b0t, b0b, b1t, b1b;		// mcam indexes of this subbank
 	enum npc_subbank_flag flags;
@@ -60,6 +69,7 @@ struct npc_priv_t {
 	struct xarray *xa_pf2idx_map;	// Each PF to map its mcam idxes
 	struct xarray xa_idx2pf_map;	// Mcam idxes to pf map.
 	struct xarray xa_pf_map;	// pcifunc to index map.
+	struct xarray xa_pf2dfl_rmap;	// pcifunc to default rule index
 	int pf_cnt;
 	bool init_done;
 };
@@ -128,6 +138,12 @@ int npc_cn20k_ref_idx_alloc(struct rvu *rvu, int pcifunc, int key_type,
 			    int prio, u16 *mcam_idx, int ref, int limit,
 			    bool contig, int count);
 int npc_cn20k_idx_free(struct rvu *rvu, u16 *mcam_idx, int count);
+
+int npc_cn20k_dft_rules_alloc(struct rvu *rvu, u16 pcifunc);
+void npc_cn20k_dft_rules_free(struct rvu *rvu, u16 pcifunc);
+
+int npc_cn20k_dft_rules_idx_get(struct rvu *rvu, u16 pcifunc, u16 *bcast, u16 *mcast,
+				u16 *promisc, u16 *ucast);
 void npc_cn20k_parser_profile_init(struct rvu *rvu, int blkaddr);
 struct npc_mcam_kex_extr *npc_mkex_extr_default_get(void);
 void npc_cn20k_load_mkex_profile(struct rvu *rvu, int blkaddr, const char *mkex_profile);
