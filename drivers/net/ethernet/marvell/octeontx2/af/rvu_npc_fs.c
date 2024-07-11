@@ -1395,7 +1395,7 @@ static int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
 		goto find_rule;
 
 	if (req->default_rule) {
-		entry_index = npc_get_nixlf_mcam_index(mcam, target, nixlf,
+		entry_index = npc_get_nixlf_mcam_index(rvu, mcam, target, nixlf,
 						       NIXLF_UCAST_ENTRY);
 		enable = is_mcam_entry_enabled(rvu, mcam, blkaddr, entry_index);
 	}

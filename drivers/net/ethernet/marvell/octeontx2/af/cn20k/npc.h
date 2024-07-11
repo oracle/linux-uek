@@ -128,7 +128,6 @@ struct npc_kpm_action0 {
 };
 
 struct rvu;
-
 struct npc_priv_t *npc_priv_get(void);
 int npc_cn20k_init(struct rvu *rvu);
 int npc_cn20k_deinit(struct rvu *rvu);

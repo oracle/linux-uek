@@ -1783,7 +1783,8 @@ int rvu_npc_exact_mac_addr_set(struct rvu *rvu, struct cgx_mac_addr_set_or_get *
 	/* find mcam entry if exist */
 	rc = nix_get_nixlf(rvu, req->hdr.pcifunc, &nixlf, NULL);
 	if (!rc) {
-		mcam_idx = npc_get_nixlf_mcam_index(&rvu->hw->mcam, req->hdr.pcifunc,
+		mcam_idx = npc_get_nixlf_mcam_index(rvu, &rvu->hw->mcam,
+						    req->hdr.pcifunc,
 						    nixlf, NIXLF_UCAST_ENTRY);
 	}
 

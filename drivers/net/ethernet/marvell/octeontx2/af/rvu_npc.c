@@ -146,13 +146,33 @@ static int npc_get_ucast_mcam_index(struct npc_mcam *mcam, u16 pcifunc,
 	return mcam->nixlf_offset + (max + nixlf) * RSVD_MCAM_ENTRIES_PER_NIXLF;
 }
 
-int npc_get_nixlf_mcam_index(struct npc_mcam *mcam,
+int npc_get_nixlf_mcam_index(struct rvu *rvu, struct npc_mcam *mcam,
 			     u16 pcifunc, int nixlf, int type)
 {
-	struct rvu_hwinfo *hw = container_of(mcam, struct rvu_hwinfo, mcam);
-	struct rvu *rvu = hw->rvu;
+	u16 bcast, mcast, promisc, ucast;
 	int pf = rvu_get_pf(rvu->pdev, pcifunc);
 	int index;
+	int rc;
+
+	if (is_cn20k(rvu->pdev)) {
+		rc = npc_cn20k_dft_rules_idx_get(rvu, pcifunc, &bcast, &mcast,
+						 &promisc, &ucast);
+		if (rc)
+			return -EFAULT;
+
+		switch (type) {
+		case NIXLF_BCAST_ENTRY:
+			return bcast;
+		case NIXLF_ALLMULTI_ENTRY:
+			return mcast;
+		case NIXLF_PROMISC_ENTRY:
+			return promisc;
+		case NIXLF_UCAST_ENTRY:
+			return ucast;
+		default:
+			return -EINVAL;
+		}
+	}
 
 	/* Check if this is for a PF */
 	if (pf && !(pcifunc & RVU_PFVF_FUNC_MASK)) {
@@ -378,7 +398,7 @@ static u64 npc_get_default_entry_action(struct rvu *rvu, struct npc_mcam *mcam,
 		return 0;
 	}
 
-	index = npc_get_nixlf_mcam_index(mcam, pf_func, nixlf,
+	index = npc_get_nixlf_mcam_index(rvu, mcam, pf_func, nixlf,
 					 NIXLF_UCAST_ENTRY);
 	bank = npc_get_bank(mcam, index);
 	index &= (mcam->banksize - 1);
@@ -638,7 +658,7 @@ void rvu_npc_install_ucast_entry(struct rvu *rvu, u16 pcifunc,
 	if (!npc_is_feature_supported(rvu, BIT_ULL(NPC_DMAC), pfvf->nix_rx_intf))
 		return;
 
-	index = npc_get_nixlf_mcam_index(mcam, pcifunc,
+	index = npc_get_nixlf_mcam_index(rvu, mcam, pcifunc,
 					 nixlf, NIXLF_UCAST_ENTRY);
 
 	/* Don't change the action if entry is already enabled
@@ -692,18 +712,18 @@ void rvu_npc_install_promisc_entry(struct rvu *rvu, u16 pcifunc,
 	if (blkaddr < 0)
 		return;
 
-	index = npc_get_nixlf_mcam_index(mcam, pcifunc,
+	index = npc_get_nixlf_mcam_index(rvu, mcam, pcifunc,
 					 nixlf, NIXLF_PROMISC_ENTRY);
 
 	if (is_cgx_vf(rvu, pcifunc))
-		index = npc_get_nixlf_mcam_index(mcam,
+		index = npc_get_nixlf_mcam_index(rvu, mcam,
 						 pcifunc & ~RVU_PFVF_FUNC_MASK,
 						 nixlf, NIXLF_PROMISC_ENTRY);
 
 	/* If the corresponding PF's ucast action is RSS,
 	 * use the same action for promisc also
 	 */
-	ucast_idx = npc_get_nixlf_mcam_index(mcam, pcifunc,
+	ucast_idx = npc_get_nixlf_mcam_index(rvu, mcam, pcifunc,
 					     nixlf, NIXLF_UCAST_ENTRY);
 	if (is_mcam_entry_enabled(rvu, mcam, blkaddr, ucast_idx))
 		*(u64 *)&action = npc_get_mcam_action(rvu, mcam,
@@ -767,7 +787,7 @@ void rvu_npc_enable_promisc_entry(struct rvu *rvu, u16 pcifunc,
 	/* Get 'pcifunc' of PF device */
 	pcifunc = pcifunc & ~RVU_PFVF_FUNC_MASK;
 
-	index = npc_get_nixlf_mcam_index(mcam, pcifunc,
+	index = npc_get_nixlf_mcam_index(rvu, mcam, pcifunc,
 					 nixlf, NIXLF_PROMISC_ENTRY);
 	npc_enable_mcam_entry(rvu, mcam, blkaddr, index, enable);
 }
@@ -807,7 +827,7 @@ void rvu_npc_install_bcast_match_entry(struct rvu *rvu, u16 pcifunc,
 	    !npc_is_feature_supported(rvu, BIT_ULL(NPC_LXMB), pfvf->nix_rx_intf))
 		return;
 
-	index = npc_get_nixlf_mcam_index(mcam, pcifunc,
+	index = npc_get_nixlf_mcam_index(rvu, mcam, pcifunc,
 					 nixlf, NIXLF_BCAST_ENTRY);
 
 	if (!hw->cap.nix_rx_multicast) {
@@ -870,13 +890,13 @@ void rvu_npc_install_allmulti_entry(struct rvu *rvu, u16 pcifunc, int nixlf,
 	    !npc_is_feature_supported(rvu, BIT_ULL(NPC_LXMB), pfvf->nix_rx_intf))
 		return;
 
-	index = npc_get_nixlf_mcam_index(mcam, pcifunc,
+	index = npc_get_nixlf_mcam_index(rvu, mcam, pcifunc,
 					 nixlf, NIXLF_ALLMULTI_ENTRY);
 
 	/* If the corresponding PF's ucast action is RSS,
 	 * use the same action for multicast entry also
 	 */
-	ucast_idx = npc_get_nixlf_mcam_index(mcam, pcifunc,
+	ucast_idx = npc_get_nixlf_mcam_index(rvu, mcam, pcifunc,
 					     nixlf, NIXLF_UCAST_ENTRY);
 	if (is_mcam_entry_enabled(rvu, mcam, blkaddr, ucast_idx))
 		*(u64 *)&action = npc_get_mcam_action(rvu, mcam,
@@ -930,7 +950,7 @@ void rvu_npc_enable_allmulti_entry(struct rvu *rvu, u16 pcifunc, int nixlf,
 	/* Get 'pcifunc' of PF device */
 	pcifunc = pcifunc & ~RVU_PFVF_FUNC_MASK;
 
-	index = npc_get_nixlf_mcam_index(mcam, pcifunc, nixlf,
+	index = npc_get_nixlf_mcam_index(rvu, mcam, pcifunc, nixlf,
 					 NIXLF_ALLMULTI_ENTRY);
 	npc_enable_mcam_entry(rvu, mcam, blkaddr, index, enable);
 }
@@ -1022,7 +1042,7 @@ void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 	if (mcam_index < 0) {
 		if (group != DEFAULT_RSS_CONTEXT_GROUP)
 			return;
-		index = npc_get_nixlf_mcam_index(mcam, pcifunc,
+		index = npc_get_nixlf_mcam_index(rvu, mcam, pcifunc,
 						 nixlf, NIXLF_UCAST_ENTRY);
 	} else {
 		/* TODO: validate this mcam index */
@@ -1061,7 +1081,7 @@ void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 		npc_update_vf_flow_entry(rvu, mcam, blkaddr, pcifunc,
 					 *(u64 *)&action);
 
-		index = npc_get_nixlf_mcam_index(mcam, pcifunc,
+		index = npc_get_nixlf_mcam_index(rvu, mcam, pcifunc,
 						 nixlf, NIXLF_PROMISC_ENTRY);
 
 		/* If PF's promiscuous  entry is enabled,
@@ -1070,7 +1090,7 @@ void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 		npc_update_rx_action_with_alg_idx(rvu, action, pfvf, index,
 						  blkaddr, alg_idx);
 
-		index = npc_get_nixlf_mcam_index(mcam, pcifunc,
+		index = npc_get_nixlf_mcam_index(rvu, mcam, pcifunc,
 						 nixlf, NIXLF_ALLMULTI_ENTRY);
 		/* If PF's allmulti  entry is enabled,
 		 * Set RSS action for that entry as well
@@ -1093,7 +1113,8 @@ void npc_enadis_default_mce_entry(struct rvu *rvu, u16 pcifunc,
 	if (blkaddr < 0)
 		return;
 
-	index = npc_get_nixlf_mcam_index(mcam, pcifunc & ~RVU_PFVF_FUNC_MASK,
+	index = npc_get_nixlf_mcam_index(rvu, mcam,
+					 pcifunc & ~RVU_PFVF_FUNC_MASK,
 					 nixlf, type);
 
 	/* disable MCAM entry when packet replication is not supported by hw */
@@ -1130,7 +1151,7 @@ static void npc_enadis_default_entries(struct rvu *rvu, u16 pcifunc,
 	/* Ucast MCAM match entry of this PF/VF */
 	if (npc_is_feature_supported(rvu, BIT_ULL(NPC_DMAC),
 				     pfvf->nix_rx_intf)) {
-		index = npc_get_nixlf_mcam_index(mcam, pcifunc,
+		index = npc_get_nixlf_mcam_index(rvu, mcam, pcifunc,
 						 nixlf, NIXLF_UCAST_ENTRY);
 		npc_enable_mcam_entry(rvu, mcam, blkaddr, index, enable);
 	}
@@ -1855,46 +1876,56 @@ int npc_mcam_rsrcs_init(struct rvu *rvu, int blkaddr)
 	int cntr;
 	u64 cfg;
 
-	/* Actual number of MCAM entries vary by entry size */
 	cfg = (rvu_read64(rvu, blkaddr,
 			  NPC_AF_INTFX_KEX_CFG(0)) >> 32) & 0x07;
-	mcam->total_entries = (mcam->banks / BIT_ULL(cfg)) * mcam->banksize;
 	mcam->keysize = cfg;
 
-	/* Number of banks combined per MCAM entry */
 	if (is_cn20k(rvu->pdev)) {
+		/* In cn20k, x2 entries is allowed for x4 profile.
+		 * set total_entries as 8192 * 2 and key size as x2.
+		 */
+		mcam->total_entries = mcam->banks * mcam->banksize;
 		if (cfg == NPC_MCAM_KEY_X2)
 			mcam->banks_per_entry = 1;
 		else
 			mcam->banks_per_entry = 2;
+
+		rsvd = 0;
+
 	} else {
+		mcam->total_entries = (mcam->banks / BIT_ULL(cfg)) * mcam->banksize;
+
 		if (cfg == NPC_MCAM_KEY_X4)
 			mcam->banks_per_entry = 4;
 		else if (cfg == NPC_MCAM_KEY_X2)
 			mcam->banks_per_entry = 2;
 		else
 			mcam->banks_per_entry = 1;
-	}
 
-	/* Reserve one MCAM entry for each of the NIX LF to
-	 * guarantee space to install default matching DMAC rule.
-	 * Also reserve 2 MCAM entries for each PF for default
-	 * channel based matching or 'bcast & promisc' matching to
-	 * support BCAST and PROMISC modes of operation for PFs.
-	 * PF0 is excluded.
-	 */
-	rsvd = (nixlf_count * RSVD_MCAM_ENTRIES_PER_NIXLF) +
-		((rvu->hw->total_pfs - 1) * RSVD_MCAM_ENTRIES_PER_PF);
-	if (mcam->total_entries <= rsvd) {
-		dev_warn(rvu->dev,
-			 "Insufficient NPC MCAM size %d for pkt I/O, exiting\n",
-			 mcam->total_entries);
-		return -ENOMEM;
+		/* Reserve one MCAM entry for each of the NIX LF to
+		 * guarantee space to install default matching DMAC rule.
+		 * Also reserve 2 MCAM entries for each PF for default
+		 * channel based matching or 'bcast & promisc' matching to
+		 * support BCAST and PROMISC modes of operation for PFs.
+		 * PF0 is excluded.
+		 */
+		rsvd = (nixlf_count * RSVD_MCAM_ENTRIES_PER_NIXLF) +
+			((rvu->hw->total_pfs - 1) * RSVD_MCAM_ENTRIES_PER_PF);
+		if (mcam->total_entries <= rsvd) {
+			dev_warn(rvu->dev,
+				 "Insufficient NPC MCAM size %d for pkt I/O, exiting\n",
+				 mcam->total_entries);
+			return -ENOMEM;
+		}
 	}
 
 	mcam->bmap_entries = mcam->total_entries - rsvd;
-	mcam->nixlf_offset = mcam->bmap_entries;
-	mcam->pf_offset = mcam->nixlf_offset + nixlf_count;
+
+	/* cn20k does not need offsets to alloc mcam entries */
+	if (!is_cn20k(rvu->pdev)) {
+		mcam->nixlf_offset = mcam->bmap_entries;
+		mcam->pf_offset = mcam->nixlf_offset + nixlf_count;
+	}
 
 	/* Allocate bitmaps for managing MCAM entries */
 	mcam->bmap = bitmap_zalloc(mcam->bmap_entries, GFP_KERNEL);
@@ -1918,13 +1949,15 @@ int npc_mcam_rsrcs_init(struct rvu *rvu, int blkaddr)
 	 * allocations and another 1/8th at the top for high priority
 	 * allocations.
 	 */
-	mcam->lprio_count = mcam->bmap_entries / 8;
-	if (mcam->lprio_count > BITS_PER_LONG)
-		mcam->lprio_count = round_down(mcam->lprio_count,
-					       BITS_PER_LONG);
-	mcam->lprio_start = mcam->bmap_entries - mcam->lprio_count;
-	mcam->hprio_count = mcam->lprio_count;
-	mcam->hprio_end = mcam->hprio_count;
+	if (!is_cn20k(rvu->pdev)) {
+		mcam->lprio_count = mcam->bmap_entries / 8;
+		if (mcam->lprio_count > BITS_PER_LONG)
+			mcam->lprio_count = round_down(mcam->lprio_count,
+						       BITS_PER_LONG);
+		mcam->lprio_start = mcam->bmap_entries - mcam->lprio_count;
+		mcam->hprio_count = mcam->lprio_count;
+		mcam->hprio_end = mcam->hprio_count;
+	}
 
 	/* Allocate bitmap for managing MCAM counters and memory
 	 * for saving counter to RVU PFFUNC allocation mapping.
@@ -2370,6 +2403,7 @@ static void npc_mcam_free_all_entries(struct rvu *rvu, struct npc_mcam *mcam,
 				      int blkaddr, u16 pcifunc)
 {
 	u16 index, cntr;
+	int rc;
 
 	/* Scan all MCAM entries and free the ones mapped to 'pcifunc' */
 	for (index = 0; index < mcam->bmap_entries; index++) {
@@ -2387,6 +2421,13 @@ static void npc_mcam_free_all_entries(struct rvu *rvu, struct npc_mcam *mcam,
 							      blkaddr, index,
 							      cntr);
 			mcam->entry2target_pffunc[index] = 0x0;
+			if (is_cn20k(rvu->pdev)) {
+				rc = npc_cn20k_idx_free(rvu, &index, 1);
+				if (rc)
+					dev_err(rvu->dev,
+						"Failed to free mcam idx=%u pcifunc=%#x\n",
+						index, pcifunc);
+			}
 		}
 	}
 }
@@ -2529,7 +2570,8 @@ hprio:
 	*end = mcam->lprio_start;
 }
 
-static int npc_mcam_alloc_entries(struct npc_mcam *mcam, u16 pcifunc,
+static int npc_mcam_alloc_entries(struct rvu *rvu, struct npc_mcam *mcam,
+				  u16 pcifunc,
 				  struct npc_mcam_alloc_entry_req *req,
 				  struct npc_mcam_alloc_entry_rsp *rsp)
 {
@@ -2539,7 +2581,66 @@ static int npc_mcam_alloc_entries(struct npc_mcam *mcam, u16 pcifunc,
 	int entry, next_start;
 	bool reverse = false;
 	unsigned long *bmap;
+	int ret, limit = 0;
 	u16 max_contig;
+
+	if (!is_cn20k(rvu->pdev))
+		goto not_cn20k;
+
+	/* The below table is being followed during allocation,
+	 *
+	 * 1. ref_entry == 0 && prio == HIGH && count == 1  ==> user wants to allocate 0th index
+	 * 2. ref_entry == 0 && prio == HIGH && count > 1   ==> Invalid request
+	 * 3. ref_entry == 0 && prio == LOW && count >= 1   ==> limit = 0
+	 * 4. ref_entry != 0 && prio == HIGH && count >= 1  ==> limit = 0
+	 * 5. ref_entry != 0 && prio == LOW && count >=1    ==> limit = Max (X2: 2*8192, X4: 8192)
+	 */
+	if (req->ref_entry && req->ref_prio == NPC_MCAM_LOWER_PRIO) {
+		if (req->kw_type == NPC_MCAM_KEY_X2)
+			limit = 2 * mcam->bmap_entries;
+		else
+			limit = mcam->bmap_entries;
+	}
+
+	ret = npc_cn20k_ref_idx_alloc(rvu, pcifunc, req->kw_type,
+				      req->ref_prio, rsp->entry_list,
+				      req->ref_entry, limit,
+				      req->contig, req->count);
+
+	if (ret) {
+		rsp->count = 0;
+		return NPC_MCAM_ALLOC_FAILED;
+	}
+
+	rsp->count = req->count;
+	if (req->contig)
+		rsp->entry = rsp->entry_list[0];
+
+	/* cn20k, entries allocation algorithm is different.
+	 * This common API updates some bitmap on usage etc, which
+	 * will be used by other functions. So update those for
+	 * cn20k as well.
+	 */
+
+	mutex_lock(&mcam->lock);
+	/* Mark the allocated entries as used and set nixlf mapping */
+	for (entry = 0; entry < rsp->count; entry++) {
+		index = rsp->entry_list[entry];
+		npc_mcam_set_bit(mcam, index);
+		mcam->entry2pfvf_map[index] = pcifunc;
+		mcam->entry2cntr_map[index] = NPC_MCAM_INVALID_MAP;
+	}
+
+	/* cn20k, free count is provided thru different mbox message.
+	 * one counter to indicate free x2 slots and free x4 slots
+	 * does not provide any useful information to the user.
+	 */
+	rsp->free_count = -1;
+	mutex_unlock(&mcam->lock);
+
+	return 0;
+
+not_cn20k:
 
 	mutex_lock(&mcam->lock);
 
@@ -2821,7 +2922,7 @@ int rvu_mbox_handler_npc_mcam_alloc_entry(struct rvu *rvu,
 	if (!is_pffunc_af(pcifunc) && !is_nixlf_attached(rvu, pcifunc))
 		return NPC_MCAM_ALLOC_DENIED;
 
-	return npc_mcam_alloc_entries(mcam, pcifunc, req, rsp);
+	return npc_mcam_alloc_entries(rvu, mcam, pcifunc, req, rsp);
 }
 
 int rvu_mbox_handler_npc_mcam_free_entry(struct rvu *rvu,
@@ -2860,6 +2961,14 @@ int rvu_mbox_handler_npc_mcam_free_entry(struct rvu *rvu,
 	if (cntr != NPC_MCAM_INVALID_MAP)
 		npc_unmap_mcam_entry_and_cntr(rvu, mcam, blkaddr,
 					      req->entry, cntr);
+
+	if (is_cn20k(rvu->pdev)) {
+		rc = npc_cn20k_idx_free(rvu, &req->entry, 1);
+		if (rc)
+			dev_err(rvu->dev,
+				"Failed to free index=%u\n",
+				req->entry);
+	}
 
 	goto exit;
 
@@ -3604,7 +3713,7 @@ int rvu_mbox_handler_npc_read_base_steer_rule(struct rvu *rvu,
 		goto out;
 	}
 	/* Read the default ucast entry if there is no pkt steering rule */
-	index = npc_get_nixlf_mcam_index(mcam, pcifunc, nixlf,
+	index = npc_get_nixlf_mcam_index(rvu, mcam, pcifunc, nixlf,
 					 NIXLF_UCAST_ENTRY);
 read_entry:
 	/* Read the mcam entry */
@@ -3664,7 +3773,7 @@ void rvu_npc_clear_ucast_entry(struct rvu *rvu, int pcifunc, int nixlf)
 	if (blkaddr < 0)
 		return;
 
-	ucast_idx = npc_get_nixlf_mcam_index(mcam, pcifunc,
+	ucast_idx = npc_get_nixlf_mcam_index(rvu, mcam, pcifunc,
 					     nixlf, NIXLF_UCAST_ENTRY);
 
 	npc_enable_mcam_entry(rvu, mcam, blkaddr, ucast_idx, false);
