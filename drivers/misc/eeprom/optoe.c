@@ -941,8 +941,10 @@ static ssize_t set_dev_class(struct device *dev,
 	} else {
 		/* one-address (eg QSFP) and CMIS family */
 		/* if it exists, remove 0x51 i2c address */
-		if (optoe->client[1])
+		if (optoe->client[1]) {
 			i2c_unregister_device(optoe->client[1]);
+			optoe->client[1] = NULL;
+		}
 		optoe->bin.size = ONE_ADDR_EEPROM_SIZE;
 		optoe->num_addresses = 1;
 	}
@@ -1224,8 +1226,10 @@ err_sysfs_cleanup:
 
 err_struct:
 	if (num_addresses == 2) {
-		if (optoe->client[1])
+		if (optoe->client[1]) {
 			i2c_unregister_device(optoe->client[1]);
+			optoe->client[1] = NULL;
+		}
 	}
 
 	kfree(optoe->writebuf);
