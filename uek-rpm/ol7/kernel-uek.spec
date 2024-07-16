@@ -1065,8 +1065,8 @@ This package include debug kernel for 4k page size.
 This package includes embedded kernel.
 
 %define variant_summary A kernel for embedded platform with extra debugging enabled.
-%kernel_variant_package -eo emb-debug
-%description -n kernel%{?variant}emb-debug
+%kernel_variant_package -eo emb+debug
+%description -n kernel%{?variant}emb+debug
 This package includes debug embedded kernel.
 
 %define variant_summary A kernel for another embedded platform.
@@ -1269,12 +1269,12 @@ mkdir -p configs
 	cp %{SOURCE1008} configs/config-debug
 	cp %{SOURCE1007} configs/config
 	cp %{SOURCE1011} configs/config-emb
-	cp %{SOURCE1012} configs/config-emb-debug
+	cp %{SOURCE1012} configs/config-emb+debug
 	cp %{SOURCE1014} configs/config-embedded2
 %endif #ifarch aarch64
 
 %ifarch mips64
-	cp %{SOURCE1010} configs/config-emb-debug
+	cp %{SOURCE1010} configs/config-emb+debug
 	cp %{SOURCE1009} configs/config-emb
 	cp %{SOURCE1013} configs/config-emb-kdump
 %endif #ifarch mips64
@@ -1348,8 +1348,8 @@ BuildKernel() {
 	cp configs/config-debug .config
     elif [ "$Flavour" == "emb" ]; then
 	cp configs/config-emb .config
-    elif [ "$Flavour" == "emb-debug" ]; then
-	cp configs/config-emb-debug .config
+    elif [ "$Flavour" == "emb+debug" ]; then
+	cp configs/config-emb+debug .config
     elif [ "$Flavour" == "kdump" ]; then
 	cp configs/config-emb-kdump .config
     elif [ "$Flavour" == "emb2" ]; then
@@ -1684,7 +1684,7 @@ BuildKernel %make_target %kernel_image debug
 BuildKernel %make_target %kernel_image PAEdebug
 %endif
 %if %{with_embedded}
-BuildKernel %make_target %kernel_image emb-debug
+BuildKernel %make_target %kernel_image emb+debug
 %endif
 %endif
 
@@ -1789,9 +1789,9 @@ make -j1 htmldocs || %{doc_build_fail}
       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb2/ %{dgst} \
     fi \
     if [ "%{with_embedded_debug}" != "0" ]; then \
-      mv certs/signing_key.pem.sign.emb-debug certs/signing_key.pem \
-      mv certs/signing_key.x509.sign.emb-debug certs/signing_key.x509 \
-      %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb-debug/ %{dgst} \
+      mv certs/signing_key.pem.sign.emb+debug certs/signing_key.pem \
+      mv certs/signing_key.x509.sign.emb+debug certs/signing_key.x509 \
+      %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb+debug/ %{dgst} \
     fi \
   fi \
 %{nil}
@@ -2147,10 +2147,10 @@ fi\
 %kernel_variant_postun -o emb
 %kernel_variant_post -o -v emb -r (kernel%{variant}|kernel%{variant}-debug)
 
-%kernel_variant_pre -o emb-debug
-%kernel_variant_preun -o emb-debug
-%kernel_variant_postun -o emb-debug
-%kernel_variant_post -o -v emb-debug
+%kernel_variant_pre -o emb+debug
+%kernel_variant_preun -o emb+debug
+%kernel_variant_postun -o emb+debug
+%kernel_variant_post -o -v emb+debug
 
 %kernel_variant_pre -o emb2
 %kernel_variant_preun -o emb2
@@ -2342,6 +2342,6 @@ fi
 
 %kernel_variant_files -o %{with_embedded} emb
 %kernel_variant_files -o %{with_embedded2} emb2
-%kernel_variant_files -o %{with_embedded_debug} emb-debug
+%kernel_variant_files -o %{with_embedded_debug} emb+debug
 
 %changelog
