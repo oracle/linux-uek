@@ -2930,6 +2930,45 @@ err:
 	return ret;
 }
 
+int rvu_mbox_handler_npc_cn20k_get_free_count(struct rvu *rvu,
+					      struct msg_req *req,
+					      struct npc_cn20k_get_free_count_rsp *rsp)
+{
+	npc_cn20k_subbank_calc_free(rvu, &rsp->free_x2, &rsp->free_x4, &rsp->free_subbanks);
+	return 0;
+}
+
+int rvu_mbox_handler_npc_cn20k_get_kex_cfg(struct rvu *rvu,
+					   struct msg_req *req,
+					   struct npc_cn20k_get_kex_cfg_rsp *rsp)
+{
+	int extr, lt;
+
+	rsp->rx_keyx_cfg = CN20K_GET_KEX_CFG(NIX_INTF_RX);
+	rsp->tx_keyx_cfg = CN20K_GET_KEX_CFG(NIX_INTF_TX);
+
+	/* Get EXTRACTOR LID */
+	for (extr = 0; extr < NPC_MAX_EXTRACTOR; extr++) {
+		rsp->intf_extr_lid[NIX_INTF_RX][extr] =
+			CN20K_GET_EXTR_LID(NIX_INTF_RX, extr);
+		rsp->intf_extr_lid[NIX_INTF_TX][extr] =
+			CN20K_GET_EXTR_LID(NIX_INTF_TX, extr);
+	}
+
+	/* Get EXTRACTOR LTYPE */
+	for (extr = 0; extr < NPC_MAX_EXTRACTOR; extr++) {
+		for (lt = 0; lt < NPC_MAX_LT; lt++) {
+			rsp->intf_extr_lt[NIX_INTF_RX][extr][lt] =
+				CN20K_GET_EXTR_LT(NIX_INTF_RX, extr, lt);
+			rsp->intf_extr_lt[NIX_INTF_TX][extr][lt] =
+				CN20K_GET_EXTR_LT(NIX_INTF_TX, extr, lt);
+		}
+	}
+
+	memcpy(rsp->mkex_pfl_name, rvu->mkex_pfl_name, MKEX_NAME_LEN);
+	return 0;
+}
+
 int npc_cn20k_deinit(struct rvu *rvu)
 {
 	int i;

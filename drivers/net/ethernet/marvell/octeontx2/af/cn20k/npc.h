@@ -20,7 +20,7 @@
 
 #define CN20K_GET_EXTR_LID(intf, extr)	\
 	rvu_read64(rvu, BLKADDR_NPC,	\
-		   NPC_AF_INTFX_EXTRACTORX_CFG(NIX_INTF_RX, extr))
+		   NPC_AF_INTFX_EXTRACTORX_CFG(intf, extr))
 
 #define CN20K_SET_EXTR_LT(intf, extr, ltype, cfg)	\
 	rvu_write64(rvu, BLKADDR_NPC,	\

@@ -330,6 +330,10 @@ M(NPC_GET_FIELD_STATUS, 0x6014, npc_get_field_status,                     \
 M(NPC_MCAM_GET_HIT_STATUS, 0x6015, npc_mcam_get_hit_status,                     \
 				   npc_mcam_get_hit_status_req,              \
 				   npc_mcam_get_hit_status_rsp)              \
+M(NPC_CN20K_GET_KEX_CFG, 0x6016, npc_cn20k_get_kex_cfg,			\
+				   msg_req, npc_cn20k_get_kex_cfg_rsp)	\
+M(NPC_CN20K_MCAM_GET_FREE_COUNT, 0x6017, npc_cn20k_get_free_count,			\
+				 msg_req, npc_cn20k_get_free_count_rsp)	\
 /* NIX mbox IDs (range 0x8000 - 0xFFFF) */				\
 M(NIX_LF_ALLOC,		0x8000, nix_lf_alloc,				\
 				 nix_lf_alloc_req, nix_lf_alloc_rsp)	\
@@ -2002,6 +2006,27 @@ struct npc_get_kex_cfg_rsp {
 	u64 intf_ld_flags[NPC_MAX_INTF][NPC_MAX_LD][NPC_MAX_LFL];
 #define MKEX_NAME_LEN 128
 	u8 mkex_pfl_name[MKEX_NAME_LEN];
+};
+
+struct npc_cn20k_get_kex_cfg_rsp {
+	struct mbox_msghdr hdr;
+	u64 rx_keyx_cfg;   /* NPC_AF_INTF(0)_KEX_CFG */
+	u64 tx_keyx_cfg;   /* NPC_AF_INTF(1)_KEX_CFG */
+#define NPC_MAX_EXTRACTOR 24
+	/* MKEX Extractor data */
+	u64 intf_extr_lid[NPC_MAX_INTF][NPC_MAX_EXTRACTOR];
+	/* KEX configuration per extractor */
+	u64 intf_extr_lt[NPC_MAX_INTF][NPC_MAX_EXTRACTOR][NPC_MAX_LT];
+#define MKEX_NAME_LEN 128
+	u8 mkex_pfl_name[MKEX_NAME_LEN];
+};
+
+/* Available entries to use */
+struct npc_cn20k_get_free_count_rsp {
+	struct mbox_msghdr hdr;
+	int free_x2;
+	int free_x4;
+	int free_subbanks;
 };
 
 struct ptp_get_cap_rsp {
