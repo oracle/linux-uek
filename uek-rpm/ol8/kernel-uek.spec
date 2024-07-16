@@ -923,7 +923,7 @@ against the %{?2:%{2} }kernel package.\
 Summary: %{variant_summary}\
 Group: System Environment/Kernel\
 Provides: installonlypkg(kernel-uek)\
-%{expand %%kernel_reqprovconf %{?-e:-e} %1}\
+%{expand: %%kernel_reqprovconf %{?-e:-e} %1}\
 %{expand:%%kernel_devel_package %{-o:-o} %1 %{!?-n:%1}%{?-n:%{-n*}}}\
 %{expand:%%kernel_debuginfo_package %{-o:-o} %1}\
 %{nil}
