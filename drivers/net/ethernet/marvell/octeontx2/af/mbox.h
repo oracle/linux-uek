@@ -347,6 +347,15 @@ M(NPC_CN20K_MCAM_READ_ENTRY,	0x601b, npc_cn20k_mcam_read_entry,	\
 				  npc_cn20k_mcam_read_entry_rsp)	\
 M(NPC_CN20K_MCAM_READ_BASE_RULE, 0x601c, npc_cn20k_read_base_steer_rule,            \
 				   msg_req, npc_cn20k_mcam_read_base_rule_rsp)  \
+M(NPC_MCAM_GET_NUM_KWS, 0x601d, npc_get_num_kws,		\
+				npc_get_num_kws_req,		\
+				npc_get_num_kws_rsp)		\
+M(NPC_MCAM_GET_DFT_RL_IDXS, 0x601e, npc_get_dft_rl_idxs,	\
+					msg_req,		\
+					npc_get_dft_rl_idxs_rsp)\
+M(NPC_MCAM_GET_NPC_PFL_INFO, 0x601f, npc_get_pfl_info,		\
+					msg_req,		\
+					npc_get_pfl_info_rsp)	\
 /* NIX mbox IDs (range 0x8000 - 0xFFFF) */				\
 M(NIX_LF_ALLOC,		0x8000, nix_lf_alloc,				\
 				 nix_lf_alloc_req, nix_lf_alloc_rsp)	\
@@ -2192,6 +2201,36 @@ struct npc_install_flow_req {
 struct npc_install_flow_rsp {
 	struct mbox_msghdr hdr;
 	int counter; /* negative if no counter else counter number */
+};
+
+struct npc_get_num_kws_req {
+	struct mbox_msghdr hdr;
+	struct npc_install_flow_req fl;
+	u32 rsvd[4];
+};
+
+struct npc_get_num_kws_rsp {
+	struct mbox_msghdr hdr;
+	int kws;
+	u32 rsvd[4];
+};
+
+struct npc_get_dft_rl_idxs_rsp {
+	struct mbox_msghdr hdr;
+	u16 bcast;
+	u16 mcast;
+	u16 promisc;
+	u16 ucast;
+	u16 vf_ucast;
+	u16 rsvd[7];
+};
+
+struct npc_get_pfl_info_rsp {
+	struct mbox_msghdr hdr;
+	u16 x4_slots;
+	u8 kw_type;
+	u8 rsvd1[3];
+	u32 rsvd2[4];
 };
 
 struct npc_delete_flow_req {

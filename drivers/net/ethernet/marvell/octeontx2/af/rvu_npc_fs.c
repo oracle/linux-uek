@@ -1110,12 +1110,12 @@ static void npc_update_vlan_features(struct rvu *rvu, struct mcam_entry *entry,
 				 NPC_LT_LB_STAG_QINQ, 0, ~0ULL, 0, intf);
 }
 
-static void npc_update_flow(struct rvu *rvu, struct mcam_entry *entry,
-			    struct cn20k_mcam_entry *cn20k_entry,
-			    u64 features, struct flow_msg *pkt,
-			    struct flow_msg *mask,
-			    struct rvu_npc_mcam_rule *output, u8 intf,
-			    int blkaddr)
+void npc_update_flow(struct rvu *rvu, struct mcam_entry *entry,
+		     struct cn20k_mcam_entry *cn20k_entry,
+		     u64 features, struct flow_msg *pkt,
+		     struct flow_msg *mask,
+		     struct rvu_npc_mcam_rule *output, u8 intf,
+		     int blkaddr)
 {
 	u64 dmac_mask = ether_addr_to_u64(mask->dmac);
 	u64 smac_mask = ether_addr_to_u64(mask->smac);

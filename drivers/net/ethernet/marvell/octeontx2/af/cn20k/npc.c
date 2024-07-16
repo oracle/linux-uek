@@ -9,6 +9,7 @@
 #include "rvu.h"
 #include "npc.h"
 #include "npc_profile.h"
+#include "rvu_npc_fs.h"
 #include "rvu_npc_hash.h"
 #include "rvu_npc.h"
 
@@ -3418,7 +3419,87 @@ int npc_cn20k_dft_rules_idx_get(struct rvu *rvu, u16 pcifunc, u16 *bcast,
 	return  set ? 0 : -ESRCH;
 }
 
-static bool npc_is_cgx_or_lbk(struct rvu *rvu, u16 pcifunc)
+int rvu_mbox_handler_npc_get_pfl_info(struct rvu *rvu, struct msg_req *req,
+				      struct npc_get_pfl_info_rsp *rsp)
+{
+	if (!is_cn20k(rvu->pdev)) {
+		dev_err(rvu->dev, "Mbox support is only for cn20k\n");
+		return -EOPNOTSUPP;
+	}
+
+	rsp->kw_type = npc_priv.kw;
+	rsp->x4_slots = npc_priv.bank_depth;
+	return 0;
+}
+
+int rvu_mbox_handler_npc_get_num_kws(struct rvu *rvu,
+				     struct npc_get_num_kws_req *req,
+				     struct npc_get_num_kws_rsp *rsp)
+{
+	struct rvu_npc_mcam_rule dummy = { 0 };
+	struct cn20k_mcam_entry cn20k_entry = { 0 };
+	struct mcam_entry entry = { 0 };
+	struct npc_install_flow_req *fl;
+	int i, cnt = 0, blkaddr;
+
+	if (!is_cn20k(rvu->pdev)) {
+		dev_err(rvu->dev, "Mbox support is only for cn20k\n");
+		return -EOPNOTSUPP;
+	}
+
+	fl = &req->fl;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+	if (blkaddr < 0) {
+		dev_err(rvu->dev, "%s: NPC block not implemented\n", __func__);
+		return NPC_MCAM_INVALID_REQ;
+	}
+
+	npc_update_flow(rvu, &entry, &cn20k_entry, fl->features, &fl->packet,
+			&fl->mask, &dummy, fl->intf, blkaddr);
+
+	/* Find the most significant word valid. Traverse from
+	 * MSB to LSB, check if cam0 or cam1 is set
+	 */
+	for (i = NPC_MAX_KWS_IN_KEY - 1; i >= 0; i--) {
+		if (entry.kw[i] || entry.kw_mask[i]) {
+			cnt = i + 1;
+			break;
+		}
+	}
+
+	rsp->kws = cnt;
+
+	return 0;
+}
+
+int rvu_mbox_handler_npc_get_dft_rl_idxs(struct rvu *rvu, struct msg_req *req,
+					 struct npc_get_dft_rl_idxs_rsp *rsp)
+{
+	u16 bcast, mcast, promisc, ucast;
+	u16 pcifunc;
+	int rc;
+
+	if (!is_cn20k(rvu->pdev)) {
+		dev_err(rvu->dev, "Mbox support is only for cn20k\n");
+		return -EOPNOTSUPP;
+	}
+
+	pcifunc = req->hdr.pcifunc;
+
+	rc = npc_cn20k_dft_rules_idx_get(rvu, pcifunc, &bcast, &mcast,
+					 &promisc, &ucast);
+	if (rc)
+		return rc;
+
+	rsp->bcast = bcast;
+	rsp->mcast = mcast;
+	rsp->promisc = promisc;
+	rsp->ucast = ucast;
+	return 0;
+}
+
+bool npc_is_cgx_or_lbk(struct rvu *rvu, u16 pcifunc)
 {
 	return is_pf_cgxmapped(rvu, rvu_get_pf(rvu->pdev, pcifunc)) ||
 		is_lbk_vf(rvu, pcifunc);
