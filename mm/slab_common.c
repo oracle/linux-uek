@@ -651,7 +651,7 @@ struct kmem_cache *kmalloc_slab(size_t size, gfp_t flags)
 #define KMALLOC_DMA_NAME(sz)
 #endif
 
-#if defined(CONFIG_MEMCG_KMEM) && defined(CONFIG_ARM64)
+#if defined(CONFIG_MEMCG_KMEM)
 #define KMALLOC_CGROUP_NAME(sz)	.name[KMALLOC_CGROUP] = "kmalloc-cg-" #sz,
 #else
 #define KMALLOC_CGROUP_NAME(sz)
@@ -753,14 +753,12 @@ new_kmalloc_cache(int idx, int type, slab_flags_t flags)
 {
 	if (type == KMALLOC_RECLAIM) {
 		flags |= SLAB_RECLAIM_ACCOUNT;
-#ifdef CONFIG_ARM64
 	} else if (IS_ENABLED(CONFIG_MEMCG_KMEM) && (type == KMALLOC_CGROUP)) {
 		if (mem_cgroup_kmem_disabled()) {
 			kmalloc_caches[type][idx] = kmalloc_caches[KMALLOC_NORMAL][idx];
 			return;
 		}
 		flags |= SLAB_ACCOUNT;
-#endif  /* CONFIG_ARM64 */
 	}
 
 	kmalloc_caches[type][idx] = create_kmalloc_cache(

@@ -312,13 +312,13 @@ enum kmalloc_cache_type {
 #ifndef CONFIG_ZONE_DMA
 	KMALLOC_DMA = KMALLOC_NORMAL,
 #endif
-#ifdef CONFIG_ARM64
+#ifndef __GENKSYMS__
 #ifndef CONFIG_MEMCG_KMEM
 	KMALLOC_CGROUP = KMALLOC_NORMAL,
 #else
 	KMALLOC_CGROUP,
 #endif
-#endif  /* CONFIG_ARM64 */
+#endif  /*__GENKSYMS__*/
 	KMALLOC_RECLAIM,
 #ifdef CONFIG_ZONE_DMA
 	KMALLOC_DMA,
@@ -359,11 +359,7 @@ static __always_inline enum kmalloc_cache_type kmalloc_type(gfp_t flags)
 	if (!IS_ENABLED(CONFIG_MEMCG_KMEM) || (flags & __GFP_RECLAIMABLE))
 		return KMALLOC_RECLAIM;
 	else
-#ifdef CONFIG_ARM64
 		return KMALLOC_CGROUP;
-#else
-		return KMALLOC_NORMAL;
-#endif
 }
 
 /*
