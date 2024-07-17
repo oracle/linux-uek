@@ -154,7 +154,7 @@ static void handle_wc(struct ib_ud_ctx *udp, struct ib_wc *wcp)
 	switch (wrid) {
 	case XSUD_SEND_WRID:
 		tbuf = &udp->txbuf[ind];
-		ib_destroy_ah(tbuf->ah);
+		rdma_destroy_ah(tbuf->ah, RDMA_DESTROY_AH_SLEEPABLE);
 		ib_dma_unmap_single(ca, tbuf->mapping, tbuf->len,
 				    DMA_TO_DEVICE);
 		kfree(tbuf->vaddr);
@@ -275,9 +275,9 @@ int xs_ud_send_msg(struct xscore_port *pinfop, uint8_t *macp, void *msgp,
 	ah_attr.grh.hop_limit = 1;
 	ah_attr.grh.dgid = dgid;
 	ah_attr.ah_flags = IB_AH_GRH;
-	tbuf->ah = ib_create_ah(pinfop->xs_dev->pd, &ah_attr);
+	tbuf->ah = rdma_create_ah(pinfop->xs_dev->pd, &ah_attr, RDMA_CREATE_AH_SLEEPABLE);
 	if (IS_ERR(tbuf->ah)) {
-		XDDS_ERROR("%s: ib_create_ah failed, port: %d, index: %d\n",
+		XDDS_ERROR("%s: rdma_create_ah failed, port: %d, index: %d\n",
 			   __func__, pinfop->port_num, i);
 		ret = PTR_ERR(tbuf->ah);
 		goto err;
@@ -288,7 +288,7 @@ int xs_ud_send_msg(struct xscore_port *pinfop, uint8_t *macp, void *msgp,
 		goto err1;
 	return 0;
 err1:
-	ib_destroy_ah(tbuf->ah);
+	rdma_destroy_ah(tbuf->ah, RDMA_DESTROY_AH_SLEEPABLE);
 	tbuf->ah = 0;
 err:
 	tbuf->vaddr = 0;

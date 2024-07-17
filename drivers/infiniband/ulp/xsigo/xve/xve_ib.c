@@ -38,7 +38,7 @@ static DEFINE_MUTEX(pkey_mutex);
 struct xve_ah *xve_create_ah(struct net_device *dev,
 			     struct ib_pd *pd, struct ib_ah_attr *attr)
 {
-	struct xve_ah *ah;
+	struct xve_ah *ah = NULL;
 
 	ah = kmalloc(sizeof(*ah), GFP_KERNEL);
 	if (!ah)
@@ -47,7 +47,7 @@ struct xve_ah *xve_create_ah(struct net_device *dev,
 	ah->dev = dev;
 	kref_init(&ah->ref);
 
-	ah->ah = ib_create_ah(pd, attr);
+	ah->ah = rdma_create_ah(pd, attr, RDMA_DESTROY_AH_SLEEPABLE);
 	if (IS_ERR(ah->ah)) {
 		kfree(ah);
 		ah = NULL;
@@ -934,7 +934,7 @@ static void __xve_reap_ah(struct net_device *dev)
 	list_for_each_entry_safe(ah, tah, &priv->dead_ahs, list) {
 		if (atomic_read(&ah->refcnt) == 0) {
 			list_del(&ah->list);
-			ib_destroy_ah(ah->ah);
+			rdma_destroy_ah(ah->ah, RDMA_DESTROY_AH_SLEEPABLE);
 			kfree(ah);
 		}
 	}

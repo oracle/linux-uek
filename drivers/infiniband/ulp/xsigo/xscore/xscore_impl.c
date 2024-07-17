@@ -383,7 +383,7 @@ static void xds_send_handler(struct ib_mad_agent *agent,
 	XDS_INFO("%s, Unmapping send buffer: status %d, Port GUID: 0x%llx\n",
 		 __func__, mad_send_wc->status, port->guid);
 
-	ib_destroy_ah(msg->ah);
+	rdma_destroy_ah(msg->ah, RDMA_DESTROY_AH_SLEEPABLE);
 	ib_free_send_mad(msg);
 }
 
@@ -500,11 +500,11 @@ int xscore_query_xds_xcm_rec(struct xscore_port *port)
 	ah_attr.sl = port_attr.sm_sl;
 	ah_attr.port_num = port->port_num;
 
-	port->send_buf->ah = ib_create_ah(port->mad_agent->qp->pd, &ah_attr);
+	port->send_buf->ah = rdma_create_ah(port->mad_agent->qp->pd, &ah_attr, RDMA_CREATE_AH_SLEEPABLE);
 	if (IS_ERR(port->send_buf->ah)) {
 		ib_free_send_mad(port->send_buf);
 		ret = PTR_ERR(port->send_buf->ah);
-		IB_ERROR("ib_create_ah failed, error %d, GUID: 0x%llx\n",
+		IB_ERROR("rdma_create_ah failed, error %d, GUID: 0x%llx\n",
 			 ret, port->guid);
 		return ret;
 	}
@@ -519,7 +519,7 @@ int xscore_query_xds_xcm_rec(struct xscore_port *port)
 	if (ret) {
 		IB_ERROR("ib_post_send_mad failed, error %d, GUID: 0x%llx\n",
 			 ret, port->guid);
-		ib_destroy_ah(port->send_buf->ah);
+		rdma_destroy_ah(port->send_buf->ah, RDMA_DESTROY_AH_SLEEPABLE);
 		ib_free_send_mad(port->send_buf);
 		port->counters[PORT_XDS_XDS_QUERY_ERROR_COUNTER]++;
 		port->send_buf = 0;
