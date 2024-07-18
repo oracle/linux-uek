@@ -13,7 +13,7 @@
 #include <uapi/fwctl/fwctl.h>
 
 enum {
-	FWCTL_MAX_DEVICES = 256,
+	FWCTL_MAX_DEVICES = 4096,
 	MAX_RPC_LEN = SZ_2M,
 };
 static dev_t fwctl_dev;
@@ -386,6 +386,7 @@ static int __init fwctl_init(void)
 {
 	int ret;
 
+	BUILD_BUG_ON(FWCTL_MAX_DEVICES > (1U << MINORBITS));
 	ret = alloc_chrdev_region(&fwctl_dev, 0, FWCTL_MAX_DEVICES, "fwctl");
 	if (ret)
 		return ret;
