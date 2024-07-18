@@ -123,6 +123,8 @@ bool list_lru_add(struct list_lru *lru, struct list_head *item)
 	struct mem_cgroup *memcg;
 	struct list_lru_one *l;
 
+	if (list_lru_memcg_aware(lru))
+		rcu_read_lock();
 	spin_lock(&nlru->lock);
 	if (list_empty(item)) {
 		l = list_lru_from_kmem(lru, nid, item, &memcg);
@@ -133,9 +135,13 @@ bool list_lru_add(struct list_lru *lru, struct list_head *item)
 					 lru_shrinker_id(lru));
 		nlru->nr_items++;
 		spin_unlock(&nlru->lock);
+		if (list_lru_memcg_aware(lru))
+			rcu_read_unlock();
 		return true;
 	}
 	spin_unlock(&nlru->lock);
+	if (list_lru_memcg_aware(lru))
+		rcu_read_unlock();
 	return false;
 }
 EXPORT_SYMBOL_GPL(list_lru_add);
@@ -146,6 +152,8 @@ bool list_lru_del(struct list_lru *lru, struct list_head *item)
 	struct list_lru_node *nlru = &lru->ext->node[nid];
 	struct list_lru_one *l;
 
+	if (list_lru_memcg_aware(lru))
+		rcu_read_lock();
 	spin_lock(&nlru->lock);
 	if (!list_empty(item)) {
 		l = list_lru_from_kmem(lru, nid, item, NULL);
@@ -153,9 +161,13 @@ bool list_lru_del(struct list_lru *lru, struct list_head *item)
 		l->nr_items--;
 		nlru->nr_items--;
 		spin_unlock(&nlru->lock);
+		if (list_lru_memcg_aware(lru))
+			rcu_read_unlock();
 		return true;
 	}
 	spin_unlock(&nlru->lock);
+	if (list_lru_memcg_aware(lru))
+		rcu_read_unlock();
 	return false;
 }
 EXPORT_SYMBOL_GPL(list_lru_del);
