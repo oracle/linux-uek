@@ -1046,28 +1046,206 @@ static int npc_subbank_iter(struct rvu *rvu, int key_type,
 	return 0;
 }
 
+static u16 npc_idx2vidx(u16 idx)
+{
+	unsigned long index;
+	void *map;
+	u16 vidx;
+	int val;
+
+	vidx = idx;
+	index = idx;
+
+	map = xa_load(&npc_priv.xa_idx2vidx_map, index);
+	if (!map)
+		goto done;
+
+	val = xa_to_value(map);
+	if (val == -1)
+		goto done;
+
+	vidx = val;
+
+done:
+	return vidx;
+}
+
+static bool npc_is_vidx(u16 vidx)
+{
+	return vidx >= npc_priv.bank_depth * 2;
+}
+
+static u16 npc_vidx2idx(u16 vidx)
+{
+	unsigned long index;
+	void *map;
+	int val;
+	u16 idx;
+
+	idx = vidx;
+	index = vidx;
+
+	map = xa_load(&npc_priv.xa_vidx2idx_map, index);
+	if (!map)
+		goto done;
+
+	val = xa_to_value(map);
+	if (val == -1)
+		goto done;
+
+	idx = val;
+
+done:
+	return idx;
+}
+
+u16 npc_cn20k_vidx2idx(u16 idx)
+{
+	if (!npc_priv.init_done)
+		return idx;
+
+	if (!npc_is_vidx(idx))
+		return idx;
+
+	return npc_vidx2idx(idx);
+}
+
+u16 npc_cn20k_idx2vidx(u16 idx)
+{
+	if (!npc_priv.init_done)
+		return idx;
+
+	if (npc_is_vidx(idx))
+		return idx;
+
+	return npc_idx2vidx(idx);
+}
+
+static int npc_vidx_maps_del_entry(struct rvu *rvu, u16 vidx, u16 *old_midx)
+{
+	u16 mcam_idx;
+	void *map;
+
+	if (!npc_is_vidx(vidx)) {
+		dev_err(rvu->dev,
+			"%s:%d vidx(%u) does not map to proper mcam idx\n",
+			__func__, __LINE__, vidx);
+		return -ESRCH;
+	}
+
+	mcam_idx = npc_vidx2idx(vidx);
+
+	map = xa_erase(&npc_priv.xa_vidx2idx_map, vidx);
+	if (!map) {
+		dev_err(rvu->dev,
+			"%s:%d vidx(%u) does not map to proper mcam idx\n",
+			__func__, __LINE__, vidx);
+		return -ESRCH;
+	}
+
+	map = xa_erase(&npc_priv.xa_idx2vidx_map, mcam_idx);
+	if (!map) {
+		dev_err(rvu->dev,
+			"%s:%d mcam idx(%u) is not valid\n",
+			__func__, __LINE__, vidx);
+		return -ESRCH;
+	}
+
+	if (old_midx)
+		*old_midx = mcam_idx;
+
+	return 0;
+}
+
+static int npc_vidx_maps_add_entry(struct rvu *rvu, u16 mcam_idx, int pcifunc,
+				   u16 *vidx)
+{
+	int rc, max, min;
+	u32 id;
+
+	/* Virtual index start from maximum mcam index + 1 */
+	max = npc_priv.bank_depth * 2 * 2 - 1;
+	min = npc_priv.bank_depth * 2;
+
+	rc = xa_alloc(&npc_priv.xa_vidx2idx_map, &id,
+		      xa_mk_value(mcam_idx),
+		      XA_LIMIT(min, max), GFP_KERNEL);
+	if (rc) {
+		dev_err(rvu->dev,
+			"%s:%d Failed to add to vidx2idx map (%u)\n",
+			__func__, __LINE__, mcam_idx);
+		return rc;
+	}
+
+	rc = xa_insert(&npc_priv.xa_idx2vidx_map, mcam_idx,
+		       xa_mk_value(id), GFP_KERNEL);
+	if (rc) {
+		dev_err(rvu->dev,
+			"%s:%d Failed to add to idx2vidx map (%u)\n",
+			__func__, __LINE__, mcam_idx);
+		return rc;
+	}
+
+	if (vidx)
+		*vidx = id;
+
+	return 0;
+}
+
 static int npc_idx_free(struct rvu *rvu, u16 *mcam_idx, int count,
 			bool maps_del)
 {
 	struct npc_subbank *sb;
-	int idx, i;
+	u16 vidx, midx;
+	int sb_off, i;
 	bool ret;
 	int rc;
 
 	for (i = 0; i < count; i++) {
-		rc =  npc_mcam_idx_2_subbank_idx(rvu, mcam_idx[i],
-						 &sb, &idx);
-		if (rc)
-			return rc;
+		if (npc_is_vidx(mcam_idx[i])) {
+			vidx = mcam_idx[i];
+			midx = npc_vidx2idx(vidx);
+		} else {
+			midx = mcam_idx[i];
+			vidx = npc_idx2vidx(midx);
+		}
 
-		ret = npc_subbank_free(rvu, sb, idx);
-		if (ret)
+		if (midx >= npc_priv.bank_depth * npc_priv.num_banks) {
+			dev_err(rvu->dev,
+				"%s:%d Invalid mcam_idx=%u cannot be deleted\n",
+				 __func__, __LINE__, mcam_idx[i]);
 			return -EINVAL;
+		}
+
+		rc =  npc_mcam_idx_2_subbank_idx(rvu, midx,
+						 &sb, &sb_off);
+		if (rc) {
+			dev_err(rvu->dev,
+				"%s:%d Failed to find subbank info for vidx=%u\n",
+				__func__, __LINE__, vidx);
+			return rc;
+		}
+
+		ret = npc_subbank_free(rvu, sb, sb_off);
+		if (ret) {
+			dev_err(rvu->dev,
+				"%s:%d Failed to find subbank info for vidx=%u\n",
+				__func__, __LINE__, vidx);
+			return -EINVAL;
+		}
 
 		if (!maps_del)
 			continue;
 
-		rc = npc_del_from_pf_maps(rvu, mcam_idx[i]);
+		rc = npc_del_from_pf_maps(rvu, midx);
+		if (rc)
+			return rc;
+
+		/* If there is no vidx mapping; continue */
+		if (vidx == midx)
+			continue;
+
+		rc = npc_vidx_maps_del_entry(rvu, vidx, NULL);
 		if (rc)
 			return rc;
 	}
@@ -1572,10 +1750,12 @@ int npc_cn20k_idx_free(struct rvu *rvu, u16 *mcam_idx, int count)
 
 int npc_cn20k_ref_idx_alloc(struct rvu *rvu, int pcifunc, int key_type,
 			    int prio, u16 *mcam_idx, int ref, int limit,
-			    bool contig, int count)
+			    bool contig, int count, bool virt)
 {
+	bool defrag_candidate = false;
 	int i, eidx, rc, bd;
 	bool ref_valid;
+	u16 vidx;
 
 	bd = npc_priv.bank_depth;
 
@@ -1593,6 +1773,7 @@ int npc_cn20k_ref_idx_alloc(struct rvu *rvu, int pcifunc, int key_type,
 	}
 
 	ref_valid = !!(limit || ref);
+	defrag_candidate = !ref_valid && !contig && virt;
 	if (!ref_valid) {
 		if (contig && count > npc_priv.subbank_depth)
 			goto try_noref_multi_subbank;
@@ -1660,6 +1841,16 @@ add2map:
 		rc = npc_add_to_pf_maps(rvu, mcam_idx[i], pcifunc);
 		if (rc)
 			return rc;
+
+		if (!defrag_candidate)
+			continue;
+
+		rc = npc_vidx_maps_add_entry(rvu, mcam_idx[i], pcifunc, &vidx);
+		if (rc)
+			return rc;
+
+		/* Return vidx to caller */
+		mcam_idx[i] = vidx;
 	}
 
 	return 0;
@@ -1842,6 +2033,8 @@ static int npc_priv_init(struct rvu *rvu)
 	xa_init_flags(&npc_priv.xa_idx2pf_map, XA_FLAGS_ALLOC);
 	xa_init_flags(&npc_priv.xa_pf_map, XA_FLAGS_ALLOC);
 	xa_init_flags(&npc_priv.xa_pf2dfl_rmap, XA_FLAGS_ALLOC);
+	xa_init_flags(&npc_priv.xa_idx2vidx_map, XA_FLAGS_ALLOC);
+	xa_init_flags(&npc_priv.xa_vidx2idx_map, XA_FLAGS_ALLOC);
 
 	/* Initialize subbanks */
 	for (i = 0, sb = npc_priv.sb; i < num_subbanks; i++, sb++)
@@ -2978,6 +3171,8 @@ int npc_cn20k_deinit(struct rvu *rvu)
 	xa_destroy(&npc_priv.xa_idx2pf_map);
 	xa_destroy(&npc_priv.xa_pf_map);
 	xa_destroy(&npc_priv.xa_pf2dfl_rmap);
+	xa_destroy(&npc_priv.xa_idx2vidx_map);
+	xa_destroy(&npc_priv.xa_vidx2idx_map);
 
 	for (i = 0; i < npc_priv.pf_cnt; i++)
 		xa_destroy(&npc_priv.xa_pf2idx_map[i]);

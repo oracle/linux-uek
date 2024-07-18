@@ -70,6 +70,8 @@ struct npc_priv_t {
 	struct xarray xa_idx2pf_map;	// Mcam idxes to pf map.
 	struct xarray xa_pf_map;	// pcifunc to index map.
 	struct xarray xa_pf2dfl_rmap;	// pcifunc to default rule index
+	struct xarray xa_idx2vidx_map;	// mcam idx to virtual index map.
+	struct xarray xa_vidx2idx_map;	// mcam vidx to index map.
 	int pf_cnt;
 	bool init_done;
 };
@@ -135,7 +137,7 @@ void npc_cn20k_subbank_calc_free(struct rvu *rvu, int *x2_free, int *x4_free, in
 
 int npc_cn20k_ref_idx_alloc(struct rvu *rvu, int pcifunc, int key_type,
 			    int prio, u16 *mcam_idx, int ref, int limit,
-			    bool contig, int count);
+			    bool contig, int count, bool virt);
 int npc_cn20k_idx_free(struct rvu *rvu, u16 *mcam_idx, int count);
 
 int npc_cn20k_dft_rules_alloc(struct rvu *rvu, u16 pcifunc);
@@ -153,6 +155,8 @@ void npc_cn20k_copy_mcam_entry(struct rvu *rvu, int blkaddr, u16 src, u16 dest);
 void npc_cn20k_read_mcam_entry(struct rvu *rvu, int blkaddr, u16 index,
 			       struct mcam_entry *entry, u8 *intf, u8 *ena,
 			       u8 *hw_prio);
+u16 npc_cn20k_vidx2idx(u16 index);
+u16 npc_cn20k_idx2vidx(u16 idx);
 
 int npc_mcam_idx_2_key_type(struct rvu *rvu, u16 mcam_idx, u8 *key_type);
 
