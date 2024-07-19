@@ -11,6 +11,7 @@
 #include "rvu_reg.h"
 #include "rvu_struct.h"
 #include "rvu_npc_hash.h"
+#include "cn20k/npc.h"
 
 #define DRV_NAME "octeontx2-af"
 
@@ -1197,6 +1198,7 @@ enum rvu_af_dl_param_id {
 	RVU_AF_DEVLINK_PARAM_ID_NPC_MCAM_ZONE_PERCENT,
 	RVU_AF_DEVLINK_PARAM_ID_NPC_EXACT_FEATURE_DISABLE,
 	RVU_AF_DEVLINK_PARAM_ID_NPC_DEF_RULE_CNTR_ENABLE,
+	RVU_AF_DEVLINK_PARAM_ID_NPC_DEFRAG,
 	RVU_AF_DEVLINK_PARAM_ID_NIX_MAXLF,
 };
 
@@ -1465,6 +1467,61 @@ static int rvu_af_dl_tim_adjust_timer_validate(struct devlink *devlink, u32 id,
 	}
 
 	return 0;
+}
+
+static int rvu_af_npc_defrag_feature_get(struct devlink *devlink, u32 id,
+					 struct devlink_param_gset_ctx *ctx)
+{
+	struct rvu_devlink *rvu_dl = devlink_priv(devlink);
+	struct rvu *rvu = rvu_dl->rvu;
+	bool enabled;
+
+	enabled = is_cn20k(rvu->pdev);
+
+	snprintf(ctx->val.vstr, sizeof(ctx->val.vstr), "%s",
+		 enabled ? "enabled" : "disabled");
+
+	return 0;
+}
+
+static int rvu_af_npc_defrag(struct devlink *devlink, u32 id,
+			     struct devlink_param_gset_ctx *ctx,
+			     struct netlink_ext_ack *extack)
+{
+	struct rvu_devlink *rvu_dl = devlink_priv(devlink);
+	struct rvu *rvu = rvu_dl->rvu;
+
+	npc_cn20k_defrag(rvu);
+
+	return 0;
+}
+
+static int rvu_af_npc_defrag_feature_validate(struct devlink *devlink, u32 id,
+					      union devlink_param_value val,
+					      struct netlink_ext_ack *extack)
+{
+	struct rvu_devlink *rvu_dl = devlink_priv(devlink);
+	struct rvu *rvu = rvu_dl->rvu;
+	u64 enable;
+
+	if (kstrtoull(val.vstr, 10, &enable)) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "Only 1 value is supported");
+		return -EINVAL;
+	}
+
+	if (enable != 1) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "Only initiating defrag is supported");
+		return -EINVAL;
+	}
+
+	if (is_cn20k(rvu->pdev))
+		return 0;
+
+	NL_SET_ERR_MSG_MOD(extack,
+			   "Can defrag NPC only in cn20k silicon");
+	return -EFAULT;
 }
 
 static int rvu_af_npc_exact_feature_get(struct devlink *devlink, u32 id,
@@ -1806,6 +1863,15 @@ static const struct devlink_param rvu_af_dl_param_exact_match[] = {
 			     rvu_af_npc_exact_feature_validate),
 };
 
+static const struct devlink_param rvu_af_dl_param_defrag[] = {
+	DEVLINK_PARAM_DRIVER(RVU_AF_DEVLINK_PARAM_ID_NPC_DEFRAG,
+			     "npc_defrag", DEVLINK_PARAM_TYPE_STRING,
+			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
+			     rvu_af_npc_defrag_feature_get,
+			     rvu_af_npc_defrag,
+			     rvu_af_npc_defrag_feature_validate),
+};
+
 /* Devlink switch mode */
 static int rvu_devlink_eswitch_mode_get(struct devlink *devlink, u16 *mode)
 {
@@ -1892,6 +1958,16 @@ int rvu_register_dl(struct rvu *rvu)
 			dev_err(rvu->dev,
 				"devlink TIM adjust GTI param register failed with error %d", err);
 			goto err_dl_tim_gti;
+		}
+	}
+
+	if (is_cn20k(rvu->pdev)) {
+		err = devlink_params_register(dl, rvu_af_dl_param_defrag,
+					      ARRAY_SIZE(rvu_af_dl_param_defrag));
+		if (err) {
+			dev_err(rvu->dev,
+				"devlink defrag params register failed with error %d", err);
+			goto err_dl_exact_match;
 		}
 	}
 
