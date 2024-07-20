@@ -1526,6 +1526,8 @@ int rvu_mbox_handler_npc_install_flow(struct rvu *rvu,
 	bool enable = true;
 	u16 target;
 
+	req->entry = npc_cn20k_vidx2idx(req->entry);
+
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0) {
 		dev_err(rvu->dev, "%s: NPC block not implemented\n", __func__);
@@ -1678,6 +1680,10 @@ int rvu_mbox_handler_npc_delete_flow(struct rvu *rvu,
 	u16 pcifunc = req->hdr.pcifunc;
 	struct list_head del_list;
 	int blkaddr;
+
+	req->entry = npc_cn20k_vidx2idx(req->entry);
+	req->start = npc_cn20k_vidx2idx(req->start);
+	req->end = npc_cn20k_vidx2idx(req->end);
 
 	INIT_LIST_HEAD(&del_list);
 
@@ -1986,7 +1992,7 @@ int rvu_mbox_handler_npc_mcam_get_hit_status(struct rvu *rvu,
 			if (bank == bank_end && hit_start > hit_end)
 				return 0;
 
-			bitmap = req->mcam_ids[arr_idx];
+			bitmap = npc_cn20k_vidx2idx(req->mcam_ids[arr_idx]);
 			if (bitmap) {
 				val = rvu_read64(rvu, blkaddr,
 						 NPC_AF_MCAM_BANKX_HITX(bank, hit_start));
