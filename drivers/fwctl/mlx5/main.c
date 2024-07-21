@@ -110,6 +110,10 @@ static int mlx5ctl_open_uctx(struct fwctl_uctx *uctx)
 	    MLX5_UCTX_OBJECT_CAP_TOOLS_RESOURCES)
 		mfd->uctx_caps |= MLX5_UCTX_OBJECT_CAP_TOOLS_RESOURCES;
 
+	if (MLX5_CAP_GEN(mcdev->mdev, uctx_cap) &
+	    MLX5_UCTX_CAP_INTERNAL_DEV_RES)
+		mfd->uctx_caps |= MLX5_UCTX_CAP_INTERNAL_DEV_RES;
+
 	uid = mlx5ctl_alloc_uid(mcdev, mfd->uctx_caps);
 	if (uid < 0)
 		return uid;
