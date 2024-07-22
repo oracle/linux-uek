@@ -217,16 +217,16 @@ int xs_ud_send_msg(struct xscore_port *pinfop, uint8_t *macp, void *msgp,
 		.length = len,
 		.lkey = pinfop->xs_dev->mr->lkey
 	};
-	struct ib_send_wr wr = {
-		.sg_list = &list,
-		.num_sge = 1,
-		.opcode = IB_WR_SEND,
-		.send_flags = IB_SEND_SIGNALED,
+
+	struct ib_ud_wr ud_wr = {
+		.remote_qpn = QP_MULTICAST_QPN,
+		.remote_qkey = QP_DEF_QKEY,
 		.wr = {
-		       .ud = {
-			      .remote_qpn = QP_MULTICAST_QPN,
-			      .remote_qkey = QP_DEF_QKEY}
-		       }
+			.sg_list = &list,
+			.num_sge = 1,
+			.opcode = IB_WR_SEND,
+			.send_flags = IB_SEND_SIGNALED,
+		}
 	};
 	const struct ib_send_wr *bad_wr;
 	union ib_gid dgid;
@@ -261,7 +261,7 @@ int xs_ud_send_msg(struct xscore_port *pinfop, uint8_t *macp, void *msgp,
 	tbuf->len = len + 40;
 	udp->next_xmit = (i + 1) % XS_UD_SEND_WQE;
 	list.addr = mapping;
-	wr.wr_id = i | XSUD_SEND_WRID;
+	ud_wr.wr.wr_id = i | XSUD_SEND_WRID;
 	/*
 	 * Create a address handle and transmit the message
 	 */
@@ -283,8 +283,8 @@ int xs_ud_send_msg(struct xscore_port *pinfop, uint8_t *macp, void *msgp,
 		ret = PTR_ERR(tbuf->ah);
 		goto err;
 	}
-	wr.wr.ud.ah = tbuf->ah;
-	ret = ib_post_send(udp->qp, (const struct ib_send_wr *)&wr, &bad_wr);
+	ud_wr.ah = tbuf->ah;
+	ret = ib_post_send(udp->qp, (const struct ib_send_wr *)&ud_wr.wr, &bad_wr);
 	if (ret)
 		goto err1;
 	return 0;
