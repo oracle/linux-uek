@@ -204,12 +204,13 @@ static int xve_mcast_join_finish(struct xve_mcast *mcast,
 	}
 
 	{
-		struct ib_ah_attr av = {
-			.dlid = be16_to_cpu(mcast->mcmember.mlid),
+		struct rdma_ah_attr av = {
 			.port_num = priv->port,
 			.sl = mcast->mcmember.sl,
 			.ah_flags = IB_AH_GRH,
 			.static_rate = mcast->mcmember.rate,
+			.type = RDMA_AH_ATTR_TYPE_IB,
+			.ib.dlid = be16_to_cpu(mcast->mcmember.mlid),
 			.grh = {
 				.flow_label =
 				be32_to_cpu(mcast->mcmember.flow_label),

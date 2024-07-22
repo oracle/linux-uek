@@ -466,7 +466,7 @@ static void xds_recv_handler(struct ib_mad_agent *mad_agent,
 int xscore_query_xds_xcm_rec(struct xscore_port *port)
 {
 	struct xscore_dev *xs_dev = port->xs_dev;
-	struct ib_ah_attr ah_attr;
+	struct rdma_ah_attr ah_attr;
 	struct ib_mad_recv_wc *mad_recv_wc;
 	struct ib_xds_mad *xds_mad;
 	struct xds_request *request;
@@ -495,7 +495,8 @@ int xscore_query_xds_xcm_rec(struct xscore_port *port)
 	create_xds_mad_req(port, request);
 
 	memset(&ah_attr, 0, sizeof(ah_attr));
-	ah_attr.dlid = port->xds_lid;
+	ah_attr.ib.dlid = port->xds_lid;
+	ah_attr.type = RDMA_AH_ATTR_TYPE_IB;
 	(void)ib_query_port(xs_dev->device, port->port_num, &port_attr);
 	ah_attr.sl = port_attr.sm_sl;
 	ah_attr.port_num = port->port_num;

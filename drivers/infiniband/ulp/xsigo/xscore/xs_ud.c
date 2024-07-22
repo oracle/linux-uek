@@ -230,11 +230,12 @@ int xs_ud_send_msg(struct xscore_port *pinfop, uint8_t *macp, void *msgp,
 	};
 	const struct ib_send_wr *bad_wr;
 	union ib_gid dgid;
-	struct ib_ah_attr ah_attr = {
-		.dlid = QP_MCAST_LID,
+	struct rdma_ah_attr ah_attr = {
 		.sl = 0,
-		.src_path_bits = 0,
-		.port_num = pinfop->port_num
+		.port_num = pinfop->port_num,
+		.type = RDMA_AH_ATTR_TYPE_IB,
+		.ib.dlid = QP_MCAST_LID,
+		.ib.src_path_bits = 0
 	};
 	struct ud_tx_buf *tbuf;
 	int ret;

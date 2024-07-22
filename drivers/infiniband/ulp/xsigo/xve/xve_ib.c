@@ -36,7 +36,7 @@
 static DEFINE_MUTEX(pkey_mutex);
 
 struct xve_ah *xve_create_ah(struct net_device *dev,
-			     struct ib_pd *pd, struct ib_ah_attr *attr)
+			     struct ib_pd *pd, struct rdma_ah_attr *attr)
 {
 	struct xve_ah *ah = NULL;
 

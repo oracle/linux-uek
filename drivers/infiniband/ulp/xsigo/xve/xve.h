@@ -1149,7 +1149,7 @@ void xve_ib_completion(struct ib_cq *cq, void *dev_ptr);
 void xve_data_recv_handler(struct xve_dev_priv *priv);
 void xve_send_comp_handler(struct ib_cq *cq, void *dev_ptr);
 struct xve_ah *xve_create_ah(struct net_device *dev,
-			     struct ib_pd *pd, struct ib_ah_attr *attr);
+			     struct ib_pd *pd, struct rdma_ah_attr *attr);
 void xve_free_ah(struct kref *kref);
 static inline void xve_put_ah(struct xve_ah *ah)
 {

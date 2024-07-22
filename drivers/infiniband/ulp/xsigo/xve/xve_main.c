@@ -603,7 +603,7 @@ static void path_rec_completion(int status,
 	skb_queue_head_init(&uplink_skqueue);
 
 	if (!status) {
-		struct ib_ah_attr av;
+		struct rdma_ah_attr av;
 
 		if (!ib_init_ah_from_path(priv->ca, priv->port, pathrec, &av)) {
 			av.ah_flags = IB_AH_GRH;
