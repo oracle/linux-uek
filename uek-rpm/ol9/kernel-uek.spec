@@ -109,6 +109,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 #build kernel with 4k & 64k page size for aarch64
 %define with_64k_ps %{?_with_64k_ps: %{_with_64k_ps}} %{?!_with_64k_ps: 0}
 %define with_64k_ps_debug %{?_with_64k_ps_debug: %{_with_64k_ps_debug}} %{?!_with_64k_ps_debug: 0}
+# build marvell kernel
+%define with_embedded %{?_without_embedded: 0} %{?!_without_embedded: 1}
 # build pensando kernel
 %define with_embedded2 %{?_without_embedded: 0} %{?!_without_embedded: 1}
 
@@ -145,9 +147,6 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 
 # Only build the 64k page size kernel (--with 64konly):
 %define with_64konly    %{?_with_64konly:       1} %{?!_with_64konly:       0}
-
-# Only build the embedded kernel (--with embeddedonly)
-%define with_embeddedonly %{?_with_embeddedonly: 1} %{?!_with_embeddedonly: 0}
 
 # Only build the embedded kernel (--with embeddedonly)
 %define with_embeddedonly %{?_with_embeddedonly: 1} %{?!_with_embeddedonly: 0}
@@ -261,8 +260,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define with_embedded2 0
 %endif
 
-# don't do embedded kernel for arch except mips64
-%ifnarch mips64
+# don't do embedded kernel for arch except aarch64 and mips64
+%ifnarch aarch64 mips64
 %define with_embedded 0
 %endif
 
@@ -334,12 +333,14 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 7
 %define with_up 0
 %define with_container 0
 %define with_debug 0
+%define with_embedded 0
 %define with_embedded2 0
 %define with_headers 0
 %define with_perf 0
 %define with_bpftool 0
 %else
 %if %{with_embeddedonly}
+%define with_embedded 1
 %define with_embedded2 1
 %define with_up 0
 %define with_container 0
@@ -534,6 +535,7 @@ Source46: filter-modules.sh
 Source47: core-emb2-aarch64.list
 Source48: core-emb-mips64.list
 Source49: core-kdump-mips64.list
+Source50: core-emb-aarch64.list
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
@@ -544,6 +546,7 @@ Source1009: config-aarch64-container
 Source1010: config-aarch64-embedded2
 Source1011: config-mips64-emb
 Source1012: config-mips64-kdump
+Source1013: config-aarch64-embedded
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -864,7 +867,7 @@ This package include debug kernel for 64k page size.
 %description -n kernel%{?variant}emb2-core
 This package includes an embedded kernel.
 
-%define variant_summary The MIPS64 Linux kernel compiled for the T73 platform
+%define variant_summary The Linux kernel compiled for an embedded platform
 %kernel_variant_package -o emb
 %description -n kernel%{?variant}emb-core
 This package includes T73 kernel for mips platform
@@ -1054,6 +1057,7 @@ mkdir -p configs
 	cp %{SOURCE1008} configs/config-debug
 	cp %{SOURCE1007} configs/config
 	cp %{SOURCE1010} configs/config-emb2
+	cp %{SOURCE1013} configs/config-emb
 %endif
 
 %ifarch mips64
