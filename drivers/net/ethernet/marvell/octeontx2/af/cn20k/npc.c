@@ -2516,6 +2516,12 @@ free_vidx:
 	return rc;
 }
 
+int rvu_mbox_handler_npc_defrag(struct rvu *rvu, struct msg_req *req,
+				struct msg_rsp *rsp)
+{
+	return npc_cn20k_defrag(rvu);
+}
+
 static int npc_priv_init(struct rvu *rvu)
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;

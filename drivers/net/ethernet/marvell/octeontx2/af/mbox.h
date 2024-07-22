@@ -334,6 +334,9 @@ M(NPC_CN20K_GET_KEX_CFG, 0x6016, npc_cn20k_get_kex_cfg,			\
 				   msg_req, npc_cn20k_get_kex_cfg_rsp)	\
 M(NPC_CN20K_MCAM_GET_FREE_COUNT, 0x6017, npc_cn20k_get_free_count,			\
 				 msg_req, npc_cn20k_get_free_count_rsp)	\
+M(NPC_MCAM_DEFRAG,	     0x6018,	npc_defrag,			\
+					msg_req,			\
+					msg_rsp)		\
 /* NIX mbox IDs (range 0x8000 - 0xFFFF) */				\
 M(NIX_LF_ALLOC,		0x8000, nix_lf_alloc,				\
 				 nix_lf_alloc_req, nix_lf_alloc_rsp)	\
