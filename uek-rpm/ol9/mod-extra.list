@@ -88,7 +88,6 @@ hysdn.ko
 i2400m.ko
 i2400m-sdio.ko
 i2400m-usb.ko
-ieee802154.ko
 ifcvf.ko
 iforce.ko
 industrialio-triggered-buffer.ko
