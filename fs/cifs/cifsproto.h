@@ -514,6 +514,7 @@ extern int E_md4hash(const unsigned char *passwd, unsigned char *p16,
 extern int SMBencrypt(unsigned char *passwd, const unsigned char *c8,
 			unsigned char *p24);
 
+void cifs_put_smb_ses(struct cifs_ses *ses);
 void cifs_readdata_release(struct kref *refcount);
 int cifs_async_readv(struct cifs_readdata *rdata);
 int cifs_readv_receive(struct TCP_Server_Info *server, struct mid_q_entry *mid);
