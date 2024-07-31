@@ -249,8 +249,12 @@ static int rds_find_next_ext_space(struct rds_header *hdr, unsigned int len,
 		type = hdr->h_exthdr[ind];
 
 		ext_len = (type <= __RDS_EXTHDR_MAX) ? rds_exthdr_size[type] : 0;
-		if (WARN_ONCE(!ext_len, "Unknown ext hdr type (%d)\n", type))
+
+		if (!ext_len) {
+			WARN_ONCE(1, "RDS: unknown exthdr type (%u) found: [%*ph]\n", type,
+				  16, hdr->h_exthdr);
 			return -EINVAL;
+		}
 
 		/* ind points to a valid ext hdr with known length */
 		ind += 1 + ext_len;
@@ -266,13 +270,27 @@ int rds_message_add_extension(struct rds_header *hdr,
 {
 	unsigned char *dst;
 	unsigned int len;
+	int ret;
 
 	len = (type <= __RDS_EXTHDR_MAX) ? rds_exthdr_size[type] : 0;
 	if (!len)
 		return 0;
 
-	if (rds_find_next_ext_space(hdr, len, &dst))
+	ret = rds_find_next_ext_space(hdr, len, &dst);
+
+	if (ret) {
+		/* If there was no space left for the type and structure to be added
+		 * to the extension header, report an overflow.
+		 *
+		 * Since the type code takes one byte, add it to the length reported
+		 * that couldn't be obtained.
+		 */
+		if (ret == -ENOSPC)
+			pr_warn_ratelimited("RDS: exthdr overflow: type %u, len %u: [%*ph]\n",
+					    type, len + 1, 16, hdr->h_exthdr);
+
 		return 0;
+	}
 
 	*dst++ = type;
 	memcpy(dst, data, len);
