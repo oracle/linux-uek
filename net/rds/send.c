@@ -1219,9 +1219,10 @@ static int rds_send_queue_rm(struct rds_sock *rs, struct rds_connection *conn,
 
 		/* If RDS payload checksums are enabled, only encode it into
 		 * the outgoing message extension header if this is isn't a
-		 * ping (dport == 0).
+		 * ping (dport == 0) and has at least one data buffer.
 		 */
-		if (unlikely(rm->m_payload_csum.csum_enabled && dport)) {
+		if (unlikely(rm->m_payload_csum.csum_enabled && dport &&
+			     rm->data.op_nents)) {
 			struct rds_ext_header_rdma_csum r_csum = {
 				.h_rdma_csum_enabled = true,
 				.h_rdma_csum_val =
