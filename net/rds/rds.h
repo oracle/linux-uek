@@ -476,7 +476,6 @@ struct rds_info_iterator {
 #define RDS_FLAG_HB_PING		0x08
 #define RDS_FLAG_HB_PONG		0x10
 #define RDS_FLAG_ANY_HB			(RDS_FLAG_HB_PING | RDS_FLAG_HB_PONG)
-#define RDS_FLAG_EXTHDR_EXTENSION	0x20
 #define RDS_FLAG_EXTHDR_CAP_BITS_HB	BIT(0)
 #define RDS_MAX_ADV_CREDIT		255
 
@@ -553,11 +552,12 @@ struct rds_ext_header_rdma_dest {
 
 /*
  * This extension header tells the peer about delivered RDMA byte count.
+ *
+ * UEK does not use this header, so it only exists so that
+ * rds_recv_incoming_exthdrs() can consume the proper number of bytes from
+ * the extension header if it is received.
  */
 #define RDS_EXTHDR_RDMA_BYTES	4
-
-#define RDS_FLAG_RDMA_WR_BYTES	0x01
-#define RDS_FLAG_RDMA_RD_BYTES	0x02
 
 struct rds_ext_header_rdma_bytes {
 	__be32		h_rdma_bytes;	/* byte count */
