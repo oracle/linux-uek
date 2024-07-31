@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2023, Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2024, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -378,7 +378,9 @@ struct rds_message *rds_message_alloc(unsigned int extra_len, gfp_t gfp)
 	if (!rm)
 		goto out;
 
-	rm->m_used_sgs = 0;
+	/* There is no need to initialize any structure elements to
+	 * zero here as the structure was allocated with kzalloc().
+	 */
 	rm->m_total_sgs = extra_len / sizeof(struct scatterlist);
 	rm->m_alloc_cpu = NUMA_NO_NODE;
 
