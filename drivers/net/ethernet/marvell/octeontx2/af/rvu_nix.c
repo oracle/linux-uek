@@ -5427,6 +5427,9 @@ int rvu_nix_init(struct rvu *rvu)
 		blkaddr = rvu_get_next_nix_blkaddr(rvu, blkaddr);
 		i++;
 	}
+	/* Install CPT 2nd pass drop rule */
+	if (hw->cap.second_cpt_pass)
+		rvu_npc_install_cpt_pass2_entry(rvu);
 
 	return 0;
 }

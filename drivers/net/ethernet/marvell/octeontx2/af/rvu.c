@@ -68,6 +68,7 @@ MODULE_PARM_DESC(max_vfs,
 static void rvu_setup_hw_capabilities(struct rvu *rvu)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
+	u64 regval;
 
 	hw->cap.nix_tx_aggr_lvl = NIX_TXSCH_LVL_TL1;
 	hw->cap.nix_fixed_txschq_mapping = false;
@@ -100,6 +101,11 @@ static void rvu_setup_hw_capabilities(struct rvu *rvu)
 
 	if (is_rvu_nix_spi_to_sa_en(rvu))
 		hw->cap.spi_to_sas = 0x2000;
+
+	hw->cap.second_cpt_pass = false;
+	regval = rvu_read64(rvu, BLKADDR_NIX0, NIX_AF_CONST);
+	if (regval & BIT_ULL(62))
+		hw->cap.second_cpt_pass = true;
 }
 
 /* Poll a RVU block's register 'offset', for a 'zero'

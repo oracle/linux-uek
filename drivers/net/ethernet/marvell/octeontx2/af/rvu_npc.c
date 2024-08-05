@@ -1005,6 +1005,33 @@ void rvu_npc_enable_allmulti_entry(struct rvu *rvu, u16 pcifunc, int nixlf,
 	npc_enable_mcam_entry(rvu, mcam, blkaddr, index, enable);
 }
 
+int rvu_npc_install_cpt_pass2_entry(struct rvu *rvu)
+{
+	struct npc_install_flow_req req = { 0 };
+	struct npc_install_flow_rsp rsp = { 0 };
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	struct rvu_pfvf *pfvf;
+	int blkaddr, rc;
+
+	pfvf = rvu_get_pfvf(rvu, 0);
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+	if (blkaddr < 0)
+		return -ENODEV;
+
+	req.entry = mcam->cpt_pass2_offset;
+	req.channel = 0x800;
+	req.chan_mask = 0x800;
+	req.op = NIX_RX_ACTIONOP_DROP;
+	req.hdr.pcifunc = 0; /* AF is requester */
+	req.intf = NIX_INTF_RX;
+	req.set_cntr = 1;
+
+	rc = npc_install_flow(rvu, blkaddr, 0, 0, pfvf, &req, &rsp, true, 0);
+
+	return rc;
+}
+
 static void npc_update_vf_flow_entry(struct rvu *rvu, struct npc_mcam *mcam,
 				     int blkaddr, u16 pcifunc, u64 rx_action)
 {
@@ -2148,6 +2175,10 @@ int npc_mcam_rsrcs_init(struct rvu *rvu, int blkaddr)
 		 */
 		rsvd = (nixlf_count * RSVD_MCAM_ENTRIES_PER_NIXLF) +
 			((rvu->hw->total_pfs - 1) * RSVD_MCAM_ENTRIES_PER_PF);
+		/* Reserve one MCAM entry for CPT 2nd pass drop rule */
+		if (rvu->hw->cap.second_cpt_pass)
+			rsvd += 1;
+
 		if (mcam->total_entries <= rsvd) {
 			dev_warn(rvu->dev,
 				 "Insufficient NPC MCAM size %d for pkt I/O, exiting\n",
@@ -2156,6 +2187,7 @@ int npc_mcam_rsrcs_init(struct rvu *rvu, int blkaddr)
 		}
 	}
 
+	mcam->cpt_pass2_offset = mcam->total_entries - 1;
 	mcam->bmap_entries = mcam->total_entries - rsvd;
 
 	/* cn20k does not need offsets to alloc mcam entries */

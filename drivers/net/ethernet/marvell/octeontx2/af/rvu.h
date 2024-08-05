@@ -235,6 +235,7 @@ struct npc_mcam {
 	u16	total_entries;	/* Total number of MCAM entries */
 	u16	nixlf_offset;	/* Offset of nixlf rsvd uncast entries */
 	u16	pf_offset;	/* Offset of PF's rsvd bcast, promisc entries */
+	u16	cpt_pass2_offset;
 	u16	lprio_count;
 	u16	lprio_start;
 	u16	hprio_count;
@@ -1336,6 +1337,12 @@ bool npc_is_feature_supported(struct rvu *rvu, u64 features, u8 intf);
 int npc_mcam_verify_entry(struct npc_mcam *mcam, u16 pcifunc, int entry);
 int npc_mcam_rsrcs_init(struct rvu *rvu, int blkaddr);
 void npc_mcam_rsrcs_deinit(struct rvu *rvu);
+int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
+		     int nixlf, struct rvu_pfvf *pfvf,
+		     struct npc_install_flow_req *req,
+		     struct npc_install_flow_rsp *rsp, bool enable,
+		     bool pf_set_vfs_mac);
+int rvu_npc_install_cpt_pass2_entry(struct rvu *rvu);
 
 /* CPT APIs */
 int rvu_cpt_register_interrupts(struct rvu *rvu);
