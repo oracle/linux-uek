@@ -5912,7 +5912,7 @@ static void prev_balance(struct rq *rq, struct task_struct *prev,
 	 * when waking up from SCHED_IDLE. If @start_class is below SCX, start
 	 * from SCX instead.
 	 */
-	if (sched_class_above(&ext_sched_class, start_class))
+	if (scx_enabled() && sched_class_above(&ext_sched_class, start_class))
 		start_class = &ext_sched_class;
 #endif
 
