@@ -28,7 +28,6 @@ kernel/arch/x86/kernel/cpu/mce/mce-inject.ko
 kernel/arch/x86/kvm/kvm-amd.ko
 kernel/arch/x86/kvm/kvm-intel.ko
 kernel/arch/x86/kvm/kvm.ko
-kernel/block/t10-pi.ko
 kernel/crypto/adiantum.ko
 kernel/crypto/aes_ti.ko
 kernel/crypto/algif_rng.ko
@@ -56,7 +55,6 @@ kernel/crypto/chacha20poly1305.ko
 kernel/crypto/chacha_generic.ko
 kernel/crypto/cmac.ko
 kernel/crypto/crc32_generic.ko
-kernel/crypto/crc64_rocksoft_generic.ko
 kernel/crypto/cryptd.ko
 kernel/crypto/crypto_engine.ko
 kernel/crypto/crypto_simd.ko
@@ -391,7 +389,6 @@ kernel/fs/udf/udf.ko
 kernel/fs/vboxsf/vboxsf.ko
 kernel/fs/xfs/xfs.ko
 kernel/lib/bch.ko
-kernel/lib/crc64-rocksoft.ko
 kernel/lib/crc7.ko
 kernel/lib/crc8.ko
 kernel/lib/crc-itu-t.ko
@@ -403,7 +400,6 @@ kernel/lib/crypto/libcurve25519-generic.ko
 kernel/lib/crypto/libcurve25519.ko
 kernel/lib/crypto/libdes.ko
 kernel/lib/crypto/libpoly1305.ko
-kernel/lib/dim/dimlib.ko
 kernel/lib/lz4/lz4_compress.ko
 kernel/lib/lz4/lz4hc_compress.ko
 kernel/lib/math/cordic.ko
