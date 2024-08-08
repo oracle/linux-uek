@@ -322,7 +322,6 @@ kernel/lib/crypto/libcurve25519-generic.ko
 kernel/lib/crypto/libcurve25519.ko
 kernel/lib/crypto/libdes.ko
 kernel/lib/crypto/libpoly1305.ko
-kernel/lib/dim/dimlib.ko
 kernel/lib/lz4/lz4_compress.ko
 kernel/lib/lz4/lz4hc_compress.ko
 kernel/lib/math/cordic.ko
