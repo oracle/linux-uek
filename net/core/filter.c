@@ -5165,6 +5165,12 @@ static int _bpf_setsockopt(struct sock *sk, int level, int optname,
 			case TCP_WINDOW_CLAMP:
 				ret = tcp_set_window_clamp(sk, val);
 				break;
+			case TCP_BPF_SOCK_OPS_CB_FLAGS:
+				if (val & ~(BPF_SOCK_OPS_ALL_CB_FLAGS))
+					ret = -EINVAL;
+				else
+					tp->bpf_sock_ops_cb_flags = val;
+				break;
 			default:
 				ret = -EINVAL;
 			}
@@ -5226,6 +5232,16 @@ static int _bpf_getsockopt(struct sock *sk, int level, int optname,
 				goto err_clear;
 			memcpy(optval, tp->saved_syn->data, optlen);
 			break;
+		case TCP_BPF_SOCK_OPS_CB_FLAGS: {
+			int cb_flags;
+
+			if (optlen != sizeof(int))
+				goto err_clear;
+			tp = tcp_sk(sk);
+			cb_flags = tp->bpf_sock_ops_cb_flags;
+			memcpy(optval, &cb_flags, sizeof(cb_flags));
+			break;
+		}
 		default:
 			goto err_clear;
 		}
