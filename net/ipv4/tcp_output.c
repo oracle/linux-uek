@@ -3169,9 +3169,7 @@ void tcp_send_fin(struct sock *sk)
 			return;
 		}
 	} else {
-		skb = alloc_skb_fclone(MAX_TCP_HEADER,
-				       sk_gfp_mask(sk, GFP_ATOMIC |
-						       __GFP_NOWARN));
+		skb = alloc_skb_fclone(MAX_TCP_HEADER, sk->sk_allocation);
 		if (unlikely(!skb))
 			return;
 
