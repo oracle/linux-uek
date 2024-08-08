@@ -129,6 +129,7 @@ kernel/drivers/edac/edac_mce_amd.ko
 kernel/drivers/edac/i10nm_edac.ko
 kernel/drivers/edac/sb_edac.ko
 kernel/drivers/edac/skx_edac.ko
+kernel/drivers/edac/skx_edac_common.ko
 kernel/drivers/firmware/iscsi_ibft.ko
 kernel/drivers/firmware/qemu_fw_cfg.ko
 kernel/drivers/gnss/gnss.ko
