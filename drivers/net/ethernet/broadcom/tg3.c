@@ -17828,7 +17828,7 @@ static int tg3_init_one(struct pci_dev *pdev,
 	 * On 64-bit systems without IOMMU, use 64-bit dma_mask and
 	 * do DMA address check in __tg3_start_xmit().
 	 */
-	if (tg3_flag(tp, 4G_DMA_ONLY))
+	if (tg3_flag(tp, 4G_DMA_ONLY) || (tg3_asic_rev(tp) == ASIC_REV_57766))
 		persist_dma_mask = dma_mask = DMA_BIT_MASK(32);
 	else if (tg3_flag(tp, 40BIT_DMA_BUG)) {
 		persist_dma_mask = dma_mask = DMA_BIT_MASK(40);
@@ -17861,6 +17861,16 @@ static int tg3_init_one(struct pci_dev *pdev,
 			dev_err(&pdev->dev,
 				"No usable DMA configuration, aborting\n");
 			goto err_out_apeunmap;
+		}
+
+		if (tg3_asic_rev(tp) == ASIC_REV_57766) {
+			err = dma_set_coherent_mask(&pdev->dev,
+						    DMA_BIT_MASK(31));
+			if (err < 0) {
+				dev_err(&pdev->dev,
+					"Unable to obtain 31 bit DMA for consistent allocations\n");
+				goto err_out_apeunmap;
+			}
 		}
 	}
 
