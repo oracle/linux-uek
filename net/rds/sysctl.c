@@ -183,7 +183,6 @@ static struct ctl_table rds_sysctl_rds_table[] = {
 		.extra1		= &rds_sysctl_min_conn_hb_interval,
 		.extra2		= &rds_sysctl_max_conn_hb_interval,
 	},
-	{ }
 };
 
 void rds_sysctl_exit(void)
