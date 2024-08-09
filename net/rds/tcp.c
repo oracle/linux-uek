@@ -60,7 +60,7 @@ static LIST_HEAD(rds_tcp_conn_list);
 
 static struct kmem_cache *rds_tcp_conn_slab;
 
-static int rds_tcp_skbuf_handler(struct ctl_table *ctl, int write,
+static int rds_tcp_skbuf_handler(const struct ctl_table *ctl, int write,
 				 void __user *buffer, size_t *lenp,
 				 loff_t *fpos);
 
@@ -659,7 +659,7 @@ static void rds_tcp_sysctl_reset(struct net *net)
 	spin_unlock_irq(&rds_tcp_conn_lock);
 }
 
-static int rds_tcp_skbuf_handler(struct ctl_table *ctl, int write,
+static int rds_tcp_skbuf_handler(const struct ctl_table *ctl, int write,
 				 void __user *buffer, size_t *lenp,
 				 loff_t *fpos)
 {
