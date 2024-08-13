@@ -228,8 +228,12 @@ void npc_enable_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
 	int bank = npc_get_bank(rvu, mcam, index);
 	int actbank = bank;
 
-	if (is_cn20k(rvu->pdev))
+	if (is_cn20k(rvu->pdev)) {
+		if (index < 0 || index >= mcam->banksize * mcam->banks)
+			return;
+
 		return npc_cn20k_enable_mcam_entry(rvu, blkaddr, index, enable);
+	}
 
 	index &= (mcam->banksize - 1);
 	for (; bank < (actbank + mcam->banks_per_entry); bank++) {
