@@ -2581,10 +2581,16 @@ static uint64_t __cvmx_pcie_build_config_addr(int node, int port, int bus,
 {
 	cvmx_pcie_address_t pcie_addr;
 	cvmx_pciercx_cfg006_t pciercx_cfg006;
+	cvmx_pciercx_cfg032_t pciercx_cfg032;
 
 	pciercx_cfg006.u32 = cvmx_pcie_cfgx_read_node(node, port,
 						      CVMX_PCIERCX_CFG006(port));
 	if ((bus <= pciercx_cfg006.s.pbnum) && (dev != 0))
+		return 0;
+
+	pciercx_cfg032.u32 = cvmx_pcie_cfgx_read_node(node, port,
+						      CVMX_PCIERCX_CFG032(port));
+	if ((pciercx_cfg032.s.dlla == 0) || (pciercx_cfg032.s.lt == 1))
 		return 0;
 
 	pcie_addr.u64 = 0;
