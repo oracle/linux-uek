@@ -13,8 +13,8 @@
 #include "rvu.h"
 
 /* CPT PF device id */
-#define	PCI_DEVID_OTX2_CPT_PF	0xA0FD
-#define	PCI_DEVID_OTX2_CPT10K_PF 0xA0F2
+#define	PCI_PF_DEVID_OTX2_CPT_PF 0xFD
+#define	PCI_PF_DEVID_CN10K_CPT_PF 0xF2
 
 /* Length of initial context fetch in 128 byte words */
 #define CPT_CTX_ILEN    1ULL
@@ -394,23 +394,25 @@ int rvu_cpt_register_interrupts(struct rvu *rvu)
 
 static int get_cpt_pf_num(struct rvu *rvu)
 {
-	int i, domain_nr, cpt_pf_num = -1;
-	struct pci_dev *pdev;
+	int i, cpt_pf_num = -1;
+	u64 id_cfg, cfg;
+	u8 pf_devid;
 
-	domain_nr = pci_domain_nr(rvu->pdev->bus);
+	pf_devid = is_rvu_otx2(rvu) ? PCI_PF_DEVID_OTX2_CPT_PF :
+				       PCI_PF_DEVID_CN10K_CPT_PF;
+
 	for (i = 0; i < rvu->hw->total_pfs; i++) {
-		pdev = pci_get_domain_bus_and_slot(domain_nr, i + 1, 0);
-		if (!pdev)
+		cfg = rvu_read64(rvu, BLKADDR_RVUM, RVU_PRIV_PFX_CFG(i));
+		if (!(cfg & BIT_ULL(20)))
 			continue;
 
-		if (pdev->device == PCI_DEVID_OTX2_CPT_PF ||
-		    pdev->device == PCI_DEVID_OTX2_CPT10K_PF) {
+		id_cfg = rvu_read64(rvu, BLKADDR_RVUM, RVU_PRIV_PFX_ID_CFG(i));
+		if ((id_cfg & 0xFF) == pf_devid) {
 			cpt_pf_num = i;
-			put_device(&pdev->dev);
 			break;
 		}
-		put_device(&pdev->dev);
 	}
+
 	return cpt_pf_num;
 }
 
