@@ -3835,8 +3835,8 @@ static int cpt_eng_sts_display(struct seq_file *filp, u8 eng_type)
 {
 	u16 max_ses, max_aes, max_ies, max_re;
 	struct cpt_ctx *ctx = filp->private;
+	u32 e_min = 0, e_max = 0, e, index;
 	u64 busy_sts = 0, free_sts = 0;
-	u32 e_min = 0, e_max = 0, e, i;
 	struct rvu *rvu = ctx->rvu;
 	int blkaddr = ctx->blkaddr;
 	u64 reg;
@@ -3864,16 +3864,35 @@ static int cpt_eng_sts_display(struct seq_file *filp, u8 eng_type)
 		return -EINVAL;
 	}
 
-	for (e = e_min, i = 0; e < e_max; e++, i++) {
+	for (e = e_min, index = 0; e < e_max; e++) {
 		reg = rvu_read64(rvu, blkaddr, CPT_AF_EXEX_STS(e));
 		if (reg & 0x1)
-			busy_sts |= 1ULL << i;
+			busy_sts |= 1ULL << index;
 
 		if (reg & 0x2)
-			free_sts |= 1ULL << i;
+			free_sts |= 1ULL << index;
+
+		if (++index < 64)
+			continue;
+
+		/* Status of last 64 engines */
+		seq_printf(filp, "FREE STS : Engines %d to %d \t: 0x%016llx\n",
+			   ((e - e_min) / 64) * 64, (e - e_min), free_sts);
+		seq_printf(filp, "BUSY STS : Engines %d to %d \t: 0x%016llx\n",
+			   ((e - e_min) / 64) * 64, (e - e_min), busy_sts);
+		free_sts = 0;
+		busy_sts = 0;
+		index = 0;
 	}
-	seq_printf(filp, "FREE STS : 0x%016llx\n", free_sts);
-	seq_printf(filp, "BUSY STS : 0x%016llx\n", busy_sts);
+
+	/* Status of remaining engines */
+	if (index) {
+		e--;
+		seq_printf(filp, "FREE STS : Engines %d to %d \t: 0x%016llx\n",
+			   ((e - e_min) / 64) * 64, (e - e_min), free_sts);
+		seq_printf(filp, "BUSY STS : Engines %d to %d \t: 0x%016llx\n",
+			   ((e - e_min) / 64) * 64, (e - e_min), busy_sts);
+	}
 
 	return 0;
 }
