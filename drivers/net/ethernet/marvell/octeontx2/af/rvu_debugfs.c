@@ -3833,10 +3833,10 @@ static void rvu_dbg_npc_init(struct rvu *rvu)
 
 static int cpt_eng_sts_display(struct seq_file *filp, u8 eng_type)
 {
+	u16 max_ses, max_aes, max_ies, max_re;
 	struct cpt_ctx *ctx = filp->private;
 	u64 busy_sts = 0, free_sts = 0;
 	u32 e_min = 0, e_max = 0, e, i;
-	u16 max_ses, max_ies, max_aes;
 	struct rvu *rvu = ctx->rvu;
 	int blkaddr = ctx->blkaddr;
 	u64 reg;
@@ -3845,11 +3845,12 @@ static int cpt_eng_sts_display(struct seq_file *filp, u8 eng_type)
 	max_ses = reg & 0xffff;
 	max_ies = (reg >> 16) & 0xffff;
 	max_aes = (reg >> 32) & 0xffff;
+	max_re = (reg >> 48) & 0xffff;
 
 	switch (eng_type) {
 	case CPT_AE_TYPE:
-		e_min = max_ses + max_ies;
-		e_max = max_ses + max_ies + max_aes;
+		e_min = max_ses + max_ies + max_re;
+		e_max = e_min + max_aes;
 		break;
 	case CPT_SE_TYPE:
 		e_min = 0;
@@ -3900,8 +3901,8 @@ RVU_DEBUG_SEQ_FOPS(cpt_ie_sts, cpt_ie_sts_display, NULL);
 
 static int rvu_dbg_cpt_engines_info_display(struct seq_file *filp, void *unused)
 {
+	u16 max_ses, max_aes, max_ies, max_re;
 	struct cpt_ctx *ctx = filp->private;
-	u16 max_ses, max_ies, max_aes;
 	struct rvu *rvu = ctx->rvu;
 	int blkaddr = ctx->blkaddr;
 	u32 e_max, e;
@@ -3911,8 +3912,9 @@ static int rvu_dbg_cpt_engines_info_display(struct seq_file *filp, void *unused)
 	max_ses = reg & 0xffff;
 	max_ies = (reg >> 16) & 0xffff;
 	max_aes = (reg >> 32) & 0xffff;
+	max_re = (reg >> 48) & 0xffff;
 
-	e_max = max_ses + max_ies + max_aes;
+	e_max = max_ses + max_ies + max_aes + max_re;
 
 	seq_puts(filp, "===========================================\n");
 	for (e = 0; e < e_max; e++) {
