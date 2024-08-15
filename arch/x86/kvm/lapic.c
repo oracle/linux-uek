@@ -3550,9 +3550,12 @@ int kvm_apic_accept_events(struct kvm_vcpu *vcpu)
 	 * INITs are blocked while CPU is in specific states (SMM, VMX root
 	 * mode, SVM with GIF=0), while SIPIs are dropped if the CPU isn't in
 	 * wait-for-SIPI (WFS).
+	 * UEK: Keep SIPI pending while in SMM too.
 	 */
 	if (!kvm_apic_init_sipi_allowed(vcpu)) {
 		clear_bit(KVM_APIC_SIPI, &apic->pending_events);
+		if (!is_smm(vcpu))
+			clear_bit(KVM_APIC_SIPI, &apic->pending_events);
 		return 0;
 	}
 
