@@ -4123,7 +4123,7 @@ static int nix_af_mark_format_setup(struct rvu *rvu, struct nix_hw *nix_hw,
 static void rvu_get_lbk_link_max_frs(struct rvu *rvu,  u16 *max_mtu)
 {
 	/* CN10K supports LBK FIFO size 72 KB */
-	if (rvu->hw->lbk_bufsize == 0x12000)
+	if (rvu->hw->lbk_bufsize == 0x12000 || rvu->hw->lbk_bufsize == 0x20000)
 		*max_mtu = CN10K_LBK_LINK_MAX_FRS;
 	else
 		*max_mtu = NIC_HW_MAX_FRS;
