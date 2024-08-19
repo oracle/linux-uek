@@ -1370,22 +1370,7 @@ static inline bool idle_rq(struct rq *rq)
 	return rq->curr == rq->idle && !rq->nr_running && !rq->ttwu_pending;
 }
 
-/**
- * available_idle_cpu - is a given CPU idle for enqueuing work.
- * @cpu: the CPU in question.
- *
- * Return: 1 if the CPU is currently idle. 0 otherwise.
- */
-static inline bool available_idle_cpu(int cpu)
-{
-	if (!idle_rq(cpu_rq(cpu)))
-		return 0;
-
-	if (vcpu_is_preempted(cpu))
-		return 0;
-
-	return 1;
-}
+static inline bool available_idle_cpu(int cpu);
 
 #ifdef CONFIG_SCHED_PROXY_EXEC
 static inline void rq_set_donor(struct rq *rq, struct task_struct *t)
@@ -2291,6 +2276,25 @@ extern struct static_key sched_feat_keys[__SCHED_FEAT_NR];
 #define sched_feat(x) (sysctl_sched_features & (1UL << __SCHED_FEAT_##x))
 
 #endif /* !CONFIG_JUMP_LABEL */
+
+/**
+ * available_idle_cpu - is a given CPU idle for enqueuing work.
+ * @cpu: the CPU in question.
+ *
+ * Return: 1 if the CPU is currently idle. 0 otherwise.
+ */
+static inline bool available_idle_cpu(int cpu)
+{
+	if (!idle_rq(cpu_rq(cpu)))
+		return 0;
+
+	if (sched_feat(VCPU_IDLE_PREEMPTION_CHK)) {
+		if (vcpu_is_preempted(cpu))
+			return 0;
+	}
+
+	return 1;
+}
 
 extern struct static_key_false sched_numa_balancing;
 extern struct static_key_false sched_schedstats;
