@@ -73,6 +73,8 @@ SCHED_FEAT(HRTICK, false)
 SCHED_FEAT(HRTICK_DL, false)
 #endif
 
+SCHED_FEAT(VCPU_IDLE_PREEMPTION_CHK, false)
+
 /*
  * Decrement CPU capacity based on time not spent running tasks
  */
