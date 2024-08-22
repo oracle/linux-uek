@@ -468,7 +468,7 @@ static void (*pkey_tests[])(void) = {
 
 int main(int argc, char *argv[])
 {
-	int i;
+	int i, err;
 
 	ksft_print_header();
 	ksft_set_plan(ARRAY_SIZE(pkey_tests));
@@ -476,6 +476,9 @@ int main(int argc, char *argv[])
 	for (i = 0; i < ARRAY_SIZE(pkey_tests); i++)
 		(*pkey_tests[i])();
 
-	ksft_finished();
-	return 0;
+	err = ksft_get_fail_cnt();
+	if (err)
+		ksft_exit_fail_msg("%d out of %d tests failed\n",
+			err, ksft_test_num());
+	return ksft_exit_pass();
 }
