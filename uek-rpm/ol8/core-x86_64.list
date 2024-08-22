@@ -286,6 +286,7 @@ kernel/drivers/platform/x86/intel/speed_select_if/isst_if_mbox_pci.ko
 kernel/drivers/platform/x86/intel/speed_select_if/isst_if_mmio.ko
 kernel/drivers/platform/x86/mxm-wmi.ko
 kernel/drivers/platform/x86/wmi.ko
+kernel/drivers/platform/x86/amd/amd_hsmp.ko
 kernel/drivers/powercap/intel_rapl_common.ko
 kernel/drivers/powercap/intel_rapl_msr.ko
 kernel/drivers/ptp/ptp_kvm.ko
