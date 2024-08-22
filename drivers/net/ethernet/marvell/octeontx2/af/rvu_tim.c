@@ -250,8 +250,7 @@ int rvu_mbox_handler_tim_config_ring(struct rvu *rvu,
 
 	/* Check if extended interval is supported. */
 	regval = rvu_read64(rvu, blkaddr, TIM_AF_CONST);
-	if (regval & BIT(25))
-		intvl_ext = 1;
+	intvl_ext = !!(regval & BIT(25));
 
 	/* Error out if the ring is already running. */
 	regval = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf));
