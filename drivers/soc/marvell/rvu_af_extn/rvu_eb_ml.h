@@ -14,6 +14,9 @@
 /* Maximum number of ML blocks */
 #define MAX_ML_BLOCKS 1
 
+/* Maximum number of LFs supported */
+#define ML_RVU_LF_COUNT 64
+
 /* Maximum number of partitions */
 #define ML_MAX_PARTITIONS 4
 

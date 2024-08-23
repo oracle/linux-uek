@@ -10,6 +10,7 @@
 #include "rvu_eb_ml.h"
 #include "rvu_eblock.h"
 #include "rvu_eblock_reg.h"
+#include "rvu_ml_mbox.h"
 #include "rvu_trace.h"
 
 static const char *ml_irq_name[MAX_ML_BLOCKS][ML_AF_INT_VEC_CNT] = {
@@ -46,14 +47,149 @@ static int get_ml_pf_num(struct rvu *rvu)
 	return ml_pf_num;
 }
 
-static int rvu_ml_mbox_handler(struct otx2_mbox *mbox, int devid,
-		struct mbox_msghdr *req)
+static bool is_ml_pf(struct rvu *rvu, u16 pcifunc)
 {
-	(void) mbox;
-	(void) devid;
-	(void) req;
+	if (rvu_get_pf(rvu->pdev, pcifunc) != rvu->ml_pf_num)
+		return false;
+
+	if (pcifunc & RVU_PFVF_FUNC_MASK)
+		return false;
+
+	return true;
+}
+
+static bool is_ml_vf(struct rvu *rvu, u16 pcifunc)
+{
+	if (rvu_get_pf(rvu->pdev, pcifunc) != rvu->ml_pf_num)
+		return false;
+
+	if (!(pcifunc & RVU_PFVF_FUNC_MASK))
+		return false;
+
+	return true;
+}
+
+static bool is_ml_af_reg(u64 offset)
+{
+	u16 i;
+
+	switch (offset) {
+	case ML_AF_CFG:
+	case ML_AF_MLR_BASE:
+	case ML_AF_JOB_MGR_CTRL:
+	case ML_AF_CORE_INT_LO:
+	case ML_AF_CORE_INT_LO_ENA_W1C:
+	case ML_AF_CORE_INT_LO_ENA_W1S:
+	case ML_AF_CORE_INT_HI:
+	case ML_AF_CORE_INT_HI_ENA_W1C:
+	case ML_AF_CORE_INT_HI_ENA_W1S:
+	case ML_AF_WRAP_ERR_INT:
+	case ML_AF_WRAP_ERR_INT_ENA_W1C:
+	case ML_AF_WRAP_ERR_INT_ENA_W1S:
+	case ML_PRIV_AF_CFG:
+	case ML_PRIV_AF_INT_CFG:
+	case ML_AF_RVU_INT:
+	case ML_AF_RVU_INT_ENA_W1S:
+	case ML_AF_RVU_INT_ENA_W1C:
+	case ML_AF_LF_RST:
+	case ML_AF_RVU_LF_CFG_DEBUG:
+	case ML_AF_CONST:
+	case ML_AF_MLR_SIZE:
+		return true;
+	}
+
+	for (i = 0; i < 2; i++) {
+		if (offset == ML_AF_AXI_BRIDGE_CTRLX(i))
+			return true;
+	}
+
+	for (i = 0; i < ML_SCRATCH_NR; i++) {
+		if (offset == ML_AF_SCRATCHX(i))
+			return true;
+	}
+
+	for (i = 0; i < ML_ANBX_NR; i++) {
+		if (offset == ML_AF_ANBX_BACKP_DISABLE(i))
+			return true;
+	}
+
+	for (i = 0; i < ML_ANBX_NR; i++) {
+		if (offset == ML_AF_ANBX_NCBI_P_OVR(i))
+			return true;
+	}
+
+	for (i = 0; i < ML_ANBX_NR; i++) {
+		if (offset == ML_AF_ANBX_NCBI_NP_OVR(i))
+			return true;
+	}
+
+	return false;
+}
+
+int rvu_mbox_handler_ml_rd_wr_register(struct rvu *rvu,
+				       struct ml_rd_wr_reg_msg *req,
+				       struct ml_rd_wr_reg_msg *rsp)
+{
+	if (!is_block_implemented(rvu->hw, BLKADDR_ML))
+		return ML_AF_ERR_BLOCK_NOT_IMPLEMENTED;
+
+	/* This message is accepted only if sent from ML PF/VF */
+	if (!is_ml_pf(rvu, req->hdr.pcifunc) &&
+	    !is_ml_vf(rvu, req->hdr.pcifunc))
+		return ML_AF_ERR_ACCESS_DENIED;
+
+	if (!is_ml_af_reg(req->reg_offset))
+		return ML_AF_ERR_REG_INVALID;
+
+	rsp->reg_offset = req->reg_offset;
+	rsp->ret_val = req->ret_val;
+	rsp->is_write = req->is_write;
+
+	if (req->is_write)
+		rvu_write64(rvu, BLKADDR_ML, req->reg_offset, req->val);
+	else
+		rsp->val = rvu_read64(rvu, BLKADDR_ML, req->reg_offset);
 
 	return 0;
+}
+
+static int rvu_ml_mbox_handler(struct otx2_mbox *mbox, int devid,
+			       struct mbox_msghdr *req)
+{
+	struct rvu *rvu = pci_get_drvdata(mbox->pdev);
+	int _id = req->id;
+
+	switch (_id) {
+#define M(_name, _id, _fn_name, _req_type, _rsp_type)                       \
+	{                                                                   \
+	case _id: {                                                         \
+		struct _rsp_type *rsp;                                      \
+		int err;                                                    \
+									    \
+		rsp = (struct _rsp_type *)otx2_mbox_alloc_msg(              \
+			mbox, devid, sizeof(struct _rsp_type));             \
+		if (rsp) {                                                  \
+			rsp->hdr.id = _id;                                  \
+			rsp->hdr.sig = OTX2_MBOX_RSP_SIG;                   \
+			rsp->hdr.pcifunc = req->pcifunc;                    \
+			rsp->hdr.rc = 0;                                    \
+		}                                                           \
+									    \
+		err = rvu_mbox_handler_##_fn_name(                          \
+			rvu, (struct _req_type *)req, rsp);                 \
+		if (rsp && err)                                             \
+			rsp->hdr.rc = err;                                  \
+									    \
+		trace_otx2_msg_process(mbox->pdev, _id, err, req->pcifunc); \
+		return rsp ? err : -ENOMEM;                                 \
+	}                                                                   \
+	}
+		MBOX_EBLOCK_ML_MESSAGES
+
+	default :
+		otx2_reply_invalid_msg(mbox, devid, req->pcifunc, req->id);
+		return -ENODEV;
+	}
 }
 
 static void *rvu_ml_probe(struct rvu *rvu, int blkaddr)
@@ -411,8 +547,8 @@ static void rvu_ml_unregister_interrupts_block(struct rvu_block *block,
 }
 
 struct mbox_op ml_mbox_op = {
-	.start = 0xB00,
-	.end = 0xBFF,
+	.start = 0xB000,
+	.end = 0xB0FF,
 	.handler = rvu_ml_mbox_handler,
 };
 

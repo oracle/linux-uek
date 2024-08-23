@@ -8,7 +8,17 @@
 #ifndef __RVU_EBLOCK_REG_H__
 #define __RVU_EBLOCK_REG_H__
 
+/* Number of scratch registers */
+#define ML_SCRATCH_NR 2048
+
+/* Number of ANB registers */
+#define ML_ANBX_NR 0x3
+
 /* ML AF block registers */
+#define ML_AF_CFG		      (0x10000ull)
+#define ML_AF_MLR_BASE		      (0x10008ull)
+#define ML_AF_AXI_BRIDGE_CTRLX(a)     (0x10020ull | (uint64_t)(a) << 3)
+#define ML_AF_JOB_MGR_CTRL	      (0x10060ull)
 #define ML_AF_CORE_INT_LO	      (0x10088ull)
 #define ML_AF_CORE_INT_LO_ENA_W1C     (0x10098ull)
 #define ML_AF_CORE_INT_LO_ENA_W1S     (0x100A0ull)
@@ -27,9 +37,14 @@
 #define ML_AF_LF_RST		      (0x101E8ull)
 #define ML_AF_RVU_LF_CFG_DEBUG	      (0x101F8ull)
 #define ML_AF_CONST		      (0x10208ull)
+#define ML_AF_MLR_SIZE		      (0x10268ull)
 #define ML_AF_PIDX_LF_ALLOW(a)        (0x10240ull | (uint64_t)(a) << 3)
 #define ML_PRIV_LFX_CFG               (0x10800ull)
 #define ML_PRIV_LFX_INT_CFG           (0x10C00ull)
+#define ML_AF_SCRATCHX(a)	      (0x14000ull | (uint64_t)(a) << 3)
+#define ML_AF_ANBX_BACKP_DISABLE(a)   (0x18000ull | (uint64_t)(a) << 12)
+#define ML_AF_ANBX_NCBI_P_OVR(a)      (0x18010ull | (uint64_t)(a) << 12)
+#define ML_AF_ANBX_NCBI_NP_OVR(a)     (0x18020ull | (uint64_t)(a) << 12)
 
 /* ML interrupt and error masks */
 #define ML_AF_CORE_INT_LO_INT_LO	     BIT_ULL(0)
