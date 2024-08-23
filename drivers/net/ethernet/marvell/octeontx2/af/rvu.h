@@ -819,6 +819,7 @@ struct rvu {
 	struct rvu_cplt_rpm	*cplt_rpm;
 	u16			*link2cgxchan_map;
 	u16			*cgxchan2link_map;
+	int			ml_pf_num;
 };
 
 static inline void rvu_write64(struct rvu *rvu, u64 block, u64 offset, u64 val)
