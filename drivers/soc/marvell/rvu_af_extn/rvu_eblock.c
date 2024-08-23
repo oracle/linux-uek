@@ -172,6 +172,7 @@ static inline bool is_eblock(int blkaddr)
 	case BLKADDR_RFOE0:
 	case BLKADDR_RFOE1:
 	case BLKADDR_SDP:
+	case BLKADDR_ML:
 		return true;
 	default:
 		return false;

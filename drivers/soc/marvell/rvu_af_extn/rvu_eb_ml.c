@@ -10,6 +10,10 @@
 #include "rvu_eblock.h"
 #include "rvu_trace.h"
 
+struct ml_drvdata {
+	int res_idx;
+};
+
 static int rvu_ml_mbox_handler(struct otx2_mbox *mbox, int devid,
 		struct mbox_msghdr *req)
 {
@@ -58,16 +62,28 @@ static void rvu_ml_unregister_interrupts_block(struct rvu_block *block, void *da
 
 static void *rvu_ml_probe(struct rvu *rvu, int blkaddr)
 {
-	(void) rvu;
-	(void) blkaddr;
+	struct ml_drvdata *data;
+	static int res_idx;
 
-	return NULL;
+	switch (blkaddr) {
+	case BLKADDR_ML:
+		data = devm_kzalloc(rvu->dev, sizeof(struct ml_drvdata),
+				    GFP_KERNEL);
+		if (!data)
+			return ERR_PTR(-ENOMEM);
+
+		data->res_idx = res_idx++;
+		break;
+	default:
+		data = NULL;
+	}
+
+	return data;
 }
 
 static void rvu_ml_remove(struct rvu_block *hwblock, void *data)
 {
-	(void) hwblock;
-	(void) data;
+	devm_kfree(hwblock->rvu->dev, data);
 }
 
 struct mbox_op ml_mbox_op = {
