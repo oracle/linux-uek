@@ -11,6 +11,9 @@
 /* ML PF device ID */
 #define PCI_DEVID_CN20K_ML_PF 0xA0E6
 
+/* Maximum number of ML blocks */
+#define MAX_ML_BLOCKS 1
+
 /* Maximum number of partitions */
 #define ML_MAX_PARTITIONS 4
 
