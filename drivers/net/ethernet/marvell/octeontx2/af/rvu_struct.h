@@ -157,6 +157,7 @@ enum npa_aq_comp {
 enum npa_aq_ctype {
 	NPA_AQ_CTYPE_AURA = 0x0,
 	NPA_AQ_CTYPE_POOL = 0x1,
+	NPA_AQ_CTYPE_HALO = 0x2,
 };
 
 /* NPA admin queue instruction opcodes */

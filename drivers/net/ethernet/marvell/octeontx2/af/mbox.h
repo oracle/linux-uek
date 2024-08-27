@@ -959,6 +959,8 @@ struct npa_cn20k_aq_enq_req {
 		struct npa_cn20k_aura_s aura;
 		/* Valid when op == WRITE/INIT and ctype == POOL */
 		struct npa_cn20k_pool_s pool;
+		/* Valid when op == WRITE/INIT and ctype == HALO */
+		struct npa_cn20k_halo_s halo;
 	};
 	/* Mask data when op == WRITE (1=write, 0=don't write) */
 	union {
@@ -966,6 +968,8 @@ struct npa_cn20k_aq_enq_req {
 		struct npa_cn20k_aura_s aura_mask;
 		/* Valid when op == WRITE and ctype == POOL */
 		struct npa_cn20k_pool_s pool_mask;
+		/* Valid when op == WRITE/INIT and ctype == HALO */
+		struct npa_cn20k_halo_s halo_mask;
 	};
 };
 
@@ -976,6 +980,8 @@ struct npa_cn20k_aq_enq_rsp {
 		struct npa_cn20k_aura_s aura;
 		/* Valid when op == READ and ctype == POOL */
 		struct npa_cn20k_pool_s pool;
+		/* Valid when op == READ and ctype == HALO */
+		struct npa_cn20k_halo_s halo;
 	};
 };
 
