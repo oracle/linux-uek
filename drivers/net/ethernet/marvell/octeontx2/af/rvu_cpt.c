@@ -522,6 +522,45 @@ static int validate_and_get_cpt_blkaddr(int req_blkaddr)
 	return blkaddr;
 }
 
+static inline int otx2_cpt_que_pri_mask(struct rvu *rvu)
+{
+	return (is_cn20k(rvu->pdev)) ? ((1 << CN20K_NUM_PRI_BITS) - 1)
+				     : ((1 << CN10K_NUM_PRI_BITS) - 1);
+}
+
+int rvu_mbox_handler_cpt_set_que_pri(struct rvu *rvu,
+				     struct cpt_queue_pri_req_msg *req,
+				     struct msg_rsp *rsp)
+{
+	u8 pri_max = otx2_cpt_que_pri_mask(rvu);
+	u16 pcifunc = req->hdr.pcifunc;
+	struct rvu_block *block;
+	int cptlf, blkaddr;
+	u16 actual_slot;
+	u64 val;
+
+	blkaddr = rvu_get_blkaddr_from_slot(rvu, BLKTYPE_CPT, pcifunc,
+					    req->slot, &actual_slot);
+	if (blkaddr < 0)
+		return CPT_AF_ERR_LF_INVALID;
+
+	block = &rvu->hw->block[blkaddr];
+
+	cptlf = rvu_get_lf(rvu, block, pcifunc, actual_slot);
+	if (cptlf < 0)
+		return CPT_AF_ERR_LF_INVALID;
+
+	if (req->queue_pri > pri_max)
+		return CPT_AF_ERR_PRI_INVALID;
+
+	val = rvu_read64(rvu, blkaddr, CPT_AF_LFX_CTL(cptlf));
+	val &= ~pri_max;
+	val |= req->queue_pri;
+	rvu_write64(rvu, blkaddr, CPT_AF_LFX_CTL(cptlf), val);
+
+	return 0;
+}
+
 int rvu_mbox_handler_cpt_lf_alloc(struct rvu *rvu,
 				  struct cpt_lf_alloc_req_msg *req,
 				  struct msg_rsp *rsp)

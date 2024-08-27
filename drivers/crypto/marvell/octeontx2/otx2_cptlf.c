@@ -48,26 +48,6 @@ static void cptlf_set_done_num_wait(struct otx2_cptlfs_info *lfs, int num_wait)
 		cptlf_do_set_done_num_wait(&lfs->lf[slot], num_wait);
 }
 
-static int cptlf_set_pri(struct otx2_cptlf_info *lf, int pri)
-{
-	struct otx2_cptlfs_info *lfs = lf->lfs;
-	union otx2_cptx_af_lf_ctrl lf_ctrl;
-	int ret;
-
-	ret = otx2_cpt_read_af_reg(lfs->mbox, lfs->pdev,
-				   CPT_AF_LFX_CTL(lf->slot),
-				   &lf_ctrl.u, lfs->blkaddr);
-	if (ret)
-		return ret;
-
-	lf_ctrl.s.pri = pri ? 1 : 0;
-
-	ret = otx2_cpt_write_af_reg(lfs->mbox, lfs->pdev,
-				    CPT_AF_LFX_CTL(lf->slot),
-				    lf_ctrl.u, lfs->blkaddr);
-	return ret;
-}
-
 static int cptlf_set_eng_grps_mask(struct otx2_cptlf_info *lf,
 				   int eng_grps_mask)
 {
@@ -89,16 +69,12 @@ static int cptlf_set_eng_grps_mask(struct otx2_cptlf_info *lf,
 	return ret;
 }
 
-static int cptlf_set_grp_and_pri(struct otx2_cptlfs_info *lfs,
-				 int eng_grp_mask, int pri)
+static int cptlf_set_grp(struct otx2_cptlfs_info *lfs,
+			 int eng_grp_mask)
 {
 	int slot, ret = 0;
 
 	for (slot = 0; slot < lfs->lfs_num; slot++) {
-		ret = cptlf_set_pri(&lfs->lf[slot], pri);
-		if (ret)
-			return ret;
-
 		ret = cptlf_set_eng_grps_mask(&lfs->lf[slot], eng_grp_mask);
 		if (ret)
 			return ret;
@@ -425,7 +401,7 @@ free_affinity_mask:
 }
 EXPORT_SYMBOL_NS_GPL(otx2_cptlf_set_irqs_affinity, CRYPTO_DEV_OCTEONTX2_CPT);
 
-int otx2_cptlf_init(struct otx2_cptlfs_info *lfs, u8 eng_grp_mask, int pri,
+int otx2_cptlf_init(struct otx2_cptlfs_info *lfs, u8 eng_grp_mask, u8 pri,
 		    int lfs_num)
 {
 	int slot, ret;
@@ -463,9 +439,14 @@ int otx2_cptlf_init(struct otx2_cptlfs_info *lfs, u8 eng_grp_mask, int pri,
 	cptlf_hw_init(lfs);
 	/*
 	 * Allow each LF to execute requests destined to any of 8 engine
-	 * groups and set queue priority of each LF to high
+	 * groups
 	 */
-	ret = cptlf_set_grp_and_pri(lfs, eng_grp_mask, pri);
+	ret = cptlf_set_grp(lfs, eng_grp_mask);
+	if (ret)
+		goto free_iq;
+
+	/* set queue priority of each LF to high/default */
+	ret = otx2_cptlf_set_que_pri_msg(lfs, pri);
 	if (ret)
 		goto free_iq;
 

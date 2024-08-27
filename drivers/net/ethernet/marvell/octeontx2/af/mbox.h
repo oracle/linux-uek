@@ -54,6 +54,10 @@
 #define MBOX_DIR_AFEPF		8  /* AF replies to EPF */
 #define MBOX_DIR_AFEPF_UP	9  /* AF sends messages EPF */
 
+/* Number of Queue priority bits implemented */
+#define CN10K_NUM_PRI_BITS 1
+#define CN20K_NUM_PRI_BITS 3
+
 enum {
 	NPC_MCAM_KEY_X1 = 0,
 	NPC_MCAM_KEY_DYN = NPC_MCAM_KEY_X1,
@@ -136,6 +140,7 @@ int otx2_reply_invalid_msg(struct otx2_mbox *mbox, int devid,
 			   u16 pcifunc, u16 id);
 bool otx2_mbox_nonempty(struct otx2_mbox *mbox, int devid);
 const char *otx2_mbox_id2name(u16 id);
+int otx2_cpt_queue_get_default_pri(struct pci_dev *pdev);
 static inline struct mbox_msghdr *otx2_mbox_alloc_msg(struct otx2_mbox *mbox,
 						      int devid, int size)
 {
@@ -287,6 +292,8 @@ M(CPT_CTX_CACHE_SYNC,   0xA07, cpt_ctx_cache_sync, msg_req, msg_rsp)    \
 M(CPT_LF_RESET,         0xA08, cpt_lf_reset, cpt_lf_rst_req, msg_rsp)	\
 M(CPT_FLT_ENG_INFO,     0xA09, cpt_flt_eng_info, cpt_flt_eng_info_req,	\
 			       cpt_flt_eng_info_rsp)			\
+M(CPT_SET_QUEQE_PRI,    0xBFB, cpt_set_que_pri, cpt_queue_pri_req_msg,	\
+			       msg_rsp)					\
 /* SDP mbox IDs (range 0x1000 - 0x11FF) */				\
 M(SET_SDP_CHAN_INFO, 0x1000, set_sdp_chan_info, sdp_chan_info_msg, msg_rsp) \
 M(GET_SDP_CHAN_INFO, 0x1001, get_sdp_chan_info, msg_req, sdp_get_chan_info_msg) \
@@ -2655,7 +2662,8 @@ enum cpt_af_status {
 	CPT_AF_ERR_NIX_PF_FUNC_INVALID	= -906,
 	CPT_AF_ERR_INLINE_IPSEC_INB_ENA	= -907,
 	CPT_AF_ERR_INLINE_IPSEC_OUT_ENA	= -908,
-	CPT_AF_ERR_RXC_QUE_INVALID	= -909
+	CPT_AF_ERR_RXC_QUE_INVALID	= -909,
+	CPT_AF_ERR_PRI_INVALID		= -910
 };
 
 /* CPT mbox message formats */
@@ -2678,6 +2686,12 @@ struct cpt_lf_alloc_req_msg {
 	u8 ctx_ilen : 7;
 	u8 rxc_ena : 1;
 	u8 rxc_ena_lf_id : 7;
+};
+
+struct cpt_queue_pri_req_msg {
+	struct mbox_msghdr hdr;
+	u32 slot;
+	u8 queue_pri;
 };
 
 #define CPT_INLINE_INBOUND      0

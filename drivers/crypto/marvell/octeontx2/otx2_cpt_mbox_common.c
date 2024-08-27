@@ -255,3 +255,37 @@ int otx2_cpt_lf_reset_msg(struct otx2_cptlfs_info *lfs, int slot)
 	return ret;
 }
 EXPORT_SYMBOL_NS_GPL(otx2_cpt_lf_reset_msg, CRYPTO_DEV_OCTEONTX2_CPT);
+
+int otx2_cptlf_set_que_pri_msg(struct otx2_cptlfs_info *lfs, u8 pri)
+{
+	struct otx2_mbox *mbox = lfs->mbox;
+	struct pci_dev *pdev = lfs->pdev;
+	struct cpt_queue_pri_req_msg *req;
+	int slot, ret;
+
+	req = (struct cpt_queue_pri_req_msg *)
+		otx2_mbox_alloc_msg_rsp(mbox, 0, sizeof(*req),
+					sizeof(struct cpt_queue_pri_req_msg));
+	if (req == NULL) {
+		dev_err(&pdev->dev, "RVU MBOX failed to get message.\n");
+			return -EFAULT;
+	}
+
+	for (slot = 0; slot < lfs->lfs_num; slot++) {
+		req->queue_pri = pri;
+		req->hdr.id = MBOX_MSG_CPT_SET_QUEQE_PRI;
+		req->hdr.sig = OTX2_MBOX_REQ_SIG;
+		req->hdr.pcifunc = 0;
+		req->slot = slot;
+		ret = otx2_cpt_send_mbox_msg(mbox, pdev);
+		if (ret) {
+			dev_err(&pdev->dev,
+				"failed to set queue pri for %u.\n",
+				slot);
+			return ret;
+		}
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_NS_GPL(otx2_cptlf_set_que_pri_msg, CRYPTO_DEV_OCTEONTX2_CPT);
