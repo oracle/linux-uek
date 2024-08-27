@@ -20,6 +20,10 @@ MODULE_VERSION(UEK_MISC_VER);
 DEFINE_STATIC_KEY_FALSE(on_exadata);
 EXPORT_SYMBOL_GPL(on_exadata);
 
+#ifdef	CONFIG_HUGETLB_PAGE_OPTIMIZE_VMEMMAP
+extern void __init hugetlb_enable_vmemmap(void);
+#endif
+
 /* Override to disable optimizations on Exadata systems. */
 static bool exadata_disable;
 
@@ -132,6 +136,9 @@ enable:
 	/* Go-Go Exadata goodness! */
 	static_branch_enable(&on_exadata);
 
+#ifdef	CONFIG_HUGETLB_PAGE_OPTIMIZE_VMEMMAP
+	hugetlb_enable_vmemmap();
+#endif
 	pr_info("Detected Exadata (%s)", reason);
 
 	return 0;

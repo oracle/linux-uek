@@ -18,6 +18,7 @@ long hugetlb_vmemmap_restore_pages(const struct hstate *h,
 void hugetlb_vmemmap_optimize(const struct hstate *h, struct page *head);
 void hugetlb_vmemmap_optimize_pages(struct hstate *h, struct list_head *page_list);
 void __init hugetlb_disable_hvo_xen(void);
+void __init hugetlb_enable_vmemmap(void);
 
 /*
  * Reserve one vmemmap page, all vmemmap addresses are mapped to it. See

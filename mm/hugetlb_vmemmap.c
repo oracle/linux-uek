@@ -744,6 +744,11 @@ void __init hugetlb_disable_hvo_xen(void)
 	vmemmap_optimize_enabled = false; /* may already be false */
 }
 
+void __init hugetlb_enable_vmemmap(void)
+{
+	vmemmap_optimize_enabled = true;
+}
+
 static int __init hugetlb_vmemmap_init(void)
 {
 	const struct hstate *h;
