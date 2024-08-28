@@ -382,9 +382,9 @@ static netdev_tx_t cnf10k_cpri_eth_start_xmit(struct sk_buff *skb,
 	struct cnf10k_cpri_ndev_priv *priv = netdev_priv(netdev);
 	struct cnf10k_dl_cbuf_cfg *dl_cfg;
 	struct cpri_pkt_dl_wqe_hdr *wqe;
+	u16 nxt_rd_ptr, sw_wr_ptr;
+	int tail, head, count;
 	unsigned long flags;
-	int tail, count;
-	u16 nxt_rd_ptr;
 	u8 *buf_ptr;
 
 	dl_cfg = &priv->cpri_common->dl_cfg;
@@ -418,11 +418,13 @@ static netdev_tx_t cnf10k_cpri_eth_start_xmit(struct sk_buff *skb,
 			0xFFFF;
 	/* get the HW tail */
 	tail = CNF10K_CIRC_BUF_ENTRY(nxt_rd_ptr);
-	if (dl_cfg->sw_wr_ptr >= tail)
-		count = dl_cfg->num_entries - dl_cfg->sw_wr_ptr + tail;
-	else
-		count = tail - dl_cfg->sw_wr_ptr;
 
+	sw_wr_ptr = readq(priv->cpri_reg_base +
+			   CNF10K_CPRIX_TXD_GMII_DL_SW_WR_PTR(priv->cpri_num)) &
+			0xFFFF;
+	head = CNF10K_CIRC_BUF_ENTRY(sw_wr_ptr);
+
+	count = (head >= tail) ? dl_cfg->num_entries - (head - tail) - 1 : tail - head - 1;
 	if (count == 0) {
 		spin_unlock_irqrestore(&dl_cfg->lock, flags);
 		return NETDEV_TX_BUSY;
