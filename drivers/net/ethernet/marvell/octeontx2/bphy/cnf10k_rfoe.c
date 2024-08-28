@@ -1008,16 +1008,18 @@ err:
 }
 
 static void cnf10k_rfoe_submit_job(struct cnf10k_rfoe_ndev_priv *priv,
+				   struct tx_job_queue_cfg *tx_job_cfg,
 				   struct tx_job_entry *job_entry, int job_index,
-				   int psm_queue_id, unsigned int pkt_len,
+				   unsigned int pkt_len,
 				   bool update_lmac, u8 rfoe_mode)
 {
 	struct cnf10k_mhbw_jd_dma_cfg_word_0_s *jd_dma_cfg_word_0;
 	struct cnf10k_mhab_job_desc_cfg *jd_cfg_ptr;
+	unsigned long flags;
 
 	netif_dbg(priv, tx_queued, priv->netdev,
 		  "rfoe=%d lmac=%d psm_queue=%d tx_job_entry %d job_cmd_lo=0x%llx job_cmd_high=0x%llx jd_iova_addr=0x%llx\n",
-		  priv->rfoe_num, priv->lmac_id, psm_queue_id, job_index,
+		  priv->rfoe_num, priv->lmac_id, tx_job_cfg->psm_queue_id, job_index,
 		  job_entry->job_cmd_lo, job_entry->job_cmd_hi,
 		  job_entry->jd_iova_addr);
 
@@ -1038,10 +1040,12 @@ static void cnf10k_rfoe_submit_job(struct cnf10k_rfoe_ndev_priv *priv,
 	dma_wmb();
 
 	/* submit PSM job */
+	spin_lock_irqsave(tx_job_cfg->psm_queue_lock, flags);
 	writeq(job_entry->job_cmd_lo,
-	       priv->psm_reg_base + PSM_QUEUE_CMD_LO(psm_queue_id));
+	       priv->psm_reg_base + PSM_QUEUE_CMD_LO(tx_job_cfg->psm_queue_id));
 	writeq(job_entry->job_cmd_hi,
-	       priv->psm_reg_base + PSM_QUEUE_CMD_HI(psm_queue_id));
+	       priv->psm_reg_base + PSM_QUEUE_CMD_HI(tx_job_cfg->psm_queue_id));
+	spin_unlock_irqrestore(tx_job_cfg->psm_queue_lock, flags);
 }
 
 static netdev_tx_t cnf10k_rfoe_ptp_xmit(struct sk_buff *skb,
@@ -1165,7 +1169,7 @@ ptp_one_step_out:
 		memcpy((void __force *)job_entry->pkt_dma_addr, skb->data, pkt_len);
 	}
 
-	cnf10k_rfoe_submit_job(priv, job_entry, job_cfg->q_idx, psm_queue_id,
+	cnf10k_rfoe_submit_job(priv, job_cfg, job_entry, job_cfg->q_idx,
 			       pkt_len, false, 0);
 
 	cnf10k_rfoe_update_tx_stats(priv, pkt_stats_type, skb->len);
@@ -1250,7 +1254,7 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 	/* Copy packet data to dma buffer */
 	memcpy((void __force *)job_entry->pkt_dma_addr, skb->data, skb->len);
 
-	cnf10k_rfoe_submit_job(priv, job_entry, job_cfg->q_idx, psm_queue_id,
+	cnf10k_rfoe_submit_job(priv, job_cfg, job_entry, job_cfg->q_idx,
 			       pkt_len, true,
 			       pkt_type == PACKET_TYPE_ECPRI ? 1 : 0);
 
@@ -1541,6 +1545,7 @@ static void cnf10k_rfoe_fill_tx_job_entries(struct cnf10k_rfoe_ndev_priv *priv,
 	job_cfg->q_idx = 0;
 	job_cfg->num_entries = num_entries;
 	spin_lock_init(&job_cfg->lock);
+	job_cfg->psm_queue_lock = rfoe_common_get_psm_queue_lock(job_cfg->psm_queue_id);
 }
 
 int cnf10k_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,

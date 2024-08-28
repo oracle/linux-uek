@@ -249,6 +249,24 @@ static void otx2_rfoe_ptp_offset_timer(struct timer_list *t)
 	mod_timer(&ptp_cfg->ptp_timer, expires);
 }
 
+static void otx2_rfoe_submit_job_to_psm(struct otx2_rfoe_ndev_priv *priv,
+					struct tx_job_queue_cfg *tx_job_cfg,
+					struct tx_job_entry *job_entry)
+{
+	unsigned long flags;
+
+	/* make sure that all memory writes are completed */
+	dma_wmb();
+
+	/* submit PSM job */
+	spin_lock_irqsave(tx_job_cfg->psm_queue_lock, flags);
+	writeq(job_entry->job_cmd_lo,
+	       priv->psm_reg_base + PSM_QUEUE_CMD_LO(tx_job_cfg->psm_queue_id));
+	writeq(job_entry->job_cmd_hi,
+	       priv->psm_reg_base + PSM_QUEUE_CMD_HI(tx_job_cfg->psm_queue_id));
+	spin_unlock_irqrestore(tx_job_cfg->psm_queue_lock, flags);
+}
+
 /* submit pending ptp tx requests */
 static void otx2_rfoe_ptp_submit_work(struct work_struct *work)
 {
@@ -341,14 +359,8 @@ static void otx2_rfoe_ptp_submit_work(struct work_struct *work)
 						 jd_dma_cfg_word_1->start_addr),
 	       skb->data, skb->len);
 
-	/* make sure that all memory writes are completed */
-	dma_wmb();
-
-	/* submit PSM job */
-	writeq(job_entry->job_cmd_lo,
-	       priv->psm_reg_base + PSM_QUEUE_CMD_LO(psm_queue_id));
-	writeq(job_entry->job_cmd_hi,
-	       priv->psm_reg_base + PSM_QUEUE_CMD_HI(psm_queue_id));
+	/* submit tx job to psm */
+	otx2_rfoe_submit_job_to_psm(priv, job_cfg, job_entry);
 
 	/* increment queue index */
 	job_cfg->q_idx++;
@@ -1151,14 +1163,8 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 						 jd_dma_cfg_word_1->start_addr),
 	       skb->data, skb->len);
 
-	/* make sure that all memory writes are completed */
-	dma_wmb();
-
-	/* submit PSM job */
-	writeq(job_entry->job_cmd_lo,
-	       priv->psm_reg_base + PSM_QUEUE_CMD_LO(psm_queue_id));
-	writeq(job_entry->job_cmd_hi,
-	       priv->psm_reg_base + PSM_QUEUE_CMD_HI(psm_queue_id));
+	/* submit tx job to psm */
+	otx2_rfoe_submit_job_to_psm(priv, job_cfg, job_entry);
 
 	/* update stats */
 	if (pkt_type == PACKET_TYPE_ECPRI) {
@@ -1446,6 +1452,7 @@ static void otx2_rfoe_fill_tx_job_entries(struct otx2_rfoe_ndev_priv *priv,
 	job_cfg->q_idx = 0;
 	job_cfg->num_entries = num_entries;
 	spin_lock_init(&job_cfg->lock);
+	job_cfg->psm_queue_lock = rfoe_common_get_psm_queue_lock(job_cfg->psm_queue_id);
 }
 
 int otx2_rfoe_parse_and_init_intf(struct otx2_bphy_cdev_priv *cdev,

@@ -9,6 +9,7 @@
 
 #include <linux/netdevice.h>
 #include <linux/net_tstamp.h>
+#include <linux/if_vlan.h>
 
 #include "bphy_netdev_comm_if.h"
 
@@ -99,6 +100,8 @@ struct tx_job_queue_cfg {
 	int				q_idx;
 	/* lmac protection lock */
 	spinlock_t			lock;
+	/* psm queue protection */
+	spinlock_t			*psm_queue_lock;
 
 	struct tx_job_entry		job_entries[MAX_TX_JOB_ENTRIES];
 };
@@ -264,5 +267,7 @@ struct bcn_ptp_cfg {
 	s32 sec_bcn_offset_slave;
 	u64 ptp_offset;
 };
+
+spinlock_t *rfoe_common_get_psm_queue_lock(u8 psm_queue_id);
 
 #endif
