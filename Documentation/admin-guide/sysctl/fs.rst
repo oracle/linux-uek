@@ -146,6 +146,14 @@ These sysctls allow you to change the value of the fixed UID and GID.
 The default is 65534.
 
 
+neg-dentry-pc
+-------------
+
+This integer value specifies a soft limit to the total number of
+negative dentries allowed  in a system as a percentage of the total
+system memory available. The allowable range for this value is 0-10.
+
+
 pipe-user-pages-hard
 --------------------
 
