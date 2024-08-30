@@ -77,6 +77,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 #
 # standard kernel
 %define with_up        1
+# kernel-container
+%define with_container 1
 # kernel-smp (only valid for ppc 32-bit, sparc64)
 %define with_smp       1
 # kernel-kdump
@@ -296,6 +298,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 # don't build noarch kernels or headers (duh)
 %ifarch noarch
 %define with_up 0
+%define with_container 0
 %define with_compression 0
 %define with_headers 0
 %define with_tools 0
@@ -410,6 +413,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 6
 %define hdrarch arm64
 %define make_target Image
 %define kernel_image arch/arm64/boot/Image
+%define with_container 0
 BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %if %{with_4konly}
 %define with_headers 0
@@ -438,6 +442,7 @@ BuildRequires: oracle-armtoolset-1 >= 1.0-0
 %define with_up 0
 %define with_kdump 1
 %define with_dtrace 0
+%define with_container 0
 %endif
 
 # if requested, only build emb kernel
@@ -683,6 +688,7 @@ Source24: find-debuginfo.sh
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
+Source1002: config-x86_64-container
 Source1007: config-aarch64
 Source1008: config-aarch64-debug
 Source1009: config-mips64-embedded
@@ -776,6 +782,20 @@ device drivers shipped with it are documented in these files.
 You'll want to install this package if you need a reference to the
 options that can be passed to Linux kernel modules at load time.
 
+%if %{with_container}
+%package -n kernel%{variant}-container
+Summary: The Linux kernel optimized for running inside a container
+Group: Development/System
+%description  -n kernel%{variant}-container
+Container kernel
+
+%package -n kernel%{variant}-container-debug
+Summary: Debug conmponents for the UEK container kernel
+Group: Development/System
+AutoReq: no
+%description  -n kernel%{variant}-container-debug
+Container kernel config file and System.map
+%endif
 
 %if %{with_headers}
 %package headers
@@ -1306,6 +1326,7 @@ mkdir -p configs
 %ifarch x86_64
 	cp %{SOURCE1001} configs/config-debug
 	cp %{SOURCE1000} configs/config
+	cp %{SOURCE1002} configs/config-container
 %endif #ifarch x86_64
 
 %ifarch i686
@@ -1711,6 +1732,46 @@ fi
     install -m 0644 -D %{SOURCE210} $RPM_BUILD_ROOT/etc/modprobe.d/tcindex-disable.conf
 }
 
+BuildContainerKernel() {
+    MakeTarget=$1
+    KernelImage=$2
+    Flavor=$3
+
+    Arch=x86_64
+    ExtraVer="-%{release}.container"
+    KernelImageRaw=vmlinux
+
+    echo BUILDING KERNEL FOR ${Flavour} %{_target_cpu}...
+
+    perl -p -i -e "s/^EXTRAVERSION.*/EXTRAVERSION = ${ExtraVer}/" Makefile
+
+    make -s mrproper
+
+    cp configs/config-container .config
+
+    make -s ARCH=$Arch olddefconfig > /dev/null
+    make -s CONFIG_DEBUG_SECTION_MISMATCH=y %{?_smp_mflags} ARCH=$Arch %{?sparse_mflags} || exit 1
+
+    # Install
+    KernelVer=%{kversion}-%{release}
+    KernelDir=%{buildroot}/usr/share/kata-containers
+
+    mkdir   -p ${KernelDir}
+
+    install -m 755 $KernelImage ${KernelDir}/vmlinuz-$KernelVer
+    ln -sf vmlinuz-$KernelVer ${KernelDir}/vmlinuz.container
+
+    eu-strip  --remove-comment $KernelImageRaw -o ${KernelDir}/vmlinux-$KernelVer
+    chmod 755 ${KernelDir}/vmlinux-$KernelVer
+    ln -sf vmlinux-$KernelVer ${KernelDir}/vmlinux.container
+
+    install -m 644 .config "${KernelDir}/config-${KernelVer}"
+    install -m 644 System.map "${KernelDir}/System.map-${KernelVer}"
+
+    rm -f %{buildroot}/usr/lib/modules/$KernelVer/build
+    rm -f %{buildroot}/usr/lib/modules/$KernelVer/source
+}
+
 ###
 # DO it...
 ###
@@ -1720,6 +1781,10 @@ rm -rf $RPM_BUILD_ROOT
 mkdir -p $RPM_BUILD_ROOT/boot
 
 cd linux-%{version}-%{release}
+
+%if %{with_container}
+BuildContainerKernel %make_target %kernel_image container
+%endif
 
 %if %{with_debug}
 %if %{with_up}
@@ -2220,6 +2285,20 @@ fi
 %if %{with_dtrace}
 %exclude /usr/include/linux/dtrace
 %endif
+%endif
+
+%if %{with_container}
+%files -n kernel%{variant}-container
+%dir /usr/share/kata-containers
+/usr/share/kata-containers/vmlinux-%{kversion}-%{release}
+/usr/share/kata-containers/vmlinux.container
+/usr/share/kata-containers/vmlinuz-%{kversion}-%{release}
+/usr/share/kata-containers/vmlinuz.container
+
+%files -n kernel%{variant}-container-debug
+%dir /usr/share/kata-containers
+/usr/share/kata-containers/config-%{kversion}-%{release}
+/usr/share/kata-containers/System.map-%{kversion}-%{release}
 %endif
 
 %if %{with_bootwrapper}

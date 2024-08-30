@@ -115,7 +115,7 @@ static int detect_exadata_bootline(char **reason)
 	return -ENODEV;
 }
 
-static int uek_misc_init(void)
+static int __init uek_misc_init(void)
 {
 	int ret;
 	char *reason = NULL;
