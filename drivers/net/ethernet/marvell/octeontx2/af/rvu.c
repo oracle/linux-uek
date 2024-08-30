@@ -691,9 +691,9 @@ static void rvu_check_min_msix_vec(struct rvu *rvu, int nvecs, int pf, int vf)
 
 check_pf:
 	if (pf == 0)
-		min_vecs = RVU_AF_INT_VEC_CNT + RVU_PF_INT_VEC_CNT;
+		min_vecs = rvu_af_int_vec_cnt(rvu) + rvu_pf_int_vec_cnt(rvu);
 	else
-		min_vecs = RVU_PF_INT_VEC_CNT;
+		min_vecs = rvu_pf_int_vec_cnt(rvu);
 
 	if (!(nvecs < min_vecs))
 		return;
@@ -3538,12 +3538,8 @@ static int rvu_afvf_msix_vectors_num_ok(struct rvu *rvu)
 	 * VF interrupts can be handled. Offset equal to zero means
 	 * that PF vectors are not configured and overlapping AF vectors.
 	 */
-	if (is_cn20k(rvu->pdev))
-		return (pfvf->msix.max >= RVU_AF_CN20K_INT_VEC_CNT +
-			RVU_MBOX_PF_INT_VEC_CNT) && offset;
-
-	return (pfvf->msix.max >= RVU_AF_INT_VEC_CNT + RVU_PF_INT_VEC_CNT) &&
-	       offset;
+	return (pfvf->msix.max >= rvu_af_int_vec_cnt(rvu) +
+		rvu_pf_int_vec_cnt(rvu)) && offset;
 }
 
 static int rvu_register_interrupts(struct rvu *rvu)

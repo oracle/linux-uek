@@ -871,6 +871,22 @@ static inline bool is_rvu_95xx_A0(struct rvu *rvu)
 	return (pdev->revision == 0x10) || (pdev->revision == 0x11);
 }
 
+static inline int rvu_af_int_vec_cnt(struct rvu *rvu)
+{
+	if (is_cn20k(rvu->pdev))
+		return RVU_AF_CN20K_INT_VEC_CNT;
+	else
+		return RVU_AF_INT_VEC_CNT;
+}
+
+static inline int rvu_pf_int_vec_cnt(struct rvu *rvu)
+{
+	if (is_cn20k(rvu->pdev))
+		return RVU_MBOX_PF_INT_VEC_CNT;
+	else
+		return RVU_PF_INT_VEC_CNT;
+}
+
 /* REVID for PCIe devices.
  * Bits 0..1: minor pass, bit 3..2: major pass
  * bits 7..4: midr id
