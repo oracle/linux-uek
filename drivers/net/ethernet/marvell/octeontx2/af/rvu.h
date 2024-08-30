@@ -1425,6 +1425,8 @@ u32 rvu_get_cpt_chan_mask(struct rvu *rvu);
 int rvu_set_channels_base(struct rvu *rvu);
 void rvu_program_channels(struct rvu *rvu);
 
+void rvu_afvf_queue_flr_work(struct rvu *rvu, int start_vf, int numvfs);
+
 /* CN10K NIX */
 void rvu_nix_block_cn10k_init(struct rvu *rvu, struct nix_hw *nix_hw);
 

@@ -8,6 +8,13 @@
 #ifndef RVU_MBOX_REG_H
 #define RVU_MBOX_REG_H
 
+#define PF_TO_REGIDX(pf)	((pf) >= 64 ? 1 : 0)
+#define PF_BITMAX		64
+static inline u64 pf_to_bitoff(u8 pf)
+{
+	return (pf >= 64 ? pf - 64 : pf);
+}
+
 /* RVUM block registers */
 #define RVU_PF_DISC				(0x0)
 #define RVU_PRIV_PFX_DISC(a)			(0x8000208 | (a) << 16)
@@ -27,6 +34,16 @@
 #define RVU_MBOX_AF_PFAF1_INT_W1S(a)		(0x29A8 | (a) << 6)
 #define RVU_MBOX_AF_PFAF1_INT_ENA_W1S(a)	(0x29B0 | (a) << 6)
 #define RVU_MBOX_AF_PFAF1_INT_ENA_W1C(a)	(0x29B8 | (a) << 6)
+
+#define RVU_AF_PFFLR_INTX(a)                    (0x27a0 + 0x40 * (a))
+#define RVU_AF_PFFLR_INT_W1SX(a)                (0x27a8 + 0x40 * (a))
+#define RVU_AF_PFFLR_INT_ENA_W1SX(a)            (0x27b0 + 0x40 * (a))
+#define RVU_AF_PFFLR_INT_ENA_W1CX(a)            (0x27b8 + 0x40 * (a))
+#define RVU_AF_PFME_INTX(a)                     (0x28c0 + 0x20 * (a))
+#define RVU_AF_PFME_INT_W1SX(a)                 (0x28c8 + 0x20 * (a))
+#define RVU_AF_PFME_INT_ENA_W1SX(a)             (0x28d0 + 0x20 * (a))
+#define RVU_AF_PFME_INT_ENA_W1CX(a)             (0x28d8 + 0x20 * (a))
+#define RVU_AF_PFTRPENDX(a)                     (0x2810 + 0x8 * (a))
 
 /* RVU PF => AF mbox registers */
 #define RVU_MBOX_PF_PFAF_TRIGX(a)		(0xC00 | (a) << 3)

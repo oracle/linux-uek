@@ -3413,6 +3413,10 @@ static void rvu_flr_handler(struct work_struct *work)
 
 	__rvu_flr_handler(rvu, pcifunc);
 
+	if (is_cn20k(rvu->pdev)) {
+		cn20k_flr_finish(rvu, pf);
+		return;
+	}
 	/* Signal FLR finish */
 	rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_PFTRPEND, BIT_ULL(pf));
 
@@ -3420,7 +3424,7 @@ static void rvu_flr_handler(struct work_struct *work)
 	rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_PFFLR_INT_ENA_W1S,  BIT_ULL(pf));
 }
 
-static void rvu_afvf_queue_flr_work(struct rvu *rvu, int start_vf, int numvfs)
+void rvu_afvf_queue_flr_work(struct rvu *rvu, int start_vf, int numvfs)
 {
 	int dev, vf, reg = 0;
 	u64 intr;
@@ -3551,13 +3555,17 @@ static void rvu_unregister_interrupts(struct rvu *rvu)
 	else
 		cn20k_rvu_unregister_interrupts(rvu);
 
-	/* Disable the PF FLR interrupt */
-	rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_PFFLR_INT_ENA_W1C,
-		    INTR_MASK(rvu->hw->total_pfs) & ~1ULL);
+	if (is_cn20k(rvu->pdev)) {
+		cn20k_disable_flr_me(rvu);
+	} else {
+		/* Disable the PF FLR interrupt */
+		rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_PFFLR_INT_ENA_W1C,
+			    INTR_MASK(rvu->hw->total_pfs) & ~1ULL);
 
-	/* Disable the PF ME interrupt */
-	rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_PFME_INT_ENA_W1C,
-		    INTR_MASK(rvu->hw->total_pfs) & ~1ULL);
+		/* Disable the PF ME interrupt */
+		rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_PFME_INT_ENA_W1C,
+			    INTR_MASK(rvu->hw->total_pfs) & ~1ULL);
+	}
 
 	for (irq = 0; irq < rvu->num_vec; irq++) {
 		if (rvu->irq_allocated[irq]) {
@@ -3584,6 +3592,60 @@ static int rvu_afvf_msix_vectors_num_ok(struct rvu *rvu)
 	 */
 	return (pfvf->msix.max >= rvu_af_int_vec_cnt(rvu) +
 		rvu_pf_int_vec_cnt(rvu)) && offset;
+}
+
+static int rvu_register_flr_me_afpf_interrupts(struct rvu *rvu)
+{
+	int ret;
+
+	if (is_cn20k(rvu->pdev))
+		return cn20k_register_flr_me_afpf_interrupts(rvu);
+
+	/* Register FLR interrupt handler */
+	sprintf(&rvu->irq_name[RVU_AF_INT_VEC_PFFLR * NAME_SIZE],
+		"RVUAF FLR");
+	ret = request_irq(pci_irq_vector(rvu->pdev, RVU_AF_INT_VEC_PFFLR),
+			  rvu_flr_intr_handler, 0,
+			  &rvu->irq_name[RVU_AF_INT_VEC_PFFLR * NAME_SIZE],
+			  rvu);
+	if (ret) {
+		dev_err(rvu->dev,
+			"RVUAF: IRQ registration failed for FLR\n");
+		return ret;
+	}
+	rvu->irq_allocated[RVU_AF_INT_VEC_PFFLR] = true;
+
+	/* Enable FLR interrupt for all PFs*/
+	rvu_write64(rvu, BLKADDR_RVUM,
+		    RVU_AF_PFFLR_INT, INTR_MASK(rvu->hw->total_pfs));
+
+	rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_PFFLR_INT_ENA_W1S,
+		    INTR_MASK(rvu->hw->total_pfs) & ~1ULL);
+
+	/* Register ME interrupt handler */
+	sprintf(&rvu->irq_name[RVU_AF_INT_VEC_PFME * NAME_SIZE],
+		"RVUAF ME");
+	ret = request_irq(pci_irq_vector(rvu->pdev, RVU_AF_INT_VEC_PFME),
+			  rvu_me_pf_intr_handler, 0,
+			  &rvu->irq_name[RVU_AF_INT_VEC_PFME * NAME_SIZE],
+			  rvu);
+	if (ret) {
+		dev_err(rvu->dev,
+			"RVUAF: IRQ registration failed for ME\n");
+	}
+	rvu->irq_allocated[RVU_AF_INT_VEC_PFME] = true;
+
+	/* Clear TRPEND bit for all PF */
+	rvu_write64(rvu, BLKADDR_RVUM,
+		    RVU_AF_PFTRPEND, INTR_MASK(rvu->hw->total_pfs));
+	/* Enable ME interrupt for all PFs*/
+	rvu_write64(rvu, BLKADDR_RVUM,
+		    RVU_AF_PFME_INT, INTR_MASK(rvu->hw->total_pfs));
+
+	rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_PFME_INT_ENA_W1S,
+		    INTR_MASK(rvu->hw->total_pfs) & ~1ULL);
+
+	return 0;
 }
 
 static int rvu_register_interrupts(struct rvu *rvu)
@@ -3640,49 +3702,9 @@ static int rvu_register_interrupts(struct rvu *rvu)
 	/* Enable mailbox interrupts from all PFs */
 	rvu_enable_mbox_intr(rvu);
 
-	/* Register FLR interrupt handler */
-	sprintf(&rvu->irq_name[RVU_AF_INT_VEC_PFFLR * NAME_SIZE],
-		"RVUAF FLR");
-	ret = request_irq(pci_irq_vector(rvu->pdev, RVU_AF_INT_VEC_PFFLR),
-			  rvu_flr_intr_handler, 0,
-			  &rvu->irq_name[RVU_AF_INT_VEC_PFFLR * NAME_SIZE],
-			  rvu);
-	if (ret) {
-		dev_err(rvu->dev,
-			"RVUAF: IRQ registration failed for FLR\n");
+	ret = rvu_register_flr_me_afpf_interrupts(rvu);
+	if (ret)
 		goto fail;
-	}
-	rvu->irq_allocated[RVU_AF_INT_VEC_PFFLR] = true;
-
-	/* Enable FLR interrupt for all PFs*/
-	rvu_write64(rvu, BLKADDR_RVUM,
-		    RVU_AF_PFFLR_INT, INTR_MASK(rvu->hw->total_pfs));
-
-	rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_PFFLR_INT_ENA_W1S,
-		    INTR_MASK(rvu->hw->total_pfs) & ~1ULL);
-
-	/* Register ME interrupt handler */
-	sprintf(&rvu->irq_name[RVU_AF_INT_VEC_PFME * NAME_SIZE],
-		"RVUAF ME");
-	ret = request_irq(pci_irq_vector(rvu->pdev, RVU_AF_INT_VEC_PFME),
-			  rvu_me_pf_intr_handler, 0,
-			  &rvu->irq_name[RVU_AF_INT_VEC_PFME * NAME_SIZE],
-			  rvu);
-	if (ret) {
-		dev_err(rvu->dev,
-			"RVUAF: IRQ registration failed for ME\n");
-	}
-	rvu->irq_allocated[RVU_AF_INT_VEC_PFME] = true;
-
-	/* Clear TRPEND bit for all PF */
-	rvu_write64(rvu, BLKADDR_RVUM,
-		    RVU_AF_PFTRPEND, INTR_MASK(rvu->hw->total_pfs));
-	/* Enable ME interrupt for all PFs*/
-	rvu_write64(rvu, BLKADDR_RVUM,
-		    RVU_AF_PFME_INT, INTR_MASK(rvu->hw->total_pfs));
-
-	rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_PFME_INT_ENA_W1S,
-		    INTR_MASK(rvu->hw->total_pfs) & ~1ULL);
 
 	if (!rvu_afvf_msix_vectors_num_ok(rvu))
 		return 0;
