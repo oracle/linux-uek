@@ -3438,6 +3438,7 @@ static void mlx5_vdpa_free(struct vdpa_device *vdev)
 
 	free_fixed_resources(ndev);
 	mlx5_vdpa_clean_mrs(mvdev);
+	mlx5_vdpa_destroy_mr_resources(&ndev->mvdev);
 	if (!is_zero_ether_addr(ndev->config.mac)) {
 		pfmdev = pci_get_drvdata(pci_physfn(mvdev->mdev->pdev));
 		mlx5_mpfs_del_mac(pfmdev, ndev->config.mac);
@@ -3966,12 +3967,14 @@ static int mlx5_vdpa_dev_add(struct vdpa_mgmt_dev *v_mdev, const char *name,
 	if (err)
 		goto err_mpfs;
 
-	INIT_LIST_HEAD(&mvdev->mres.mr_list_head);
+	err = mlx5_vdpa_init_mr_resources(mvdev);
+	if (err)
+		goto err_res;
 
 	if (MLX5_CAP_GEN(mvdev->mdev, umem_uid_0)) {
 		err = mlx5_vdpa_create_dma_mr(mvdev);
 		if (err)
-			goto err_res;
+			goto err_mr_res;
 	}
 
 	err = alloc_fixed_resources(ndev);
@@ -4013,6 +4016,8 @@ err_res2:
 	free_fixed_resources(ndev);
 err_mr:
 	mlx5_vdpa_clean_mrs(mvdev);
+err_mr_res:
+	mlx5_vdpa_destroy_mr_resources(mvdev);
 err_res:
 	mlx5_vdpa_free_resources(&ndev->mvdev);
 err_mpfs:
