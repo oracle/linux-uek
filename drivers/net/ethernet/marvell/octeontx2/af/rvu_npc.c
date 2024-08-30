@@ -2354,8 +2354,8 @@ void rvu_npc_get_mcam_counter_alloc_info(struct rvu *rvu, u16 pcifunc,
 	}
 }
 
-static int npc_mcam_verify_entry(struct npc_mcam *mcam,
-				 u16 pcifunc, int entry)
+int npc_mcam_verify_entry(struct npc_mcam *mcam,
+			  u16 pcifunc, int entry)
 {
 	/* verify AF installed entries */
 	if (is_pffunc_af(pcifunc))
@@ -3047,24 +3047,16 @@ int rvu_mbox_handler_npc_mcam_read_entry(struct rvu *rvu,
 	u16 pcifunc = req->hdr.pcifunc;
 	int blkaddr, rc;
 
-	req->entry = npc_cn20k_vidx2idx(req->entry);
-
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0)
 		return NPC_MCAM_INVALID_REQ;
 
 	mutex_lock(&mcam->lock);
 	rc = npc_mcam_verify_entry(mcam, pcifunc, req->entry);
-	if (!rc) {
-		if (is_cn20k(rvu->pdev))
-			npc_cn20k_read_mcam_entry(rvu, blkaddr, req->entry,
-						  &rsp->entry_data, &rsp->intf,
-						  &rsp->enable, &rsp->hw_prio);
-		else
-			npc_read_mcam_entry(rvu, mcam, blkaddr, req->entry,
-					    &rsp->entry_data,
-					    &rsp->intf, &rsp->enable);
-	}
+	if (!rc)
+		npc_read_mcam_entry(rvu, mcam, blkaddr, req->entry,
+				    &rsp->entry_data,
+				    &rsp->intf, &rsp->enable);
 
 	mutex_unlock(&mcam->lock);
 	return rc;
@@ -3079,8 +3071,6 @@ int rvu_mbox_handler_npc_mcam_write_entry(struct rvu *rvu,
 	u16 pcifunc = req->hdr.pcifunc;
 	int blkaddr, rc;
 	u8 nix_intf;
-
-	req->entry = npc_cn20k_vidx2idx(req->entry);
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0)
@@ -3111,13 +3101,8 @@ int rvu_mbox_handler_npc_mcam_write_entry(struct rvu *rvu,
 	if (is_pffunc_af(req->hdr.pcifunc))
 		nix_intf = req->intf;
 
-	if (is_cn20k(rvu->pdev))
-		npc_cn20k_config_mcam_entry(rvu, blkaddr, req->entry, nix_intf,
-					    &req->entry_data, req->enable_entry,
-					    req->hw_prio);
-	else
-		npc_config_mcam_entry(rvu, mcam, blkaddr, req->entry, nix_intf,
-				      &req->entry_data, req->enable_entry);
+	npc_config_mcam_entry(rvu, mcam, blkaddr, req->entry, nix_intf,
+			      &req->entry_data, req->enable_entry);
 
 	if (req->set_cntr)
 		npc_map_mcam_entry_and_cntr(rvu, mcam, blkaddr,
@@ -3315,6 +3300,10 @@ int rvu_mbox_handler_npc_mcam_alloc_counter(struct rvu *rvu,
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	int err;
 
+	/* Counter is not supported for CN20K */
+	if (is_cn20k(rvu->pdev))
+		return NPC_MCAM_INVALID_REQ;
+
 	mutex_lock(&mcam->lock);
 
 	err = __npc_mcam_alloc_counter(rvu, req, rsp);
@@ -3368,6 +3357,10 @@ int rvu_mbox_handler_npc_mcam_free_counter(struct rvu *rvu,
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	int err;
+
+	/* Counter is not supported for CN20K */
+	if (is_cn20k(rvu->pdev))
+		return NPC_MCAM_INVALID_REQ;
 
 	mutex_lock(&mcam->lock);
 
@@ -3427,6 +3420,10 @@ int rvu_mbox_handler_npc_mcam_unmap_counter(struct rvu *rvu,
 	u16 index, entry = 0;
 	int blkaddr, rc;
 
+	/* Counter is not supported for CN20K */
+	if (is_cn20k(rvu->pdev))
+		return NPC_MCAM_INVALID_REQ;
+
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0)
 		return NPC_MCAM_INVALID_REQ;
@@ -3473,6 +3470,10 @@ int rvu_mbox_handler_npc_mcam_clear_counter(struct rvu *rvu,
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	int blkaddr, err;
 
+	/* Counter is not supported for CN20K */
+	if (is_cn20k(rvu->pdev))
+		return NPC_MCAM_INVALID_REQ;
+
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0)
 		return NPC_MCAM_INVALID_REQ;
@@ -3494,6 +3495,10 @@ int rvu_mbox_handler_npc_mcam_counter_stats(struct rvu *rvu,
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	int blkaddr, err;
+
+	/* Counter is not supported for CN20K */
+	if (is_cn20k(rvu->pdev))
+		return NPC_MCAM_INVALID_REQ;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0)
@@ -3539,7 +3544,6 @@ int rvu_mbox_handler_npc_mcam_alloc_and_write_entry(struct rvu *rvu,
 	entry_req.ref_prio = req->ref_prio;
 	entry_req.ref_entry = req->ref_entry;
 	entry_req.count = 1;
-	entry_req.virt = req->virt;
 
 	rc = rvu_mbox_handler_npc_mcam_alloc_entry(rvu,
 						   &entry_req, &entry_rsp);
@@ -3549,7 +3553,7 @@ int rvu_mbox_handler_npc_mcam_alloc_and_write_entry(struct rvu *rvu,
 	if (!entry_rsp.count)
 		return NPC_MCAM_ALLOC_FAILED;
 
-	entry = npc_cn20k_vidx2idx(entry_rsp.entry);
+	entry = entry_rsp.entry;
 
 	if (!req->alloc_cntr)
 		goto write_entry;
@@ -3579,13 +3583,8 @@ write_entry:
 	else
 		nix_intf = pfvf->nix_rx_intf;
 
-	if (is_cn20k(rvu->pdev))
-		npc_cn20k_config_mcam_entry(rvu, blkaddr, entry, nix_intf,
-					    &req->entry_data, req->enable_entry,
-					    req->hw_prio);
-	else
-		npc_config_mcam_entry(rvu, mcam, blkaddr, entry, nix_intf,
-				      &req->entry_data, req->enable_entry);
+	npc_config_mcam_entry(rvu, mcam, blkaddr, entry, nix_intf,
+			      &req->entry_data, req->enable_entry);
 
 	if (req->alloc_cntr)
 		npc_map_mcam_entry_and_cntr(rvu, mcam, blkaddr, entry, cntr);
@@ -3768,8 +3767,8 @@ int rvu_mbox_handler_npc_read_base_steer_rule(struct rvu *rvu,
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	int index, blkaddr, nixlf, rc = 0;
 	u16 pcifunc = req->hdr.pcifunc;
-	u8 intf, enable, hw_prio;
 	struct rvu_pfvf *pfvf;
+	u8 intf, enable;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0)
@@ -3800,13 +3799,8 @@ int rvu_mbox_handler_npc_read_base_steer_rule(struct rvu *rvu,
 					 NIXLF_UCAST_ENTRY);
 read_entry:
 	/* Read the mcam entry */
-	if (is_cn20k(rvu->pdev))
-		npc_cn20k_read_mcam_entry(rvu, blkaddr, index,
-					  &rsp->entry, &intf,
-					  &enable, &hw_prio);
-	else
-		npc_read_mcam_entry(rvu, mcam, blkaddr, index, &rsp->entry, &intf,
-				    &enable);
+	npc_read_mcam_entry(rvu, mcam, blkaddr, index, &rsp->entry, &intf,
+			    &enable);
 	mutex_unlock(&mcam->lock);
 out:
 	return rc;
@@ -3832,6 +3826,12 @@ int rvu_mbox_handler_npc_mcam_entry_stats(struct rvu *rvu,
 
 	index = req->entry & (mcam->banksize - 1);
 	bank = npc_get_bank(rvu, mcam, req->entry);
+
+	if (is_cn20k(rvu->pdev)) {
+		/*TODO: need to read NPC_AF_MCAMEX_BANKX_STAT_EXT */
+		mutex_unlock(&mcam->lock);
+		return 0;
+	}
 
 	/* read MCAM entry STAT_ACT register */
 	regval = rvu_read64(rvu, blkaddr, NPC_AF_MCAMEX_BANKX_STAT_ACT(index, bank));

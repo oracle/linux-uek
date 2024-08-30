@@ -282,6 +282,7 @@ void npc_program_mkex_hash(struct rvu *rvu, int blkaddr)
 
 void npc_update_field_hash(struct rvu *rvu, u8 intf,
 			   struct mcam_entry *entry,
+			   struct cn20k_mcam_entry *cn20k_entry,
 			   int blkaddr,
 			   u64 features,
 			   struct flow_msg *pkt,
@@ -336,7 +337,7 @@ void npc_update_field_hash(struct rvu *rvu, u8 intf,
 										 intf,
 										 hash_idx);
 						npc_update_entry(rvu, NPC_SIP_IPV6, entry,
-								 field_hash, 0,
+								 cn20k_entry, field_hash, 0,
 								 GENMASK(31, 0), 0, intf);
 						memcpy(&opkt->ip6src, &pkt->ip6src,
 						       sizeof(pkt->ip6src));
@@ -353,7 +354,7 @@ void npc_update_field_hash(struct rvu *rvu, u8 intf,
 										 intf,
 										 hash_idx);
 						npc_update_entry(rvu, NPC_DIP_IPV6, entry,
-								 field_hash, 0,
+								 cn20k_entry, field_hash, 0,
 								 GENMASK(31, 0), 0, intf);
 						memcpy(&opkt->ip6dst, &pkt->ip6dst,
 						       sizeof(pkt->ip6dst));

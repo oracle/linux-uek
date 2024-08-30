@@ -54,6 +54,7 @@ struct npc_mcam_kex_hash {
 
 void npc_update_field_hash(struct rvu *rvu, u8 intf,
 			   struct mcam_entry *entry,
+			   struct cn20k_mcam_entry *cn20k_entry,
 			   int blkaddr,
 			   u64 features,
 			   struct flow_msg *pkt,
