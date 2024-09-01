@@ -1157,15 +1157,11 @@ int rvu_mbox_handler_cpt_flt_eng_info(struct rvu *rvu, struct cpt_flt_eng_info_r
 	return 0;
 }
 
-static void cpt_rxc_teardown(struct rvu *rvu, int blkaddr)
+static void cpt_cn10k_rxc_teardown(struct rvu *rvu, int blkaddr)
 {
 	struct cpt_rxc_time_cfg_req req, prev;
-	struct rvu_hwinfo *hw = rvu->hw;
 	int timeout = 2000;
 	u64 reg;
-
-	if (!hw->cap.cpt_rxc)
-		return;
 
 	/* Set time limit to minimum values, so that rxc entries will be
 	 * flushed out quickly.
@@ -1205,6 +1201,70 @@ static void cpt_rxc_teardown(struct rvu *rvu, int blkaddr)
 
 	/* Restore config */
 	cpt_rxc_time_cfg(rvu, &prev, blkaddr, NULL);
+}
+
+static void cpt_cn20k_rxc_teardown(struct rvu *rvu, int blkaddr)
+{
+	struct cpt_rxc_time_cfg_req req, prev;
+	int timeout = 2000;
+	u64 reg;
+
+	/* Set time limit to minimum values, so that rxc entries will be
+	 * flushed out quickly.
+	 */
+	req.step = 1;
+	req.zombie_thres = 1;
+	req.zombie_limit = 1;
+	req.active_thres = 1;
+	req.active_limit = 1;
+	/* TBD: Currently support First queue cleanup.
+	 * Re-visit when add multi-queue support for cn20k.
+	 */
+	req.queue_id = 0;
+	prev.queue_id = 0;
+
+	cpt_cn20k_rxc_time_cfg(rvu, blkaddr, &req, &prev);
+
+	do {
+		reg = rvu_read64(rvu, blkaddr, CPT_AF_RXC_QUEX_ACTIVE_STS(0));
+		udelay(1);
+		if (FIELD_GET(RXC_ACTIVE_COUNT, reg))
+			timeout--;
+		else
+			break;
+	} while (timeout);
+
+	if (timeout == 0)
+		dev_warn(rvu->dev, "Poll for RXC active count hits hard loop counter\n");
+
+	timeout = 2000;
+	do {
+		reg = rvu_read64(rvu, blkaddr, CPT_AF_RXC_QUEX_ZOMBIE_STS(0));
+		udelay(1);
+		if (FIELD_GET(RXC_ZOMBIE_COUNT, reg))
+			timeout--;
+		else
+			break;
+	} while (timeout);
+
+	if (timeout == 0)
+		dev_warn(rvu->dev, "Poll for RXC zombie count hits hard loop counter\n");
+
+	/* Restore config */
+	cpt_cn20k_rxc_time_cfg(rvu, blkaddr, &prev, NULL);
+}
+
+static void cpt_rxc_teardown(struct rvu *rvu, int blkaddr)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+
+	if (!hw->cap.cpt_rxc)
+		return;
+
+	if (is_cn20k(rvu->pdev))
+		cpt_cn20k_rxc_teardown(rvu, blkaddr);
+	else
+		cpt_cn10k_rxc_teardown(rvu, blkaddr);
 }
 
 #define INFLIGHT   GENMASK_ULL(8, 0)
