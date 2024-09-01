@@ -844,10 +844,17 @@
 #define CPT_AF_RXC_CFG1                 (0x50000ull)
 #define CPT_AF_RXC_TIME                 (0x50010ull)
 #define CPT_AF_RXC_TIME_CFG             (0x50018ull)
+/* CN10K RXC Registers */
 #define CPT_AF_RXC_DFRG                 (0x50020ull)
 #define CPT_AF_RXC_ACTIVE_STS           (0x50028ull)
 #define CPT_AF_RXC_ZOMBIE_STS           (0x50030ull)
 #define CPT_AF_X2PX_LINK_CFG(a)         (0x51000ull | (u64)(a) << 3)
+/* CN20K RXC Registers */
+#define CPT_AF_RXC_QUEX_DFRG(a)		(0x50080ull | (u64)(a) << 3)
+#define CPT_AF_RXC_QUEX_ACTIVE_STS(a)	(0x50100ull | (u64)(a) << 3)
+#define CPT_AF_RXC_QUEX_ZOMBIE_STS(a)	(0x50180ull | (u64)(a) << 3)
+#define CPT_AF_RXC_QUEX_X2PX_LINK_CFG(a, b) \
+			(0x51000ull | (u64)(a) << 4 | (u64)(b) << 3)
 
 #define AF_BAR2_ALIASX(a, b)            (0x9100000ull | (a) << 12 | (b))
 #define CPT_AF_BAR2_SEL                 0x9000000

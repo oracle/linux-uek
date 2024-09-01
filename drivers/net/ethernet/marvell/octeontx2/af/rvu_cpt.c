@@ -874,6 +874,27 @@ int rvu_mbox_handler_cpt_rd_wr_register(struct rvu *rvu,
 	return 0;
 }
 
+static void get_cn20k_rxc_sts(struct rvu *rvu, struct cpt_sts_rsp *rsp,
+			      int blkaddr)
+{
+	/* CN20k supports multiple RXC queues while this mailbox can be used
+	 * for single RXC queue, So CN20k provide first RXC queue information.
+	 */
+	rsp->x2p_link_cfg0 = rvu_read64(rvu, blkaddr,
+					CPT_AF_RXC_QUEX_X2PX_LINK_CFG(0, 0));
+	rsp->x2p_link_cfg1 = rvu_read64(rvu, blkaddr,
+					CPT_AF_RXC_QUEX_X2PX_LINK_CFG(0, 1));
+	rsp->rxc_time = rvu_read64(rvu, blkaddr, CPT_AF_RXC_TIME);
+	rsp->rxc_time_cfg = rvu_read64(rvu, blkaddr,
+				       CPT_AF_RXC_TIME_CFG);
+	rsp->rxc_active_sts = rvu_read64(rvu, blkaddr,
+					 CPT_AF_RXC_QUEX_ACTIVE_STS(0));
+	rsp->rxc_zombie_sts = rvu_read64(rvu, blkaddr,
+					 CPT_AF_RXC_QUEX_ZOMBIE_STS(0));
+	rsp->rxc_dfrg = rvu_read64(rvu, blkaddr,
+				   CPT_AF_RXC_QUEX_DFRG(0));
+}
+
 static void get_ctx_pc(struct rvu *rvu, struct cpt_sts_rsp *rsp, int blkaddr)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
@@ -901,11 +922,17 @@ static void get_ctx_pc(struct rvu *rvu, struct cpt_sts_rsp *rsp, int blkaddr)
 	rsp->ctx_err = rvu_read64(rvu, blkaddr, CPT_AF_CTX_ERR);
 	rsp->ctx_enc_id = rvu_read64(rvu, blkaddr, CPT_AF_CTX_ENC_ID);
 	rsp->ctx_flush_timer = rvu_read64(rvu, blkaddr, CPT_AF_CTX_FLUSH_TIMER);
-	rsp->x2p_link_cfg0 = rvu_read64(rvu, blkaddr, CPT_AF_X2PX_LINK_CFG(0));
-	rsp->x2p_link_cfg1 = rvu_read64(rvu, blkaddr, CPT_AF_X2PX_LINK_CFG(1));
 
 	if (!hw->cap.cpt_rxc)
 		return;
+
+	if (is_cn20k(rvu->pdev)) {
+		get_cn20k_rxc_sts(rvu, rsp, blkaddr);
+		return;
+	}
+
+	rsp->x2p_link_cfg0 = rvu_read64(rvu, blkaddr, CPT_AF_X2PX_LINK_CFG(0));
+	rsp->x2p_link_cfg1 = rvu_read64(rvu, blkaddr, CPT_AF_X2PX_LINK_CFG(1));
 	rsp->rxc_time = rvu_read64(rvu, blkaddr, CPT_AF_RXC_TIME);
 	rsp->rxc_time_cfg = rvu_read64(rvu, blkaddr, CPT_AF_RXC_TIME_CFG);
 	rsp->rxc_active_sts = rvu_read64(rvu, blkaddr, CPT_AF_RXC_ACTIVE_STS);
