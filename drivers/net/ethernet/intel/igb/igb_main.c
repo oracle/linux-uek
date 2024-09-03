@@ -8776,10 +8776,10 @@ static int __igb_shutdown(struct pci_dev *pdev, bool *enable_wake,
 
 	if (netif_running(netdev))
 		__igb_close(netdev, true);
+	else
+		igb_free_irq(adapter);
 
 	igb_ptp_suspend(adapter);
-
-	igb_free_irq(adapter);
 
 	igb_clear_interrupt_scheme(adapter);
 	rtnl_unlock();
