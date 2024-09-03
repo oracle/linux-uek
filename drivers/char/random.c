@@ -35,6 +35,7 @@
 #include <linux/random.h>
 #include <linux/poll.h>
 #include <linux/init.h>
+#include <linux/fips.h>
 #include <linux/fs.h>
 #include <linux/blkdev.h>
 #include <linux/interrupt.h>
@@ -66,6 +67,7 @@
 #include <asm/irq.h>
 #include <asm/irq_regs.h>
 #include <asm/io.h>
+#include <crypto/rng.h>
 
 /*********************************************************************
  *
@@ -76,6 +78,20 @@
  * is ready for safe consumption.
  *
  *********************************************************************/
+
+static DEFINE_MUTEX(drbg_random_lock);
+static struct crypto_rng *drbg_random;
+
+static int fips_random;
+static int __init set_fips_random(char *str)
+{
+	fips_random = !!simple_strtol(str, NULL, 0);
+	pr_notice("fips_random is %s\n", fips_random ? "enabled" : "disabled");
+
+	return 1;
+}
+
+__setup("fips_random=", set_fips_random);
 
 /*
  * crng_init is protected by base_crng->lock, and only increases
@@ -439,11 +455,43 @@ void get_random_bytes(void *buf, size_t len)
 }
 EXPORT_SYMBOL(get_random_bytes);
 
+static int init_drbg_random(void)
+{
+	struct crypto_rng *drbg;
+	int ret;
+
+	mutex_lock(&drbg_random_lock);
+	if (!drbg_random) {
+		drbg = crypto_alloc_rng("drbg_nopr_ctr_aes256", 0, 0);
+		if (IS_ERR(drbg)) {
+			pr_err("drbg_random: could not allocate DRBG handle\n");
+			ret = PTR_ERR(drbg);
+			goto unlock;
+		}
+
+		ret = crypto_rng_reset(drbg, NULL, 0);
+		if (ret) {
+			pr_err("drbg_random: failed to reset rng\n");
+			crypto_free_rng(drbg);
+			goto unlock;
+		}
+
+		pr_notice("drbg_random: initialization done\n");
+		drbg_random = drbg;
+	}
+
+	ret = 0;
+unlock:
+	mutex_unlock(&drbg_random_lock);
+
+	return ret;
+}
+
 static ssize_t get_random_bytes_user(struct iov_iter *iter)
 {
 	u32 chacha_state[CHACHA_STATE_WORDS];
 	u8 block[CHACHA_BLOCK_SIZE];
-	size_t ret = 0, copied;
+	size_t ret = 0, copied, rc;
 
 	if (unlikely(!iov_iter_count(iter)))
 		return 0;
@@ -465,9 +513,25 @@ static ssize_t get_random_bytes_user(struct iov_iter *iter)
 	}
 
 	for (;;) {
-		chacha20_block(chacha_state, block);
-		if (unlikely(chacha_state[12] == 0))
-			++chacha_state[13];
+		if (fips_enabled || fips_random) {
+			if (!drbg_random && init_drbg_random() != 0) {
+				if (fips_enabled)
+					panic("drbg_random init failed\n");
+				fips_random = 0;
+				pr_warn("drbg_random: init failed\n"
+					"drbg_random: fips_random disabled\n");
+				continue;
+			}
+			rc = crypto_rng_get_bytes(drbg_random, block, sizeof(block));
+			if (rc < 0) {
+				ret = rc;
+				goto out;
+			}
+		} else {
+			chacha20_block(chacha_state, block);
+			if (unlikely(chacha_state[12] == 0))
+				++chacha_state[13];
+		}
 
 		copied = copy_to_iter(block, sizeof(block), iter);
 		ret += copied;
@@ -482,6 +546,7 @@ static ssize_t get_random_bytes_user(struct iov_iter *iter)
 		}
 	}
 
+out:
 	memzero_explicit(block, sizeof(block));
 out_zero_chacha:
 	memzero_explicit(chacha_state, sizeof(chacha_state));
@@ -1664,6 +1729,26 @@ static int proc_do_rointvec(const struct ctl_table *table, int write, void *buf,
 {
 	return write ? 0 : proc_dointvec(table, 0, buf, lenp, ppos);
 }
+/*
+ * Return and/or set fips_random
+ */
+static int proc_do_fips_random(const struct ctl_table *table, int write,
+			   void *buffer, size_t *lenp, loff_t *ppos)
+{
+	struct ctl_table fake_table;
+	int ret, do_fips_random;
+
+	if (write && (fips_enabled || !capable(CAP_SYS_ADMIN)))
+		return -EPERM;
+
+	do_fips_random = fips_enabled || fips_random;
+	fake_table.data = &do_fips_random;
+	fake_table.maxlen = sizeof(do_fips_random);
+	ret = proc_dointvec(&fake_table, write, buffer, lenp, ppos);
+	if (ret == 0 && write)
+		fips_random = !!do_fips_random;
+	return ret;
+}
 
 static struct ctl_table random_table[] = {
 	{
@@ -1704,6 +1789,12 @@ static struct ctl_table random_table[] = {
 		.procname	= "uuid",
 		.mode		= 0444,
 		.proc_handler	= proc_do_uuid,
+	},
+	{
+		.procname	= "fips_random",
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_do_fips_random,
 	},
 };
 
