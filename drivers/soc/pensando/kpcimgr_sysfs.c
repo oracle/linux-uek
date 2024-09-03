@@ -117,6 +117,76 @@ static ssize_t cfgval_store(struct device *dev,
 	return count;
 }
 
+static ssize_t range_store(struct device *dev,
+			   struct device_attribute *attr,
+			   const char *buf,
+			   size_t count)
+{
+	unsigned long range_start, flags;
+	kstate_t *ks = get_kstate();
+	struct mem_range_t *mr;
+	ssize_t size;
+	int i = 0;
+
+	if (sscanf(buf, " 0x%lx , 0x%lx ", &range_start, &size) != 2)
+		return -EINVAL;
+
+	/* Remove the range if size == 0 */
+	if (size == 0) {
+		/* Locate target range and remove it */
+		for (i = 0, mr = &ks->mem_ranges[0]; i < ks->nranges; i++, mr++) {
+			if (mr->base == range_start) {
+				spin_lock_irqsave(&kpcimgr_lock, flags);
+				iounmap(mr->vaddr);
+				ks->nranges--;
+				memcpy(mr, &ks->mem_ranges[ks->nranges],
+				       sizeof(struct mem_range_t));
+				spin_unlock_irqrestore(&kpcimgr_lock, flags);
+				return count;
+			}
+		}
+		return -EINVAL;
+	}
+
+	/* size != 0, so start the process to add a new range */
+	if (ks->nranges == NUM_MEMRANGES)
+		return -ENOSPC;
+
+	/* Verify the new range doesn't overlap any existing regions */
+	for (i = 0, mr = &ks->mem_ranges[0]; i < ks->nranges; i++, mr++) {
+		if ((mr->base <= range_start && range_start < mr->end) ||
+			(range_start < mr->base && mr->base < range_start + size))
+			return -EINVAL;
+	}
+
+	mr->base = range_start;
+	mr->end = range_start + size;
+	mr->vaddr = ioremap(range_start, size);
+
+	if (!mr->vaddr)
+		return -ENOMEM;
+
+	ks->nranges++;
+	return count;
+
+}
+
+static ssize_t ranges_show(struct device *dev,
+			   struct device_attribute *attr,
+			   char *buf)
+{
+	kstate_t *ks = get_kstate();
+	struct mem_range_t *range;
+	ssize_t len = 0;
+	int i;
+
+	for (i = 0, range = &ks->mem_ranges[0]; i < ks->nranges; i++, range++)
+		len += sysfs_emit_at(buf, len, "0x%lx,0x%lx\n", range->base,
+				     range->end - range->base);
+
+	return len;
+}
+
 static ssize_t lib_version_show(struct device *dev,
 				struct device_attribute *attr,
 				char *buf)
@@ -230,6 +300,8 @@ static ssize_t kstate_read(struct file *file, struct kobject *kobj,
 static DEVICE_ATTR_RW(valid);
 static DEVICE_ATTR_RW(running);
 static DEVICE_ATTR_RW(cfgval);
+static DEVICE_ATTR_WO(range);
+static DEVICE_ATTR_RO(ranges);
 static DEVICE_ATTR_RO(lib_version);
 static DEVICE_ATTR_RO(mgr_version);
 static DEVICE_INT_ATTR(active_port, 0644, kpcimgr_active_port);
@@ -241,6 +313,8 @@ static struct attribute *dev_attrs[] = {
 	&dev_attr_valid.attr,
 	&dev_attr_running.attr,
 	&dev_attr_cfgval.attr,
+	&dev_attr_range.attr,
+	&dev_attr_ranges.attr,
 	&dev_attr_active_port.attr.attr,
 	&dev_attr_lib_version.attr,
 	&dev_attr_mgr_version.attr,
