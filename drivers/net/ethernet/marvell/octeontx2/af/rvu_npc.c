@@ -2144,13 +2144,24 @@ static void rvu_npc_setup_interfaces(struct rvu *rvu, int blkaddr)
 
 	rx_kex = keyx_cfg[NIX_INTF_RX];
 	tx_kex = keyx_cfg[NIX_INTF_TX];
-	nibble_ena = FIELD_GET(NPC_PARSE_NIBBLE, rx_kex);
+	if (!is_cn20k(rvu->pdev)) {
+		nibble_ena = FIELD_GET(NPC_PARSE_NIBBLE, rx_kex);
 
-	nibble_ena = rvu_npc_get_tx_nibble_cfg(rvu, nibble_ena);
-	if (nibble_ena) {
-		tx_kex &= ~NPC_PARSE_NIBBLE;
-		tx_kex |= FIELD_PREP(NPC_PARSE_NIBBLE, nibble_ena);
-		keyx_cfg[NIX_INTF_TX] = tx_kex;
+		nibble_ena = rvu_npc_get_tx_nibble_cfg(rvu, nibble_ena);
+		if (nibble_ena) {
+			tx_kex &= ~NPC_PARSE_NIBBLE;
+			tx_kex |= FIELD_PREP(NPC_PARSE_NIBBLE, nibble_ena);
+			keyx_cfg[NIX_INTF_TX] = tx_kex;
+		}
+	} else {
+		nibble_ena = FIELD_GET(NPC_CN20K_PARSE_NIBBLE, rx_kex);
+
+		nibble_ena = rvu_npc_get_tx_nibble_cfg(rvu, nibble_ena);
+		if (nibble_ena) {
+			tx_kex &= ~NPC_CN20K_PARSE_NIBBLE;
+			tx_kex |= FIELD_PREP(NPC_CN20K_PARSE_NIBBLE, nibble_ena);
+			keyx_cfg[NIX_INTF_TX] = tx_kex;
+		}
 	}
 
 	/* Configure RX interfaces */

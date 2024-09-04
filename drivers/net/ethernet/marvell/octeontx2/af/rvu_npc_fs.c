@@ -196,9 +196,9 @@ static void npc_scan_ldata(struct rvu *rvu, int blkaddr, u8 lid,
 	int start_kwi, offset;
 
 	if (is_cn20k(rvu->pdev))
-		nr_bytes = FIELD_GET(NPC_BYTESM, cfg) + 1;
-	else
 		nr_bytes = FIELD_GET(NPC_CN20K_BYTESM, cfg) + 1;
+	else
+		nr_bytes = FIELD_GET(NPC_BYTESM, cfg) + 1;
 	hdr = FIELD_GET(NPC_HDR_OFFSET, cfg);
 	key = FIELD_GET(NPC_KEY_OFFSET, cfg);
 
