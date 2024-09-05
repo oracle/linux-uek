@@ -407,8 +407,8 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 		bool is_hb_ping = (inc->i_hdr.h_flags & RDS_FLAG_ANY_HB) == RDS_FLAG_HB_PING;
 		bool is_hb_pong = (inc->i_hdr.h_flags & RDS_FLAG_ANY_HB) == RDS_FLAG_HB_PONG;
 
-		if (inc->i_hdr.h_len) {
-			dropreason = "ignore ping with non-zero length";
+		if ((is_hb_ping || is_hb_pong) && inc->i_hdr.h_len) {
+			dropreason = "ignore HB ping/pong with non-zero length";
 			goto out;
 		}
 
