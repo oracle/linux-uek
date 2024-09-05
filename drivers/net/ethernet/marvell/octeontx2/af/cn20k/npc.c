@@ -54,10 +54,11 @@ static struct npc_mcam_kex_extr npc_mkex_extr_default = {
 	.kpu_version = NPC_KPU_PROFILE_VER,
 	.keyx_cfg = {
 		/* nibble: LA..LE (ltype only) + Error code + Channel */
-		[NIX_INTF_RX] = ((u64)NPC_MCAM_KEY_X2 << 32) | NPC_PARSE_NIBBLE_INTF_RX |
-						(u64)NPC_EXACT_NIBBLE_HIT,
+		[NIX_INTF_RX] = ((u64)NPC_MCAM_KEY_X2 << 32) | NPC_CN20K_PARSE_NIBBLE_INTF_RX |
+				 NPC_CN20K_PARSE_NIBBLE_ERRCODE,
+
 		/* nibble: LA..LE (ltype only) */
-		[NIX_INTF_TX] = ((u64)NPC_MCAM_KEY_X2 << 32) | NPC_PARSE_NIBBLE_INTF_TX,
+		[NIX_INTF_TX] = ((u64)NPC_MCAM_KEY_X2 << 32) | NPC_CN20K_PARSE_NIBBLE_INTF_TX,
 	},
 	.intf_extr_lid = {
 	/* Default RX MCAM KEX profile */
