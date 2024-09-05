@@ -1128,8 +1128,11 @@ static void nix_aq_reset(struct rvu *rvu, struct rvu_block *block)
 	while (reg & BIT_ULL(62)) {
 		udelay(1);
 		timeout--;
-		if (!timeout)
+		if (!timeout) {
 			dev_err(rvu->dev, "timeout waiting for busy bit to clear\n");
+			break;
+		}
+		reg = rvu_read64(rvu, block->addr, NIX_AF_AQ_STATUS);
 	}
 	/*reset the AQ base and result */
 	memset(aq->inst->base, 0, sizeof(struct nix_aq_inst_s) * Q_COUNT(AQ_SIZE));
