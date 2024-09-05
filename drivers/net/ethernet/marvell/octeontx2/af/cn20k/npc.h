@@ -196,7 +196,8 @@ void npc_cn20k_parser_profile_init(struct rvu *rvu, int blkaddr);
 struct npc_mcam_kex_extr *npc_mkex_extr_default_get(void);
 void npc_cn20k_load_mkex_profile(struct rvu *rvu, int blkaddr, const char *mkex_profile);
 void npc_cn20k_config_mcam_entry(struct rvu *rvu, int blkaddr, int index, u8 intf,
-				 struct cn20k_mcam_entry *entry, bool enable, u8 hw_prio);
+				 struct cn20k_mcam_entry *entry, bool enable,
+				 u8 hw_prio, u8 req_kw_type);
 void npc_cn20k_enable_mcam_entry(struct rvu *rvu, int blkaddr, int index, bool enable);
 void npc_cn20k_copy_mcam_entry(struct rvu *rvu, int blkaddr, u16 src, u16 dest);
 void npc_cn20k_read_mcam_entry(struct rvu *rvu, int blkaddr, u16 index,

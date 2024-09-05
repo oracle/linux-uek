@@ -3015,7 +3015,8 @@ static void npc_cn20k_get_keyword(struct cn20k_mcam_entry *entry, int idx,
 static void npc_cn20k_config_kw_x2(struct rvu *rvu, struct npc_mcam *mcam,
 				   int blkaddr, int index, u8 intf,
 				   struct cn20k_mcam_entry *entry,
-				   int bank, u8 kw_type, int kw)
+				   int bank, u8 kw_type, int kw,
+				   u8 req_kw_type)
 {
 	u64 intf_ext = 0, intf_ext_mask = 0;
 	u8 tx_intf_mask = ~intf & 0x3;
@@ -3034,23 +3035,38 @@ static void npc_cn20k_config_kw_x2(struct rvu *rvu, struct npc_mcam *mcam,
 
 	kex_cfg = rvu_read64(rvu, blkaddr, NPC_AF_INTFX_KEX_CFG(intf));
 	kex_type = (kex_cfg & GENMASK_ULL(34, 32)) >> 32;
-	/*-------------------------------------------------------------------------------------|
-	 *	Kex type    |  mcam entry   |  cam1	   |	cam 0	|| <----- output ----> |
-	 *	in profile  |  len	    | (key type)   | (key type)	|| len	  |   type     |
-	 *-------------------------------------------------------------------------------------|
-	 *	X2	    |  256 (X2)	    |  001b	   |	110b	|| X2	  |    X2      |
-	 *-------------------------------------------------------------------------------------|
-	 *	X4	    |  256 (X2)	    |  000b	   |	000b	|| X2	  |  DYNAMIC   |
-	 *-------------------------------------------------------------------------------------|
-	 *	X4	    |  512 (X4)	    |  010b	   |	101b	|| X4	  |    X4      |
-	 *-------------------------------------------------------------------------------------|
-	 *    DYNAMIC	    |  256 (X2)	    |  000b	   |	000b	|| X2	  |  DYNAMIC   |
-	 *-------------------------------------------------------------------------------------|
-	 *    DYNAMIC	    |  512 (X4)	    |  010b	   |	101b	|| X4	  |    X4      |
-	 *-------------------------------------------------------------------------------------|
+	/*-------------------------------------------------------------------------------------------------------
+	 *Kex type		|  mcam entry	|  cam1		|	cam 0| req_kw_type	||<----- output > |
+	 *in profile		|  len		| (key type)	| (key type) |			||len	| type    |
+	 *---------------------------------------------------------------------------------------------------------
+	 *X2			|  256 (X2)	|  001b		|	110b |	   0		||X2	| X2      |
+	 *--------------------------------------------------------------------------------------------------------|
+	 *X4			|  256 (X2)	|  000b		|	000b |	   0		||X2	| DYN     |
+	 *--------------------------------------------------------------------------------------------------------|
+	 *X4			|  512 (X4)	|  010b		|	101b |	   0		||X4	| X4      |
+	 *--------------------------------------------------------------------------------------------------------|
+	 *DYNAMIC		|  256 (X2)	|  000b		|	000b |	   0		||X2	| DYN     |
+	 *--------------------------------------------------------------------------------------------------------|
+	 *DYNAMIC		|  512 (X4)	|  010b		|	101b |	   0		||X4	| X4      |
+	 *--------------------------------------------------------------------------------------------------------|
+	 *X4			|  256 (X2)	|  000b		|	000b |	   X2		||DYN	| DYN     |
+	 *--------------------------------------------------------------------------------------------------------|
+	 *DYNAMIC		|  256 (X2)	|  000b		|	000b |	   X2		||DYN	| DYN     |
+	 *--------------------------------------------------------------------------------------------------------|
+	 * X2			|  512 (X4)	|  xxxb		|	xxxb |	   X4		||INVAL	| INVAL   |
+	 *--------------------------------------------------------------------------------------------------------|
 	 */
+
 	if ((kex_type == NPC_MCAM_KEY_DYN || kex_type == NPC_MCAM_KEY_X4) &&
 	    kw_type == NPC_MCAM_KEY_X2) {
+		kw_type = 0;
+		kw_type_mask = 0;
+	}
+
+	/* Say, we need to write x2 keyword in an x4 subbank. req_kw_type will be x2,
+	 * and kw_type will be x4. So in the case ignore kw bits in mcam.
+	 */
+	if (kw_type == NPC_MCAM_KEY_X4 && req_kw_type == NPC_MCAM_KEY_X2) {
 		kw_type = 0;
 		kw_type_mask = 0;
 	}
@@ -3092,14 +3108,16 @@ static void npc_cn20k_config_kw_x2(struct rvu *rvu, struct npc_mcam *mcam,
 
 static void npc_cn20k_config_kw_x4(struct rvu *rvu, struct npc_mcam *mcam,
 				   int blkaddr, int index, u8 intf,
-				   struct cn20k_mcam_entry *entry, u8 kw_type)
+				   struct cn20k_mcam_entry *entry,
+				   u8 kw_type, u8 req_kw_type)
 {
 	int kw = 0, bank;
 
 	for (bank = 0; bank < mcam->banks_per_entry; bank++, kw = kw + 4)
 		npc_cn20k_config_kw_x2(rvu, mcam, blkaddr,
 				       index, intf,
-				       entry, bank, kw_type, kw);
+				       entry, bank, kw_type,
+				       kw, req_kw_type);
 }
 
 static void npc_cn20k_set_mcam_bank_cfg(struct rvu *rvu, int blkaddr, int mcam_idx,
@@ -3130,7 +3148,8 @@ static void npc_cn20k_set_mcam_bank_cfg(struct rvu *rvu, int blkaddr, int mcam_i
 }
 
 void npc_cn20k_config_mcam_entry(struct rvu *rvu, int blkaddr, int index, u8 intf,
-				 struct cn20k_mcam_entry *entry, bool enable, u8 hw_prio)
+				 struct cn20k_mcam_entry *entry, bool enable,
+				 u8 hw_prio, u8 req_kw_type)
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	int mcam_idx = index % mcam->banksize;
@@ -3153,7 +3172,8 @@ void npc_cn20k_config_mcam_entry(struct rvu *rvu, int blkaddr, int index, u8 int
 		npc_cn20k_clear_mcam_entry(rvu, blkaddr, bank, mcam_idx);
 		npc_cn20k_config_kw_x2(rvu, mcam, blkaddr,
 				       mcam_idx, intf, entry,
-				       bank, kw_type, kw);
+				       bank, kw_type,
+				       kw, req_kw_type);
 		/* Set 'action' */
 		rvu_write64(rvu, blkaddr,
 			    NPC_AF_CN20K_MCAMEX_BANKX_ACTIONX_EXT(mcam_idx, bank, 0),
@@ -3169,7 +3189,8 @@ void npc_cn20k_config_mcam_entry(struct rvu *rvu, int blkaddr, int index, u8 int
 		npc_cn20k_clear_mcam_entry(rvu, blkaddr, 1, mcam_idx);
 
 		npc_cn20k_config_kw_x4(rvu, mcam, blkaddr,
-				       mcam_idx, intf, entry, kw_type);
+				       mcam_idx, intf, entry,
+				       kw_type, req_kw_type);
 		for (bank = 0; bank < mcam->banks_per_entry; bank++) {
 			/* Set 'action' */
 			rvu_write64(rvu, blkaddr,
@@ -3832,7 +3853,7 @@ int rvu_mbox_handler_npc_cn20k_mcam_write_entry(struct rvu *rvu,
 
 	npc_cn20k_config_mcam_entry(rvu, blkaddr, req->entry, nix_intf,
 				    &req->entry_data, req->enable_entry,
-				    req->hw_prio);
+				    req->hw_prio, req->req_kw_type);
 
 	rc = 0;
 exit:
@@ -3910,7 +3931,7 @@ int rvu_mbox_handler_npc_cn20k_mcam_alloc_and_write_entry(struct rvu *rvu,
 
 	npc_cn20k_config_mcam_entry(rvu, blkaddr, entry, nix_intf,
 				    &req->entry_data, req->enable_entry,
-				    req->hw_prio);
+				    req->hw_prio, req->req_kw_type);
 
 	mutex_unlock(&mcam->lock);
 

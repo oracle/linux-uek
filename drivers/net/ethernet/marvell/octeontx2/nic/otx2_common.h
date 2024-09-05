@@ -284,6 +284,12 @@ struct otx2_hw {
 	struct otx2_lmt_info	__percpu *lmt_info;
 };
 
+struct vfvlan {
+	u16 vlan;
+	u16 proto;
+	u8 qos;
+};
+
 enum vfperm {
 	OTX2_RESET_VF_PERM,
 	OTX2_TRUSTED_VF,
