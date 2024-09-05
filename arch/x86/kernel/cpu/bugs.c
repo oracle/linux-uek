@@ -332,16 +332,23 @@ void x86_spec_ctrl_set(enum spec_ctrl_set_context context)
 		/*
 		 * Initial write of the MSR on this CPU.  Done to turn on SSBD
 		 * if it is always enabled in privileged mode
-		 * (spec_store_bypass_disable=on). If enhanced IBRS is in use,
-		 * its bit has been set by an earlier write to the MSR on all
-		 * the cpus, and it must be preserved by this MSR write.
+		 * (spec_store_bypass_disable=on).
+		 *
+		 * If enhanced IBRS is in use on Intel, its bit has been
+		 * set by an earlier write to the MSR on all the cpus, and
+		 * it must be preserved by this MSR write. On AMD, enhanced
+		 * IBRS (aka AutoIBRS) was enabled using the EFER MSR, and
+		 * IBRS should not be set in this MSR otherwise this will
+		 * also enable basic IBRS.
+		 *
 		 * Otherwise use only the base bits (x86_spec_ctrl_base) to
 		 * avoid basic IBRS needlessly being enabled before userspace
 		 * is running.
 		 */
-		host = x86_spec_ctrl_base |
-		       (spectre_v2_in_ibrs_mode(spectre_v2_enabled) ?
-			SPEC_CTRL_IBRS : 0);
+		host = x86_spec_ctrl_base;
+		if (spectre_v2_in_ibrs_mode(spectre_v2_enabled) &&
+		    !boot_cpu_has(X86_FEATURE_AUTOIBRS))
+			host |= SPEC_CTRL_IBRS;
 
 		/*
 		 * Write the SPEC_CTRL MSR and keep track of its value.

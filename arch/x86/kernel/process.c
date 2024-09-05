@@ -424,9 +424,18 @@ static __always_inline void __speculation_ctrl_update(unsigned long tifp,
 						      unsigned long tifn)
 {
 	unsigned long tif_diff = tifp ^ tifn;
-	u64 msr = x86_spec_ctrl_base | (check_enhanced_ibrs_inuse() ?
-					SPEC_CTRL_IBRS : 0);
+	u64 msr = x86_spec_ctrl_base;
 	bool updmsr = false;
+
+	/*
+	 * If enhanced IBRS is in use on Intel, the IBRS bit is set in
+	 * the SPEC_CTRL MSR and it should be preserved. On AMD, enhanced
+	 * IBRS (aka AutoIBRS) is enabled in the EFER MSR, and IBRS
+	 * should not be set in the SPEC_CTRL MSR otherwise this will
+	 * also enable basic IBRS.
+	 */
+	if (check_enhanced_ibrs_inuse() && !boot_cpu_has(X86_FEATURE_AUTOIBRS))
+		msr |= SPEC_CTRL_IBRS;
 
 	lockdep_assert_irqs_disabled();
 

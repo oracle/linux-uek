@@ -346,8 +346,21 @@ static inline void set_ibrs_inuse(void)
 	update_cpu_ibrs_all();
 	/* Update what sysfs shows */
 	sysctl_ibrs_enabled = true;
+
 	/* When entering kernel */
-	x86_spec_ctrl_priv |= SPEC_CTRL_IBRS;
+	if (boot_cpu_has(X86_FEATURE_AUTOIBRS)) {
+		/*
+		 * AutoIBRS is the AMD version of enhanced IBRS. It is
+		 * enabled by setting the AutoIBRS bit in the EFER MSR.
+		 * When using AutoIBRS, the IBRS bit must not be set
+		 * in the SPEC_CTRL MSR otherwise this also enables
+		 * basic IBRS.
+		 */
+		x86_spec_ctrl_priv &= ~SPEC_CTRL_IBRS;
+	} else {
+		x86_spec_ctrl_priv |= SPEC_CTRL_IBRS;
+	}
+
 	/* Update per-cpu spec_ctrl */
 	update_cpu_spec_ctrl_all();
 }
