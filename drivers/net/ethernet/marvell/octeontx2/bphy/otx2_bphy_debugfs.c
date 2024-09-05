@@ -418,6 +418,7 @@ static const struct file_operations otx2_rfoe_dbg_rpm_stats_fops = {
 	.owner = THIS_MODULE,
 	.open =	otx2_rfoe_dbg_open_rpm_stats,
 	.read = seq_read,
+	.release = single_release,
 };
 
 void otx2_debugfs_add_rpm_stats_file(void *priv)
@@ -491,6 +492,7 @@ static const struct file_operations otx2_rfoe_dbg_tstamp_ring_fops = {
 	.owner = THIS_MODULE,
 	.open =	otx2_rfoe_dbg_open_ptp_tstamp_ring,
 	.read = seq_read,
+	.release = single_release,
 };
 
 void otx2_debugfs_add_tstamp_ring_file(void *priv)
@@ -606,6 +608,7 @@ static const struct file_operations otx2_rfoe_dbg_jdt_ring_fops = {
 	.owner = THIS_MODULE,
 	.open =	otx2_rfoe_dbg_open_jdt_ring,
 	.read = seq_read,
+	.release = single_release,
 };
 
 void otx2_debugfs_add_jdt_ring_file(void *priv)
