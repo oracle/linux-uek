@@ -139,4 +139,10 @@
 
 #define NPC_AF_INTFX_MISS_ACTX(a, b)	(0x1a00000 | (a) << 6 | (b) << 4)
 
+#define NPC_AF_CN20K_MCAMEX_BANKX_STAT_EXT(a, b) ({		\
+	u64 offset;						\
+								\
+	offset = (0x8000080ull | (a) << 8 | (b) << 22);		\
+	offset; })
+
 #endif /* RVU_MBOX_REG_H */

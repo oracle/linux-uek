@@ -3502,10 +3502,10 @@ static int rvu_dbg_npc_mcam_show_rules(struct seq_file *s, void *unused)
 	struct rvu_npc_mcam_rule *iter;
 	struct rvu *rvu = s->private;
 	struct npc_mcam *mcam;
-	int pf, vf = -1;
+	int pf, vf = -1, bank;
+	u16 target, index;
 	bool enabled;
 	int blkaddr;
-	u16 target;
 	u64 hits;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
@@ -3550,8 +3550,15 @@ static int rvu_dbg_npc_mcam_show_rules(struct seq_file *s, void *unused)
 
 		enabled = is_mcam_entry_enabled(rvu, mcam, blkaddr, iter->entry);
 		seq_printf(s, "\tenabled: %s\n", enabled ? "yes" : "no");
-		if (is_cn20k(rvu->pdev))
+		if (is_cn20k(rvu->pdev)) {
 			seq_printf(s, "\tpriority: %u\n", iter->hw_prio);
+			index = iter->entry & (mcam->banksize - 1);
+			bank = npc_get_bank(rvu, mcam, iter->entry);
+			hits = rvu_read64(rvu, blkaddr,
+					  NPC_AF_CN20K_MCAMEX_BANKX_STAT_EXT(index, bank));
+			seq_printf(s, "\thits: %lld\n", hits);
+			continue;
+		}
 
 		if (!iter->has_cntr)
 			continue;
@@ -3720,10 +3727,16 @@ static int rvu_dbg_npc_exact_drop_cnt(struct seq_file *s, void *unused)
 
 		str = (cfg & 1) ? "enabled" : "disabled";
 
-		seq_printf(s, "0x%x\t%d\t\t%llu\t0x%x\t%s\n", pcifunc, i,
-			   rvu_read64(rvu, blkaddr,
-				      NPC_AF_MATCH_STATX(table->counter_idx[i])),
-			   chan, str);
+		if (is_cn20k(rvu->pdev))
+			seq_printf(s, "0x%x\t%d\t\t%llu\t0x%x\t%s\n", pcifunc, i,
+				   rvu_read64(rvu, blkaddr,
+					      NPC_AF_CN20K_MCAMEX_BANKX_STAT_EXT(i, 0)),
+				   chan, str);
+		else
+			seq_printf(s, "0x%x\t%d\t\t%llu\t0x%x\t%s\n", pcifunc, i,
+				   rvu_read64(rvu, blkaddr,
+					      NPC_AF_MATCH_STATX(table->counter_idx[i])),
+				   chan, str);
 	}
 
 	return 0;

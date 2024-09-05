@@ -2919,6 +2919,10 @@ int npc_config_cntr_default_entries(struct rvu *rvu, bool enable)
 	if (blkaddr < 0)
 		return -EINVAL;
 
+	/* Counter is set for each rule by default */
+	if (is_cn20k(rvu->pdev))
+		return -EINVAL;
+
 	mutex_lock(&mcam->lock);
 	list_for_each_entry(rule, &mcam->mcam_rules, list) {
 		if (!is_mcam_entry_enabled(rvu, mcam, blkaddr, rule->entry))
@@ -3096,7 +3100,7 @@ int rvu_mbox_handler_npc_mcam_write_entry(struct rvu *rvu,
 	if (rc)
 		goto exit;
 
-	if (req->set_cntr &&
+	if (!is_cn20k(rvu->pdev) && req->set_cntr &&
 	    npc_mcam_verify_counter(mcam, pcifunc, req->cntr)) {
 		rc = NPC_MCAM_INVALID_REQ;
 		goto exit;
@@ -3373,7 +3377,6 @@ int rvu_mbox_handler_npc_mcam_free_counter(struct rvu *rvu,
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	int err;
 
-	/* Counter is not supported for CN20K */
 	if (is_cn20k(rvu->pdev))
 		return NPC_MCAM_INVALID_REQ;
 
@@ -3483,15 +3486,19 @@ int rvu_mbox_handler_npc_mcam_clear_counter(struct rvu *rvu,
 		struct npc_mcam_oper_counter_req *req, struct msg_rsp *rsp)
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
-	int blkaddr, err;
-
-	/* Counter is not supported for CN20K */
-	if (is_cn20k(rvu->pdev))
-		return NPC_MCAM_INVALID_REQ;
+	int blkaddr, err, index, bank;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0)
 		return NPC_MCAM_INVALID_REQ;
+
+	if (is_cn20k(rvu->pdev)) {
+		index = req->cntr & (mcam->banksize - 1);
+		bank = npc_get_bank(rvu, mcam, req->cntr);
+		rvu_write64(rvu, blkaddr,
+			    NPC_AF_CN20K_MCAMEX_BANKX_STAT_EXT(index, bank), 0);
+		return 0;
+	}
 
 	mutex_lock(&mcam->lock);
 	err = npc_mcam_verify_counter(mcam, req->hdr.pcifunc, req->cntr);
@@ -3509,25 +3516,27 @@ int rvu_mbox_handler_npc_mcam_counter_stats(struct rvu *rvu,
 			struct npc_mcam_oper_counter_rsp *rsp)
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
-	int blkaddr, err;
-
-	/* Counter is not supported for CN20K */
-	if (is_cn20k(rvu->pdev))
-		return NPC_MCAM_INVALID_REQ;
+	int blkaddr, err, index, bank;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0)
 		return NPC_MCAM_INVALID_REQ;
+
+	if (is_cn20k(rvu->pdev)) {
+		index = req->cntr & (mcam->banksize - 1);
+		bank = npc_get_bank(rvu, mcam, req->cntr);
+		rsp->stat = rvu_read64(rvu, blkaddr,
+				       NPC_AF_CN20K_MCAMEX_BANKX_STAT_EXT(index, bank));
+		return 0;
+	}
 
 	mutex_lock(&mcam->lock);
 	err = npc_mcam_verify_counter(mcam, req->hdr.pcifunc, req->cntr);
 	mutex_unlock(&mcam->lock);
 	if (err)
 		return err;
-
 	rsp->stat = rvu_read64(rvu, blkaddr, NPC_AF_MATCH_STATX(req->cntr));
 	rsp->stat &= BIT_ULL(48) - 1;
-
 	return 0;
 }
 
@@ -3843,7 +3852,9 @@ int rvu_mbox_handler_npc_mcam_entry_stats(struct rvu *rvu,
 	bank = npc_get_bank(rvu, mcam, req->entry);
 
 	if (is_cn20k(rvu->pdev)) {
-		/*TODO: need to read NPC_AF_MCAMEX_BANKX_STAT_EXT */
+		rsp->stat_ena = 1;
+		rsp->stat = rvu_read64(rvu, blkaddr,
+				       NPC_AF_CN20K_MCAMEX_BANKX_STAT_EXT(index, bank));
 		mutex_unlock(&mcam->lock);
 		return 0;
 	}

@@ -2987,6 +2987,10 @@ void npc_cn20k_clear_mcam_entry(struct rvu *rvu, int blkaddr, int bank, int inde
 		    NPC_AF_CN20K_MCAMEX_BANKX_CAMX_W3_EXT(index, bank, 1), 0);
 	rvu_write64(rvu, blkaddr,
 		    NPC_AF_CN20K_MCAMEX_BANKX_CAMX_W3_EXT(index, bank, 0), 0);
+
+	/* Clear corresponding stats register */
+	rvu_write64(rvu, blkaddr,
+		    NPC_AF_CN20K_MCAMEX_BANKX_STAT_EXT(index, bank), 0);
 }
 
 static void npc_cn20k_get_keyword(struct cn20k_mcam_entry *entry, int idx,
