@@ -133,6 +133,7 @@ kernel/drivers/dca/dca.ko
 kernel/drivers/dma/ioat/ioatdma.ko
 kernel/drivers/edac/edac_mce_amd.ko
 kernel/drivers/edac/sb_edac.ko
+kernel/drivers/edac/skx_edac_common.ko
 kernel/drivers/edac/skx_edac.ko
 kernel/drivers/firmware/iscsi_ibft.ko
 kernel/drivers/hwmon/coretemp.ko
