@@ -430,6 +430,58 @@ static void npc_scan_exact_result(struct rvu *rvu, struct npc_mcam *mcam, u8 bit
 	npc_set_kw_masks(rvu, mcam, type, nr_bits, kwi, offset, intf);
 }
 
+static void npc_cn20k_scan_parse_result(struct rvu *rvu, struct npc_mcam *mcam, u8 bit_number,
+					u8 key_nibble, u8 intf)
+{
+	u8 offset = (key_nibble * 4) % 64; /* offset within key word */
+	u8 kwi = (key_nibble * 4) / 64; /* which word in key */
+	u8 nr_bits = 4; /* bits in a nibble */
+	u8 type;
+
+	switch (bit_number) {
+	case 0 ... 2:
+		type = NPC_CHAN;
+		break;
+	case 3:
+		type = NPC_ERRLEV;
+		break;
+	case 4 ... 5:
+		type = NPC_ERRCODE;
+		break;
+	case 6:
+		type = NPC_LXMB;
+		break;
+	case 8:
+		type = NPC_LA;
+		break;
+	case 10:
+		type = NPC_LB;
+		break;
+	case 12:
+		type = NPC_LC;
+		break;
+	case 14:
+		type = NPC_LD;
+		break;
+	case 16:
+		type = NPC_LE;
+		break;
+	case 18:
+		type = NPC_LF;
+		break;
+	case 20:
+		type = NPC_LG;
+		break;
+	case 22:
+		type = NPC_LH;
+		break;
+	default:
+		return;
+	}
+
+	npc_set_kw_masks(rvu, mcam, type, nr_bits, kwi, offset, intf);
+}
+
 static void npc_scan_parse_result(struct rvu *rvu, struct npc_mcam *mcam, u8 bit_number,
 				  u8 key_nibble, u8 intf)
 {
@@ -437,6 +489,12 @@ static void npc_scan_parse_result(struct rvu *rvu, struct npc_mcam *mcam, u8 bit
 	u8 kwi = (key_nibble * 4) / 64; /* which word in key */
 	u8 nr_bits = 4; /* bits in a nibble */
 	u8 type;
+
+	if (is_cn20k(rvu->pdev)) {
+		npc_cn20k_scan_parse_result(rvu, mcam, bit_number,
+					    key_nibble, intf);
+		return;
+	}
 
 	switch (bit_number) {
 	case 0 ... 2:
