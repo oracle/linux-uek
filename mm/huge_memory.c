@@ -541,9 +541,12 @@ const struct memcg_reparent_ops split_queue_reparent_ops = {
 	.reparent	= memcg_reparent_split_queue,
 };
 
-static inline struct mem_cgroup *split_queue_memcg(struct deferred_split *queue)
+static inline struct mem_cgroup *split_queue_memcg(struct page *page,
+						   struct deferred_split *queue)
 {
 	if (mem_cgroup_disabled())
+		return NULL;
+	if (&NODE_DATA(page_to_nid(page))->deferred_split_queue == queue)
 		return NULL;
 	return container_of(queue, struct mem_cgroup, deferred_split_queue);
 }
@@ -555,7 +558,8 @@ static inline struct deferred_split *page_memcg_split_queue(struct page *head)
 	return memcg ? &memcg->deferred_split_queue : NULL;
 }
 #else
-+static inline struct mem_cgroup *split_queue_memcg(struct deferred_split *queue)
+static inline struct mem_cgroup *split_queue_memcg(struct page *page,
+						   struct deferred_split *queue)
 {
 	return NULL;
 }
@@ -582,7 +586,7 @@ retry:
 	queue = page_split_queue(head);
 	spin_lock(&queue->split_queue_lock);
 
-	if (unlikely(split_queue_memcg(queue) != page_memcg(head))) {
+	if (unlikely(split_queue_memcg(head, queue) != page_memcg(head))) {
 		spin_unlock(&queue->split_queue_lock);
 		goto retry;
 	}
@@ -606,7 +610,7 @@ retry:
 	queue = page_split_queue(head);
 	spin_lock_irqsave(&queue->split_queue_lock, *flags);
 
-	if (unlikely(split_queue_memcg(queue) != page_memcg(head))) {
+	if (unlikely(split_queue_memcg(head, queue) != page_memcg(head))) {
 		spin_unlock_irqrestore(&queue->split_queue_lock, *flags);
 		goto retry;
 	}
@@ -2888,7 +2892,7 @@ void deferred_split_huge_page(struct page *page)
 		return;
 
 	ds_queue = split_queue_lock_irqsave(page, &flags);
-	memcg = split_queue_memcg(ds_queue);
+	memcg = split_queue_memcg(page, ds_queue);
 	if (list_empty(page_deferred_list(page))) {
 		count_vm_event(THP_DEFERRED_SPLIT_PAGE);
 		list_add_tail(page_deferred_list(page), &ds_queue->split_queue);

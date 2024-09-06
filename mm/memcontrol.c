@@ -1356,7 +1356,7 @@ retry:
 	 * whether page memcg is changed, if so, we should reacquire the
 	 * new lruvec lock.
 	 */
-	if (unlikely(lruvec_memcg(lruvec) != page_memcg(page))) {
+	if (unlikely((lruvec_memcg(lruvec) != page_memcg(page)) && page_memcg(page))) {
 		spin_unlock(&lruvec->lru_lock);
 		goto retry;
 	}
@@ -1382,7 +1382,7 @@ retry:
 	spin_lock_irq(&lruvec->lru_lock);
 
 	/* See the comments in lock_page_lruvec(). */
-	if (unlikely(lruvec_memcg(lruvec) != page_memcg(page))) {
+	if (unlikely((lruvec_memcg(lruvec) != page_memcg(page)) && page_memcg(page))) {
 		spin_unlock_irq(&lruvec->lru_lock);
 		goto retry;
 	}
@@ -1403,7 +1403,7 @@ retry:
 	spin_lock_irqsave(&lruvec->lru_lock, *flags);
 
 	/* See the comments in lock_page_lruvec(). */
-	if (unlikely(lruvec_memcg(lruvec) != page_memcg(page))) {
+	if (unlikely((lruvec_memcg(lruvec) != page_memcg(page)) && page_memcg(page))) {
 		spin_unlock_irqrestore(&lruvec->lru_lock, *flags);
 		goto retry;
 	}
