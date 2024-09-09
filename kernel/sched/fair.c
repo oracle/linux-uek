@@ -6185,7 +6185,10 @@ wake_affine_weight(struct sched_domain *sd, struct task_struct *p,
 	s64 this_eff_load, prev_eff_load;
 	unsigned long task_load;
 
-	this_eff_load = cpu_load(cpu_rq(this_cpu));
+	if (sched_feat(WA_RUNNABLE))
+		this_eff_load = cpu_runnable(cpu_rq(this_cpu));
+	else
+		this_eff_load = cpu_load(cpu_rq(this_cpu));
 
 	if (sync) {
 		unsigned long current_load = task_h_load(current);
@@ -6203,7 +6206,11 @@ wake_affine_weight(struct sched_domain *sd, struct task_struct *p,
 		this_eff_load *= 100;
 	this_eff_load *= capacity_of(prev_cpu);
 
-	prev_eff_load = cpu_load(cpu_rq(prev_cpu));
+	if (sched_feat(WA_RUNNABLE))
+		prev_eff_load = cpu_runnable(cpu_rq(prev_cpu));
+	else
+		prev_eff_load = cpu_load(cpu_rq(prev_cpu));
+
 	prev_eff_load -= task_load;
 	if (sched_feat(WA_BIAS))
 		prev_eff_load *= 100 + (sd->imbalance_pct - 100) / 2;
