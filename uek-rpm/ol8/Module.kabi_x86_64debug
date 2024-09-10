@@ -449,6 +449,7 @@
 0x7a835e20	kill_anon_super	vmlinux	EXPORT_SYMBOL
 0x2b769702	kill_block_super	vmlinux	EXPORT_SYMBOL
 0xbdfb68e3	kill_fasync	vmlinux	EXPORT_SYMBOL
+0x782a434a	kill_pid	vmlinux	EXPORT_SYMBOL
 0x9cf6c3a0	kmalloc_caches	vmlinux	EXPORT_SYMBOL
 0xb8b9f817	kmalloc_order_trace	vmlinux	EXPORT_SYMBOL
 0x7117b6eb	kmem_cache_alloc	vmlinux	EXPORT_SYMBOL

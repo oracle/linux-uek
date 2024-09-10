@@ -450,6 +450,7 @@
 	kill_anon_super
 	kill_block_super
 	kill_fasync
+	kill_pid
 	kmalloc_caches
 	kmalloc_order_trace
 	kmem_cache_alloc
