@@ -1572,6 +1572,9 @@ static void svm_prepare_guest_switch(struct kvm_vcpu *vcpu)
 
 	amd_clear_divider();
 
+	if (static_branch_likely(&cpu_buf_vm_clear))
+		x86_clear_cpu_buffers();
+
 	if (sev_es_guest(vcpu->kvm))
 		sev_es_unmap_ghcb(svm);
 

@@ -818,11 +818,13 @@ extern u32 amd_get_nodes_per_socket(void);
 extern u32 amd_get_highest_perf(void);
 extern bool cpu_has_ibpb_brtype_microcode(void);
 extern void amd_clear_divider(void);
+extern bool amd_check_tsa_microcode(void);
 #else
 static inline u32 amd_get_nodes_per_socket(void)	{ return 0; }
 static inline u32 amd_get_highest_perf(void)		{ return 0; }
 static inline bool cpu_has_ibpb_brtype_microcode(void)	{ return false; }
 static inline void amd_clear_divider(void)		{ }
+static inline bool amd_check_tsa_microcode(void)	{ return false; }
 #endif
 
 #define for_each_possible_hypervisor_cpuid_base(function) \
