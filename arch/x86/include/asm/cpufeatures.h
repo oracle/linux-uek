@@ -415,6 +415,7 @@
 #define X86_FEATURE_SEV_ES		(19*32+ 3) /* AMD Secure Encrypted Virtualization - Encrypted State */
 #define X86_FEATURE_SME_COHERENT	(19*32+10) /* "" AMD hardware-enforced cache coherency */
 
+#define X86_FEATURE_VERW_CLEAR		(20*32+ 5) /* "" The memory form of VERW mitigates TSA */
 #define X86_FEATURE_AUTOIBRS		(20*32+ 8) /* "" Automatic IBRS */
 #define X86_FEATURE_SBPB		(20*32+27) /* "" Selective Branch Prediction Barrier */
 #define X86_FEATURE_IBPB_BRTYPE		(20*32+28) /* "" MSR_PRED_CMD[IBPB] flushes all branch type predictions */
@@ -430,6 +431,8 @@
 #define X86_FEATURE_BHI_CTRL		(21*32+ 2) /* "" BHI_DIS_S HW control available */
 #define X86_FEATURE_CLEAR_BHB_HW	(21*32+ 3) /* "" BHI_DIS_S HW control enabled */
 #define X86_FEATURE_CLEAR_BHB_LOOP_ON_VMEXIT (21*32+ 4) /* "" Clear branch history at vmexit using SW loop */
+#define X86_FEATURE_TSA_SQ_NO		(21*32+ 6) /* "" AMD CPU not vulnerable to TSA-SQ */
+#define X86_FEATURE_TSA_L1_NO		(21*32+ 7) /* "" AMD CPU not vulnerable to TSA-L1 */
 #define X86_FEATURE_INDIRECT_THUNK_ITS	(21*32 + 9) /* "" Use thunk for indirect branches in lower half of cacheline */
 
 /*
@@ -491,5 +494,6 @@
 #define X86_BUG_BHI			X86_BUG(1) /* CPU is affected by Branch History Injection */
 #define X86_BUG_ITS			X86_BUG(2) /* CPU is affected by Indirect Target Selection */
 #define X86_BUG_ITS_NATIVE_ONLY		X86_BUG(3) /* CPU is affected by ITS, VMX is not affected */
+#define X86_BUG_TSA                     X86_BUG(4) /* CPU is affected by Transient Scheduler Attacks */
 
 #endif /* _ASM_X86_CPUFEATURES_H */
