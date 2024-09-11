@@ -235,11 +235,19 @@ DEFINE_STATIC_KEY_FALSE(switch_mm_always_ibpb);
 EXPORT_SYMBOL(switch_mm_always_ibpb);
 
 /* Control MDS CPU buffer clear before returning to user space */
-DEFINE_STATIC_KEY_FALSE(mds_user_clear);
-EXPORT_SYMBOL_GPL(mds_user_clear);
+DEFINE_STATIC_KEY_FALSE(cpu_buf_user_clear);
+EXPORT_SYMBOL_GPL(cpu_buf_user_clear);
 /* Control MDS CPU buffer clear before idling (halt, mwait) */
+DEFINE_STATIC_KEY_FALSE(cpu_buf_idle_clear);
+EXPORT_SYMBOL_GPL(cpu_buf_idle_clear);
+
+/* Preserve for KABI */
 DEFINE_STATIC_KEY_FALSE(mds_idle_clear);
 EXPORT_SYMBOL_GPL(mds_idle_clear);
+
+/* Control CPU buffer clear before running a VM */
+DEFINE_STATIC_KEY_FALSE(cpu_buf_vm_clear);
+EXPORT_SYMBOL_GPL(cpu_buf_vm_clear);
 
 static enum spectre_v2_mitigation spectre_v2_enabled = SPECTRE_V2_NONE;
 
@@ -473,12 +481,12 @@ static bool mds_nosmt __ro_after_init = false;
 
 bool mds_user_clear_enabled(void)
 {
-	return static_key_enabled(&mds_user_clear);
+	return static_key_enabled(&cpu_buf_user_clear);
 }
 
 void mds_user_clear_enable(void)
 {
-	static_branch_enable(&mds_user_clear);
+	static_branch_enable(&cpu_buf_user_clear);
 
 	mds_mitigation = MDS_MITIGATION_FULL;
 	if (!boot_cpu_has(X86_FEATURE_MD_CLEAR))
@@ -487,9 +495,9 @@ void mds_user_clear_enable(void)
 
 void mds_user_clear_disable(void)
 {
-	static_branch_disable(&mds_user_clear);
+	static_branch_disable(&cpu_buf_user_clear);
 
-	if (static_key_enabled(&mds_idle_clear))
+	if (static_key_enabled(&cpu_buf_idle_clear))
 		mds_mitigation = MDS_MITIGATION_IDLE;
 	else
 		mds_mitigation = MDS_MITIGATION_OFF;
@@ -497,22 +505,22 @@ void mds_user_clear_disable(void)
 
 bool mds_idle_clear_enabled(void)
 {
-	return static_key_enabled(&mds_idle_clear);
+	return static_key_enabled(&cpu_buf_idle_clear);
 }
 
 void mds_idle_clear_enable(void)
 {
-	static_branch_enable(&mds_idle_clear);
-	if (!static_key_enabled(&mds_user_clear)) {
+	static_branch_enable(&cpu_buf_idle_clear);
+	if (!static_key_enabled(&cpu_buf_user_clear)) {
 		mds_mitigation = MDS_MITIGATION_IDLE;
 	}
 }
 
 void mds_idle_clear_disable(void)
 {
-	static_branch_disable(&mds_idle_clear);
+	static_branch_disable(&cpu_buf_idle_clear);
 
-	if (!static_key_enabled(&mds_user_clear))
+	if (!static_key_enabled(&cpu_buf_user_clear))
 		mds_mitigation = MDS_MITIGATION_OFF;
 }
 
@@ -537,7 +545,7 @@ static void mds_select_mitigation(void)
 
 	if (mds_mitigation == MDS_MITIGATION_FULL) {
 
-		static_branch_enable(&mds_user_clear);
+		static_branch_enable(&cpu_buf_user_clear);
 
 		if (!boot_cpu_has(X86_BUG_MSBDS_ONLY) &&
 		    (mds_nosmt || cpu_mitigations_auto_nosmt()))
@@ -649,9 +657,9 @@ static void taa_select_mitigation(void)
 	 * present on host, enable the mitigation for UCODE_NEEDED as well.
 	 */
 	if (taa_mitigation == TAA_MITIGATION_IDLE)
-		static_branch_enable(&mds_idle_clear);
+		static_branch_enable(&cpu_buf_idle_clear);
 	else
-		static_branch_enable(&mds_user_clear);
+		static_branch_enable(&cpu_buf_user_clear);
 
 	if (taa_nosmt || cpu_mitigations_auto_nosmt())
 		cpu_smt_disable(false);
@@ -744,7 +752,7 @@ static void mmio_select_mitigation(void)
 	 */
 	if (boot_cpu_has_bug(X86_BUG_MDS) || (boot_cpu_has_bug(X86_BUG_TAA) &&
 					      boot_cpu_has(X86_FEATURE_RTM)))
-		static_branch_enable(&mds_user_clear);
+		static_branch_enable(&cpu_buf_user_clear);
 	else
 		static_branch_enable(&mmio_stale_data_clear);
 
@@ -754,7 +762,7 @@ static void mmio_select_mitigation(void)
 	 * is required irrespective of SMT state.
 	 */
 	if (!(x86_arch_cap_msr & ARCH_CAP_FBSDP_NO))
-		static_branch_enable(&mds_idle_clear);
+		static_branch_enable(&cpu_buf_idle_clear);
 
 	/*
 	 * Check if the system has the right microcode.
@@ -804,7 +812,7 @@ static void md_clear_update_mitigation(void)
 	if (cpu_mitigations_off())
 		return;
 
-	if (!static_key_enabled(&mds_user_clear))
+	if (!static_key_enabled(&cpu_buf_user_clear))
 		goto out;
 
 	/*
@@ -2499,10 +2507,10 @@ static void update_mds_branch_idle(void)
 		return;
 
 	if (sched_smt_active()) {
-		static_branch_enable(&mds_idle_clear);
+		static_branch_enable(&cpu_buf_idle_clear);
 	} else if (mmio_mitigation == MMIO_MITIGATION_OFF ||
 		   (x86_arch_cap_msr & ARCH_CAP_FBSDP_NO)) {
-		static_branch_disable(&mds_idle_clear);
+		static_branch_disable(&cpu_buf_idle_clear);
 	}
 }
 

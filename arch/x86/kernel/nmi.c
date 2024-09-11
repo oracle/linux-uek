@@ -597,7 +597,7 @@ nmi_restart:
 		goto nmi_restart;
 
 	if (user_mode(regs))
-		mds_user_clear_cpu_buffers();
+		x86_user_clear_cpu_buffers();
 }
 NOKPROBE_SYMBOL(do_nmi);
 
