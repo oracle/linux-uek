@@ -437,6 +437,7 @@
 /* AMD-defined Extended Feature 2 EAX, CPUID level 0x80000021 (EAX), word 20 */
 #define X86_FEATURE_NO_NESTED_DATA_BP	(20*32+ 0) /* "" No Nested Data Breakpoints */
 #define X86_FEATURE_LFENCE_RDTSC	(20*32+ 2) /* "" LFENCE always serializing / synchronizes RDTSC */
+#define X86_FEATURE_VERW_CLEAR		(20*32+ 5) /* "" The memory form of VERW mitigates TSA */
 #define X86_FEATURE_NULL_SEL_CLR_BASE	(20*32+ 6) /* "" Null Selector Clears Base */
 #define X86_FEATURE_AUTOIBRS		(20*32+ 8) /* "" Automatic IBRS */
 #define X86_FEATURE_NO_SMM_CTL_MSR	(20*32+ 9) /* "" SMM_CTL MSR is not present */
@@ -456,6 +457,8 @@
 #define X86_FEATURE_BHI_CTRL		(21*32+ 2) /* "" BHI_DIS_S HW control available */
 #define X86_FEATURE_CLEAR_BHB_HW	(21*32+ 3) /* "" BHI_DIS_S HW control enabled */
 #define X86_FEATURE_CLEAR_BHB_LOOP_ON_VMEXIT (21*32+ 4) /* "" Clear branch history at vmexit using SW loop */
+#define X86_FEATURE_TSA_SQ_NO		(21*32+ 6) /* "" AMD CPU not vulnerable to TSA-SQ */
+#define X86_FEATURE_TSA_L1_NO		(21*32+ 7) /* "" AMD CPU not vulnerable to TSA-L1 */
 #define X86_FEATURE_INDIRECT_THUNK_ITS	(21*32 + 9) /* "" Use thunk for indirect branches in lower half of cacheline */
 
 /*
@@ -517,7 +520,7 @@
 #define X86_BUG_BHI			X86_BUG(1) /* CPU is affected by Branch History Injection */
 #define X86_BUG_RFDS			X86_BUG(2) /* CPU is vulnerable to Register File Data Sampling */
 #define X86_BUG_IBPB_NO_RET		X86_BUG(3) /* "ibpb_no_ret" IBPB omits return target predictions */
-/* X86_BUG(4) (X86_BUG_AMD_APIC_C1E) is available */
+#define X86_BUG_TSA                     X86_BUG(4) /* "tsa" CPU is affected by Transient Scheduler Attacks */
 #define X86_BUG_ITS			X86_BUG(5) /* "its" CPU is affected by Indirect Target Selection */
 /* X86_BUG(6) (X86_BUG_FXSAVE_LEAK) is not reused, it can impact AMD in 64-bit mode */
 /* X86_BUG(7) (X86_BUG_CLFLUSH_MONITOR) is not reused, it impacts Intel Core 2 Dunnington, Nehalem, Westmere */
