@@ -1273,6 +1273,8 @@ static const struct x86_cpu_id cpu_vuln_whitelist[] = {
 #define ITS		BIT(8)
 /* CPU is affected by Indirect Target Selection, but guest-host isolation is not affected */
 #define ITS_NATIVE_ONLY	BIT(9)
+/* CPU is affected by Transient Scheduler Attacks */
+#define TSA		BIT(10)
 
 static const struct x86_cpu_id cpu_vuln_blacklist[] = {
 	VULNBL_INTEL_STEPPINGS(IVYBRIDGE,	X86_STEPPING_ANY,		SRBDS),
@@ -1311,7 +1313,7 @@ static const struct x86_cpu_id cpu_vuln_blacklist[] = {
 	VULNBL_AMD(0x16, RETBLEED),
 	VULNBL_AMD(0x17, RETBLEED | SMT_RSB | SRSO),
 	VULNBL_HYGON(0x18, RETBLEED | SMT_RSB),
-	VULNBL_AMD(0x19, SRSO),
+	VULNBL_AMD(0x19, SRSO | TSA),
 	{}
 };
 
@@ -1521,6 +1523,12 @@ void cpu_set_bug_bits(struct cpuinfo_x86 *c)
 		setup_force_cpu_bug(X86_BUG_ITS);
 		if (cpu_matches(cpu_vuln_blacklist, ITS_NATIVE_ONLY))
 			setup_force_cpu_bug(X86_BUG_ITS_NATIVE_ONLY);
+	}
+
+	if (!cpu_has(c, X86_FEATURE_TSA_SQ_NO) ||
+	    !cpu_has(c, X86_FEATURE_TSA_L1_NO)) {
+		if (cpu_matches(cpu_vuln_blacklist, TSA))
+			setup_force_cpu_bug(X86_BUG_TSA);
 	}
 
 	if (cpu_matches(cpu_vuln_whitelist, NO_MELTDOWN))

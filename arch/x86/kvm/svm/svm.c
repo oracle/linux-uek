@@ -3368,6 +3368,8 @@ static void svm_flush_tlb_gva(struct kvm_vcpu *vcpu, gva_t gva)
 
 static void svm_prepare_guest_switch(struct kvm_vcpu *vcpu)
 {
+	if (static_branch_likely(&cpu_buf_vm_clear))
+		x86_clear_cpu_buffers();
 }
 
 static inline void sync_cr8_to_lapic(struct kvm_vcpu *vcpu)
