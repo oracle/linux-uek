@@ -1128,11 +1128,17 @@ BuildKernel() {
     elif [ "$Flavour" == "64k" ]; then
 	sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config
 	echo 'CONFIG_ARM64_64K_PAGES=y' >> configs/config
+	sed -i '/CONFIG_ZONE_DEVICE/d' configs/config
+	echo 'CONFIG_ZONE_DEVICE=y' >> configs/config
+	echo 'CONFIG_DEVICE_PRIVATE=y' >> configs/config
 	cp configs/config .config
 	modlistVariant=../kernel%{?variant}64k
     elif [ "$Flavour" == "64kdebug" ]; then
 	sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config-debug
 	echo 'CONFIG_ARM64_64K_PAGES=y' >> configs/config-debug
+	sed -i '/CONFIG_ZONE_DEVICE/d' configs/config
+	echo 'CONFIG_ZONE_DEVICE=y' >> configs/config
+	echo 'CONFIG_DEVICE_PRIVATE=y' >> configs/config
 	cp configs/config-debug .config
 	modlistVariant=../kernel%{?variant}64kdebug
     elif [ "$Flavour" == "emb3" ]; then
