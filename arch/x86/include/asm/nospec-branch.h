@@ -386,21 +386,23 @@ DECLARE_STATIC_KEY_FALSE(switch_to_cond_stibp);
 DECLARE_STATIC_KEY_FALSE(switch_mm_cond_ibpb);
 DECLARE_STATIC_KEY_FALSE(switch_mm_always_ibpb);
 
-DECLARE_STATIC_KEY_FALSE(mds_user_clear);
-DECLARE_STATIC_KEY_FALSE(mds_idle_clear);
+DECLARE_STATIC_KEY_FALSE(cpu_buf_user_clear);
+DECLARE_STATIC_KEY_FALSE(cpu_buf_idle_clear);
+DECLARE_STATIC_KEY_FALSE(cpu_buf_vm_clear);
+DECLARE_STATIC_KEY_FALSE(mds_idle_clear); /* Need for KABI */
 
 DECLARE_STATIC_KEY_FALSE(mmio_stale_data_clear);
 
 #include <asm/segment.h>
 
 /**
- * mds_clear_cpu_buffers - Mitigation for MDS and TAA vulnerability
+ * x86_clear_cpu_buffers - Buffer clearing support for different x86 CPU vulns
  *
  * This uses the otherwise unused and obsolete VERW instruction in
  * combination with microcode which triggers a CPU buffer flush when the
  * instruction is executed.
  */
-static __always_inline void mds_clear_cpu_buffers(void)
+static __always_inline void x86_clear_cpu_buffers(void)
 {
 	static const u16 ds = __KERNEL_DS;
 
@@ -417,25 +419,25 @@ static __always_inline void mds_clear_cpu_buffers(void)
 }
 
 /**
- * mds_user_clear_cpu_buffers - Mitigation for MDS and TAA vulnerability
+ * x86_user_clear_cpu_buffers - Buffer clearing support for different x86 CPU vulns
  *
  * Clear CPU buffers if the corresponding static key is enabled
  */
-static __always_inline void mds_user_clear_cpu_buffers(void)
+static __always_inline void x86_user_clear_cpu_buffers(void)
 {
-	if (static_branch_likely(&mds_user_clear))
-		mds_clear_cpu_buffers();
+	if (static_branch_likely(&cpu_buf_user_clear))
+		x86_clear_cpu_buffers();
 }
 
 /**
- * mds_idle_clear_cpu_buffers - Mitigation for MDS vulnerability
+ * x86_idle_clear_cpu_buffers - Buffer clearing support for different x86 CPU vulns
  *
  * Clear CPU buffers if the corresponding static key is enabled
  */
-static inline void mds_idle_clear_cpu_buffers(void)
+static inline void x86_idle_clear_cpu_buffers(void)
 {
-	if (static_branch_likely(&mds_idle_clear))
-		mds_clear_cpu_buffers();
+	if (static_branch_likely(&cpu_buf_idle_clear) || static_branch_unlikely(&mds_idle_clear))
+		x86_clear_cpu_buffers();
 }
 
 #endif /* __ASSEMBLY__ */
