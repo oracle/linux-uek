@@ -495,6 +495,12 @@ void kvm_set_cpu_caps(void)
 
 	if (cpu_feature_enabled(X86_FEATURE_SRSO_NO))
 		kvm_cpu_cap_set(X86_FEATURE_SRSO_NO);
+
+	kvm_cpu_cap_mask(CPUID_8000_0021_EAX, F(VERW_CLEAR));
+
+	kvm_cpu_cap_check_and_set(X86_FEATURE_VERW_CLEAR);
+	kvm_cpu_cap_check_and_set(X86_FEATURE_TSA_SQ_NO);
+	kvm_cpu_cap_check_and_set(X86_FEATURE_TSA_L1_NO);
 }
 EXPORT_SYMBOL_GPL(kvm_set_cpu_caps);
 
@@ -874,7 +880,9 @@ static inline int __do_cpuid_func(struct kvm_cpuid_array *array, u32 function)
 		entry->eax = entry->ebx = entry->ecx = entry->edx = 0;
 		break;
 	case 0x80000021:
-		entry->eax = entry->ebx = entry->ecx = entry->edx = 0;
+		entry->ebx = entry->edx = 0;
+		cpuid_entry_override(entry, CPUID_8000_0021_EAX);
+		cpuid_entry_override(entry, CPUID_8000_0021_ECX);
 		break;
 	/*Add support for Centaur's CPUID instruction*/
 	case 0xC0000000:
