@@ -29,7 +29,7 @@ bool video_is_primary_device(struct device *dev)
 {
 	struct pci_dev *pdev;
 
-	if (!dev_is_pci(dev))
+	if (!dev || !dev_is_pci(dev))
 		return false;
 
 	pdev = to_pci_dev(dev);
