@@ -9,10 +9,15 @@
 
 bool video_is_primary_device(struct device *dev)
 {
-	struct device_node *node = dev->of_node;
+	struct device_node *node;
+
+	if (!dev)
+		return false;
 
 	if (console_set_on_cmdline)
 		return false;
+
+	node = dev->of_node;
 
 	if (node && node == of_console_device)
 		return true;
