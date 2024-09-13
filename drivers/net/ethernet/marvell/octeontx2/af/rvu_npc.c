@@ -16,7 +16,6 @@
 #include "cgx.h"
 #include "npc_profile.h"
 #include "rvu_npc_hash.h"
-#include "rvu_npc.h"
 #include "cn20k/npc.h"
 
 #define RSVD_MCAM_ENTRIES_PER_PF	3 /* Broadcast, Promisc and AllMulticast */
@@ -1620,13 +1619,17 @@ static int npc_apply_custom_kpu(struct rvu *rvu,
 				struct npc_kpu_profile_adapter *profile)
 {
 	size_t hdr_sz = sizeof(struct npc_kpu_profile_fwdata), offset = 0;
-	struct npc_kpu_profile_fwdata *fw = rvu->kpu_fwdata;
 	struct npc_kpu_profile_action *action;
+	struct npc_kpu_profile_fwdata *fw;
 	struct npc_kpu_profile_cam *cam;
 	struct npc_kpu_fwdata *fw_kpu;
 	int entries;
 	u16 kpu, entry;
 
+	if (is_cn20k(rvu->pdev))
+		return npc_cn20k_apply_custom_kpu(rvu, profile);
+
+	fw = rvu->kpu_fwdata;
 	if (rvu->kpu_fwdata_sz < hdr_sz) {
 		dev_warn(rvu->dev, "Invalid KPU profile size\n");
 		return -EINVAL;
@@ -1728,8 +1731,12 @@ static int npc_fwdb_detect_load_prfl_img(struct rvu *rvu, uint64_t prfl_sz,
 	if (le64_to_cpu(img_data->signature) == KPU_SIGN &&
 	    !strncmp(img_data->name, kpu_profile, KPU_NAME_LEN)) {
 		/* Loaded profile is a single KPU profile. */
-		rc = npc_load_kpu_prfl_img(rvu, rvu->kpu_prfl_addr,
-					   prfl_sz, kpu_profile);
+		if (is_cn20k(rvu->pdev))
+			rc = npc_cn20k_load_kpu_prfl_img(rvu, rvu->kpu_prfl_addr,
+							 prfl_sz, kpu_profile);
+		else
+			rc = npc_load_kpu_prfl_img(rvu, rvu->kpu_prfl_addr,
+						   prfl_sz, kpu_profile);
 		goto done;
 	}
 
@@ -1742,8 +1749,12 @@ static int npc_fwdb_detect_load_prfl_img(struct rvu *rvu, uint64_t prfl_sz,
 		offset = ALIGN_8B_CEIL(offset);
 		kpu_prfl_addr = (void __iomem *)((uintptr_t)rvu->kpu_prfl_addr +
 					 offset);
-		rc = npc_load_kpu_prfl_img(rvu, kpu_prfl_addr,
-					   img_data->prfl_sz[i], kpu_profile);
+		if (is_cn20k(rvu->pdev))
+			rc = npc_cn20k_load_kpu_prfl_img(rvu, kpu_prfl_addr,
+							 img_data->prfl_sz[i], kpu_profile);
+		else
+			rc = npc_load_kpu_prfl_img(rvu, kpu_prfl_addr,
+						   img_data->prfl_sz[i], kpu_profile);
 		if (!rc)
 			break;
 		/* Calculating offset of profile image based on profile size.*/
@@ -1793,12 +1804,6 @@ void npc_load_kpu_profile(struct rvu *rvu)
 		goto revert_to_default;
 	/* First prepare default KPU, then we'll customize top entries. */
 	npc_prepare_default_kpu(rvu, profile);
-
-	/* TODO: Custom profile is not supported yet
-	 * for CN20K.
-	 */
-	if (is_cn20k(rvu->pdev))
-		return;
 
 	/* Order of preceedence for load loading NPC profile (high to low)
 	 * Firmware binary in filesystem.

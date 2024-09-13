@@ -8,6 +8,8 @@
 #ifndef NPC_CN20K_H
 #define NPC_CN20K_H
 
+#define MKEX_CN20K_SIGN	0x19bbfdbd160
+
 #define MAX_NUM_BANKS 2
 #define MAX_NUM_SUB_BANKS 32
 #define MAX_SUBBANK_DEPTH 256
@@ -67,6 +69,9 @@
 					 NPC_CN20K_PARSE_NIBBLE_LC_LTYPE | \
 					 NPC_CN20K_PARSE_NIBBLE_LD_LTYPE | \
 					 NPC_CN20K_PARSE_NIBBLE_LE_LTYPE)
+
+struct rvu;
+struct npc_kpu_profile_adapter;
 
 enum npc_subbank_flag {
 	NPC_SUBBANK_FLAG_UNINIT,	// npc_subbank is not initialized yet.
@@ -140,6 +145,32 @@ struct npc_mcam_kex_extr {
 	u64 intf_extr_lt[NPC_MAX_INTF][NPC_MAX_EXTRACTOR][NPC_MAX_LT];
 } __packed;
 
+struct npc_cn20k_kpu_profile_fwdata {
+#define KPU_SIGN	0x00666f727075706b
+#define KPU_NAME_LEN	32
+/** Maximum number of custom KPU entries supported by the built-in profile. */
+#define KPU_CN20K_MAX_CST_ENT	6
+	/* KPU Profle Header */
+	__le64	signature; /* "kpuprof\0" (8 bytes/ASCII characters) */
+	u8	name[KPU_NAME_LEN]; /* KPU Profile name */
+	__le64	version; /* KPU profile version */
+	u8	kpus;
+	u8	reserved[7];
+
+	/* Default MKEX profile to be used with this KPU profile. May be
+	 * overridden with mkex_profile module parameter. Format is same as for
+	 * the MKEX profile to streamline processing.
+	 */
+	struct npc_mcam_kex_extr	mkex;
+	/* LTYPE values for specific HW offloaded protocols. */
+	struct npc_lt_def_cfg		lt_def;
+	/* Dynamically sized data:
+	 *  Custom KPU CAM and ACTION configuration entries.
+	 * struct npc_kpu_fwdata kpu[kpus];
+	 */
+	u8	data[0];
+} __packed;
+
 struct npc_kpm_action0 {
 #if defined(__BIG_ENDIAN_BITFIELD)
 	u64 rsvd_63_57     : 7;
@@ -176,7 +207,6 @@ struct npc_kpm_action0 {
 #endif
 };
 
-struct rvu;
 struct npc_priv_t *npc_priv_get(void);
 int npc_cn20k_init(struct rvu *rvu);
 int npc_cn20k_deinit(struct rvu *rvu);
@@ -208,5 +238,8 @@ u16 npc_cn20k_idx2vidx(u16 idx);
 int npc_cn20k_defrag(struct rvu *rvu);
 
 int npc_mcam_idx_2_key_type(struct rvu *rvu, u16 mcam_idx, u8 *key_type);
+int npc_cn20k_apply_custom_kpu(struct rvu *rvu, struct npc_kpu_profile_adapter *profile);
+int npc_cn20k_load_kpu_prfl_img(struct rvu *rvu, void __iomem *prfl_addr,
+				u64 prfl_sz, const char *kpu_profile);
 
 #endif /* NPC_CN20K_H */

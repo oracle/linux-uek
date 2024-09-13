@@ -11,7 +11,6 @@
 #include "npc_profile.h"
 #include "rvu_npc_fs.h"
 #include "rvu_npc_hash.h"
-#include "rvu_npc.h"
 
 #define KPU_OFFSET	8
 #define KEX_EXTR_CFG(bytesm1, hdr_ofs, ena, key_ofs)		\
@@ -50,7 +49,7 @@ const char *npc_dft_rule_name[NPC_DFT_RULE_MAX_ID] = {
 };
 
 static struct npc_mcam_kex_extr npc_mkex_extr_default = {
-	.mkex_sign = MKEX_SIGN,
+	.mkex_sign = MKEX_CN20K_SIGN,
 	.name = "default",
 	.kpu_version = NPC_KPU_PROFILE_VER,
 	.keyx_cfg = {
@@ -2704,9 +2703,9 @@ static void npc_enable_kpm_entry(struct rvu *rvu, int blkaddr, int kpm, int num_
 	u64 entry_mask;
 
 	entry_mask = npc_enable_mask(num_entries);
-	/* Disable first KPU_MAX_CST_ENT entries for built-in profile */
+	/* Disable first KPU_CN20K_MAX_CST_ENT entries for built-in profile */
 	if (!rvu->kpu.custom)
-		entry_mask |= GENMASK_ULL(KPU_MAX_CST_ENT - 1, 0);
+		entry_mask |= GENMASK_ULL(KPU_CN20K_MAX_CST_ENT - 1, 0);
 	rvu_write64(rvu, blkaddr,
 		    NPC_AF_KPMX_ENTRY_DISX(kpm, 0), entry_mask);
 	if (num_entries <= 64) {
@@ -2906,7 +2905,7 @@ void npc_cn20k_load_mkex_profile(struct rvu *rvu, int blkaddr,
 
 	while (((s64)prfl_sz > 0) && (mcam_kex_extr->mkex_sign != MKEX_END_SIGN)) {
 		/* Compare with mkex mod_param name string */
-		if (mcam_kex_extr->mkex_sign == MKEX_SIGN &&
+		if (mcam_kex_extr->mkex_sign == MKEX_CN20K_SIGN &&
 		    !strncmp(mcam_kex_extr->name, mkex_profile, MKEX_NAME_LEN)) {
 			rvu->kpu.mcam_kex_prfl.mkex_extr = mcam_kex_extr;
 			goto program_mkex_extr;
@@ -3779,6 +3778,115 @@ done:
 err:
 	/* TODO: handle errors */
 	return ret;
+}
+
+int npc_cn20k_apply_custom_kpu(struct rvu *rvu, struct npc_kpu_profile_adapter *profile)
+{
+	size_t hdr_sz = sizeof(struct npc_cn20k_kpu_profile_fwdata), offset = 0;
+	struct npc_cn20k_kpu_profile_fwdata *fw = rvu->kpu_fwdata;
+	struct npc_kpu_profile_action *action;
+	struct npc_kpu_profile_cam *cam;
+	struct npc_kpu_fwdata *fw_kpu;
+	u16 kpu, entry;
+	int entries;
+
+	if (rvu->kpu_fwdata_sz < hdr_sz) {
+		dev_warn(rvu->dev, "Invalid KPU profile size\n");
+		return -EINVAL;
+	}
+
+	if (le64_to_cpu(fw->signature) != KPU_SIGN) {
+		dev_warn(rvu->dev, "Invalid KPU profile signature %llx\n",
+			 fw->signature);
+		return -EINVAL;
+	}
+
+	/* Verify if the using known profile structure */
+	if (NPC_KPU_VER_MAJ(profile->version) >
+	    NPC_KPU_VER_MAJ(NPC_KPU_PROFILE_VER)) {
+		dev_warn(rvu->dev, "Not supported Major version: %d > %d\n",
+			 NPC_KPU_VER_MAJ(profile->version),
+			 NPC_KPU_VER_MAJ(NPC_KPU_PROFILE_VER));
+		return -EINVAL;
+	}
+
+	/* Verify if profile is aligned with the required kernel changes */
+	if (NPC_KPU_VER_MIN(profile->version) <
+	    NPC_KPU_VER_MIN(NPC_KPU_PROFILE_VER)) {
+		dev_warn(rvu->dev,
+			 "Invalid KPU profile version: %d.%d.%d expected version <= %d.%d.%d\n",
+			 NPC_KPU_VER_MAJ(profile->version),
+			 NPC_KPU_VER_MIN(profile->version),
+			 NPC_KPU_VER_PATCH(profile->version),
+			 NPC_KPU_VER_MAJ(NPC_KPU_PROFILE_VER),
+			 NPC_KPU_VER_MIN(NPC_KPU_PROFILE_VER),
+			 NPC_KPU_VER_PATCH(NPC_KPU_PROFILE_VER));
+		return -EINVAL;
+	}
+
+	/* Verify if profile fits the HW */
+	if (fw->kpus > profile->kpus) {
+		dev_warn(rvu->dev, "Not enough KPUs: %d > %ld\n", fw->kpus,
+			 profile->kpus);
+		return -EINVAL;
+	}
+
+	profile->mcam_kex_prfl.mkex_extr = &fw->mkex;
+	if (profile->mcam_kex_prfl.mkex_extr->mkex_sign != MKEX_CN20K_SIGN) {
+		dev_warn(rvu->dev, "Invalid MKEX profile signature:%llx\n",
+			 profile->mcam_kex_prfl.mkex_extr->mkex_sign);
+		return -EINVAL;
+	}
+
+	profile->custom = 1;
+	profile->name = fw->name;
+	profile->version = le64_to_cpu(fw->version);
+	profile->lt_def = &fw->lt_def;
+
+	for (kpu = 0; kpu < fw->kpus; kpu++) {
+		fw_kpu = (struct npc_kpu_fwdata *)(fw->data + offset);
+		if (fw_kpu->entries > KPU_CN20K_MAX_CST_ENT)
+			dev_warn(rvu->dev,
+				 "Too many custom entries on KPU%d: %d > %d\n",
+				 kpu, fw_kpu->entries, KPU_CN20K_MAX_CST_ENT);
+		entries = min(fw_kpu->entries, KPU_CN20K_MAX_CST_ENT);
+		cam = (struct npc_kpu_profile_cam *)fw_kpu->data;
+		offset += sizeof(*fw_kpu) + fw_kpu->entries * sizeof(*cam);
+		action = (struct npc_kpu_profile_action *)(fw->data + offset);
+		offset += fw_kpu->entries * sizeof(*action);
+		if (rvu->kpu_fwdata_sz < hdr_sz + offset) {
+			dev_warn(rvu->dev,
+				 "Profile size mismatch on KPU%i parsing.\n",
+				 kpu + 1);
+			return -EINVAL;
+		}
+		for (entry = 0; entry < entries; entry++) {
+			profile->kpu[kpu].cam[entry] = cam[entry];
+			profile->kpu[kpu].action[entry] = action[entry];
+		}
+	}
+
+	return 0;
+}
+
+int npc_cn20k_load_kpu_prfl_img(struct rvu *rvu, void __iomem *prfl_addr,
+				u64 prfl_sz, const char *kpu_profile)
+{
+	struct npc_cn20k_kpu_profile_fwdata *kpu_data = NULL;
+	int rc = -EINVAL;
+
+	kpu_data = (struct npc_cn20k_kpu_profile_fwdata __force *)prfl_addr;
+	if (le64_to_cpu(kpu_data->signature) == KPU_SIGN &&
+	    !strncmp(kpu_data->name, kpu_profile, KPU_NAME_LEN)) {
+		dev_info(rvu->dev, "Loading KPU profile from firmware db: %s\n",
+			 kpu_profile);
+		rvu->kpu_fwdata = kpu_data;
+		rvu->kpu_fwdata_sz = prfl_sz;
+		rvu->kpu_prfl_addr = prfl_addr;
+		rc = 0;
+	}
+
+	return rc;
 }
 
 int rvu_mbox_handler_npc_cn20k_get_free_count(struct rvu *rvu,
