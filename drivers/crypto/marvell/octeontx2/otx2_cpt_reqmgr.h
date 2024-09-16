@@ -21,9 +21,6 @@
 #define OTX2_CPT_DMA_MODE_DIRECT 0
 #define OTX2_CPT_DMA_MODE_SG     1
 
-#define OTX2_CPT_OUT_MODE_OOP     0
-#define OTX2_CPT_OUT_MODE_INPLACE 1
-
 /* Context source CPTR or DPTR */
 #define OTX2_CPT_FROM_CPTR 0
 #define OTX2_CPT_FROM_DPTR 1
@@ -54,7 +51,6 @@ struct otx2_cptvf_request {
 	void *cptr;
 	dma_addr_t dptr_dma;
 	void *dptr;
-	dma_addr_t rptr_dma;
 };
 
 /*
@@ -513,7 +509,7 @@ static inline struct otx2_cpt_inst_info *otx2_cpt_info_create(struct pci_dev *pd
 
 	info->in_buffer = req->req.dptr;
 	info->dptr_baddr = req->req.dptr_dma;
-	info->rptr_baddr = req->req.rptr_dma;
+	info->rptr_baddr = req->req.dptr_dma;
 
 	info->completion_addr = (u8 *)info + info_len;
 	info->dma_len = total_mem_len - info_len;
