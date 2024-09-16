@@ -232,6 +232,10 @@ void npc_program_mkex_hash(struct rvu *rvu, int blkaddr)
 	struct rvu_hwinfo *hw = rvu->hw;
 	u64 cfg;
 
+	/* TODO: Support hash feature for CN20K */
+	if (is_cn20k(rvu->pdev))
+		return;
+
 	/* Check if hardware supports hash extraction */
 	if (!hwcap->npc_hash_extract)
 		return;
