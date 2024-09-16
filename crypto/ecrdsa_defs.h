@@ -13,7 +13,7 @@
 #ifndef _CRYTO_ECRDSA_DEFS_H
 #define _CRYTO_ECRDSA_DEFS_H
 
-#include <crypto/internal/ecc.h>
+#include "ecc.h"
 
 #define ECRDSA_MAX_SIG_SIZE (2 * 512 / 8)
 #define ECRDSA_MAX_DIGITS (512 / 64)

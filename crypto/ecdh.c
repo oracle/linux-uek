@@ -6,12 +6,12 @@
  */
 
 #include <linux/module.h>
-#include <crypto/internal/ecc.h>
 #include <crypto/internal/kpp.h>
 #include <crypto/kpp.h>
 #include <crypto/ecdh.h>
 #include <linux/scatterlist.h>
 #include <linux/fips.h>
+#include "ecc.h"
 
 struct ecdh_ctx {
 	unsigned int curve_id;
