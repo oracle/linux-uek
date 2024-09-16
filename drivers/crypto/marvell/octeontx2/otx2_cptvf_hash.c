@@ -98,9 +98,8 @@ static inline void create_hash_ctx_hdr(struct otx2_cpt_req_info *req_info, struc
 {
 	req_info->ctrl.s.dma_mode = dma_mode;
 	req_info->ctrl.s.se_req = 1;
-	req_info->req.opcode.s.major = OTX2_CPT_MAJOR_OP_HASH | DMA_MODE_FLAG(dma_mode);
-	if (dma_mode == OTX2_CPT_DMA_MODE_DIRECT)
-		req_info->req.opcode.s.major |= OUTPUT_MODE_FLAG(OTX2_CPT_OUT_MODE_INPLACE);
+	req_info->req.opcode.s.major = OTX2_CPT_MAJOR_OP_HASH | DMA_MODE_FLAG(dma_mode) |
+				       OUTPUT_MODE_FLAG(OTX2_CPT_OUT_MODE_INPLACE);
 	req_info->is_trunc_hmac = 0;
 
 	switch (minor_op) {
@@ -130,9 +129,8 @@ static inline void create_hmac_ctx_hdr(struct otx2_cpt_req_info *req_info, struc
 {
 	req_info->ctrl.s.dma_mode = dma_mode;
 	req_info->ctrl.s.se_req = 1;
-	req_info->req.opcode.s.major = OTX2_CPT_MAJOR_OP_HMAC | DMA_MODE_FLAG(dma_mode);
-	if (dma_mode == OTX2_CPT_DMA_MODE_DIRECT)
-		req_info->req.opcode.s.major |= OUTPUT_MODE_FLAG(OTX2_CPT_OUT_MODE_INPLACE);
+	req_info->req.opcode.s.major = OTX2_CPT_MAJOR_OP_HMAC | DMA_MODE_FLAG(dma_mode) |
+				       OUTPUT_MODE_FLAG(OTX2_CPT_OUT_MODE_INPLACE);
 	req_info->is_trunc_hmac = 0;
 
 	switch (minor_op) {
