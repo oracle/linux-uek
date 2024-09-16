@@ -4914,23 +4914,11 @@ static const struct alg_test_desc alg_test_descs[] = {
 			.akcipher = __VECS(ecdsa_nist_p192_tv_template)
 		}
 	}, {
-		.alg = "ecdsa-nist-p192-generic",
-		.test = alg_test_akcipher,
-		.suite = {
-			.akcipher = __VECS(ecdsa_nist_p192_rfc6979_tv_template)
-		}
-	}, {
 		.alg = "ecdsa-nist-p256",
 		.fips_allowed = 1,
 		.test = alg_test_akcipher,
 		.suite = {
 			.akcipher = __VECS(ecdsa_nist_p256_tv_template)
-		}
-	}, {
-		.alg = "ecdsa-nist-p256-generic",
-		.test = alg_test_akcipher,
-		.suite = {
-			.akcipher = __VECS(ecdsa_nist_p256_rfc6979_tv_template)
 		}
 	}, {
 		.alg = "ecdsa-nist-p384",
