@@ -1407,6 +1407,9 @@ static int rvu_af_dl_tim_adjust_timers_set(struct devlink *devlink, u32 id,
 
 static bool cn10k_tim_adjust_gti_errata(struct pci_dev *pdev)
 {
+	if (is_cn20k(pdev))
+		return true;
+
 	if ((pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_A &&
 	     (pdev->revision & 0x0F) >= 0x1) ||
 	    (pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_B &&
