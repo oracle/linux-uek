@@ -133,6 +133,7 @@ const struct fs_parameter_spec smb3_fs_parameters[] = {
 	fsparam_flag("rootfs", Opt_rootfs),
 	fsparam_flag("compress", Opt_compress),
 	fsparam_flag("witness", Opt_witness),
+	fsparam_flag_no("nativesocket", Opt_nativesocket),
 
 	/* Mount options which take uid or gid */
 	fsparam_uid("backupuid", Opt_backupuid),
@@ -1804,6 +1805,9 @@ static int smb3_fs_context_parse_param(struct fs_context *fc,
 		if (parse_reparse_flavor(fc, param->string, ctx))
 			goto cifs_parse_mount_err;
 		break;
+	case Opt_nativesocket:
+		ctx->nonativesocket = result.negated;
+		break;
 	case Opt_symlink:
 		if (parse_symlink_flavor(fc, param->string, ctx))
 			goto cifs_parse_mount_err;
@@ -1938,6 +1942,7 @@ int smb3_init_fs_context(struct fs_context *fc)
 	ctx->retrans = 1;
 	ctx->reparse_type = CIFS_REPARSE_TYPE_DEFAULT;
 	ctx->symlink_type = CIFS_SYMLINK_TYPE_DEFAULT;
+	ctx->nonativesocket = 0;
 
 /*
  *	short int override_uid = -1;
