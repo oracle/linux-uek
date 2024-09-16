@@ -521,6 +521,7 @@
 #define SSO_AF_TOAQX_STATUS(a)		(0xd0000 | (a) << 3)
 #define SSO_AF_TIAQX_STATUS(a)		(0xc0000 | (a) << 3)
 #define SSO_AF_HWGRPX_AGGR_GMCTL(a)	(0xf0000 | (a) << 3)
+#define SSO_AF_HWGRPX_AGGR_CTX_INSTOP(a) (0xf4000 | (a) << 3)
 #define SSO_AF_HWGRPX_VWQE_FLUSHED(a)	(0xfa000 | (a) << 3)
 #define SSO_AF_HWGRPX_VWQE_NORM_COMPL(a)	(0xf6000 | (a) << 3)
 #define SSO_AF_HWGRPX_VWQE_NPA_FAIL(a)	(0xfc000 | (a) << 3)
@@ -662,10 +663,18 @@
 #define SSO_LF_GGRP_AQ_THR		(0x1e0ull)
 #define SSO_LF_GGRP_MISC_CNT		(0x200ull)
 
+#define SSO_LF_GGRP_AGGR_CFG	    (0x300ull)
+#define SSO_LF_GGRP_AGGR_CTX_BASE   (0x308ull)
+#define SSO_LF_GGRP_AGGR_CTX_INSTOP (0x310ull)
+
 #define SSO_LF_GGRP_INT_MASK		(0X7)
 #define SSO_LF_GGRP_AQ_THR_MASK		(BIT_ULL(33) - 1)
 #define SSO_LF_GGRP_XAQ_CNT_MASK	(BIT_ULL(33) - 1)
 #define SSO_LF_GGRP_INT_CNT_MASK	(0x3FFF3FFF0000ull)
+
+#define SSO_LF_AGGR_INSTOP_GLOBAL_FLUSH (0x2ull)
+#define SSO_LF_AGGR_INSTOP_GLOBAL_EVICT (0x3ull)
+#define SSO_LF_AGGR_OP_PEND		BIT_ULL(2)
 
 /* SSOW */
 #define SSOW_AF_RVU_LF_HWS_CFG_DEBUG	(0x0010)

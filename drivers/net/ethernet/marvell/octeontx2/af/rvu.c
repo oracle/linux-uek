@@ -2976,10 +2976,23 @@ static void rvu_npa_lf_mapped_sso_lf_teardown(struct rvu *rvu, u16 pcifunc)
 	if (blkaddr < 0)
 		return;
 
+	sso_block = &rvu->hw->block[blkaddr];
+
+	/* Flush and disable any EVA contexts */
+	for (lf = 0; lf < sso_block->lf.max; lf++) {
+		regval = rvu_read64(rvu, blkaddr, SSO_AF_XAQX_GMCTL(lf));
+		if ((regval & 0xFFFF) != pcifunc)
+			continue;
+		regval = rvu_read64(rvu, blkaddr,
+				    sso_block->lfcfg_reg |
+					    (lf << sso_block->lfshift));
+		rvu_sso_lf_cleanup_eva(rvu, sso_block->fn_map[lf], lf,
+				       regval & 0xF);
+	}
+
 	regval = BIT_ULL(16) | pcifunc;
 	rvu_bar2_sel_write64(rvu, npa_blkaddr, NPA_AF_BAR2_SEL, regval);
 
-	sso_block = &rvu->hw->block[blkaddr];
 	retry = 0;
 	drain_tmo = jiffies + msecs_to_jiffies(SSO_FLUSH_TMO_MAX);
 	for (lf = 0; lf < sso_block->lf.max || retry; lf++) {

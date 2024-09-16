@@ -1332,6 +1332,52 @@ exit:
 	return rc;
 }
 
+void rvu_sso_lf_cleanup_eva(struct rvu *rvu, u16 pcifunc, int lf, int slot)
+{
+	int blkaddr;
+	u64 reg;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
+	if (blkaddr < 0)
+		return;
+
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_CONST1);
+	if (!(reg & SSO_AF_CONST1_EVA_PRESENT))
+		return;
+
+	mutex_lock(&rvu->alias_lock);
+	/* Enable BAR2 ALIAS for this pcifunc. */
+	reg = BIT_ULL(16) | pcifunc;
+	rvu_bar2_sel_write64(rvu, blkaddr, SSO_AF_BAR2_SEL, reg);
+
+	/* Disable any aggregation. */
+	rvu_write64(rvu, blkaddr,
+		    SSO_AF_BAR2_ALIASX(slot, SSO_LF_GGRP_AGGR_CFG), 0);
+
+	/* Flush all the WQEs. */
+	reg = SSO_LF_AGGR_INSTOP_GLOBAL_FLUSH << 4;
+	rvu_write64(rvu, blkaddr,
+		    SSO_AF_BAR2_ALIASX(slot, SSO_LF_GGRP_AGGR_CTX_INSTOP), 0x1);
+	rvu_poll_reg(rvu, blkaddr,
+		     SSO_AF_BAR2_ALIASX(slot, SSO_LF_GGRP_AGGR_CTX_INSTOP),
+		     SSO_LF_AGGR_OP_PEND, true);
+
+	/* Flush all the contexts. */
+	reg = SSO_LF_AGGR_INSTOP_GLOBAL_EVICT << 4;
+	rvu_write64(rvu, blkaddr,
+		    SSO_AF_BAR2_ALIASX(slot, SSO_LF_GGRP_AGGR_CTX_INSTOP), 0x1);
+	rvu_poll_reg(rvu, blkaddr,
+		     SSO_AF_BAR2_ALIASX(slot, SSO_LF_GGRP_AGGR_CTX_INSTOP),
+		     SSO_LF_AGGR_OP_PEND, true);
+
+	rvu_write64(rvu, blkaddr,
+		    SSO_AF_BAR2_ALIASX(slot, SSO_LF_GGRP_AGGR_CTX_BASE), 0);
+	rvu_bar2_sel_write64(rvu, blkaddr, SSO_AF_BAR2_SEL, 0);
+	mutex_unlock(&rvu->alias_lock);
+
+	rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_AGGR_GMCTL(lf), 0);
+}
+
 int rvu_mbox_handler_sso_lf_free(struct rvu *rvu, struct sso_lf_free_req *req,
 				 struct msg_rsp *rsp)
 {
@@ -1345,6 +1391,13 @@ int rvu_mbox_handler_sso_lf_free(struct rvu *rvu, struct sso_lf_free_req *req,
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, pcifunc);
 	if (blkaddr < 0)
 		return SSO_AF_ERR_LF_INVALID;
+
+	for (hwgrp = 0; hwgrp < req->hwgrps; hwgrp++) {
+		lf = rvu_get_lf(rvu, &hw->block[blkaddr], pcifunc, hwgrp);
+		if (lf < 0)
+			continue;
+		rvu_sso_lf_cleanup_eva(rvu, pcifunc, lf, hwgrp);
+	}
 
 	retry = 0;
 	drain_tmo = jiffies + msecs_to_jiffies(SSO_FLUSH_TMO_MAX);

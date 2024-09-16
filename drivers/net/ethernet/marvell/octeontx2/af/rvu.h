@@ -1120,6 +1120,7 @@ int rvu_sso_poll_aura_cnt(struct rvu *rvu, int npa_blkaddr, int aura);
 void rvu_sso_deinit_xaq_aura(struct rvu *rvu, int blkaddr, int npa_blkaddr,
 			     int aura, int lf);
 void rvu_sso_xaq_aura_write(struct rvu *rvu, int lf, u64 val);
+void rvu_sso_lf_cleanup_eva(struct rvu *rvu, u16 pcifunc, int lf, int slot);
 
 /* NPA APIs */
 int rvu_npa_init(struct rvu *rvu);
