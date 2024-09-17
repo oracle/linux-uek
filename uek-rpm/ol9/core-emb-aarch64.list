@@ -44,6 +44,7 @@ kernel/crypto/ofb.ko
 kernel/crypto/sha1_generic.ko
 kernel/crypto/sha3_generic.ko
 kernel/crypto/tcrypt.ko
+kernel/crypto/xxhash_generic.ko
 kernel/crypto/zstd.ko
 kernel/drivers/acpi/acpi_tad.ko
 kernel/drivers/base/regmap/regmap-i2c.ko
