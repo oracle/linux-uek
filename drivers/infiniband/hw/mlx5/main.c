@@ -3540,11 +3540,17 @@ mlx5_ib_get_vector_irqn(struct ib_device *ibdev, int comp_vector)
 {
 	struct mlx5_ib_dev *dev = to_mdev(ibdev);
 	struct mlx5_core_dev *mdev = dev->mdev;
+	int err;
+	unsigned int irqn;
 
 	if (comp_vector < 0 || comp_vector >= dev->ib_dev.num_comp_vectors)
-		return -1;
+		return -EINVAL;
 
-	return pci_irq_vector(mdev->pdev, comp_vector);
+	err = mlx5_comp_irqn_get(mdev, comp_vector, &irqn);
+	if (err < 0)
+		return err;
+
+	return irqn;
 }
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
