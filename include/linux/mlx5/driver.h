@@ -1067,6 +1067,7 @@ void mlx5_fill_page_frag_array(struct mlx5_frag_buf *frag_buf, __be64 *pas);
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 struct mlx5_eq_comp *mlx5_comp_eqn_get_low(struct mlx5_core_dev *dev, u32 vector, int *eqn);
 void mlx5_comp_eqn_put_low(struct mlx5_eq_comp *eq);
+int mlx5_comp_irqn_get(struct mlx5_core_dev *dev, int vector, unsigned int *irqn);
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 int mlx5_comp_eqn_get(struct mlx5_core_dev *dev, u16 vecidx, int *eqn);
 int mlx5_core_attach_mcg(struct mlx5_core_dev *dev, union ib_gid *mgid, u32 qpn);
