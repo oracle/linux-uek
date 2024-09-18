@@ -1183,6 +1183,9 @@ int mlx5_comp_irqn_get(struct mlx5_core_dev *dev, int vector, unsigned int *irqn
 	*irqn = eq->core.irqn;
 	return 0;
 }
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+EXPORT_SYMBOL(mlx5_comp_irqn_get);
+#endif
 
 unsigned int mlx5_comp_vectors_max(struct mlx5_core_dev *dev)
 {
