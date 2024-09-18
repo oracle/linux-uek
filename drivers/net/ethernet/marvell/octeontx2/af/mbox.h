@@ -2053,6 +2053,8 @@ struct flow_msg {
 		u8 next_header;
 	};
 	__be16 vlan_itci;
+	__be32 gtpu_teid;
+	__be32 gtpc_teid;
 #define OTX2_FLOWER_MASK_MPLS_LB		GENMASK(31, 12)
 #define OTX2_FLOWER_MASK_MPLS_TC		GENMASK(11, 9)
 #define OTX2_FLOWER_MASK_MPLS_BOS		BIT(8)
