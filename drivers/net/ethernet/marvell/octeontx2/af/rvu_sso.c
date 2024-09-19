@@ -799,8 +799,10 @@ int rvu_sso_poll_aura_cnt(struct rvu *rvu, int npa_blkaddr, int aura)
 	bool twice = false;
 	u64 __iomem *addr;
 	u64 res, wdata;
+	u8 shift;
 
-	wdata = (u64)aura << 44;
+	shift = is_cn20k(rvu->pdev) ? 47 : 44;
+	wdata = (u64)aura << shift;
 	addr = rvu->afreg_base + ((npa_blkaddr << 28) |
 				  NPA_AF_BAR2_ALIASX(0, NPA_LF_AURA_OP_CNT));
 again:
@@ -873,8 +875,11 @@ int rvu_sso_cleanup_xaq_aura(struct rvu *rvu, u16 pcifunc, int nb_hwgrps)
 {
 	int hwgrp, lf, blkaddr, npa_blkaddr, npa_pcifunc, aura, err;
 	struct rvu_hwinfo *hw = rvu->hw;
+	struct npa_aq_enq_req req;
+	struct npa_aq_enq_rsp rsp;
 	u64 reg;
 
+	memset(&rsp, 0, sizeof(rsp));
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, pcifunc);
 	if (blkaddr < 0)
 		return SSO_AF_ERR_LF_INVALID;
@@ -896,6 +901,12 @@ int rvu_sso_cleanup_xaq_aura(struct rvu *rvu, u16 pcifunc, int nb_hwgrps)
 		reg = BIT_ULL(16) | npa_pcifunc;
 		rvu_bar2_sel_write64(rvu, npa_blkaddr, NPA_AF_BAR2_SEL, reg);
 		aura = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf));
+		memset(&req, 0, sizeof(req));
+		req.hdr.pcifunc = npa_pcifunc;
+		req.aura_id = aura;
+		req.ctype = NPA_AQ_CTYPE_AURA;
+		req.op = NPA_AQ_INSTOP_READ;
+		rvu_npa_aq_enq_inst(rvu, &req, &rsp);
 	}
 
 	for (hwgrp = 0; hwgrp < nb_hwgrps; hwgrp++) {
@@ -905,14 +916,16 @@ int rvu_sso_cleanup_xaq_aura(struct rvu *rvu, u16 pcifunc, int nb_hwgrps)
 			goto fail;
 		}
 
-		rvu_sso_deinit_xaq_aura(rvu, blkaddr, npa_blkaddr, aura, lf);
+		if (npa_pcifunc && rsp.aura.ena)
+			rvu_sso_deinit_xaq_aura(rvu, blkaddr, npa_blkaddr, aura,
+						lf);
 		/* disable XAQ */
 		rvu_write64(rvu, blkaddr, SSO_AF_HWGRPX_AW_CFG(lf),
 			    SSO_HWGRP_AW_CFG_LDWB | SSO_HWGRP_AW_CFG_LDT |
 			    SSO_HWGRP_AW_CFG_STT);
 	}
 
-	if (npa_pcifunc) {
+	if (npa_pcifunc && rsp.aura.ena) {
 		err = rvu_sso_poll_aura_cnt(rvu, npa_blkaddr, aura);
 		if (err)
 			dev_err(rvu->dev, "[%d]Failed to free XAQs to aura[%d]\n",
