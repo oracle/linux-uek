@@ -612,6 +612,9 @@ static void npc_set_features(struct rvu *rvu, int blkaddr, u8 intf)
 			*features &= ~BIT_ULL(NPC_OUTER_VID);
 
 	/* Allow extracting SPI field from AH and ESP headers at same offset */
+	if (npc_check_overlap(rvu, blkaddr, NPC_IPSEC_SPI, 0, intf))
+		dev_warn(rvu->dev, "Overlap detected the field NPC_IPSEC_SPI\n");
+	/* Set SPI flag only if AH/ESP and IPSEC_SPI are in the key */
 	if (npc_is_field_present(rvu, NPC_IPSEC_SPI, intf) &&
 	    (*features & (BIT_ULL(NPC_IPPROTO_ESP) | BIT_ULL(NPC_IPPROTO_AH))))
 		*features |= BIT_ULL(NPC_IPSEC_SPI);
