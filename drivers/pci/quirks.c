@@ -6325,9 +6325,11 @@ static void quirk_shared_pcc_and_link_slot(struct pci_dev *pdev)
 		/* P5608 */
 		case 0x487d:
 		case 0x488d:
+		case 0x48a3:
 			parent->shared_pcc_and_link_slot = 1;
 		}
 	}
 }
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x0b60, quirk_shared_pcc_and_link_slot);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_SOLIDIGM, 0x2b59, quirk_shared_pcc_and_link_slot);
 #endif /* CONFIG_HOTPLUG_PCI_PCIE */
