@@ -382,7 +382,7 @@ static int xve_cm_req_handler(struct ib_cm_id *cm_id,
 
 	spin_lock_irq(&priv->lock);
 	/* Find path and insert rx_qp */
-	path = __path_find(dev, dgid->raw);
+	path = __xve_path_find(dev, dgid->raw);
 	if (path) {
 		char print[512];
 

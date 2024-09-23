@@ -257,7 +257,7 @@ void xve_fwt_insert(struct xve_dev_priv *priv, struct xve_cm_ctx *ctx,
 			if (fwt_entry->path)
 				list_del(&fwt_entry->list);
 			fwt_entry->path = NULL;
-			path = __path_find(priv->netdev, gid->raw);
+			path = __xve_path_find(priv->netdev, gid->raw);
 			if (path) {
 				fwt_entry->path = path;
 				list_add_tail(&fwt_entry->list,

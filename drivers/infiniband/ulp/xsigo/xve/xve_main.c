@@ -67,9 +67,9 @@ module_param(napi_weight, int, 0644);
 static int xve_no_tx_checksum_offload;
 module_param(xve_no_tx_checksum_offload, int, 0644);
 
-int gro;
-module_param(gro, bool, 0444);
-MODULE_PARM_DESC(gro, "Enable GRO (Generic Receive Offload) (default = 0)");
+int xve_gro;
+module_param(xve_gro, bool, 0444);
+MODULE_PARM_DESC(xve_gro, "Enable GRO (Generic Receive Offload) (default xve_gro = 0)");
 
 static int xve_hbeat_enable;
 module_param(xve_hbeat_enable, int, 0644);
@@ -385,7 +385,7 @@ inline void xve_free_path(struct xve_path *path)
 	path = NULL;
 }
 
-struct xve_path *__path_find(struct net_device *netdev, void *gid)
+struct xve_path *__xve_path_find(struct net_device *netdev, void *gid)
 {
 	struct xve_dev_priv *priv = netdev_priv(netdev);
 	struct rb_node *n = priv->path_tree.rb_node;
@@ -504,7 +504,7 @@ void xve_flush_single_path_by_gid(struct net_device *dev, union ib_gid *gid,
 	netif_tx_lock_bh(dev);
 	spin_lock_irqsave(&priv->lock, flags);
 
-	path = __path_find(dev, gid->raw);
+	path = __xve_path_find(dev, gid->raw);
 	if (!path) {
 		char *mgid_token = gid->raw;
 		char tmp_buf[64];
@@ -785,7 +785,7 @@ xve_find_path_by_gid(struct xve_dev_priv *priv,
 {
 	struct xve_path *path;
 
-	path = __path_find(priv->netdev, gid->raw);
+	path = __xve_path_find(priv->netdev, gid->raw);
 	if (!path) {
 		xve_debug(DEBUG_TABLE_INFO, priv, "%s Unable to find path\n",
 			  __func__);
@@ -1764,7 +1764,7 @@ xve_set_ovn_features(struct xve_dev_priv *priv)
 		set_bit(XVE_FLAG_CSUM, &priv->flags);
 	}
 
-	if (priv->gro_mode && gro) {
+	if (priv->gro_mode && xve_gro) {
 		priv->netdev->features |= NETIF_F_GRO;
 	} else
 		priv->gro_mode = 0;

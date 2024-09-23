@@ -1268,7 +1268,7 @@ int xve_aging_task_machine(struct xve_dev_priv *priv);
 void xve_prepare_skb(struct xve_dev_priv *priv, struct sk_buff *skb);
 void xve_tables_exit(void);
 void xve_remove_one(struct xve_dev_priv *priv);
-struct xve_path *__path_find(struct net_device *netdev, void *gid);
+struct xve_path *__xve_path_find(struct net_device *netdev, void *gid);
 int xve_add_proc_entry(struct xve_dev_priv *vp);
 void xve_remove_proc_entry(struct xve_dev_priv *vp);
 int xve_gw_send(struct net_device *priv, struct sk_buff *skb);

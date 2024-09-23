@@ -67,9 +67,9 @@ static int xsvnic_force_csum_offload = 0x0;
 module_param(xsvnic_force_csum_offload, int, 0644);
 
 /*gro specifics*/
-int gro;
-module_param(gro, int, 0444);
-MODULE_PARM_DESC(gro, "Enable GRO (Generic Receive Offload) ( default gro = 0)");
+int xsvnic_gro;
+module_param(xsvnic_gro, int, 0444);
+MODULE_PARM_DESC(xsvnic_gro, "Enable GRO (Generic Receive Offload) ( default xsvnic_gro = 0)");
 
 static int multicast_list_disable;
 module_param(multicast_list_disable, int, 0644);
@@ -2197,7 +2197,7 @@ static int setup_netdev_info(struct net_device *netdev)
 		pr_info("[xsvnic %s]\n", xsvnicp->vnic_name);
 		netdev->features |= NETIF_F_HW_VLAN_CTAG_RX;
 	}
-	if (gro)
+	if (xsvnic_gro)
 		xsvnicp->gro_mode = 1;
 	/*
 	 * based on install_flag setting setup TSO flag.
