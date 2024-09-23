@@ -239,6 +239,7 @@ void pciehp_handle_disable_request(struct controller *ctrl)
 void pciehp_handle_presence_or_link_change(struct controller *ctrl, u32 events)
 {
 	int present, link_active;
+        struct pci_dev *pdev = ctrl->pcie->port;
 
 	/*
 	 * If the slot is on and presence or link has changed, turn it off.
@@ -287,6 +288,13 @@ void pciehp_handle_presence_or_link_change(struct controller *ctrl, u32 events)
 		cancel_delayed_work(&ctrl->button_work);
 		fallthrough;
 	case OFF_STATE:
+		/* Look at comment for quirk_shared_slot function */
+		if (pdev->shared_pcc_and_link_slot &&
+			(events & PCI_EXP_SLTSTA_DLLSC) && !link_active) {
+			mutex_unlock(&ctrl->state_lock);
+			pdev->shared_pcc_and_link_slot = false;
+			break;
+		}
 		ctrl->state = POWERON_STATE;
 		mutex_unlock(&ctrl->state_lock);
 		if (present)
