@@ -6298,3 +6298,36 @@ static void pci_mask_replay_timer_timeout(struct pci_dev *pdev)
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_GLI, 0x9750, pci_mask_replay_timer_timeout);
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_GLI, 0x9755, pci_mask_replay_timer_timeout);
 #endif
+#ifdef CONFIG_HOTPLUG_PCI_PCIE
+/*
+ * This is an Intel NVMe SSD which sits in a x8 pciehp slot but is bifurcated
+ * as a x4x4 and manifests as two slots with respect to PCIe hot plug register
+ * states. However, the hotplug controller treats these slots as a single x8
+ * slot for link and power. Either one of the two slots can be powered down
+ * separately and the slot status will show negative power and link states, but
+ * internal power and link will be active until the last of the two slots is
+ * powered down. When the last of the two x4 slots is turned off, power and
+ * link will be turned off for the x8 slot by the HP controller. This
+ * configuration causes some interesting behavior in bringup sequence
+ *
+ * When the second slot is powered off to remove the card, this will cause the
+ * link to go down for both x4 slots. So, the x4 that is already powered down
+ * earlier will see a DLLSC event and attempt to bring itself up (card present,
+ * link change event, link state is down). Special handling is required in
+ * pciehp_handle_presence_or_link_change to prevent this unintended bring up
+ */
+static void quirk_shared_pcc_and_link_slot(struct pci_dev *pdev)
+{
+	struct pci_dev *parent = pci_upstream_bridge(pdev);
+
+	if (parent && pdev->subsystem_vendor == 0x108e) {
+	switch (pdev->subsystem_device) {
+		/* P5608 */
+		case 0x487d:
+		case 0x488d:
+			parent->shared_pcc_and_link_slot = 1;
+		}
+	}
+}
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x0b60, quirk_shared_pcc_and_link_slot);
+#endif /* CONFIG_HOTPLUG_PCI_PCIE */
