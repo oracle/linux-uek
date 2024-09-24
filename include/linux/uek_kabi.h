@@ -131,6 +131,23 @@
  *   reserved space, to ensure that we don't accidentally change it,
  *   which would change the offsets of the fields that follow.
  *
+ *  UEK_KABI_HIDE_INCLUDE
+ *   Hides the given include file from kABI checksum computations.  This is
+ *   used when a newly added #include makes a previously opaque struct
+ *   visible.
+ *
+ *   Example usage:
+ *   #include UEK_KABI_HIDE_INCLUDE(<linux/poll.h>)
+ *
+ * UEK_KABI_FAKE_INCLUDE
+ *   Pretends inclusion of the given file for kABI checksum computations.
+ *   This is used when upstream removed a particular #include but that made
+ *   some structures opaque that were previously visible and is causing kABI
+ *   checker failures.
+ *
+ *   Example usage:
+ *   #include UEK_KABI_FAKE_INCLUDE(<linux/rhashtable.h>)
+ *
  * NOTE
  *   Don't use ';' after these macros as it messes up the kABI checker by
  *   changing what the resulting token string looks like.  Instead let this
@@ -157,6 +174,8 @@
 # define _UEK_KABI_REPLACE_UNSAFE_SIZE(_orig, _new, _size)	_orig
 # define _UEK_KABI_EXCLUDE(_elem)
 # define _UEK_KABI_DEPRECATE_ENUM(_orig)	_orig
+# define UEK_KABI_HIDE_INCLUDE(_file)		<linux/uek_kabi.h>
+# define UEK_KABI_FAKE_INCLUDE(_file)		_file
 
 # define __UEK_KABI_CHECK_SIZE(_item, _size)
 
@@ -169,7 +188,8 @@
 # define UEK_KABI_FILL_HOLE(_new)		_new;
 # define UEK_KABI_FORCE_CHANGE(ver)
 # define UEK_KABI_RENAME(_orig, _new)		_new
-
+# define UEK_KABI_HIDE_INCLUDE(_file)		_file
+# define UEK_KABI_FAKE_INCLUDE(_file)		<linux/uek_kabi.h>
 
 #if IS_BUILTIN(CONFIG_UEK_KABI_SIZE_ALIGN_CHECKS)
 # define __UEK_KABI_CHECK_SIZE_ALIGN(_orig, _new)			\
