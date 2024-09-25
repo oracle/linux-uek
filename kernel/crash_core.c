@@ -267,7 +267,7 @@ static int __init __parse_crashkernel(char *cmdline,
 #elif defined(CONFIG_S390)
 		ck_cmdline = "4G-64G:160M,64G-1T:256M,1T-:512M";
 #elif defined(CONFIG_ARM64)
-		ck_cmdline = "2G-8G:256M,8G-:1G";
+		ck_cmdline = "2G-8G:256M,8G-512G:1G,512G-:3G";
 #elif defined(CONFIG_PPC64)
 		ck_cmdline = "2G-4G:384M,4G-16G:512M,16G-64G:1G,64G-128G:2G,128G-:4G";
 #endif
