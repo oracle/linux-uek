@@ -1612,6 +1612,7 @@ find_rule:
 	cn20k_write_req.intf = req->intf;
 	cn20k_write_req.enable_entry = (u8)enable;
 	cn20k_write_req.req_kw_type = req->req_kw_type;
+	cn20k_write_req.hw_prio = req->hw_prio;
 
 update_rule:
 	/* update rule */
