@@ -336,7 +336,7 @@ static void memcg_reparent_lruvec_lock(struct mem_cgroup *memcg,
 {
 	int i;
 
-	for_each_node(i) {
+	for_each_online_node(i) {
 		spin_lock(&mem_cgroup_lruvec(memcg, NODE_DATA(i))->lru_lock);
 		spin_lock(&mem_cgroup_lruvec(parent, NODE_DATA(i))->lru_lock);
 	}
@@ -347,7 +347,7 @@ static void memcg_reparent_lruvec_unlock(struct mem_cgroup *memcg,
 {
 	int i;
 
-	for_each_node(i) {
+	for_each_online_node(i) {
 		spin_unlock(&mem_cgroup_lruvec(parent, NODE_DATA(i))->lru_lock);
 		spin_unlock(&mem_cgroup_lruvec(memcg, NODE_DATA(i))->lru_lock);
 	}
@@ -375,7 +375,7 @@ static void memcg_reparent_lruvec(struct mem_cgroup *memcg,
 {
 	int i;
 
-	for_each_node(i) {
+	for_each_online_node(i) {
 		enum lru_list lru;
 		struct lruvec *src, *dst;
 
