@@ -570,6 +570,9 @@ static void svm_hardware_disable(void)
 	cpu_svm_disable();
 
 	amd_pmu_disable_virt();
+
+	if (cpu_feature_enabled(X86_FEATURE_SRSO_MSR_FIX))
+		msr_clear_bit(MSR_ZEN4_BP_CFG, MSR_ZEN4_BP_CFG_BP_SPEC_REDUCE_BIT);
 }
 
 static int svm_hardware_enable(void)
@@ -645,6 +648,11 @@ static int svm_hardware_enable(void)
 		osvw_status = osvw_len = 0;
 
 	svm_init_erratum_383();
+
+	if (cpu_feature_enabled(X86_FEATURE_SRSO_MSR_FIX)) {
+		int res = msr_set_bit(MSR_ZEN4_BP_CFG, MSR_ZEN4_BP_CFG_BP_SPEC_REDUCE_BIT);
+		WARN_ON_ONCE(res < 0);
+	}
 
 	amd_pmu_enable_virt();
 
