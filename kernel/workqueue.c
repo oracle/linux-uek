@@ -6083,3 +6083,32 @@ int __init workqueue_init(void)
 
 	return 0;
 }
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+void mod_workqueue_for(const char *name, unsigned int add_flags, unsigned int remove_flags)
+{
+	struct workqueue_struct *wq;
+	unsigned int flags;
+
+	mutex_lock(&wq_pool_mutex);
+	list_for_each_entry(wq, &workqueues, list) {
+		if (strcmp(name, wq->name))
+			continue;
+
+		mutex_lock(&wq->mutex);
+
+		flags = wq->flags;
+
+		if (add_flags)
+			wq->flags |= add_flags;
+		if (remove_flags)
+			wq->flags &= ~remove_flags;
+
+		smp_wmb();
+		printk(KERN_INFO "%s (%p): 0x%x -> 0x%x\n", name, wq, flags, wq->flags);
+		mutex_unlock(&wq->mutex);
+	}
+	mutex_unlock(&wq_pool_mutex);
+}
+EXPORT_SYMBOL_GPL(mod_workqueue_for);
+#endif
