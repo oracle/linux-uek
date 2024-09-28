@@ -675,3 +675,7 @@ int __init workqueue_init_early(void);
 int __init workqueue_init(void);
 
 #endif
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+extern void mod_workqueue_for(const char *name, unsigned int add_flags, unsigned int remove_flags);
+#endif
