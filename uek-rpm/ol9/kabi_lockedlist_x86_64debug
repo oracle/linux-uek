@@ -617,6 +617,9 @@
 	queue_work_on
 	raid_class_attach
 	raid_class_release
+	rb_erase
+	rb_first
+	rb_insert_color
 	rcu_barrier
 	rcu_read_unlock_strict
 	read_cache_page
