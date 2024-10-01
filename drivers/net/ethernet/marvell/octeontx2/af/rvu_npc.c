@@ -1528,8 +1528,12 @@ static void npc_config_kpucam(struct rvu *rvu, int blkaddr,
 			      const struct npc_kpu_profile_cam *kpucam,
 			      int kpu, int entry)
 {
+	const struct npc_kpu_profile_cam2 *kpucam2 = (void *)kpucam;
+	struct npc_kpu_profile_adapter *profile = &rvu->kpu;
 	struct npc_kpu_cam cam0 = {0};
 	struct npc_kpu_cam cam1 = {0};
+	u64 *val = (u64 *)&cam1;
+	u64 *mask = (u64 *)&cam0;
 
 	cam1.state = kpucam->state & kpucam->state_mask;
 	cam1.dp0_data = kpucam->dp0 & kpucam->dp0_mask;
@@ -1540,6 +1544,14 @@ static void npc_config_kpucam(struct rvu *rvu, int blkaddr,
 	cam0.dp0_data = ~kpucam->dp0 & kpucam->dp0_mask;
 	cam0.dp1_data = ~kpucam->dp1 & kpucam->dp1_mask;
 	cam0.dp2_data = ~kpucam->dp2 & kpucam->dp2_mask;
+
+	if (profile->from_fs) {
+		u8 ptype = kpucam2->ptype;
+		u8 pmask = kpucam2->ptype_mask;
+
+		*val |= FIELD_PREP(GENMASK_ULL(57, 56), ptype & pmask);
+		*mask |= FIELD_PREP(GENMASK_ULL(57, 56), ~ptype & pmask);
+	}
 
 	rvu_write64(rvu, blkaddr,
 		    NPC_AF_KPUX_ENTRYX_CAMX(kpu, entry, 0), *(u64 *)&cam0);
@@ -1555,6 +1567,7 @@ u64 npc_enable_mask(int count)
 static void npc_program_kpu_profile(struct rvu *rvu, int blkaddr, int kpu,
 				    const struct npc_kpu_profile *profile)
 {
+	struct npc_kpu_profile_adapter *adapter = &rvu->kpu;
 	int entry, num_entries, max_entries;
 	u64 entry_mask;
 
@@ -1570,6 +1583,7 @@ static void npc_program_kpu_profile(struct rvu *rvu, int blkaddr, int kpu,
 	num_entries = min_t(int, profile->cam_entries, max_entries);
 	for (entry = 0; entry < num_entries; entry++)
 		npc_config_kpucam(rvu, blkaddr,
+				  adapter->from_fs ? (void *)&profile->cam2[entry] :
 				  &profile->cam[entry], kpu, entry);
 
 	/* Program this KPU's actions */
@@ -1594,6 +1608,7 @@ static void npc_program_kpu_profile(struct rvu *rvu, int blkaddr, int kpu,
 
 	/* Enable this KPU */
 	rvu_write64(rvu, blkaddr, NPC_AF_KPUX_CFG(kpu), 0x01);
+
 }
 
 static int npc_prepare_default_kpu(struct rvu *rvu, struct npc_kpu_profile_adapter *profile)
@@ -1616,15 +1631,17 @@ static int npc_prepare_default_kpu(struct rvu *rvu, struct npc_kpu_profile_adapt
 }
 
 static int npc_apply_custom_kpu(struct rvu *rvu,
-				struct npc_kpu_profile_adapter *profile)
+				struct npc_kpu_profile_adapter *profile,
+				bool from_fs)
 {
 	size_t hdr_sz = sizeof(struct npc_kpu_profile_fwdata), offset = 0;
 	struct npc_kpu_profile_action *action;
 	struct npc_kpu_profile_fwdata *fw;
+	struct npc_kpu_profile_cam2 *cam2;
 	struct npc_kpu_profile_cam *cam;
 	struct npc_kpu_fwdata *fw_kpu;
-	int entries;
 	u16 kpu, entry;
+	int entries;
 
 	if (is_cn20k(rvu->pdev))
 		return npc_cn20k_apply_custom_kpu(rvu, profile);
@@ -1639,6 +1656,7 @@ static int npc_apply_custom_kpu(struct rvu *rvu,
 			 fw->signature);
 		return -EINVAL;
 	}
+
 	/* Verify if the using known profile structure */
 	if (NPC_KPU_VER_MAJ(profile->version) >
 	    NPC_KPU_VER_MAJ(NPC_KPU_PROFILE_VER)) {
@@ -1673,25 +1691,57 @@ static int npc_apply_custom_kpu(struct rvu *rvu,
 	profile->mcam_kex_prfl.mkex = &fw->mkex;
 	profile->lt_def = &fw->lt_def;
 
+	/* Binary blob contains ikpu actions entries at start of data[0] */
+	if (from_fs) {
+		action = (struct npc_kpu_profile_action *)(fw->data + offset);
+		memcpy((void *)profile->ikpu, action, sizeof(ikpu_action_entries));
+		offset += sizeof(ikpu_action_entries);
+	}
+
 	for (kpu = 0; kpu < fw->kpus; kpu++) {
 		fw_kpu = (struct npc_kpu_fwdata *)(fw->data + offset);
-		if (fw_kpu->entries > KPU_MAX_CST_ENT)
-			dev_warn(rvu->dev,
-				 "Too many custom entries on KPU%d: %d > %d\n",
-				 kpu, fw_kpu->entries, KPU_MAX_CST_ENT);
-		entries = min(fw_kpu->entries, KPU_MAX_CST_ENT);
-		cam = (struct npc_kpu_profile_cam *)fw_kpu->data;
-		offset += sizeof(*fw_kpu) + fw_kpu->entries * sizeof(*cam);
+
+		if (!from_fs) {
+			if (fw_kpu->entries > KPU_MAX_CST_ENT)
+				dev_warn(rvu->dev,
+					 "Too many custom entries on KPU%d: %d > %d\n",
+					 kpu, fw_kpu->entries, KPU_MAX_CST_ENT);
+			entries = min(fw_kpu->entries, KPU_MAX_CST_ENT);
+
+			cam = (struct npc_kpu_profile_cam *)fw_kpu->data;
+			offset += sizeof(*fw_kpu) + fw_kpu->entries * sizeof(*cam);
+			action = (struct npc_kpu_profile_action *)(fw->data + offset);
+			offset += fw_kpu->entries * sizeof(*action);
+			if (rvu->kpu_fwdata_sz < hdr_sz + offset) {
+				dev_warn(rvu->dev,
+					 "profile size mismatch on kpu%i parsing.\n",
+					 kpu + 1);
+				return -EINVAL;
+			}
+			for (entry = 0; entry < entries; entry++) {
+				profile->kpu[kpu].cam[entry] = cam[entry];
+				profile->kpu[kpu].action[entry] = action[entry];
+			}
+			continue;
+		}
+
+		entries = fw_kpu->entries;
+		dev_info(rvu->dev,
+			 "Loading %u entries on KPU%d\n", entries, kpu);
+
+		cam2 = (struct npc_kpu_profile_cam2 *)fw_kpu->data;
+		offset += sizeof(*fw_kpu) + fw_kpu->entries * sizeof(*cam2);
 		action = (struct npc_kpu_profile_action *)(fw->data + offset);
 		offset += fw_kpu->entries * sizeof(*action);
 		if (rvu->kpu_fwdata_sz < hdr_sz + offset) {
 			dev_warn(rvu->dev,
-				 "Profile size mismatch on KPU%i parsing.\n",
+				 "profile size mismatch on kpu%i parsing.\n",
 				 kpu + 1);
 			return -EINVAL;
 		}
+
 		for (entry = 0; entry < entries; entry++) {
-			profile->kpu[kpu].cam[entry] = cam[entry];
+			profile->kpu[kpu].cam2[entry] = cam2[entry];
 			profile->kpu[kpu].action[entry] = action[entry];
 		}
 	}
@@ -1792,45 +1842,99 @@ done:
 	return ret;
 }
 
+static int npc_init_kpu_cam2(struct rvu *rvu)
+{
+	struct npc_kpu_profile_adapter *adapter = &rvu->kpu;
+	struct npc_kpu_profile *iter;
+	int i;
+
+	for (iter = (void *)adapter->kpu, i = 0; i < ARRAY_SIZE(npc_kpu_profiles);
+	     i++, iter++) {
+		iter->cam2 = devm_kcalloc(rvu->dev, 128,
+					  sizeof(*iter->cam2), GFP_KERNEL);
+
+		if (iter->cam2)
+			continue;
+
+		dev_err(rvu->dev,
+			"Failed to alloc kpu cam2 profile memory for kpu=%u\n", i);
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+
 void npc_load_kpu_profile(struct rvu *rvu)
 {
 	struct npc_kpu_profile_adapter *profile = &rvu->kpu;
 	const char *kpu_profile = rvu->kpu_pfl_name;
 	const struct firmware *fw = NULL;
-	bool retry_fwdb = false;
+	int len, ret;
+	char *path;
+
+	profile->from_fs = false;
 
 	/* If user not specified profile customization */
 	if (!strncmp(kpu_profile, def_pfl_name, KPU_NAME_LEN))
 		goto revert_to_default;
+
 	/* First prepare default KPU, then we'll customize top entries. */
 	npc_prepare_default_kpu(rvu, profile);
 
 	/* Order of preceedence for load loading NPC profile (high to low)
-	 * Firmware binary in filesystem.
+	 * Firmware binary in filesystem
 	 * Firmware database method.
 	 * Default KPU profile.
 	 */
-	if (!firmware_request_nowarn(&fw, kpu_profile, rvu->dev)) {
+
+#define PDIR "kpu/"
+	len = strlen(kpu_profile) + sizeof(PDIR);
+	path = kmalloc(len, GFP_KERNEL);
+
+	strncpy(path, PDIR, len);
+	strcat(path, kpu_profile);
+
+	if (!request_firmware(&fw, path, rvu->dev)) {
 		dev_info(rvu->dev, "Loading KPU profile from firmware: %s\n",
-			 kpu_profile);
+			 path);
 		rvu->kpu_fwdata = kzalloc(fw->size, GFP_KERNEL);
 		if (rvu->kpu_fwdata) {
 			memcpy(rvu->kpu_fwdata, fw->data, fw->size);
 			rvu->kpu_fwdata_sz = fw->size;
 		}
 		release_firmware(fw);
-		retry_fwdb = true;
-		goto program_kpu;
+		kfree(path);
+
+		ret = npc_init_kpu_cam2(rvu);
+		if (ret) {
+			kfree(rvu->kpu_fwdata);
+			rvu->kpu_fwdata_sz = 0;
+			npc_prepare_default_kpu(rvu, profile);
+			goto load_image_fwdb;
+		}
+
+		ret = npc_apply_custom_kpu(rvu, profile, true);
+		kfree(rvu->kpu_fwdata);
+		rvu->kpu_fwdata_sz = 0;
+		if (ret) {
+			npc_prepare_default_kpu(rvu, profile);
+			goto load_image_fwdb;
+		}
+
+		profile->from_fs = true;
+		return;
 	}
 
+	kfree(path);
+
 load_image_fwdb:
+
 	/* Loading the KPU profile using firmware database */
 	if (npc_load_kpu_profile_fwdb(rvu, kpu_profile))
 		goto revert_to_default;
 
-program_kpu:
 	/* Apply profile customization if firmware was loaded. */
-	if (!rvu->kpu_fwdata_sz || npc_apply_custom_kpu(rvu, profile)) {
+	if (!rvu->kpu_fwdata_sz || npc_apply_custom_kpu(rvu, profile, false)) {
 		/* If image from firmware filesystem fails to load or invalid
 		 * retry with firmware database method.
 		 */
@@ -1844,10 +1948,6 @@ program_kpu:
 				rvu->kpu_fwdata = NULL;
 			}
 			rvu->kpu_fwdata_sz = 0;
-			if (retry_fwdb) {
-				retry_fwdb = false;
-				goto load_image_fwdb;
-			}
 		}
 
 		dev_warn(rvu->dev,
@@ -1871,6 +1971,7 @@ revert_to_default:
 
 static void npc_parser_profile_init(struct rvu *rvu, int blkaddr)
 {
+	struct npc_kpu_profile_adapter *profile = &rvu->kpu;
 	struct rvu_hwinfo *hw = rvu->hw;
 	int num_pkinds, num_kpus, idx;
 
@@ -1902,6 +2003,11 @@ static void npc_parser_profile_init(struct rvu *rvu, int blkaddr)
 
 	for (idx = 0; idx < num_kpus; idx++)
 		npc_program_kpu_profile(rvu, blkaddr, idx, &rvu->kpu.kpu[idx]);
+
+	if (profile->from_fs) {
+		rvu_write64(rvu, blkaddr, NPC_AF_PKINDX_TYPE(54), 0x03);
+		rvu_write64(rvu, blkaddr, NPC_AF_PKINDX_TYPE(58), 0x03);
+	}
 }
 
 void npc_mcam_rsrcs_deinit(struct rvu *rvu)

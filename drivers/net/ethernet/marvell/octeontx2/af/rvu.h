@@ -612,6 +612,7 @@ struct npc_kpu_profile_adapter {
 	bool				custom;
 	size_t				pkinds;
 	size_t				kpus;
+	bool from_fs;
 };
 
 #define RVU_SWITCH_LBK_CHAN	63
