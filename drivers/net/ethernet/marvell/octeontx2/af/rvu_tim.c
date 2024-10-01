@@ -652,7 +652,6 @@ err:
 static irqreturn_t rvu_tim_af_rvu_intr_handler(int irq, void *ptr)
 {
 	struct rvu *rvu = (struct rvu *)ptr;
-	struct rvu_block *block;
 	int blkaddr;
 	u64 reg;
 
@@ -660,7 +659,6 @@ static irqreturn_t rvu_tim_af_rvu_intr_handler(int irq, void *ptr)
 	if (blkaddr < 0)
 		return IRQ_NONE;
 
-	block = &rvu->hw->block[blkaddr];
 	reg = rvu_read64(rvu, blkaddr, TIM_AF_RVU_INT);
 	dev_err_ratelimited(rvu->dev, "Received TIM_AF_RVU_INT irq : 0x%llx",
 			    reg);
@@ -672,7 +670,6 @@ static irqreturn_t rvu_tim_af_rvu_intr_handler(int irq, void *ptr)
 static irqreturn_t rvu_tim_af_bsk_intr_handler(int irq, void *ptr)
 {
 	struct rvu *rvu = (struct rvu *)ptr;
-	struct rvu_block *block;
 	int i, blkaddr;
 	u64 reg;
 
@@ -680,7 +677,6 @@ static irqreturn_t rvu_tim_af_bsk_intr_handler(int irq, void *ptr)
 	if (blkaddr < 0)
 		return IRQ_NONE;
 
-	block = &rvu->hw->block[blkaddr];
 	for (i = 0; i < 4; i++) {
 		reg = rvu_read64(rvu, blkaddr, TIM_AF_BKT_SKIP_INTX(i));
 		if (!reg)
