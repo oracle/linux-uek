@@ -36,6 +36,7 @@ obj-$(CONFIG_VGA_ARB)		+= vgaarb.o
 obj-$(CONFIG_PCI_DOE)		+= doe.o
 obj-$(CONFIG_PCI_DYNAMIC_OF_NODES) += of_property.o
 obj-$(CONFIG_PCI_NPEM)		+= npem.o
+obj-$(CONFIG_PCIE_TPH)		+= tph.o
 
 obj-$(CONFIG_PCI_REASSIGN_PREF_MEM) += setup-prefmem.o
 
