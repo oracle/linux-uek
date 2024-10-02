@@ -339,7 +339,7 @@ struct cgroup_base_stat {
 	u64 forceidle_sum;
 #endif
 
-	UEK_KABI_RESERVE(1)
+	UEK_KABI_USE(1, u64 ntime)
 	UEK_KABI_RESERVE(2)
 };
 
