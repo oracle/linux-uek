@@ -25,10 +25,12 @@
 #define ACPI_HSMP_DEVICE_HID	"AMDI0097"
 
 /* HSMP Status / Error codes */
-#define HSMP_STATUS_NOT_READY	0x00
-#define HSMP_STATUS_OK		0x01
-#define HSMP_ERR_INVALID_MSG	0xFE
-#define HSMP_ERR_INVALID_INPUT	0xFF
+#define HSMP_STATUS_NOT_READY          0x00
+#define HSMP_STATUS_OK                 0x01
+#define HSMP_ERR_INVALID_MSG           0xFE
+#define HSMP_ERR_INVALID_INPUT         0xFF
+#define HSMP_ERR_PREREQ_NOT_SATISFIED  0xFD
+#define HSMP_ERR_SMU_BUSY              0xFC
 
 /* Timeout in millsec */
 #define HSMP_MSG_TIMEOUT	100
@@ -212,6 +214,10 @@ static int __hsmp_send_message(struct hsmp_socket *sock, struct hsmp_message *ms
 		return -ENOMSG;
 	} else if (unlikely(mbox_status == HSMP_ERR_INVALID_INPUT)) {
 		return -EINVAL;
+	} else if (unlikely(mbox_status == HSMP_ERR_PREREQ_NOT_SATISFIED)) {
+		return -EREMOTEIO;
+	} else if (unlikely(mbox_status == HSMP_ERR_SMU_BUSY)) {
+		return -EBUSY;
 	} else if (unlikely(mbox_status != HSMP_STATUS_OK)) {
 		pr_err("Message ID %u unknown failure (status = 0x%X)\n",
 		       msg->msg_id, mbox_status);
