@@ -21,7 +21,7 @@
 #include <linux/acpi.h>
 
 #define DRIVER_NAME		"amd_hsmp"
-#define DRIVER_VERSION		"2.2"
+#define DRIVER_VERSION		"2.4"
 #define ACPI_HSMP_DEVICE_HID	"AMDI0097"
 
 /* HSMP Status / Error codes */
@@ -321,6 +321,23 @@ static int hsmp_test(u16 sock_ind, u32 value)
 	return ret;
 }
 
+static bool is_get_msg(struct hsmp_message *msg)
+{
+	if (hsmp_msg_desc_table[msg->msg_id].type == HSMP_GET)
+		return true;
+
+	if (hsmp_msg_desc_table[msg->msg_id].type == HSMP_SET_GET) {
+		/*
+		 * Same message numbers are used for both get and set operation. In those
+		 * mesgs, bit31 is used for identifying set/get.
+		 */
+		if (msg->args[0] & BIT(31))
+			return true;
+	}
+
+	return false;
+}
+
 static long hsmp_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 {
 	int __user *arguser = (int  __user *)arg;
@@ -343,7 +360,7 @@ static long hsmp_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		 * Device is opened in O_WRONLY mode
 		 * Execute only set/configure commands
 		 */
-		if (hsmp_msg_desc_table[msg.msg_id].type != HSMP_SET)
+		if (is_get_msg(&msg))
 			return -EINVAL;
 		break;
 	case FMODE_READ:
@@ -351,7 +368,7 @@ static long hsmp_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		 * Device is opened in O_RDONLY mode
 		 * Execute only get/monitor commands
 		 */
-		if (hsmp_msg_desc_table[msg.msg_id].type != HSMP_GET)
+		if (!is_get_msg(&msg))
 			return -EINVAL;
 		break;
 	case FMODE_READ | FMODE_WRITE:
