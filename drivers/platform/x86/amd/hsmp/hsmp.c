@@ -33,7 +33,7 @@
 #define HSMP_WR			true
 #define HSMP_RD			false
 
-#define DRIVER_VERSION		"2.3"
+#define DRIVER_VERSION         "2.4"
 
 static struct hsmp_plat_device hsmp_pdev;
 
@@ -239,6 +239,23 @@ int hsmp_test(u16 sock_ind, u32 value)
 }
 EXPORT_SYMBOL_NS_GPL(hsmp_test, "AMD_HSMP");
 
+static bool is_get_msg(struct hsmp_message *msg)
+{
+	if (hsmp_msg_desc_table[msg->msg_id].type == HSMP_GET)
+		return true;
+
+	if (hsmp_msg_desc_table[msg->msg_id].type == HSMP_SET_GET) {
+		/*
+		 * Same message numbers are used for both get and set operation. In those
+		 * mesgs, bit31 is used for identifying set/get.
+		 */
+		if (msg->args[0] & BIT(31))
+			return true;
+	}
+
+	return false;
+}
+
 long hsmp_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 {
 	int __user *arguser = (int  __user *)arg;
@@ -261,7 +278,7 @@ long hsmp_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		 * Device is opened in O_WRONLY mode
 		 * Execute only set/configure commands
 		 */
-		if (hsmp_msg_desc_table[msg.msg_id].type != HSMP_SET)
+		if (is_get_msg(&msg))
 			return -EPERM;
 		break;
 	case FMODE_READ:
@@ -269,7 +286,7 @@ long hsmp_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		 * Device is opened in O_RDONLY mode
 		 * Execute only get/monitor commands
 		 */
-		if (hsmp_msg_desc_table[msg.msg_id].type != HSMP_GET)
+		if (!is_get_msg(&msg))
 			return -EPERM;
 		break;
 	case FMODE_READ | FMODE_WRITE:
