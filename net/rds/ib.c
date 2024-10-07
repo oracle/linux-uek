@@ -837,8 +837,9 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 	DECLARE_COMPLETION_ONSTACK(rem_complete);
 	struct rds_ib_device *rds_ibdev;
 	unsigned int noio_flags;
+	const bool force_noio = rds_force_noio;
 
-	if (rds_force_noio)
+	if (force_noio)
 		noio_flags = memalloc_noio_save();
 
 	rds_ibdev = (struct rds_ib_device *)client_data;
@@ -886,7 +887,7 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 	rds_ib_dev_put(rds_ibdev);
 	wait_for_completion(&rem_complete);
 out:
-	if (rds_force_noio)
+	if (force_noio)
 		memalloc_noio_restore(noio_flags);
 }
 
@@ -1208,11 +1209,12 @@ void rds_ib_add_one(struct ib_device *device)
 	struct rds_ib_device *rds_ibdev;
 	struct ib_device_attr *dev_attr;
 	unsigned int noio_flags;
+	const bool force_noio = rds_force_noio;
 	bool has_frwr, has_fmr;
 	struct ib_udata uhw;
 	char *reason = NULL;
 
-	if (rds_force_noio)
+	if (force_noio)
 		noio_flags = memalloc_noio_save();
 
 	/* Only handle IB (no iWARP) devices */
@@ -1396,7 +1398,7 @@ trace_err:
 		trace_rds_ib_add_device_err(device, NULL, NULL, NULL,
 					    reason, 0);
 out:
-	if (rds_force_noio)
+	if (force_noio)
 		memalloc_noio_restore(noio_flags);
 }
 

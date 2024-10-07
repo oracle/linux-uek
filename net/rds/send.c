@@ -1382,9 +1382,10 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	struct rds_iov_vector_arr iov_arr = {};
 	struct rds_iov_vector *iov;
 	unsigned int noio_flags;
+	const bool force_noio = rds_force_noio;
 	int i;
 
-	if (rds_force_noio)
+	if (force_noio)
 		noio_flags = memalloc_noio_save();
 
 	/* expect 1 RDMA CMSG per rds_sendmsg. can still grow if more needed. */
@@ -1788,7 +1789,7 @@ out_ret:
 			kfree(iov->iv_nr_pages);
 		}
 	kfree(iov_arr.iva_iov);
-	if (rds_force_noio)
+	if (force_noio)
 		memalloc_noio_restore(noio_flags);
 	return ret;
 }

@@ -1751,11 +1751,12 @@ static int __init mlx5_init(void)
 {
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 	unsigned int noio_flags;
+	const bool force_noio = mlx5_core_force_noio;
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	int err;
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
-	if (mlx5_core_force_noio)
+	if (force_noio)
 		noio_flags = memalloc_noio_save();
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
@@ -1790,7 +1791,7 @@ err_debug:
 	mlx5_unregister_debugfs();
 out:
 #ifndef WITHOUT_ORACLE_EXTENSIONS
-	if (mlx5_core_force_noio)
+	if (force_noio)
 		memalloc_noio_restore(noio_flags);
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	return err;

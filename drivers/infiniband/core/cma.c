@@ -5211,8 +5211,9 @@ static int __init cma_init(void)
 #else
 	int ret = -ENOMEM;
 	unsigned int noio_flags;
+	const bool force_noio = cma_force_noio;
 
-	if (cma_force_noio)
+	if (force_noio)
 		noio_flags = memalloc_noio_save();
 #endif /* WITHOUT_ORACLE_EXTENSIONS */
 
@@ -5282,7 +5283,7 @@ err_wq:
 	destroy_workqueue(cma_wq);
 out:
 #ifndef WITHOUT_ORACLE_EXTENSIONS
-	if (cma_force_noio)
+	if (force_noio)
 		memalloc_noio_restore(noio_flags);
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	return ret;
