@@ -256,10 +256,23 @@ static int validate_message(struct hsmp_message *msg)
 	if (hsmp_msg_desc_table[msg->msg_id].type == HSMP_RSVD)
 		return -ENOMSG;
 
-	/* num_args and response_sz against the HSMP spec */
-	if (msg->num_args != hsmp_msg_desc_table[msg->msg_id].num_args ||
-	    msg->response_sz != hsmp_msg_desc_table[msg->msg_id].response_sz)
-		return -EINVAL;
+	/*
+	 * Some older messages are updated to add both set and get operation in the same message.
+	 * In this case, get operation will have response_sz as 1 or more,
+	 * but set operation need not to have response_sz.
+	 * To support this get/set in same message, hsmp_msg_desc_table indicates only
+	 * maximum allowed response_sz.
+	 */
+	if (hsmp_msg_desc_table[msg->msg_id].type == HSMP_SET_GET) {
+		if (msg->num_args != hsmp_msg_desc_table[msg->msg_id].num_args ||
+		    msg->response_sz > hsmp_msg_desc_table[msg->msg_id].response_sz)
+			return -EINVAL;
+	} else {
+		/* num_args and response_sz against the HSMP spec */
+		if (msg->num_args != hsmp_msg_desc_table[msg->msg_id].num_args ||
+		    msg->response_sz != hsmp_msg_desc_table[msg->msg_id].response_sz)
+			return -EINVAL;
+	}
 
 	return 0;
 }

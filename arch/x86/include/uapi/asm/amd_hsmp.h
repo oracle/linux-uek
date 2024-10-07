@@ -304,10 +304,11 @@ static const struct hsmp_msg_desc hsmp_msg_desc_table[] = {
 	{1, 1, HSMP_SET},
 
 	/*
-	 * HSMP_SET_POWER_MODE, num_args = 1, response_sz = 0
-	 * input: args[0] = power efficiency mode[2:0]
+	 * HSMP_SET_POWER_MODE, num_args = 1, response_sz = 0/1
+	 * input: args[0] = set/get power mode[31] + power efficiency mode[2:0]
+	 * output: args[0] = current power efficiency mode[2:0]
 	 */
-	{1, 0, HSMP_SET},
+	{1, 1, HSMP_SET_GET},
 
 	/*
 	 * HSMP_SET_PSTATE_MAX_MIN, num_args = 1, response_sz = 0
