@@ -7676,11 +7676,12 @@ static int __init mlx5_ib_init(void)
 {
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 	unsigned int noio_flags;
+	const bool force_noio = mlx5_ib_force_noio;
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	int ret = 0;
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
-	if (mlx5_ib_force_noio)
+	if (force_noio)
 		noio_flags = memalloc_noio_save();
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
@@ -7719,7 +7720,7 @@ rep_err:
 	free_page((unsigned long)xlt_emergency_page);
 out:
 #ifndef WITHOUT_ORACLE_EXTENSIONS
-	if (mlx5_ib_force_noio)
+	if (force_noio)
 		memalloc_noio_restore(noio_flags);
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	return ret;

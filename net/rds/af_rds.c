@@ -210,8 +210,9 @@ static int rds_release(struct socket *sock)
 	struct sock *sk = sock->sk;
 	struct rds_sock *rs;
 	unsigned int noio_flags;
+	const bool force_noio = rds_force_noio;
 
-	if (rds_force_noio)
+	if (force_noio)
 		noio_flags = memalloc_noio_save();
 
 	if (!sk)
@@ -247,7 +248,7 @@ static int rds_release(struct socket *sock)
 	sock->sk = NULL;
 	debug_sock_put(sk);
 out:
-	if (rds_force_noio)
+	if (force_noio)
 		memalloc_noio_restore(noio_flags);
 	return 0;
 }
@@ -374,10 +375,11 @@ static unsigned int rds_poll(struct file *file, struct socket *sock,
 	struct sock *sk = sock->sk;
 	struct rds_sock *rs = rds_sk_to_rs(sk);
 	unsigned int noio_flags;
+	const bool force_noio = rds_force_noio;
 	unsigned int mask = 0;
 	unsigned long flags;
 
-	if (rds_force_noio)
+	if (force_noio)
 		noio_flags = memalloc_noio_save();
 
 	poll_wait(file, sk_sleep(sk), wait);
@@ -420,7 +422,7 @@ static unsigned int rds_poll(struct file *file, struct socket *sock,
 		rs->rs_seen_congestion = 0;
 	}
 
-	if (rds_force_noio)
+	if (force_noio)
 		memalloc_noio_restore(noio_flags);
 	return mask;
 }
@@ -757,9 +759,10 @@ static int rds_setsockopt(struct socket *sock, int level, int optname,
 	struct rds_sock *rs = rds_sk_to_rs(sock->sk);
 	struct net *net = sock_net(sock->sk);
 	unsigned int noio_flags;
+	const bool force_noio = rds_force_noio;
 	int ret;
 
-	if (rds_force_noio)
+	if (force_noio)
 		noio_flags = memalloc_noio_save();
 
 	if (level != SOL_RDS) {
@@ -819,7 +822,7 @@ static int rds_setsockopt(struct socket *sock, int level, int optname,
 		ret = -ENOPROTOOPT;
 	}
 out:
-	if (rds_force_noio)
+	if (force_noio)
 		memalloc_noio_restore(noio_flags);
 	return ret;
 }
@@ -830,9 +833,10 @@ static int rds_getsockopt(struct socket *sock, int level, int optname,
 	struct rds_sock *rs = rds_sk_to_rs(sock->sk);
 	int ret = -ENOPROTOOPT, len;
 	unsigned int noio_flags;
+	const bool force_noio = rds_force_noio;
 	int trans;
 
-	if (rds_force_noio)
+	if (force_noio)
 		noio_flags = memalloc_noio_save();
 
 	if (level != SOL_RDS)
@@ -877,7 +881,7 @@ static int rds_getsockopt(struct socket *sock, int level, int optname,
 	}
 
 out:
-	if (rds_force_noio)
+	if (force_noio)
 		memalloc_noio_restore(noio_flags);
 	return ret;
 
@@ -960,10 +964,11 @@ static int rds_connect(struct socket *sock, struct sockaddr *uaddr,
 	struct sock *sk = sock->sk;
 	struct sockaddr_in *sin;
 	unsigned int noio_flags;
+	const bool force_noio = rds_force_noio;
 	struct rds_sock *rs = rds_sk_to_rs(sk);
 	int ret = 0;
 
-	if (rds_force_noio)
+	if (force_noio)
 		noio_flags = memalloc_noio_save();
 
 	if (addr_len < offsetofend(struct sockaddr, sa_family)) {
@@ -1059,7 +1064,7 @@ static int rds_connect(struct socket *sock, struct sockaddr *uaddr,
 	}
 	release_sock(sk);
 out:
-	if (rds_force_noio)
+	if (force_noio)
 		memalloc_noio_restore(noio_flags);
 	return ret;
 }
@@ -1150,10 +1155,11 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 static int rds_create(struct net *net, struct socket *sock, int protocol, int kern)
 {
 	unsigned int noio_flags;
+	const bool force_noio = rds_force_noio;
 	struct sock *sk;
 	int ret;
 
-	if (rds_force_noio)
+	if (force_noio)
 		noio_flags = memalloc_noio_save();
 
 	if (sock->type != SOCK_SEQPACKET ||
@@ -1172,7 +1178,7 @@ static int rds_create(struct net *net, struct socket *sock, int protocol, int ke
 	if (ret)
 		sk_free(sk);
 out:
-	if (rds_force_noio)
+	if (force_noio)
 		memalloc_noio_restore(noio_flags);
 	return ret;
 }
@@ -1499,10 +1505,11 @@ module_exit(rds_exit);
 static int __init rds_init(void)
 {
 	unsigned int noio_flags;
+	const bool force_noio = rds_force_noio;
 	int ret;
 	int i;
 
-	if (rds_force_noio)
+	if (force_noio)
 		noio_flags = memalloc_noio_save();
 
 	for (i = 0; i < RDS_NMBR_WAITQ; ++i)
@@ -1569,7 +1576,7 @@ out_conn:
 out_slab:
 	kmem_cache_destroy(rds_rs_buf_info_slab);
 out:
-	if (rds_force_noio)
+	if (force_noio)
 		memalloc_noio_restore(noio_flags);
 	return ret;
 }

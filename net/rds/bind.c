@@ -192,12 +192,13 @@ int rds_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 	struct in6_addr v6addr, *binding_addr;
 	struct rds_transport *trans;
 	unsigned int noio_flags;
+	const bool force_noio = rds_force_noio;
 	__u32 scope_id = 0;
 	int ret = -EINVAL;
 	__be16 port;
 	bool release_trans_on_error;
 
-	if (rds_force_noio)
+	if (force_noio)
 		noio_flags = memalloc_noio_save();
 
 	/* We allow an RDS socket to be bound to either IPv4 or IPv6
@@ -300,7 +301,7 @@ int rds_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 out:
 	release_sock(sk);
 out_norelease:
-	if (rds_force_noio)
+	if (force_noio)
 		memalloc_noio_restore(noio_flags);
 	return ret;
 }

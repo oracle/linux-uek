@@ -4536,11 +4536,12 @@ static int __init ib_cm_init(void)
 {
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 	unsigned int noio_flags;
+	const bool force_noio = cm_force_noio;
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	int ret;
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
-	if (cm_force_noio)
+	if (force_noio)
 		noio_flags = memalloc_noio_save();
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
@@ -4580,7 +4581,7 @@ error2:
 	class_unregister(&cm_class);
 error1:
 #ifndef WITHOUT_ORACLE_EXTENSIONS
-	if (cm_force_noio)
+	if (force_noio)
 		memalloc_noio_restore(noio_flags);
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 

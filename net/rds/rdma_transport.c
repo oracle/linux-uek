@@ -573,8 +573,9 @@ static int rds_rdma_nb_cb(struct notifier_block *self,
 			  void *ctx)
 {
 	unsigned int noio_flags;
+	const bool force_noio = rds_force_noio;
 
-	if (rds_force_noio)
+	if (force_noio)
 		noio_flags = memalloc_noio_save();
 
 	if (event == NETEVENT_NEIGH_UPDATE) {
@@ -598,7 +599,7 @@ static int rds_rdma_nb_cb(struct notifier_block *self,
 		read_unlock_bh(&neigh->lock);
 	}
 
-	if (rds_force_noio)
+	if (force_noio)
 		memalloc_noio_restore(noio_flags);
 	return 0;
 }
@@ -612,9 +613,10 @@ static struct notifier_block rds_rdma_nb = {
 int __init rds_rdma_init(void)
 {
 	unsigned int noio_flags;
+	const bool force_noio = rds_force_noio;
 	int ret;
 
-	if (rds_force_noio)
+	if (force_noio)
 		noio_flags = memalloc_noio_save();
 
 	rds_rt_debug_tp_enable();
@@ -640,7 +642,7 @@ out:
 	/* Either nothing is done successfully or everything succeeds at
 	 * this point.
 	 */
-	if (rds_force_noio)
+	if (force_noio)
 		memalloc_noio_restore(noio_flags);
 	return ret;
 }

@@ -995,8 +995,9 @@ int rds_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 	struct sockaddr_in *sin;
 	struct rds_incoming *inc = NULL;
 	unsigned int noio_flags;
+	const bool force_noio = rds_force_noio;
 
-	if (rds_force_noio)
+	if (force_noio)
 		noio_flags = memalloc_noio_save();
 
 	/* udp_recvmsg()->sock_recvtimeo() gets away without locking too.. */
@@ -1106,7 +1107,7 @@ int rds_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 		rds_inc_put(inc);
 
 out:
-	if (rds_force_noio)
+	if (force_noio)
 		memalloc_noio_restore(noio_flags);
 	return ret;
 }
