@@ -203,6 +203,7 @@ enum nix_scheduler {
  * which CPT will pass to X2P.
  */
 #define NIX_CHAN_CPT_X2P_MASK          (0x3ffull)
+#define CN20K_NIX_CHAN_CPT_X2P_MASK    (0x7ffull)
 
 /* NIX LSO format indices.
  * As of now TSO is the only one using, so statically assigning indices.

@@ -659,7 +659,9 @@ u32 rvu_get_cpt_chan_mask(struct rvu *rvu)
 	 * mcam entry, same entry used for NIX will allow packets
 	 * received from cpt for parsing.
 	 */
-	if (!is_rvu_otx2(rvu))
+	if (is_cn20k(rvu->pdev))
+		return CN20K_NIX_CHAN_CPT_X2P_MASK;
+	else if (!is_rvu_otx2(rvu))
 		return NIX_CHAN_CPT_X2P_MASK;
 	else
 		return 0xFFFu;
