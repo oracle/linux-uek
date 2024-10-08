@@ -634,6 +634,9 @@ struct rds_ib_statistics {
 	uint64_t	s_ib_frwr_conn_qp_timeout;
 	uint64_t	s_ib_frwr_freg_qp_timeout;
 	uint64_t	s_ib_rx_limit_reached;
+	uint64_t	s_ib_frag_pages_allocated;
+	uint64_t	s_ib_frag_pages_in_ib_recv_queue;
+	uint64_t	s_ib_frag_pages_in_caches;
 };
 
 extern struct workqueue_struct *rds_ib_wq;
@@ -862,6 +865,8 @@ DECLARE_PER_CPU(struct rds_ib_statistics, rds_ib_stats);
 #define rds_ib_stats_dec(member) rds_stats_dec_which(rds_ib_stats, member)
 #define rds_ib_stats_add(member, count) \
 		rds_stats_add_which(&rds_ib_stats, member, count)
+#define rds_ib_stats_sub(member, count) \
+		rds_stats_sub_which(&rds_ib_stats, member, count)
 unsigned int rds_ib_stats_info_copy(struct rds_info_iterator *iter,
 				    unsigned int avail);
 void rds_ib_stats_print(const char *where);
