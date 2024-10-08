@@ -107,6 +107,9 @@ static char *rds_ib_stat_names[] = {
 	"ib_frwr_conn_qp_timeout",
 	"ib_frwr_freg_qp_timeout",
 	"ib_rx_limit_reached",
+	"ib_frag_pages_allocated",
+	"ib_frag_pages_in_ib_recv_queue",
+	"ib_frag_pages_in_caches",
 };
 
 unsigned int rds_ib_stats_info_copy(struct rds_info_iterator *iter,
