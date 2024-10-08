@@ -146,6 +146,7 @@ static void rds_ib_frag_free(struct rds_ib_connection *ic,
 		atomic_sub(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
 		rds_ib_stats_inc(s_ib_recv_nmb_added_to_cache);
 		rds_ib_stats_add(s_ib_recv_added_to_cache, ic->i_frag_sz);
+		rds_ib_stats_add(s_ib_frag_pages_in_caches, ic->i_frag_pages);
 	} else {
 		rds_ib_free_one_frag(frag, ic->i_frag_sz);
 	}
@@ -196,6 +197,7 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 		atomic_sub(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
 		rds_ib_stats_add(s_ib_recv_nmb_added_to_cache, count);
 		rds_ib_stats_add(s_ib_recv_added_to_cache, ic->i_frag_sz);
+		rds_ib_stats_add(s_ib_frag_pages_in_caches, ic->i_frag_pages);
 
 		p_frag = frag;
 	}
@@ -212,6 +214,7 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 			while (el) {
 				frag = container_of(el, struct rds_page_frag, f_cache_entry);
 				rds_ib_free_one_frag(frag, ic->i_frag_sz);
+				rds_ib_stats_sub(s_ib_frag_pages_in_caches, ic->i_frag_pages);
 				el = lfstack_next(el);
 			}
 		}
@@ -291,6 +294,7 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 		frag = container_of(cache_item, struct rds_page_frag, f_cache_entry);
 		rds_ib_stats_inc(s_ib_recv_nmb_removed_from_cache);
 		rds_ib_stats_add(s_ib_recv_removed_from_cache, ic->i_frag_sz);
+		rds_ib_stats_sub(s_ib_frag_pages_in_caches, ic->i_frag_pages);
 	} else {
 		if (unlikely(atomic_add_return(ic->i_frag_pages,
 					       &rds_ib_allocation) >=
@@ -327,6 +331,7 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 			}
 		}
 		rds_ib_stats_inc(s_ib_rx_total_frags);
+		rds_ib_stats_add(s_ib_frag_pages_allocated, ic->i_frag_pages);
 	}
 
 	INIT_LIST_HEAD(&frag->f_item);
@@ -623,6 +628,8 @@ void __rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 			rds_conn_drop(conn, DR_IB_POST_RECV_FAIL, ret);
 			break;
 		}
+
+		rds_ib_stats_add(s_ib_frag_pages_in_ib_recv_queue, ic->i_frag_pages);
 
 		posted++;
 		if (ic->i_flowctl) {
@@ -1403,6 +1410,7 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 
 	rds_ib_stats_inc(s_ib_rx_cq_event);
 
+	rds_ib_stats_sub(s_ib_frag_pages_in_ib_recv_queue, ic->i_frag_pages);
 	if (rds_ib_srq_enabled) {
 		recv = &rds_ibdev->srq->s_recvs[wc->wr_id];
 		atomic_dec(&rds_ibdev->srq->s_num_posted);
