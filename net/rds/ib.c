@@ -340,14 +340,17 @@ void rds_ib_free_one_frag(struct rds_page_frag *frag, size_t cache_sz)
 	rds_ib_stats_dec(s_ib_rx_total_frags);
 	rds_ib_stats_inc(s_ib_recv_nmb_removed_from_cache);
 	rds_ib_stats_add(s_ib_recv_removed_from_cache, cache_sz);
+	rds_ib_stats_sub(s_ib_frag_pages_allocated, cache_frag_pages);
 }
 
 static void rds_ib_free_frag_cache_one(struct rds_ib_refill_cache *cache, size_t cache_sz, int cpu)
 {
+	int cache_frag_pages = ceil(cache_sz, PAGE_SIZE);
 	struct lfstack_el *cache_item;
 	struct rds_page_frag *frag;
 	struct rds_ib_cache_head *head = per_cpu_ptr(cache->percpu, cpu);
 	int cnt = 0;
+	int frag_pages = 0;
 
 	trace_rds_ib_free_cache_one(head, cpu, "frag(s)");
 	cache_item = lfstack_pop_all(&head->stack);
@@ -356,12 +359,15 @@ static void rds_ib_free_frag_cache_one(struct rds_ib_refill_cache *cache, size_t
 		cache_item = lfstack_next(cache_item);
 		rds_ib_free_one_frag(frag, cache_sz);
 		cnt++;
+		frag_pages += cache_frag_pages;
 	}
 	atomic_sub(cnt, &head->count);
+	rds_ib_stats_sub(s_ib_frag_pages_in_caches, frag_pages);
 }
 
 static void rds_ib_free_frag_cache(struct rds_ib_refill_cache *cache, size_t cache_sz)
 {
+	int cache_frag_pages = ceil(cache_sz, PAGE_SIZE);
 	int cpu;
 	struct rds_ib_cache_head *head;
 	struct lfstack_el *cache_item;
@@ -377,6 +383,7 @@ static void rds_ib_free_frag_cache(struct rds_ib_refill_cache *cache, size_t cac
 	while ((cache_item = lfstack_pop(&cache->ready))) {
 		frag = container_of(cache_item, struct rds_page_frag, f_cache_entry);
 		rds_ib_free_one_frag(frag, cache_sz);
+		rds_ib_stats_sub(s_ib_frag_pages_in_caches, cache_frag_pages);
 	}
 	lfstack_free(&cache->ready);
 	free_percpu(cache->percpu);
@@ -497,6 +504,8 @@ static void rds_ib_cache_gc_worker(struct work_struct *work)
 	}
 	atomic_sub(cnt, &cache->count);
 	for (i = 0; i < RDS_FRAG_CACHE_ENTRIES; i++) {
+		int cache_frag_pages = 1 << i;
+		int frag_pages = 0;
 		cache = rds_ibdev->i_cache_frags + i;
 		cache_item = lfstack_pop_all(&cache->ready);
 		cnt = 0;
@@ -505,8 +514,10 @@ static void rds_ib_cache_gc_worker(struct work_struct *work)
 			cache_item = lfstack_next(cache_item);
 			rds_ib_free_one_frag(frag, PAGE_SIZE << i);
 			cnt++;
+			frag_pages += cache_frag_pages;
 		}
 		atomic_sub(cnt, &cache->count);
+		rds_ib_stats_sub(s_ib_frag_pages_in_caches, frag_pages);
 		/* resched for waiters in non-preempt kernel */
 		cond_resched();
 	}
