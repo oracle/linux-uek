@@ -830,6 +830,7 @@ enum nix_lsoalg {
 	NIX_LSOALG_ADD_PAYLEN,
 	NIX_LSOALG_ADD_OFFSET,
 	NIX_LSOALG_TCP_FLAGS,
+	NIX_LSOALG_ALT_FLAGS,
 };
 
 enum nix_txlayer {
@@ -846,7 +847,10 @@ struct nix_lso_format {
 	u64 sizem1		: 2;
 	u64 rsvd_14_15		: 2;
 	u64 alg			: 3;
-	u64 rsvd_19_63		: 45;
+	u64 alt_flags_ena	: 1;
+	u64 alt_flags_index	: 2;
+	u64 shift		: 3;
+	u64 rsvd_25_63		: 39;
 };
 
 struct nix_rx_flowkey_alg {

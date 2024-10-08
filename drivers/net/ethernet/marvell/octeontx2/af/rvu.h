@@ -416,6 +416,7 @@ struct nix_flowkey {
 struct nix_lso {
 	u8 total;
 	u8 in_use;
+	u8 altf_in_use;
 };
 
 struct nix_rq_cpt_mask {

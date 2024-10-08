@@ -17,6 +17,8 @@
 #include "lmac_common.h"
 #include "rvu_npc_hash.h"
 
+#define NIX_LSO_ALT_FLAGS_MAX	4
+
 static void nix_free_tx_vtag_entries(struct rvu *rvu, u16 pcifunc);
 static int rvu_nix_get_bpid(struct rvu *rvu, struct nix_bp_cfg_req *req,
 			    int type, int chan_id);
@@ -1027,6 +1029,9 @@ static void nix_setup_lso(struct rvu *rvu, struct nix_hw *nix_hw, int blkaddr)
 			    NIX_AF_LSO_FORMATX_FIELDX(idx, fidx), 0x0ULL);
 	}
 	nix_hw->lso.in_use++;
+
+	if (is_cn20k(rvu->pdev))
+		nix_hw->lso.altf_in_use = 0;
 }
 
 static void nix_ctx_free(struct rvu *rvu, struct rvu_pfvf *pfvf)
@@ -5684,6 +5689,65 @@ int rvu_mbox_handler_nix_lso_format_cfg(struct rvu *rvu,
 		rvu_write64(rvu, blkaddr,
 			    NIX_AF_LSO_FORMATX_FIELDX(rsp->lso_format_idx, f),
 			    req->fields[f]);
+
+	return 0;
+}
+
+int rvu_mbox_handler_nix_lso_alt_flags_cfg(struct rvu *rvu,
+					   struct nix_lso_alt_flags_cfg_req *req,
+					   struct nix_lso_alt_flags_cfg_rsp *rsp)
+{
+	u16 pcifunc = req->hdr.pcifunc;
+	struct nix_hw *nix_hw;
+	struct rvu_pfvf *pfvf;
+	int blkaddr, idx;
+	u64 reg;
+
+	/* LSO alt flags is supported only for CN20K, return unsupported
+	 * for other silicon variants.
+	 */
+	if (!is_cn20k(rvu->pdev))
+		return NIX_AF_ERR_LSO_ALT_FLAGS_UNSUPPORTED;
+
+	pfvf = rvu_get_pfvf(rvu, pcifunc);
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
+	if (!pfvf->nixlf || blkaddr < 0)
+		return NIX_AF_ERR_AF_LF_INVALID;
+
+	nix_hw = get_nix_hw(rvu->hw, blkaddr);
+	if (!nix_hw)
+		return NIX_AF_ERR_INVALID_NIXBLK;
+
+	/* Find existing matching LSO alt flags, if any */
+	for (idx = 0; idx < nix_hw->lso.altf_in_use; idx++) {
+		reg = rvu_read64(rvu, blkaddr,
+				 NIX_AF_LSO_ALT_FLAGS_CFG(idx));
+		if (reg == req->cfg) {
+			reg = rvu_read64(rvu, blkaddr,
+					 NIX_AF_LSO_ALT_FLAGS_CFG1(idx));
+			if (reg == req->cfg1)
+				break;
+		}
+	}
+
+	if (idx < nix_hw->lso.altf_in_use) {
+		/* Match found */
+		rsp->lso_alt_flags_idx = idx;
+		return 0;
+	}
+
+	if (nix_hw->lso.altf_in_use == NIX_LSO_ALT_FLAGS_MAX)
+		return NIX_AF_ERR_LSO_ALT_FLAGS_CFG_FAIL;
+
+	rsp->lso_alt_flags_idx = nix_hw->lso.altf_in_use++;
+
+	rvu_write64(rvu, blkaddr,
+		    NIX_AF_LSO_ALT_FLAGS_CFG(rsp->lso_alt_flags_idx),
+		    req->cfg);
+
+	rvu_write64(rvu, blkaddr,
+		    NIX_AF_LSO_ALT_FLAGS_CFG1(rsp->lso_alt_flags_idx),
+		    req->cfg1);
 
 	return 0;
 }
