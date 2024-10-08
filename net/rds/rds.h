@@ -1492,6 +1492,11 @@ DECLARE_PER_CPU_SHARED_ALIGNED(struct rds_statistics, rds_stats);
 	put_cpu();					\
 } while (0)
 #define rds_stats_add(member, count) rds_stats_add_which(rds_stats, member, count)
+#define rds_stats_sub_which(which, member, count) do {		\
+	per_cpu(which, get_cpu()).member -= count;	\
+	put_cpu();					\
+} while (0)
+#define rds_stats_sub(member, count) rds_stats_sub_which(rds_stats, member, count)
 int rds_stats_init(void);
 void rds_stats_exit(void);
 void rds_stats_info_copy(struct rds_info_iterator *iter,
