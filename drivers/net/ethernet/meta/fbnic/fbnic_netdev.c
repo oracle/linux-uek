@@ -42,13 +42,17 @@ int __fbnic_open(struct fbnic_net *fbn)
 		goto free_resources;
 	}
 
-	err = fbnic_fw_init_heartbeat(fbd, false);
+	err = fbnic_time_start(fbn);
 	if (err)
 		goto release_ownership;
 
+	err = fbnic_fw_init_heartbeat(fbd, false);
+	if (err)
+		goto time_stop;
+
 	err = fbnic_pcs_irq_enable(fbd);
 	if (err)
-		goto release_ownership;
+		goto time_stop;
 	/* Pull the BMC config and initialize the RPC */
 	fbnic_bmc_rpc_init(fbd);
 	fbnic_rss_reinit(fbd, fbn);
@@ -56,6 +60,8 @@ int __fbnic_open(struct fbnic_net *fbn)
 	phylink_resume(fbn->phylink);
 
 	return 0;
+time_stop:
+	fbnic_time_stop(fbn);
 release_ownership:
 	fbnic_fw_xmit_ownership_msg(fbn->fbd, false);
 free_resources:
@@ -86,6 +92,7 @@ static int fbnic_stop(struct net_device *netdev)
 	fbnic_down(fbn);
 	fbnic_pcs_irq_disable(fbn->fbd);
 
+	fbnic_time_stop(fbn);
 	fbnic_fw_xmit_ownership_msg(fbn->fbd, false);
 
 	fbnic_free_resources(fbn);
