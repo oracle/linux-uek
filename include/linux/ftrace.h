@@ -115,8 +115,6 @@ static inline int ftrace_mod_get_kallsym(unsigned int symnum, unsigned long *val
 
 extern int ftrace_enabled;
 
-#ifndef CONFIG_HAVE_DYNAMIC_FTRACE_WITH_ARGS
-
 /**
  * ftrace_regs - ftrace partial/optimal register set
  *
@@ -142,11 +140,37 @@ extern int ftrace_enabled;
  *
  * NOTE: user *must not* access regs directly, only do it via APIs, because
  * the member can be changed according to the architecture.
+ * This is why the structure is empty here, so that nothing accesses
+ * the ftrace_regs directly.
  */
+#ifdef ARCH_FTRACE_REGS_GENKSYMS_DEF
+/*
+ * Preserve the historical module ABI view for genksyms while keeping
+ * the runtime type opaque for normal compilation.
+ */
+ARCH_FTRACE_REGS_GENKSYMS_DEF
+#undef ARCH_FTRACE_REGS_GENKSYMS_DEF
+#else
 struct ftrace_regs {
+	/* Nothing to see here, use the accessor functions! */
+};
+#endif
+
+#define ftrace_regs_size()	sizeof(struct __arch_ftrace_regs)
+
+#ifndef CONFIG_HAVE_DYNAMIC_FTRACE_WITH_ARGS
+
+struct __arch_ftrace_regs {
 	struct pt_regs		regs;
 };
-#define arch_ftrace_get_regs(fregs) (&(fregs)->regs)
+
+struct ftrace_regs;
+#define arch_ftrace_regs(fregs) ((struct __arch_ftrace_regs *)(fregs))
+
+static inline struct pt_regs *arch_ftrace_get_regs(struct ftrace_regs *fregs)
+{
+	return &arch_ftrace_regs(fregs)->regs;
+}
 
 /*
  * ftrace_regs_set_instruction_pointer() is to be defined by the architecture

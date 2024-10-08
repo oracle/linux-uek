@@ -54,8 +54,39 @@ extern void return_to_handler(void);
 unsigned long ftrace_call_adjust(unsigned long addr);
 
 #ifdef CONFIG_DYNAMIC_FTRACE_WITH_ARGS
+
+/*
+ * struct ftrace_regs is kABI protected on aarch64
+ * Keep that visible to genksyms so protected symbol versions do not change.
+ */
+#ifdef __GENKSYMS__
+#ifdef CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS
+#define ARCH_FTRACE_REGS_GENKSYMS_DEF		\
+	struct ftrace_regs {			\
+		unsigned long regs[9];		\
+		unsigned long direct_tramp;	\
+		unsigned long fp;		\
+		unsigned long lr;		\
+		unsigned long sp;		\
+		unsigned long pc;		\
+	};
+#else
+#define ARCH_FTRACE_REGS_GENKSYMS_DEF		\
+	struct ftrace_regs {			\
+		unsigned long regs[9];		\
+		unsigned long __unused;		\
+		unsigned long fp;		\
+		unsigned long lr;		\
+		unsigned long sp;		\
+		unsigned long pc;		\
+	};
+#endif
+#endif
+
 struct dyn_ftrace;
 struct ftrace_ops;
+struct ftrace_regs;
+#define arch_ftrace_regs(fregs) ((struct __arch_ftrace_regs *)(fregs))
 
 #define arch_ftrace_get_regs(regs) NULL
 
@@ -63,7 +94,7 @@ struct ftrace_ops;
  * Note: sizeof(struct ftrace_regs) must be a multiple of 16 to ensure correct
  * stack alignment
  */
-struct ftrace_regs {
+struct __arch_ftrace_regs {
 	/* x0 - x8 */
 	unsigned long regs[9];
 
@@ -83,47 +114,47 @@ struct ftrace_regs {
 static __always_inline unsigned long
 ftrace_regs_get_instruction_pointer(const struct ftrace_regs *fregs)
 {
-	return fregs->pc;
+	return arch_ftrace_regs(fregs)->pc;
 }
 
 static __always_inline void
 ftrace_regs_set_instruction_pointer(struct ftrace_regs *fregs,
 				    unsigned long pc)
 {
-	fregs->pc = pc;
+	arch_ftrace_regs(fregs)->pc = pc;
 }
 
 static __always_inline unsigned long
 ftrace_regs_get_stack_pointer(const struct ftrace_regs *fregs)
 {
-	return fregs->sp;
+	return arch_ftrace_regs(fregs)->sp;
 }
 
 static __always_inline unsigned long
 ftrace_regs_get_argument(struct ftrace_regs *fregs, unsigned int n)
 {
 	if (n < 8)
-		return fregs->regs[n];
+		return arch_ftrace_regs(fregs)->regs[n];
 	return 0;
 }
 
 static __always_inline unsigned long
 ftrace_regs_get_return_value(const struct ftrace_regs *fregs)
 {
-	return fregs->regs[0];
+	return arch_ftrace_regs(fregs)->regs[0];
 }
 
 static __always_inline void
 ftrace_regs_set_return_value(struct ftrace_regs *fregs,
 			     unsigned long ret)
 {
-	fregs->regs[0] = ret;
+	arch_ftrace_regs(fregs)->regs[0] = ret;
 }
 
 static __always_inline void
 ftrace_override_function_with_return(struct ftrace_regs *fregs)
 {
-	fregs->pc = fregs->lr;
+	arch_ftrace_regs(fregs)->pc = arch_ftrace_regs(fregs)->lr;
 }
 
 int ftrace_regs_query_register_offset(const char *name);
@@ -143,7 +174,7 @@ static inline void arch_ftrace_set_direct_caller(struct ftrace_regs *fregs,
 	 * The ftrace trampoline will return to this address instead of the
 	 * instrumented function.
 	 */
-	fregs->direct_tramp = addr;
+	arch_ftrace_regs(fregs)->direct_tramp = addr;
 }
 #endif /* CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS */
 
