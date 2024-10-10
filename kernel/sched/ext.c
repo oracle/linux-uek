@@ -2846,7 +2846,8 @@ static void switch_class(struct rq *rq, struct task_struct *next)
 	}
 }
 
-static void put_prev_task_scx(struct rq *rq, struct task_struct *p)
+static void put_prev_task_scx(struct rq *rq, struct task_struct *p,
+			      struct task_struct *next)
 {
 	update_curr_scx(rq);
 
@@ -3612,7 +3613,8 @@ void sched_ext_free(struct task_struct *p)
 	}
 }
 
-static void reweight_task_scx(struct rq *rq, struct task_struct *p, int newprio)
+static void reweight_task_scx(struct rq *rq, struct task_struct *p,
+			      const struct load_weight *lw)
 {
 	lockdep_assert_rq_held(task_rq(p));
 
