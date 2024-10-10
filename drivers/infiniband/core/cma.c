@@ -128,7 +128,7 @@ module_param(match_net_dev_ignore_port, bool, 0644);
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 static bool cma_force_noio;
-module_param_named(force_noio, cma_force_noio, bool, 0444);
+module_param_named(force_noio, cma_force_noio, bool, 0644);
 MODULE_PARM_DESC(force_noio, "Force the use of GFP_NOIO (Y/N)");
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 

@@ -93,7 +93,7 @@ MODULE_PARM_DESC(debug_mask, "debug mask: 1 = dump cmd data, 2 = dump cmd exec t
 #define MLX5_UEK_QP_LIMITATION  20
 
 static bool mlx5_core_force_noio;
-module_param_named(force_noio, mlx5_core_force_noio, bool, 0444);
+module_param_named(force_noio, mlx5_core_force_noio, bool, 0644);
 MODULE_PARM_DESC(force_noio, "Force the use of GFP_NOIO (Y/N)");
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 

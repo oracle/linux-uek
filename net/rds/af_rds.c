@@ -79,7 +79,7 @@ MODULE_PARM_DESC(rds_rt_debug_bitmap,
 
 bool rds_force_noio;
 EXPORT_SYMBOL(rds_force_noio);
-module_param_named(force_noio, rds_force_noio, bool, 0444);
+module_param_named(force_noio, rds_force_noio, bool, 0644);
 MODULE_PARM_DESC(force_noio, "Force the use of GFP_NOIO (Y/N)");
 
 struct rt_debug_tp {
