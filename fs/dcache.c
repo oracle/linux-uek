@@ -138,8 +138,9 @@ struct dentry_stat_t dentry_stat = {
 /*
  * The sysctl parameter "negative-dentry-limit" specifies the limit for the number
  * of negative dentries allowable in a system as a percentage of the total
- * system memory. The default is 0% which means there is no limit and the
- * valid range is 0-10.
+ * system memory. The default is 0 which means there is no limit and the
+ * valid range is 0.001 to 100. This range is calibrated to 0-10% of the total
+ * system memory.
  *
  * With a limit of 2% on a 64-bit system with 1G memory, that translated
  * to about 100k dentries which is quite a lot.
@@ -153,11 +154,14 @@ struct dentry_stat_t dentry_stat = {
  * the extra ones will be returned back to the global pool.
  */
 #define NEG_DENTRY_BATCH	(1 << 12)
+#define NEG_DENTRY_PC_MAX	100
 
 DEFINE_STATIC_KEY_FALSE(limit_neg_key);
+static char neg_dentry_limit_old[NEG_DENTRY_LIMIT_BUFLEN] = {'0', '\0'};
+char neg_dentry_limit[NEG_DENTRY_LIMIT_BUFLEN] = {'0', '\0'};
+EXPORT_SYMBOL_GPL(neg_dentry_limit);
 static int neg_dentry_pc_old;
 int neg_dentry_pc;
-EXPORT_SYMBOL_GPL(neg_dentry_pc);
 
 /*
  * There will be a periodic check to see if the negative dentry limit
@@ -166,7 +170,7 @@ EXPORT_SYMBOL_GPL(neg_dentry_pc);
 #define NEGATIVE_DENTRY_CHECK_PERIOD	(5 * HZ)	/* Check every 5s */
 #define NEG_WALKING_CAP			(1 << 17)
 
-static long neg_dentry_global_limit __read_mostly;
+static unsigned long neg_dentry_global_limit __read_mostly;
 static struct {
 	long n_neg;			/* # of negative dentries pruned */
 	int nprune_on;			/* Flag to continue pruning */
@@ -314,20 +318,51 @@ static inline void neg_dentry_inc(struct dentry *dentry)
 }
 
 /*
- * Sysctl proc handler for neg_dentry_pc.
+ * proc_neg_dentry_pc - Sysctl proc handler for neg_dentry_pc.
  */
 int proc_neg_dentry_pc(struct ctl_table *ctl, int write,
 		       void __user *buffer, size_t *lenp, loff_t *ppos)
 {
 	/* Rough estimate of # of dentries allocated per page */
 	const unsigned int nr_dentry_page = PAGE_SIZE/sizeof(struct dentry) - 1;
-	unsigned long new_init;
-	int ret;
+	unsigned long new_init, pc;
+	int ret, frac_len, frac_scale;
+	char *dotptr;
+	char dec_str[NEG_DENTRY_LIMIT_BUFLEN];
 
-	ret = proc_dointvec_minmax(ctl, write, buffer, lenp, ppos);
+	ret = proc_dostring(ctl, write, buffer, lenp, ppos);
 
-	if (!write || ret || (neg_dentry_pc == neg_dentry_pc_old))
+	if (!write || ret )
 		return ret;
+
+	if (strlen(neg_dentry_limit) > NEG_DENTRY_LIMIT_STRLEN) {
+		ret = -EINVAL;
+		goto err_out;
+	}
+
+	strcpy(dec_str, neg_dentry_limit);
+	dotptr = strchr(dec_str, '.');
+
+	if (dotptr) {
+		frac_len = dec_str + strlen(dec_str) - dotptr - 1;
+		memmove(dotptr, dotptr + 1, frac_len + 1);
+	} else
+		frac_len = 0;
+
+	frac_scale = int_pow(10, frac_len);
+	ret = kstrtoul(dec_str, 10, &pc);
+
+	/*
+	 * pc would be at most a 4 digit number
+	 * 9999 if the user inputs 99.99, hence
+	 * it will not overflow.
+	 */
+	neg_dentry_pc = (int)pc;
+
+	if ((ret || neg_dentry_pc > NEG_DENTRY_PC_MAX * frac_scale)) {
+		ret = -EINVAL;
+		goto err_out;
+	}
 
 	/*
 	 * Disable limit_neg_key first when transitioning from neg_dentry_pc
@@ -340,15 +375,24 @@ int proc_neg_dentry_pc(struct ctl_table *ctl, int write,
 	}
 
 	/*
+	 * Do nothing during 0 -> 0.0 or 0.0 -> 0
+	 * Just store the new string in to old
+	 */
+	if (!neg_dentry_pc && !neg_dentry_pc_old)
+		goto out;
+
+	/*
 	 * Each unit of neg_dentry_pc is 0.1% of memory
 	 * for negative dentries.
 	 */
-	new_init = totalram_pages * nr_dentry_page * neg_dentry_pc / 1000;
+	new_init = (totalram_pages * neg_dentry_pc / (1000 * frac_scale)) * nr_dentry_page;
 	if (unlikely((new_init < 2 * NEG_DENTRY_BATCH) && neg_dentry_pc))
 		new_init = 2 * NEG_DENTRY_BATCH;
-	neg_dentry_global_limit = new_init;
 
-	pr_info("Negative dentry: limit = %ld\n", neg_dentry_global_limit);
+	neg_dentry_global_limit = new_init;
+	pr_info("Negative dentry limit = %s is set. Max negative dentries = %lu\n",
+		neg_dentry_limit, neg_dentry_global_limit);
+
 	/*
 	 * The periodic dentry pruner only runs when the limit is non-zero.
 	 * The sysctl handler is the only trigger mechanism that can be
@@ -360,8 +404,16 @@ int proc_neg_dentry_pc(struct ctl_table *ctl, int write,
 		schedule_delayed_work(&prune_neg_dentry_work, 0);
 	}
 out:
+	strcpy(neg_dentry_limit_old, neg_dentry_limit);
 	neg_dentry_pc_old = neg_dentry_pc;
 	return 0;
+err_out:
+	pr_info("Negative dentry limit: %s is invalid. Valid range is  %s %d\n",
+		neg_dentry_limit, "0 or 0.001 - 100, and max length of input is",
+		NEG_DENTRY_LIMIT_STRLEN);
+	strcpy(neg_dentry_limit, neg_dentry_limit_old);
+	neg_dentry_pc = neg_dentry_pc_old;
+	return ret;
 }
 EXPORT_SYMBOL_GPL(proc_neg_dentry_pc);
 

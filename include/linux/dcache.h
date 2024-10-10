@@ -612,7 +612,25 @@ void release_dentry_name_snapshot(struct name_snapshot *);
 
 /*
  * Negative dentry related declarations.
+ *
+ * The maximum length of this string is defined by 'NEG_DENTRY_LIMIT_STRLEN',
+ * it set to 5, which means valid user input can either be 0 (indicating
+ * that there is no limitation on number of negative dentries) or a
+ * value between 0.001 and 100, which limits negative dentry memory usage
+ * from 1/million to 10% of total memory. The maximum value of 'neg_dentry_pc'
+ * would be 9999 with a user input of 9.999 or 99.99, which is slightly less
+ * than pow(2, 14). The expression `totalram_pages * neg_dentry_pc` from
+ * proc_neg_dentry_pc() can overflow if totalram_pages reaches pow(2, 50)
+ * or higher, equivalent to 4 EB of memory, which is highly unlikely in
+ * real-world scenarios.
  */
-extern int neg_dentry_pc;
+#define NEG_DENTRY_LIMIT_STRLEN 5
+
+/*
+ * The NEG_DENTRY_LIMIT_BUFLEN should be (NEG_DENTRY_LIMIT_STRLEN + 2).
+ * One for '\0' and one for detecting over range truncate.
+ */
+#define NEG_DENTRY_LIMIT_BUFLEN	(NEG_DENTRY_LIMIT_STRLEN + 2)
+extern char neg_dentry_limit[];
 
 #endif	/* __LINUX_DCACHE_H */
