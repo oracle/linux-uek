@@ -77,6 +77,11 @@ static unsigned short xsave_cpuid_features[] __initdata = {
 	[XFEATURE_XTILE_DATA]			= X86_FEATURE_AMX_TILE,
 };
 
+/*
+ * This represents the "independent" xfeatures that are supported by XSAVES, but not managed as part
+ * of the FPU core, such as LBR.
+ */
+u64 xfeatures_mask_indep __ro_after_init;
 static unsigned int xstate_offsets[XFEATURE_MAX] __ro_after_init =
 	{ [ 0 ... XFEATURE_MAX - 1] = -1};
 static unsigned int xstate_sizes[XFEATURE_MAX] __ro_after_init =
@@ -791,6 +796,8 @@ void __init fpu__init_system_xstate(unsigned int legacy_size)
 		       fpu_kernel_cfg.max_features);
 		goto out_disable;
 	}
+
+	xfeatures_mask_indep = fpu_kernel_cfg.max_features & XFEATURE_MASK_INDEPENDENT;
 
 	/*
 	 * Clear XSAVE features that are disabled in the normal CPUID.

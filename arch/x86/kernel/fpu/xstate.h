@@ -56,6 +56,8 @@ extern void fpu__init_system_xstate(unsigned int legacy_size);
 extern void *get_xsave_addr(struct xregs_state *xsave, int xfeature_nr);
 extern void __user *get_xsave_addr_user(struct xregs_state __user *xsave, int xfeature_nr);
 
+extern u64 xfeatures_mask_indep;
+
 static inline u64 xfeatures_mask_supervisor(void)
 {
 	return fpu_kernel_cfg.max_features & XFEATURE_MASK_SUPERVISOR_SUPPORTED;
@@ -64,9 +66,9 @@ static inline u64 xfeatures_mask_supervisor(void)
 static inline u64 xfeatures_mask_independent(void)
 {
 	if (!cpu_feature_enabled(X86_FEATURE_ARCH_LBR))
-		return XFEATURE_MASK_INDEPENDENT & ~XFEATURE_MASK_LBR;
+		return xfeatures_mask_indep & ~XFEATURE_MASK_LBR;
 
-	return XFEATURE_MASK_INDEPENDENT;
+	return xfeatures_mask_indep;
 }
 
 /* XSAVE/XRSTOR wrapper functions */
