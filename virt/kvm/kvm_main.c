@@ -2851,8 +2851,7 @@ static kvm_pfn_t kvm_resolve_pfn(struct kvm_follow_pfn *kfp, struct page *page,
 		pfn = page_to_pfn(page);
 	}
 
-	if (kfp->refcounted_page)
-		*kfp->refcounted_page = page;
+	*kfp->refcounted_page = page;
 
 	return pfn;
 }
@@ -3002,6 +3001,9 @@ kvm_pfn_t hva_to_pfn(struct kvm_follow_pfn *kfp)
 	int npages, r;
 
 	might_sleep();
+
+	if (WARN_ON_ONCE(!kfp->refcounted_page))
+		return KVM_PFN_ERR_FAULT;
 
 	if (hva_to_pfn_fast(kfp, &pfn))
 		return pfn;
