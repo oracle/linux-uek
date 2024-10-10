@@ -139,11 +139,35 @@ struct dentry_stat_t {
 #define CREATE_TRACE_POINTS
 #include <trace/events/dcache_neg_dentry_trace.h>
 #endif // __GENKSYMS__
+
+/*
+ * Negative dentry related declarations.
+ *
+ * The maximum length of this string is defined by 'NEG_DENTRY_LIMIT_STRLEN',
+ * it set to 5, which means valid user input can either be 0 (indicating
+ * that there is no limitation on number of negative dentries) or a
+ * value between 0.001 and 100, which limits negative dentry memory usage
+ * from 1/million to 10% of total memory. The maximum value of 'neg_dentry_pc'
+ * would be 9999 with a user input of 9.999 or 99.99, which is slightly less
+ * than pow(2, 14). The expression `totalram_pages * neg_dentry_pc` from
+ * proc_neg_dentry_pc() can overflow if totalram_pages reaches pow(2, 50)
+ * or higher, equivalent to 4 EB of memory, which is highly unlikely in
+ * real-world scenarios.
+ */
+#define NEG_DENTRY_LIMIT_STRLEN	5
+
+/*
+ * The NEG_DENTRY_LIMIT_BUFLEN should be (NEG_DENTRY_LIMIT_STRLEN + 2).
+ * One for '\0' and one for detecting over range truncate.
+ */
+#define NEG_DENTRY_LIMIT_BUFLEN	(NEG_DENTRY_LIMIT_STRLEN + 2)
+
 /*
  * The sysctl parameter "negative-dentry-limit" specifies the limit for the number
  * of negative dentries allowable in a system as a percentage of the total
- * system memory. The default is 0% which means there is no limit and the
- * valid range is 0-10.
+ * system memory. The default is 0 which means there is no limit and the
+ * valid range is 0.001 to 100. This range is calibrated to 0-10% of the total
+ * system memory.
  *
  * With a limit of 2% on a 64-bit system with 1G memory, that translated
  * to about 100k dentries which is quite a lot.
@@ -160,10 +184,16 @@ struct dentry_stat_t {
 #define NEG_PRUNING_SIZE	(1 << 6)
 #define NEG_PRUNING_SLOW_RATE	(HZ/10)
 #define NEG_PRUNING_FAST_RATE	(HZ/50)
+#define NEG_DENTRY_PC_MAX	100
 #define NEG_IS_SB_UMOUNTING(sb)	\
 	unlikely(!(sb)->s_root || !((sb)->s_flags & SB_ACTIVE))
 
 DEFINE_STATIC_KEY_FALSE(limit_neg_key);
+
+static char neg_dentry_limit_old[NEG_DENTRY_LIMIT_BUFLEN] = {'0', '\0'};
+char neg_dentry_limit[NEG_DENTRY_LIMIT_BUFLEN] = {'0', '\0'};
+EXPORT_SYMBOL_GPL(neg_dentry_limit);
+
 static int neg_dentry_pc_old;
 static int neg_dentry_pc;
 
@@ -174,7 +204,7 @@ static int neg_dentry_pc;
 #define NEGATIVE_DENTRY_CHECK_PERIOD	(5 * HZ)	/* Check every 5s */
 #define NEG_WALKING_CAP			(1 << 17)
 
-static long neg_dentry_global_limit __read_mostly;
+static unsigned long neg_dentry_global_limit __read_mostly;
 static struct {
 	long n_neg;			/* # of negative dentries pruned */
 	int nprune_on;			/* Flag to continue pruning */
@@ -343,20 +373,51 @@ static inline void neg_dentry_inc(struct dentry *dentry)
 
 #ifdef CONFIG_SYSCTL
 /*
- * Sysctl proc handler for neg_dentry_pc.
+ * proc_neg_dentry_pc - Sysctl proc handler for neg_dentry_pc.
  */
 static int proc_neg_dentry_pc(const struct ctl_table *table, int write,
 			void *buffer, size_t *lenp, loff_t *ppos)
 {
 	/* Rough estimate of # of dentries allocated per page */
 	const unsigned int nr_dentry_page = PAGE_SIZE/sizeof(struct dentry) - 1;
-	unsigned long new_init, total_ram_pages;
-	int ret;
+	unsigned long new_init, total_ram_pages, pc;
+	int ret, frac_len, frac_scale;
+	char *dotptr;
+	char dec_str[NEG_DENTRY_LIMIT_BUFLEN];
 
-	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+	ret = proc_dostring(table, write, buffer, lenp, ppos);
 
-	if (!write || ret || (neg_dentry_pc == neg_dentry_pc_old))
+	if (!write || ret)
 		return ret;
+
+	if (strlen(neg_dentry_limit) > NEG_DENTRY_LIMIT_STRLEN) {
+		ret = -EINVAL;
+		goto err_out;
+	}
+
+	strcpy(dec_str, neg_dentry_limit);
+	dotptr = strchr(dec_str, '.');
+
+	if (dotptr) {
+		frac_len = dec_str + strlen(dec_str) - dotptr - 1;
+		memmove(dotptr, dotptr + 1, frac_len + 1);
+	} else
+		frac_len = 0;
+
+	frac_scale = int_pow(10, frac_len);
+	ret = kstrtoul(dec_str, 10, &pc);
+
+	/*
+	 * pc would be at most a 4 digit number
+	 * 9999 if the user inputs 99.99, hence
+	 * it will not overflow.
+	 */
+	neg_dentry_pc = (int)pc;
+
+	if ((ret || neg_dentry_pc > NEG_DENTRY_PC_MAX * frac_scale)) {
+		ret = -EINVAL;
+		goto err_out;
+	}
 
 	/*
 	 * Disable limit_neg_key first when transitioning from neg_dentry_pc
@@ -369,15 +430,25 @@ static int proc_neg_dentry_pc(const struct ctl_table *table, int write,
 	}
 
 	/*
+	 * Do nothing during 0 -> 0.0 or 0.0 -> 0
+	 * Just store the new string in to old
+	 */
+	if (!neg_dentry_pc && !neg_dentry_pc_old)
+		goto out;
+
+
+	/*
 	 * Each unit of neg_dentry_pc is 0.1% of memory
 	 * for negative dentries.
 	 */
 	total_ram_pages = totalram_pages();
-	new_init = total_ram_pages * nr_dentry_page * neg_dentry_pc / 1000;
+	new_init = (total_ram_pages * neg_dentry_pc / (1000 * frac_scale)) * nr_dentry_page;
 	if (unlikely((new_init < 2 * NEG_DENTRY_BATCH) && neg_dentry_pc))
 		new_init = 2 * NEG_DENTRY_BATCH;
 	neg_dentry_global_limit = new_init;
-	pr_info("Negative dentry: limit = %ld\n", neg_dentry_global_limit);
+
+	pr_info("Negative dentry limit = %s is set. Max negative dentries = %lu\n",
+		neg_dentry_limit, neg_dentry_global_limit);
 
 	/*
 	 * The periodic dentry pruner only runs when the limit is non-zero.
@@ -390,19 +461,25 @@ static int proc_neg_dentry_pc(const struct ctl_table *table, int write,
 		schedule_delayed_work(&prune_neg_dentry_work, 0);
 	}
 out:
+	strcpy(neg_dentry_limit_old, neg_dentry_limit);
 	neg_dentry_pc_old = neg_dentry_pc;
 	return 0;
+err_out:
+	pr_info("Negative dentry limit: %s is invalid. Valid range is  %s %d\n",
+		neg_dentry_limit, "0 or 0.001 - 100, and max length of input is",
+		NEG_DENTRY_LIMIT_STRLEN);
+	strcpy(neg_dentry_limit, neg_dentry_limit_old);
+	neg_dentry_pc = neg_dentry_pc_old;
+	return ret;
 }
 
 static struct ctl_table fs_dcache_neg_dentry_sysctls[] = {
 	{
 		.procname	= "negative-dentry-limit",
-		.data		= &neg_dentry_pc,
-		.maxlen		= sizeof(neg_dentry_pc),
+		.data		= &neg_dentry_limit,
+		.maxlen		= NEG_DENTRY_LIMIT_BUFLEN,
 		.mode		= 0644,
 		.proc_handler	= proc_neg_dentry_pc,
-		.extra1		= SYSCTL_ZERO,
-		.extra2		= SYSCTL_ONE_HUNDRED,
 	},
 	{ }
 };
