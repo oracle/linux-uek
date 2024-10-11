@@ -387,6 +387,7 @@ void rds_ib_free_one_inc(struct rds_ib_incoming *inc)
 	inc->ii_cache_entry.next = 0;
 	WARN_ON(!list_empty(&inc->ii_frags));
 	kmem_cache_free(rds_ib_incoming_slab, inc);
+	rds_ib_stats_dec(s_ib_rx_total_incs);
 }
 
 static void rds_ib_free_inc_cache_one(struct rds_ib_refill_cache *cache, int cpu)
