@@ -83,6 +83,7 @@ unsigned long ftrace_call_adjust(unsigned long addr);
 #endif
 #endif
 
+#define HAVE_ARCH_FTRACE_REGS
 struct dyn_ftrace;
 struct ftrace_ops;
 struct ftrace_regs;
