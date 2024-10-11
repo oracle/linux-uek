@@ -45,6 +45,11 @@ struct hrtimer {
 	u8				is_rel;
 	u8				is_soft;
 	u8				is_hard;
+
+	/**
+	 * UEK_KABI - The 4 bytes of hidden padding here has been occupied
+	 * by the new variable - u32 defer_hard_irqs, in struct napi_struct.
+	 */
 };
 
 #endif /* _LINUX_HRTIMER_TYPES_H */
