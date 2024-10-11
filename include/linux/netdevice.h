@@ -391,7 +391,7 @@ struct napi_struct {
 	struct list_head	dev_list;
 	struct hlist_node	napi_hash_node;
 	int			irq;
-	UEK_KABI_RESERVE(1)
+	UEK_KABI_USE(1,	unsigned long gro_flush_timeout)
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
