@@ -375,7 +375,17 @@ struct napi_struct {
 	struct list_head	rx_list; /* Pending GRO_NORMAL skbs */
 	int			rx_count; /* length of rx_list */
 	unsigned int		napi_id;
-	struct hrtimer		timer;
+
+	UEK_KABI_REPLACE(
+		struct hrtimer	timer,
+		union {
+			struct hrtimer	timer;
+			union {
+				u32	offset[15];
+				u32	defer_hard_irqs; /* UEK_KABI workaround */
+			}; /* struct hrtimer has pre-existing 4-byte padding */
+		})
+
 	struct task_struct	*thread;
 	/* control-path-only fields follow */
 	struct list_head	dev_list;
