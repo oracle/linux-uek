@@ -412,6 +412,15 @@ struct klp_modinfo {
 struct module {
 	enum module_state state;
 
+#ifdef CONFIG_MITIGATION_ITS
+	/*
+	 * To not break kABI, use the 4 bytes that exist between
+	 * the state and list attributes. The other ITS attribute
+	 * (its_page_array) is defined at the bottom of the struct.
+	 */
+	UEK_KABI_FILL_HOLE(int its_num_pages)
+#endif
+
 	/* Member of list of modules */
 	struct list_head list;
 
@@ -601,7 +610,12 @@ struct module {
 	UEK_KABI_RESERVE(2)
 #endif
 
+#ifdef CONFIG_MITIGATION_ITS
+	UEK_KABI_USE(3, void **its_page_array)
+#else
 	UEK_KABI_RESERVE(3)
+#endif
+
 } ____cacheline_aligned __randomize_layout;
 #ifndef MODULE_ARCH_INIT
 #define MODULE_ARCH_INIT {}
