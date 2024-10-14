@@ -60,7 +60,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 8
 %define stable_base %(echo $((%{stable_update} - 1)))
 %endif
 %endif
-%define rpmversion 6.6.%{base_sublevel}%{?stablerev}
+%define uekrpm_version 6.6.%{base_sublevel}%{?stablerev}
 
 ## The not-released-kernel case ##
 %else
@@ -71,7 +71,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 8
 # The git snapshot level
 %define gitrev 0
 # Set rpm version accordingly
-%define rpmversion 6.6.%{upstream_sublevel}
+%define uekrpm_version 6.6.%{upstream_sublevel}
 %endif
 # Nb: The above rcrev and gitrev values automagically define Patch00 and Patch01 below.
 
@@ -194,7 +194,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 8
 
 %define pkg_release 1%{?dist}uek%{?buildid}
 
-%define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
+%define KVERREL %{uekrpm_version}-%{pkg_release}.%{_target_cpu}
 
 %if !%{debugbuildsenabled}
 %define with_debug 0
@@ -369,7 +369,7 @@ Name: kernel%{?variant}
 Group: System Environment/Kernel
 License: GPLv2
 URL: http://www.kernel.org/
-Version: %{rpmversion}
+Version: %{uekrpm_version}
 Release: %{pkg_release}
 # DO NOT CHANGE THE 'ExclusiveArch' LINE TO TEMPORARILY EXCLUDE AN ARCHITECTURE BUILD.
 # SET %%nobuildarches (ABOVE) INSTEAD
@@ -387,13 +387,12 @@ Requires: %{name}-modules-core-uname-r = %{KVERREL}
 #
 BuildRequires: kmod, patch >= 2.5.4, bash >= 2.03, tar, git
 BuildRequires: bzip2, xz, findutils, gzip, m4, perl-interpreter, perl-Carp, perl-devel, perl-generators, make >= 3.78, diffutils, gawk
-BuildRequires: gcc-toolset-13-annobin-plugin-gcc
-BuildRequires: gcc-toolset-13-binutils
-BuildRequires: gcc-toolset-13-gcc
-BuildRequires: gcc-toolset-13-gcc-c++
-BuildRequires: gcc-toolset-13-runtime
-BuildRequires: gcc-toolset-13-gcc-plugin-annobin
-BuildRequires: gcc-toolset-13-binutils-devel
+BuildRequires: annobin-plugin-gcc
+BuildRequires: binutils
+BuildRequires: gcc
+BuildRequires: gcc-c++
+BuildRequires: gcc-plugin-annobin
+BuildRequires: binutils-devel
 BuildRequires: redhat-rpm-config, hmaccalc, python3-devel
 BuildRequires: net-tools, hostname
 BuildRequires: python3, python3-devel
@@ -634,16 +633,16 @@ This package contains some of tools/ directory binaries from the kernel source.
 # macros defined above.
 #
 %define kernel_reqprovconf \
-Provides: %{name} = %{rpmversion}-%{pkg_release}\
-Provides: %{variant_name} = %{rpmversion}-%{pkg_release}\
-Provides: %{variant_name}-%{_target_cpu} = %{rpmversion}-%{pkg_release}%{?1:.%{1}}\
+Provides: %{name} = %{uekrpm_version}-%{pkg_release}\
+Provides: %{variant_name} = %{uekrpm_version}-%{pkg_release}\
+Provides: %{variant_name}-%{_target_cpu} = %{uekrpm_version}-%{pkg_release}%{?1:.%{1}}\
 Provides: %{variant_name}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: %{name}-drm = 4.3.0\
 Provides: %{name}-drm-nouveau = 12\
 Provides: %{name}-modeset = 1\
 Provides: oracleasm = 2.0.5\
 %ifarch aarch64\
-Provides: kernel = %{rpmversion}-%{pkg_release}\
+Provides: kernel = %{uekrpm_version}-%{pkg_release}\
 Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
 %endif\
 Requires: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
@@ -710,12 +709,12 @@ Provides: kernel-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: installonlypkg(%{installonly_variant_name})\
 AutoReqProv: no\
 Requires(pre): /usr/bin/find\
-Requires: gcc-toolset-13-annobin-plugin-gcc\
-Requires: gcc-toolset-13-binutils\
-Requires: gcc-toolset-13-gcc\
-Requires: gcc-toolset-13-gcc-c++\
-Requires: gcc-toolset-13-runtime\
-Requires: gcc-toolset-13-binutils-devel\
+Requires: annobin-plugin-gcc\
+Requires: binutils\
+Requires: gcc\
+Requires: gcc-c++\
+Requires: runtime\
+Requires: binutils-devel\
 %description -n %{variant_name}-devel\
 This package provides kernel headers and makefiles sufficient to build modules\
 against the %{?2:%{2}} kernel package.\
@@ -869,8 +868,6 @@ of the operating system: memory allocation, process allocation, device
 input and output, etc.
 
 %prep
-# Enable gcc-toolset-13
-source /opt/rh/gcc-toolset-13/enable
 gcc --version
 
 
@@ -1043,8 +1040,6 @@ find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
 ### build
 ###
 %build
-# Enable gcc-toolset-13
-source /opt/rh/gcc-toolset-13/enable
 gcc --version
 
 %if %{with_sparse}
@@ -1654,8 +1649,6 @@ make %{?make_opts} %{?_smp_mflags} htmldocs || %{doc_build_fail}
 ###
 
 %install
-# Enable gcc-toolset-13
-source /opt/rh/gcc-toolset-13/enable
 gcc --version
 
 
@@ -1663,7 +1656,7 @@ cd linux-%{version}-%{release}
 
 %if %{with_doc}
 # copy the output files
-docdir=$RPM_BUILD_ROOT%{_datadir}/doc/kernel%{variant}-doc-%{rpmversion}
+docdir=$RPM_BUILD_ROOT%{_datadir}/doc/kernel%{variant}-doc-%{uekrpm_version}
 mkdir -p $docdir
 cp -a Documentation/output/* $docdir
 %endif
@@ -2042,8 +2035,8 @@ fi
 %if %{with_doc}
 %files doc
 %defattr(-,root,root)
-%{_datadir}/doc/kernel%{variant}-doc-%{rpmversion}/*
-%dir %{_datadir}/doc/kernel%{variant}-doc-%{rpmversion}
+%{_datadir}/doc/kernel%{variant}-doc-%{uekrpm_version}/*
+%dir %{_datadir}/doc/kernel%{variant}-doc-%{uekrpm_version}
 %endif
 
 # This is image_install_path on an arch where that includes ELF files,
