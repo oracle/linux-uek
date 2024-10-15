@@ -2048,35 +2048,6 @@ static int __init gic_validate_dist_version(void __iomem *dist_base)
 	return 0;
 }
 
-static void __partition_ppis(struct partition_affinity *parts, int nr_parts)
-{
-	int i;
-	unsigned int irq;
-	struct partition_desc *desc;
-
-	for (i = 0; i < gic_data.ppi_nr; i++) {
-		struct irq_fwspec ppi_fwspec = {
-			.fwnode		= gic_data.fwnode,
-			.param_count	= 3,
-			.param		= {
-				[0]	= GIC_IRQ_TYPE_PARTITION,
-				[1]	= i,
-				[2]	= IRQ_TYPE_NONE,
-			},
-		};
-
-		irq = irq_create_fwspec_mapping(&ppi_fwspec);
-		if (WARN_ON_ONCE(!irq))
-			continue;
-		desc = partition_create_desc(gic_data.fwnode, parts, nr_parts,
-					     irq, &partition_domain_ops);
-		if (WARN_ON_ONCE(!desc))
-			continue;
-
-		gic_data.ppi_descs[i] = desc;
-	}
-}
-
 /* Create all possible partitions at boot time */
 static void __init gic_populate_ppi_partitions(struct device_node *gic_node)
 {
@@ -2147,7 +2118,29 @@ static void __init gic_populate_ppi_partitions(struct device_node *gic_node)
 		part_idx++;
 	}
 
-	__partition_ppis(parts, nr_parts);
+	for (i = 0; i < gic_data.ppi_nr; i++) {
+		unsigned int irq;
+		struct partition_desc *desc;
+		struct irq_fwspec ppi_fwspec = {
+			.fwnode		= gic_data.fwnode,
+			.param_count	= 3,
+			.param		= {
+				[0]	= GIC_IRQ_TYPE_PARTITION,
+				[1]	= i,
+				[2]	= IRQ_TYPE_NONE,
+			},
+		};
+
+		irq = irq_create_fwspec_mapping(&ppi_fwspec);
+		if (WARN_ON(!irq))
+			continue;
+		desc = partition_create_desc(gic_data.fwnode, parts, nr_parts,
+					     irq, &partition_domain_ops);
+		if (WARN_ON(!desc))
+			continue;
+
+		gic_data.ppi_descs[i] = desc;
+	}
 
 out_put_node:
 	of_node_put(parts_node);
