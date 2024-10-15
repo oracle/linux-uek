@@ -53,12 +53,15 @@ void rvu_cn20k_set_blk_bit(struct rvu *rvu, struct rvu_block *block,
 
 void rvu_cn20k_set_af_ready_bit(struct rvu *rvu, bool set)
 {
+	u64 val;
 	int pf;
 
 	/* Notify the PFs about AF status by setting 0th Bit */
-	for (pf = 1; pf < rvu->hw->total_pfs; pf++)
+	for (pf = 1; pf < rvu->hw->total_pfs; pf++) {
+		val = rvu_read64(rvu, BLKADDR_RVUM, RVU_PRIV_PFX_DISC(pf));
 		rvu_write64(rvu, BLKADDR_RVUM,
-			    RVU_PRIV_PFX_DISC(pf), set ? BIT_ULL(0) : 0x00);
+			    RVU_PRIV_PFX_DISC(pf), val | (set ? BIT_ULL(0) : 0x0));
+	}
 }
 
 void rvu_cn20k_check_block_implemented(struct rvu *rvu)
