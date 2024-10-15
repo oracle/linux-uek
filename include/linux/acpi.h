@@ -331,9 +331,6 @@ static inline bool acpi_sci_irq_valid(void)
 extern int sbf_port;
 extern unsigned long acpi_realmode_flags;
 
-int acpi_register_partitioned_percpu_gsi(struct device *dev, u32 gsi,
-					 int trigger, int polarity,
-					 u32 processor_container_uid);
 int acpi_register_gsi (struct device *dev, u32 gsi, int triggering, int polarity);
 int acpi_gsi_to_irq (u32 gsi, unsigned int *irq);
 int acpi_isa_irq_to_gsi (unsigned isa_irq, u32 *gsi);
