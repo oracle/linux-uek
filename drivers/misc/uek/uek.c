@@ -12,6 +12,7 @@
 #include <linux/sched/isolation.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
+#include <xen/xen.h>
 
 #define UEK_MISC_VER	"0.1"
 #define DRV_NAME	"uek"
@@ -133,6 +134,10 @@ static int __init uek_proc_init(void)
 	struct proc_dir_entry *uek_proc = NULL;
 	struct proc_dir_entry *e;
 
+	/* No Xen support for you! */
+	if (xen_domain())
+		return 0;
+
 	uek_proc = proc_mkdir(DRV_NAME, NULL);
 	if (!uek_proc) {
 		pr_err("Unable to create %s proc directory\n", DRV_NAME);
@@ -247,10 +252,6 @@ static int __init uek_misc_init(void)
 	if (exadata_disable)
 		return -ENODEV;
 
-	ret = uek_proc_init();
-	if (ret)
-		pr_err("Failed to add /proc/%s", DRV_NAME);
-
 	ret = detect_exadata_bootline(&reason);
 	if (!ret)
 		goto enable;
@@ -262,6 +263,10 @@ static int __init uek_misc_init(void)
 enable:
 	/* Go-Go Exadata goodness! */
 	static_branch_enable(&on_exadata);
+
+	ret = uek_proc_init();
+	if (ret)
+		pr_err("Failed to add /proc/%s", DRV_NAME);
 
 #ifdef	CONFIG_HUGETLB_PAGE_OPTIMIZE_VMEMMAP
 	hugetlb_enable_vmemmap();
