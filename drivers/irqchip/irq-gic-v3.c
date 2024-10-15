@@ -1644,11 +1644,10 @@ static bool fwspec_is_partitioned_ppi(struct irq_fwspec *fwspec,
 	if (!gic_data.ppi_descs)
 		return false;
 
-	if (fwspec->param_count < 4)
+	if (!is_of_node(fwspec->fwnode))
 		return false;
 
-	/* '0' us a valid UID for ACPI */
-	if (is_of_node(fwspec->fwnode) && !fwspec->param[3])
+	if (fwspec->param_count < 4 || !fwspec->param[3])
 		return false;
 
 	range = __get_intid_range(hwirq);
@@ -1668,6 +1667,10 @@ static int gic_irq_domain_select(struct irq_domain *d,
 	/* Not for us */
         if (fwspec->fwnode != d->fwnode)
 		return 0;
+
+	/* If this is not DT, then we have a single domain */
+	if (!is_of_node(fwspec->fwnode))
+		return 1;
 
 	ret = gic_irq_domain_translate(d, fwspec, &hwirq, &type);
 	if (WARN_ON_ONCE(ret))
@@ -1699,27 +1702,22 @@ static int partition_domain_translate(struct irq_domain *d,
 	unsigned long ppi_intid;
 	struct device_node *np;
 	unsigned int ppi_idx;
-	void *part_id;
 	int ret;
 
 	if (!gic_data.ppi_descs)
 		return -ENOMEM;
 
-	if (is_of_node(fwspec->fwnode)) {
-		np = of_find_node_by_phandle(fwspec->param[3]);
-		if (WARN_ON(!np))
-			return -EINVAL;
-		part_id = of_node_to_fwnode(np);
-	} else {
-		part_id = (void *)(long)fwspec->param[3];
-	}
+	np = of_find_node_by_phandle(fwspec->param[3]);
+	if (WARN_ON(!np))
+		return -EINVAL;
 
 	ret = gic_irq_domain_translate(d, fwspec, &ppi_intid, type);
 	if (WARN_ON_ONCE(ret))
 		return 0;
 
 	ppi_idx = __gic_get_ppi_index(ppi_intid);
-	ret = partition_translate_id(gic_data.ppi_descs[ppi_idx], part_id);
+	ret = partition_translate_id(gic_data.ppi_descs[ppi_idx],
+				     of_node_to_fwnode(np));
 	if (ret < 0)
 		return ret;
 
