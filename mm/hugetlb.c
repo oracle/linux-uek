@@ -2286,25 +2286,26 @@ retry:
 		 */
 		if (PageHeadHuge(head)) {
 			rc = hugetlb_vmemmap_restore(h, head);
-			if (!rc) {
-				/*
-				 * Move PageHWPoison flag from head page to the raw
-				 * error page, which makes any subpages rather than
-				 * the error page reusable.
-				 */
-				if (PageHWPoison(head) && page != head) {
-					SetPageHWPoison(page);
-					ClearPageHWPoison(head);
-				}
-			} else {
+			if (rc) {
 				spin_lock_irq(&hugetlb_lock);
 				add_hugetlb_page(h, head, false);
 				h->max_huge_pages++;
 				goto out;
 			}
-		} else
-			rc = 0;
+		} 
+		rc = 0;
+
+		/*
+		 * Move PageHWPoison flag from head page to the raw
+		 * error page, which makes any subpages rather than
+		 * the error page reusable.
+		 */
+		if (PageHWPoison(head) && page != head) {
+			SetPageHWPoison(page);
+			ClearPageHWPoison(head);
+		}
 		update_and_free_page(h, head, false);
+
 		return rc;
 	}
 out:
