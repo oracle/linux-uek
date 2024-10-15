@@ -370,18 +370,12 @@ static ssize_t file_name##_show(struct device *dev,		\
 	return sysfs_emit(buf, "%u\n", this_leaf->object);	\
 }
 
+show_one(id, id);
 show_one(level, level);
 show_one(coherency_line_size, coherency_line_size);
 show_one(number_of_sets, number_of_sets);
 show_one(physical_line_partition, physical_line_partition);
 show_one(ways_of_associativity, ways_of_associativity);
-
-static ssize_t id_show(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	struct cacheinfo *this_leaf = dev_get_drvdata(dev);
-
-	return sysfs_emit(buf, "%lu\n", this_leaf->id);
-}
 
 static ssize_t size_show(struct device *dev,
 			 struct device_attribute *attr, char *buf)
