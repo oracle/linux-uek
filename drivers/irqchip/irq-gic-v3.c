@@ -1551,8 +1551,7 @@ static int gic_irq_domain_translate(struct irq_domain *d,
 		return 0;
 	}
 
-	if (is_of_node(fwspec->fwnode) ||
-	    is_fwnode_irqchip(fwspec->fwnode)) {
+	if (is_of_node(fwspec->fwnode)) {
 		if (fwspec->param_count < 3)
 			return -EINVAL;
 
@@ -1569,14 +1568,7 @@ static int gic_irq_domain_translate(struct irq_domain *d,
 		case 3:			/* EPPI */
 			*hwirq = fwspec->param[1] + EPPI_BASE_INTID;
 			break;
-		case GIC_IRQ_TYPE_GSI:	/* GSI */
 		case GIC_IRQ_TYPE_LPI:	/* LPI */
-			if (fwspec->param[1] < 16) {
-				pr_err(FW_BUG "Illegal GSI%d translation request\n",
-				       fwspec->param[0]);
-				return -EINVAL;
-			}
-
 			*hwirq = fwspec->param[1];
 			break;
 		case GIC_IRQ_TYPE_PARTITION:
@@ -1591,12 +1583,30 @@ static int gic_irq_domain_translate(struct irq_domain *d,
 		}
 
 		*type = fwspec->param[2] & IRQ_TYPE_SENSE_MASK;
+
 		/*
 		 * Make it clear that broken DTs are... broken.
 		 * Partitioned PPIs are an unfortunate exception.
 		 */
 		WARN_ON(*type == IRQ_TYPE_NONE &&
 			fwspec->param[0] != GIC_IRQ_TYPE_PARTITION);
+		return 0;
+	}
+
+	if (is_fwnode_irqchip(fwspec->fwnode)) {
+		if(fwspec->param_count != 2)
+			return -EINVAL;
+
+		if (fwspec->param[0] < 16) {
+			pr_err(FW_BUG "Illegal GSI%d translation request\n",
+			       fwspec->param[0]);
+			return -EINVAL;
+		}
+
+		*hwirq = fwspec->param[0];
+		*type = fwspec->param[1];
+
+		WARN_ON(*type == IRQ_TYPE_NONE);
 		return 0;
 	}
 

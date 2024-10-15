@@ -3547,15 +3547,20 @@ static int its_irq_gic_domain_alloc(struct irq_domain *domain,
 {
 	struct irq_fwspec fwspec;
 
-	if (!irq_domain_get_of_node(domain->parent) &&
-	    !is_fwnode_irqchip(domain->parent->fwnode))
+	if (irq_domain_get_of_node(domain->parent)) {
+		fwspec.fwnode = domain->parent->fwnode;
+		fwspec.param_count = 3;
+		fwspec.param[0] = GIC_IRQ_TYPE_LPI;
+		fwspec.param[1] = hwirq;
+		fwspec.param[2] = IRQ_TYPE_EDGE_RISING;
+	} else if (is_fwnode_irqchip(domain->parent->fwnode)) {
+		fwspec.fwnode = domain->parent->fwnode;
+		fwspec.param_count = 2;
+		fwspec.param[0] = hwirq;
+		fwspec.param[1] = IRQ_TYPE_EDGE_RISING;
+	} else {
 		return -EINVAL;
-
-	fwspec.fwnode = domain->parent->fwnode;
-	fwspec.param_count = 3;
-	fwspec.param[0] = GIC_IRQ_TYPE_LPI;
-	fwspec.param[1] = hwirq;
-	fwspec.param[2] = IRQ_TYPE_EDGE_RISING;
+	}
 
 	return irq_domain_alloc_irqs_parent(domain, virq, 1, &fwspec);
 }
