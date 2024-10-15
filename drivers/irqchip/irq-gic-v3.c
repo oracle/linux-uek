@@ -2066,7 +2066,7 @@ static void __partition_ppis(struct partition_affinity *parts, int nr_parts)
 }
 
 /* Create all possible partitions at boot time */
-static void __init gic_populate_of_ppi_partitions(struct device_node *gic_node)
+static void __init gic_populate_ppi_partitions(struct device_node *gic_node)
 {
 	struct device_node *parts_node, *child_part;
 	int part_idx = 0, i;
@@ -2240,7 +2240,7 @@ static int __init gic_of_init(struct device_node *node, struct device_node *pare
 	if (err)
 		goto out_unmap_rdist;
 
-	gic_populate_of_ppi_partitions(node);
+	gic_populate_ppi_partitions(node);
 
 	if (static_branch_likely(&supports_deactivate_key))
 		gic_of_setup_kvm_info(node);
@@ -2511,57 +2511,6 @@ static struct fwnode_handle *gic_v3_get_gsi_domain_id(u32 gsi)
 	return gsi_domain_handle;
 }
 
-struct acpi_ppi_partition_arg
-{
-	struct partition_affinity *parts;
-	int part_idx;
-};
-
-static int __init __alloc_ppi_partition(struct acpi_pptt_processor *container,
-					void *arg)
-{
-	struct acpi_ppi_partition_arg *data = arg;
-	struct partition_affinity *parts = data->parts;
-	struct partition_affinity *part;
-
-	if (!(container->flags & ACPI_PPTT_ACPI_PROCESSOR_ID_VALID))
-		return -1;
-
-	part = &parts[data->part_idx];
-	part->partition_id = (void *)(long)container->acpi_processor_id;
-	acpi_pptt_get_child_cpus(container, &part->mask);
-
-	pr_info("GIC: PPI partition:0x%x [%d] { CPUs:<%*pbl> }",
-		container->acpi_processor_id, data->part_idx,
-		cpumask_pr_args(&part->mask));
-
-	data->part_idx++;
-	return 0;
-}
-
-static void __init gic_populate_acpi_ppi_partitions(void)
-{
-	struct acpi_ppi_partition_arg arg = { 0 };
-	int nr_parts, ret;
-
-	nr_parts = acpi_pptt_count_containers();
-	if (!nr_parts)
-		return;
-
-	gic_data.ppi_descs = kcalloc(gic_data.ppi_nr,
-				     sizeof(*gic_data.ppi_descs), GFP_KERNEL);
-	if (!gic_data.ppi_descs)
-		return;
-
-	arg.parts = kcalloc(nr_parts, sizeof(*arg.parts), GFP_KERNEL);
-	if (WARN_ON(!arg.parts))
-		return;
-
-	ret = acpi_pptt_for_each_container(&__alloc_ppi_partition, &arg);
-	if (!ret)
-		__partition_ppis(arg.parts, nr_parts);
-}
-
 static int __init
 gic_acpi_init(union acpi_subtable_headers *header, const unsigned long end)
 {
@@ -2610,8 +2559,6 @@ gic_acpi_init(union acpi_subtable_headers *header, const unsigned long end)
 		goto out_fwhandle_free;
 
 	acpi_set_irq_model(ACPI_IRQ_MODEL_GIC, gic_v3_get_gsi_domain_id);
-
-	gic_populate_acpi_ppi_partitions();
 
 	if (static_branch_likely(&supports_deactivate_key))
 		gic_acpi_setup_kvm_info();
