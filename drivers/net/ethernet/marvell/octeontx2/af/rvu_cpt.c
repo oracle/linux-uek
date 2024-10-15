@@ -1236,10 +1236,11 @@ static void cpt_cn10k_rxc_teardown(struct rvu *rvu, int blkaddr)
 	cpt_rxc_time_cfg(rvu, &prev, blkaddr, NULL);
 }
 
-static void cpt_cn20k_rxc_teardown(struct rvu *rvu, int blkaddr)
+static void cpt_cn20k_rxc_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr)
 {
 	struct cpt_rxc_time_cfg_req req, prev;
-	int timeout = 2000;
+	struct rvu_cpt *cpt = &rvu->cpt;
+	int timeout = 2000, queue_idx;
 	u64 reg;
 
 	/* Set time limit to minimum values, so that rxc entries will be
@@ -1250,44 +1251,74 @@ static void cpt_cn20k_rxc_teardown(struct rvu *rvu, int blkaddr)
 	req.zombie_limit = 1;
 	req.active_thres = 1;
 	req.active_limit = 1;
-	/* TBD: Currently support First queue cleanup.
-	 * Re-visit when add multi-queue support for cn20k.
-	 */
-	req.queue_id = 0;
-	prev.queue_id = 0;
 
-	cpt_cn20k_rxc_time_cfg(rvu, blkaddr, &req, &prev);
+	for_each_set_bit(queue_idx, cpt->cpt_rx_queue_bitmap,
+			 CPT_AF_MAX_RXC_QUEUES) {
+		/* Skip queues that don't match the given pcifunc, unless
+		 * it's queue 0.
+		 */
+		if (cpt->cptpfvf_map[queue_idx] != pcifunc && queue_idx)
+			continue;
 
-	do {
-		reg = rvu_read64(rvu, blkaddr, CPT_AF_RXC_QUEX_ACTIVE_STS(0));
-		udelay(1);
-		if (FIELD_GET(RXC_ACTIVE_COUNT, reg))
-			timeout--;
-		else
-			break;
-	} while (timeout);
+		req.queue_id = queue_idx;
+		prev.queue_id = queue_idx;
 
-	if (timeout == 0)
-		dev_warn(rvu->dev, "Poll for RXC active count hits hard loop counter\n");
+		cpt_cn20k_rxc_time_cfg(rvu, blkaddr, &req, &prev);
 
-	timeout = 2000;
-	do {
-		reg = rvu_read64(rvu, blkaddr, CPT_AF_RXC_QUEX_ZOMBIE_STS(0));
-		udelay(1);
-		if (FIELD_GET(RXC_ZOMBIE_COUNT, reg))
-			timeout--;
-		else
-			break;
-	} while (timeout);
+		do {
+			reg = rvu_read64(rvu, blkaddr,
+					 CPT_AF_RXC_QUEX_ACTIVE_STS(queue_idx));
+			udelay(1);
+			if (FIELD_GET(RXC_ACTIVE_COUNT, reg))
+				timeout--;
+			else
+				break;
+		} while (timeout);
 
-	if (timeout == 0)
-		dev_warn(rvu->dev, "Poll for RXC zombie count hits hard loop counter\n");
+		if (timeout == 0)
+			dev_warn(rvu->dev,
+				 "Poll for RXC active count hits hard loop counter\n");
 
-	/* Restore config */
-	cpt_cn20k_rxc_time_cfg(rvu, blkaddr, &prev, NULL);
+		timeout = 2000;
+		do {
+			reg = rvu_read64(rvu, blkaddr,
+					 CPT_AF_RXC_QUEX_ZOMBIE_STS(queue_idx));
+			udelay(1);
+			if (FIELD_GET(RXC_ZOMBIE_COUNT, reg))
+				timeout--;
+			else
+				break;
+		} while (timeout);
+
+		if (timeout == 0)
+			dev_warn(rvu->dev,
+				 "Poll for RXC zombie count hits hard loop counter\n");
+
+		/* Restore config */
+		cpt_cn20k_rxc_time_cfg(rvu, blkaddr, &prev, NULL);
+
+		/* Reset CPT_AF_RXC_QUE(0..15)_X2P(0..1)_LINK_CFG to default */
+		reg = rvu_read64(rvu, blkaddr,
+				 CPT_AF_RXC_QUEX_X2PX_LINK_CFG(queue_idx, 0));
+		if (reg != RXC_QUEX_X2PX_LINK_CFG_DEFAUT)
+			rvu_write64(rvu, blkaddr,
+				    CPT_AF_RXC_QUEX_X2PX_LINK_CFG(queue_idx, 0),
+				    RXC_QUEX_X2PX_LINK_CFG_DEFAUT);
+
+		reg = rvu_read64(rvu, blkaddr,
+				 CPT_AF_RXC_QUEX_X2PX_LINK_CFG(queue_idx, 1));
+		if (reg != RXC_QUEX_X2PX_LINK_CFG_DEFAUT)
+			rvu_write64(rvu, blkaddr,
+				    CPT_AF_RXC_QUEX_X2PX_LINK_CFG(queue_idx, 1),
+				    RXC_QUEX_X2PX_LINK_CFG_DEFAUT);
+
+		/* Free queue: clear bit and reset mapping */
+		__clear_bit(queue_idx, cpt->cpt_rx_queue_bitmap);
+		cpt->cptpfvf_map[queue_idx] = 0;
+	}
 }
 
-static void cpt_rxc_teardown(struct rvu *rvu, int blkaddr)
+static void cpt_rxc_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
 
@@ -1295,7 +1326,7 @@ static void cpt_rxc_teardown(struct rvu *rvu, int blkaddr)
 		return;
 
 	if (is_cn20k(rvu->pdev))
-		cpt_cn20k_rxc_teardown(rvu, blkaddr);
+		cpt_cn20k_rxc_teardown(rvu, pcifunc, blkaddr);
 	else
 		cpt_cn10k_rxc_teardown(rvu, blkaddr);
 }
@@ -1364,7 +1395,7 @@ int rvu_cpt_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int lf, int s
 	u64 reg;
 
 	if (is_cpt_pf(rvu, pcifunc) || is_cpt_vf(rvu, pcifunc))
-		cpt_rxc_teardown(rvu, blkaddr);
+		cpt_rxc_teardown(rvu, pcifunc, blkaddr);
 
 	mutex_lock(&rvu->alias_lock);
 	/* Enable BAR2 ALIAS for this pcifunc. */
@@ -1493,7 +1524,7 @@ int rvu_cpt_ctx_flush(struct rvu *rvu, u16 pcifunc)
 		return rc;
 
 	/* Wait for rxc entries to be flushed out */
-	cpt_rxc_teardown(rvu, blkaddr);
+	cpt_rxc_teardown(rvu, pcifunc, blkaddr);
 
 	reg = rvu_read64(rvu, blkaddr, CPT_AF_CONSTANTS0);
 	max_ctx_entries = (reg >> 48) & 0xFFF;

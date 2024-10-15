@@ -23,6 +23,8 @@
 /* Length of initial context fetch in 128 byte words */
 #define CPT_CTX_ILEN    1ULL
 
+#define RXC_QUEX_X2PX_LINK_CFG_DEFAUT	0x240000
+
 #define IPSEC_GEN_CFG_EGRP    GENMASK_ULL(50, 48)
 #define IPSEC_GEN_CFG_OPCODE  GENMASK_ULL(47, 32)
 #define IPSEC_GEN_CFG_PARAM1  GENMASK_ULL(31, 16)
