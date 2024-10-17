@@ -1664,8 +1664,10 @@ start_tcp_traffic()
 
 stop_traffic()
 {
+	local pid=${1-%%}; shift
+
 	# Suppress noise from killing mausezahn.
-	{ kill %% && wait %%; } 2>/dev/null
+	{ kill $pid && wait $pid; } 2>/dev/null
 }
 
 declare -A cappid
