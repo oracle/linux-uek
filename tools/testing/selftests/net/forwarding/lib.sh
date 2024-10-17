@@ -1304,6 +1304,12 @@ tests_run()
 	done
 }
 
+cleanup()
+{
+	pre_cleanup
+	defer_scopes_cleanup
+}
+
 multipath_eval()
 {
 	local desc="$1"
