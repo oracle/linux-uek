@@ -23,24 +23,6 @@
 #include <asm/xen/interface.h>
 
 .pushsection .text
-	.balign PAGE_SIZE
-SYM_CODE_START(hypercall_page)
-	.rept (PAGE_SIZE / 32)
-		UNWIND_HINT_FUNC
-		ANNOTATE_UNRET_SAFE
-		ret
-		.skip 31, 0xcc
-	.endr
-
-#define HYPERCALL(n) \
-	.equ xen_hypercall_##n, hypercall_page + __HYPERVISOR_##n * 32; \
-	.type xen_hypercall_##n, @function; .size xen_hypercall_##n, 32
-#include <asm/xen-hypercalls.h>
-#undef HYPERCALL
-SYM_CODE_END(hypercall_page)
-.popsection
-
-	.pushsection .text
 /*
  * Xen hypercall interface to the hypervisor.
  *
@@ -118,8 +100,7 @@ SYM_FUNC_START(xen_hypercall_intel)
 	vmcall
 	RET
 SYM_FUNC_END(xen_hypercall_intel)
-	.popsection
-
+.popsection
 
 #ifdef CONFIG_XEN_PV
 	__INIT
@@ -179,7 +160,6 @@ SYM_CODE_END(asm_cpu_bringup_and_idle)
 #ifdef CONFIG_XEN_PV
 	ELFNOTE(Xen, XEN_ELFNOTE_ENTRY,          _ASM_PTR startup_xen)
 #endif
-	ELFNOTE(Xen, XEN_ELFNOTE_HYPERCALL_PAGE, _ASM_PTR hypercall_page)
 	ELFNOTE(Xen, XEN_ELFNOTE_FEATURES,
 		.ascii "!writable_page_tables|pae_pgdir_above_4gb")
 	ELFNOTE(Xen, XEN_ELFNOTE_SUPPORTED_FEATURES,
