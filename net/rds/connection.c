@@ -558,6 +558,7 @@ static void rds_conn_shutdown_check_wait(struct work_struct *work)
 
 			set_bit(RDS_SHUTDOWN_PREPARE_DONE, &cp->cp_flags);
 			smp_mb__after_atomic();
+			cp->cp_conn_shutdown_jf = jiffies;
 		}
 
 		delay = conn->c_trans->conn_path_shutdown_check_wait(cp);
@@ -578,8 +579,10 @@ static void rds_conn_shutdown_check_wait(struct work_struct *work)
 			return;
 		}
 
-		if (conn->c_trans->conn_path_shutdown_final)
+		if (conn->c_trans->conn_path_shutdown_final) {
+			cp->cp_conn_shutdown_jf = 0;
 			conn->c_trans->conn_path_shutdown_final(cp);
+		}
 	} else
 		conn->c_trans->conn_path_shutdown(cp);
 

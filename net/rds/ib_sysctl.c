@@ -41,6 +41,8 @@ static struct ctl_table_header *rds_ib_sysctl_hdr;
 unsigned long rds_ib_sysctl_max_send_wr = RDS_IB_DEFAULT_SEND_WR;
 unsigned long rds_ib_sysctl_max_recv_wr = RDS_IB_DEFAULT_RECV_WR;
 unsigned long rds_ib_sysctl_max_recv_allocation = (128 * 1024 * 1024) / RDS_FRAG_SIZE;
+unsigned long rds_ib_sysctl_shutdown_hang_kill_timeout_ms = 30000;
+
 static unsigned long rds_ib_sysctl_max_wr_min = 1;
 /* hardware will fail CQ creation long before this */
 static unsigned long rds_ib_sysctl_max_wr_max = (u32)~0;
@@ -162,6 +164,13 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.maxlen         = sizeof(unsigned long),
 		.mode           = 0644,
 		.proc_handler   = proc_doulongvec_minmax,
+	},
+	{
+		.procname	= "shutdown_hang_kill_timeout_ms",
+		.data		= &rds_ib_sysctl_shutdown_hang_kill_timeout_ms,
+		.maxlen		= sizeof(rds_ib_sysctl_shutdown_hang_kill_timeout_ms),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
 	},
 	{
 		.procname	= "flow_control",

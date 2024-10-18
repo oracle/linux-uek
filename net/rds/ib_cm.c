@@ -2487,18 +2487,64 @@ void rds_ib_conn_path_shutdown_prepare(struct rds_conn_path *cp)
 	}
 }
 
+void rds_shutdown_check_wait_debug(struct rds_conn_path *cp, unsigned int ret)
+{
+	struct rds_connection *conn = cp->cp_conn;
+	struct rds_ib_connection *ic = conn->c_transport_data;
+	char *dev_name = ic->rds_ibdev->dev->name;
+	struct rds_ib_work_ring *send = &ic->i_send_ring;
+	struct rds_ib_work_ring *recv = &ic->i_recv_ring;
+
+	/* If the sysctl is set to 0, the crash on hang feature is disabled. */
+	if (!rds_ib_sysctl_shutdown_hang_kill_timeout_ms)
+		return;
+
+	/* We crash only for CX-3 Cards. */
+	if (strstr(dev_name, "mlx4") && time_after(jiffies, cp->cp_conn_shutdown_jf + msecs_to_jiffies(rds_ib_sysctl_shutdown_hang_kill_timeout_ms))) {
+		pr_err("RDS/IB: connection <%pI6c,%pI6c,%d> ic=0x%p has been stuck in shutdown for %u ms ret=%u\n ... CRASHING KERNEL ...\n",
+		       &conn->c_laddr,
+		       &conn->c_faddr,
+		       conn->c_tos,
+		       ic,
+		       jiffies_to_msecs(jiffies - cp->cp_conn_shutdown_jf),
+		       ret);
+		pr_err("ic=0x%p ic->i_flags & RDS_IB_CQ_ERR=0x%x rds_ib_ring_empty=%d i_signaled_sends=%d i_fastreg_wrs=%d\n",
+		       ic,
+		       test_bit(RDS_IB_CQ_ERR, &ic->i_flags),
+		       rds_ib_ring_empty(&ic->i_recv_ring),
+		       atomic_read(&ic->i_signaled_sends),
+		       atomic_read(&ic->i_fastreg_wrs));
+		pr_err("ic=0x%p send ring: nr=%u alloc_ctr=%lld free_ctr=%lld alloc-free=%lld\n",
+		       ic, send->w_nr, send->w_alloc_ctr.counter,
+		       send->w_free_ctr.counter,
+		       send->w_alloc_ctr.counter - send->w_free_ctr.counter);
+		pr_err("ic=0x%p recv ring: nr=%u alloc_ctr=%lld free_ctr=%lld alloc-free=%lld\n",
+		       ic, recv->w_nr, recv->w_alloc_ctr.counter,
+		       recv->w_free_ctr.counter,
+		       recv->w_alloc_ctr.counter - recv->w_free_ctr.counter);
+		BUG();
+	}
+}
+
 unsigned long rds_ib_conn_path_shutdown_check_wait(struct rds_conn_path *cp)
 {
 	struct rds_connection *conn = cp->cp_conn;
 	struct rds_ib_connection *ic = conn->c_transport_data;
+	unsigned int ret = 0;
 
-	return (!ic->i_cm_id ||
+	ret = (!ic->i_cm_id ||
 		test_bit(RDS_IB_CQ_ERR, &ic->i_flags) ||
 		(rds_ib_ring_empty(&ic->i_recv_ring) &&
 		 (atomic_read(&ic->i_signaled_sends) == 0) &&
 		 (atomic_read(&ic->i_fastreg_wrs) ==
 		  RDS_IB_DEFAULT_FREG_WR))) ? 0
 		: msecs_to_jiffies(1000);
+
+	if (unlikely(ret))
+		rds_shutdown_check_wait_debug(cp, ret);
+
+	return ret;
+
 }
 
 void rds_ib_conn_path_shutdown_tidy_up(struct rds_conn_path *cp)

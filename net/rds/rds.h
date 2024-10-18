@@ -289,6 +289,7 @@ struct rds_conn_path {
 	/* when was this connection started */
 	uint64_t		cp_conn_start_jf;
 	uint64_t		cp_conn_ts_jf;
+	unsigned long		cp_conn_shutdown_jf;
 
 	/* Re-connect stall diagnostics */
 	unsigned long		cp_reconn_flags;
