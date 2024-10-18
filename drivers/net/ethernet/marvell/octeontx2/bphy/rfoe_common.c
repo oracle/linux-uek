@@ -6,7 +6,7 @@
 
 #include "rfoe_common.h"
 
-#define MAX_PSM_QUEUES 12
+#define MAX_PSM_QUEUES 14
 
 struct psm_queue_lock {
 	/*  PSM queue lock  */
