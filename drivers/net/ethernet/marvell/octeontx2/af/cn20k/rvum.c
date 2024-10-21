@@ -32,6 +32,11 @@ int rvu_cn20k_get_blk_addr(struct rvu *rvu, int blktype,
 			return BLKADDR_CPT0;
 		else
 			return BLKADDR_CPT1;
+	case BLKTYPE_DPI:
+		if (val & BIT_ULL(BLKADDR_DPI0))
+			return BLKADDR_DPI0;
+		else
+			return BLKADDR_DPI1;
 	}
 	return -ENODEV;
 }

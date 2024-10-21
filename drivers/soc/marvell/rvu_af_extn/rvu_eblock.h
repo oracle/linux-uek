@@ -59,9 +59,13 @@ int rvu_eblock_register_driver(const struct rvu_eblock_driver_ops *ops);
 void rvu_eblock_unregister_driver(struct rvu_eblock_driver_ops *ops);
 int rvu_eblock_mbox_handler(struct otx2_mbox *mbox, int devid,
 			    struct mbox_msghdr *req);
+int rvu_dpi_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr,
+			int lf, int slot);
 
 /* Eblock drivers part of RVU AF driver module */
 void ree_eb_module_init(void);
 void ree_eb_module_exit(void);
+void dpi_eb_module_init(void);
+void dpi_eb_module_exit(void);
 void sdp_eb_module_init(void);
 void sdp_eb_module_exit(void);

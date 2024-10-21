@@ -1206,4 +1206,6 @@
 #define LMTST_THROTTLE_MASK		GENMASK_ULL(38, 35)
 #define LMTST_WR_PEND_MAX		15
 
+#define DPI_AF_BLK_RST			(0x008ull)
+
 #endif /* RVU_REG_H */

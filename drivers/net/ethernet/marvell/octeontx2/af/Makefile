@@ -20,4 +20,5 @@ rvu_af-y := cgx.o rvu.o rvu_cgx.o rvu_npa.o rvu_nix.o rvu_nix_spi.o \
 		  cn20k/rvum.o \
 		  $(EB_DIR)/rvu_eblock.o \
 		  $(EB_DIR)/rvu_eb_ree.o \
-		  $(EB_DIR)/rvu_eb_sdp.o
+		  $(EB_DIR)/rvu_eb_sdp.o \
+		  $(EB_DIR)/rvu_eb_dpi.o

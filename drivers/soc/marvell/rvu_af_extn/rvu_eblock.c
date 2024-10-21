@@ -163,6 +163,8 @@ static inline bool is_eblock(int blkaddr)
 	/* List of extension blocks supported */
 	case BLKADDR_REE0:
 	case BLKADDR_REE1:
+	case BLKADDR_DPI0:
+	case BLKADDR_DPI1:
 	case BLKADDR_SDP:
 		return true;
 	default:
@@ -391,6 +393,7 @@ void rvu_eblock_module_init(void)
 	 * module goes here.
 	 */
 	ree_eb_module_init();
+	dpi_eb_module_init();
 	sdp_eb_module_init();
 }
 

@@ -326,6 +326,8 @@ struct rvu_pfvf {
 	u16		cpt1_lfs;
 	u16		ree0_lfs;
 	u16		ree1_lfs;
+	u16		dpilfs;
+	u16		dpi1_lfs;
 	u8		cgx_lmac;
 	u8		sso_uniq_ident;
 
@@ -765,6 +767,8 @@ struct rvu {
 	spinlock_t		mcs_intrq_lock;
 	/* CPT interrupt lock */
 	spinlock_t		cpt_intr_lock;
+	/* DPI lock */
+	struct mutex		dpi_rsrc_lock;
 
 	/* NPA */
 	struct rsrc_bmap	npa_dpc;
@@ -1414,4 +1418,8 @@ int rvu_rep_pf_init(struct rvu *rvu);
 int rvu_rep_install_mcam_rules(struct rvu *rvu);
 void rvu_rep_update_rules(struct rvu *rvu, u16 pcifunc, bool ena);
 int rvu_rep_notify_pfvf_state(struct rvu *rvu, u16 pcifunc, bool enable);
+
+void rvu_reset_blk_lfcfg(struct rvu *rvu, struct rvu_block *block);
+void rvu_scan_block(struct rvu *rvu, struct rvu_block *block);
+void __rvu_flr_handler(struct rvu *rvu, u16 pcifunc);
 #endif /* RVU_H */
