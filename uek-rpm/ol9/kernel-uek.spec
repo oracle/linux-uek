@@ -924,6 +924,13 @@ mkdir -p configs
 echo 'CONFIG_DTRACE=y' >> configs/config
 echo 'CONFIG_DTRACE=y' >> configs/config-debug
 
+# Add release info to FIPS configs
+%ifarch aarch64 x86_64
+for i in configs/config*; do
+  sed -i 's/CONFIG_CRYPTO_FIPS_NAME="_FIPS_CONTAINER_KERNEL_"/CONFIG_CRYPTO_FIPS_NAME="%{ol_release_name} Container Kernel Cryptographic Module for %{uek_release_name}"/' $i
+done
+%endif
+
 # get rid of unwanted files resulting from patch fuzz
 find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
 
