@@ -2006,7 +2006,7 @@ static int ocfs2_claim_suballoc_bits(struct ocfs2_alloc_context *ac,
 	for (i = 0; i < le16_to_cpu(cl->cl_next_free_rec); i ++) {
 		if (i == victim)
 			continue;
-		if (le32_to_cpu(cl->cl_recs[i].c_free) < bits_wanted)
+		if (!cl->cl_recs[i].c_free)
 			continue;
 
 		ac->ac_chain = i;
