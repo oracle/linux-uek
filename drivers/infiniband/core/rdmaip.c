@@ -2469,6 +2469,13 @@ static void rdmaip_device_add(struct ib_device *device)
 	if (device->node_type != RDMA_NODE_IB_CA)
 		return;
 
+	if (device->phys_port_cnt > RDMAIP_MAX_PHYS_PORTS) {
+		pr_err("%s: Error: port_cnt (%d) exceeds max (%d): dev: %p name: %s\n",
+		       __func__, device->phys_port_cnt,
+		       RDMAIP_MAX_PHYS_PORTS, device, device->name);
+		return;
+	}
+
 	rdmaip_dev = kzalloc_node(sizeof(struct rdmaip_device), GFP_KERNEL,
 				ibdev_to_rdmaipdev(device));
 	if (!rdmaip_dev) {
