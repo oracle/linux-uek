@@ -1645,7 +1645,6 @@ static struct super_block *ocfs2_inode_cache_get_super(struct ocfs2_caching_info
 }
 
 static void ocfs2_inode_cache_lock(struct ocfs2_caching_info *ci)
-__acquires(&oi->ip_lock)
 {
 	struct ocfs2_inode_info *oi = cache_info_to_inode(ci);
 
@@ -1653,7 +1652,6 @@ __acquires(&oi->ip_lock)
 }
 
 static void ocfs2_inode_cache_unlock(struct ocfs2_caching_info *ci)
-__releases(&oi->ip_lock)
 {
 	struct ocfs2_inode_info *oi = cache_info_to_inode(ci);
 
