@@ -1091,6 +1091,7 @@ mkdir -p configs
 %ifarch aarch64 x86_64
 for i in configs/config*; do
   sed -i 's/CONFIG_CRYPTO_FIPS_NAME="_FIPS_CONTAINER_KERNEL_"/CONFIG_CRYPTO_FIPS_NAME="%{ol_release_name} Container Kernel Cryptographic Module for %{uek_release_name}"/' $i
+  sed -i 's/CONFIG_CRYPTO_FIPS_NAME="_FIPS_KERNEL_"/CONFIG_CRYPTO_FIPS_NAME="%{ol_release_name} %{uek_release_name_full} Crypto API"/' $i
 done
 %endif
 
