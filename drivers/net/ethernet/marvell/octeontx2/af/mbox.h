@@ -2199,11 +2199,16 @@ struct npc_install_flow_req {
 	/* hardware priority, supported for cn20k */
 	u8 hw_prio;
 	u8 req_kw_type; /* only for cn20k */
+	u8 alloc_entry;	/* only for cn20k */
+	u16 ref_prio;
+	u16 ref_entry;
 };
 
 struct npc_install_flow_rsp {
 	struct mbox_msghdr hdr;
 	int counter; /* negative if no counter else counter number */
+	u16 entry;
+	u8 kw_type;
 };
 
 struct npc_get_num_kws_req {
