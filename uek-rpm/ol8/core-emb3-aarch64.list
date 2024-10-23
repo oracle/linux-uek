@@ -99,8 +99,6 @@ kernel/drivers/firmware/qemu_fw_cfg.ko
 kernel/drivers/gpio/gpio-mlxbf3.ko
 kernel/drivers/hwmon/xgene-hwmon.ko
 kernel/drivers/i2c/algos/i2c-algo-bit.ko
-kernel/drivers/i2c/busses/i2c-designware-core.ko
-kernel/drivers/i2c/busses/i2c-designware-platform.ko
 kernel/drivers/i2c/busses/i2c-mlxbf.ko
 kernel/drivers/infiniband/core/ib_cm.ko
 kernel/drivers/infiniband/core/ib_core.ko
