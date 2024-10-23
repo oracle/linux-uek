@@ -111,8 +111,6 @@ kernel/drivers/gpu/drm/ttm/ttm.ko
 kernel/drivers/gpu/drm/virtio/virtio-gpu.ko
 kernel/drivers/hwmon/xgene-hwmon.ko
 kernel/drivers/i2c/algos/i2c-algo-bit.ko
-kernel/drivers/i2c/busses/i2c-designware-core.ko
-kernel/drivers/i2c/busses/i2c-designware-platform.ko
 kernel/drivers/i2c/i2c-smbus.ko
 kernel/drivers/infiniband/core/ib_cm.ko
 kernel/drivers/infiniband/core/ib_core.ko
