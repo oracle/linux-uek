@@ -119,11 +119,7 @@ static int mlx5_eq_comp_int(struct notifier_block *nb,
 	int num_eqes = 0;
 	u32 cqn = -1;
 
-	eqe = next_eqe_sw(eq);
-	if (!eqe)
-		goto out;
-
-	do {
+	while ((eqe = next_eqe_sw(eq))) {
 		struct mlx5_core_cq *cq;
 
 		/* Make sure we read EQ entry contents after we've
@@ -150,9 +146,10 @@ static int mlx5_eq_comp_int(struct notifier_block *nb,
 
 		++eq->cons_index;
 
-	} while ((++num_eqes < MLX5_EQ_POLLING_BUDGET) && (eqe = next_eqe_sw(eq)));
+		if (++num_eqes >= MLX5_EQ_POLLING_BUDGET)
+			break;
+	}
 
-out:
 	eq_update_ci(eq, 1);
 
 	if (cqn != -1)
@@ -237,11 +234,7 @@ static int mlx5_eq_async_int(struct notifier_block *nb,
 	recovery = action == ASYNC_EQ_RECOVER;
 	mlx5_eq_async_int_lock(eq_async, recovery, &flags);
 
-	eqe = next_eqe_sw(eq);
-	if (!eqe)
-		goto out;
-
-	do {
+	while ((eqe = next_eqe_sw(eq))) {
 		/*
 		 * Make sure we read EQ entry contents after we've
 		 * checked the ownership bit.
@@ -253,9 +246,10 @@ static int mlx5_eq_async_int(struct notifier_block *nb,
 
 		++eq->cons_index;
 
-	} while ((++num_eqes < MLX5_EQ_POLLING_BUDGET) && (eqe = next_eqe_sw(eq)));
+		if (++num_eqes >= MLX5_EQ_POLLING_BUDGET)
+			break;
+	}
 
-out:
 	eq_update_ci(eq, 1);
 	mlx5_eq_async_int_unlock(eq_async, recovery, &flags);
 
