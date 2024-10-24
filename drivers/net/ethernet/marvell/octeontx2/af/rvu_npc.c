@@ -1894,8 +1894,8 @@ void npc_load_kpu_profile(struct rvu *rvu)
 	strncpy(path, PDIR, len);
 	strcat(path, kpu_profile);
 
-	if (!request_firmware(&fw, path, rvu->dev)) {
-		dev_info(rvu->dev, "Loading KPU profile from firmware: %s\n",
+	if (!firmware_request_nowarn(&fw, path, rvu->dev)) {
+		dev_info(rvu->dev, "Loading KPU profile from fs: %s\n",
 			 path);
 		rvu->kpu_fwdata = kzalloc(fw->size, GFP_KERNEL);
 		if (rvu->kpu_fwdata) {
