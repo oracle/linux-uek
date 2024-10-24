@@ -434,6 +434,7 @@ static void cnf10k_rfoe_ptp_tx_work(struct work_struct *work)
 	struct skb_shared_hwtstamps ts;
 	struct netdev_queue *txq;
 	u64 timestamp, tsns;
+	unsigned long flags;
 	u64 *ptp_tstamp;
 	int cnt;
 
@@ -499,12 +500,14 @@ static void cnf10k_rfoe_ptp_tx_work(struct work_struct *work)
 tx_tstmp_error:
 	priv->stats.tx_hwtstamp_failures++;
 submit_next_req:
+	spin_lock_irqsave(&priv->tx_ptp_job_cfg.lock, flags);
 	if (priv->ptp_tx_skb)
 		dev_kfree_skb_any(priv->ptp_tx_skb);
 	priv->ptp_tx_skb = NULL;
 
 	if (txq && netif_tx_queue_stopped(txq))
 		netif_tx_wake_queue(txq);
+	spin_unlock_irqrestore(&priv->tx_ptp_job_cfg.lock, flags);
 }
 
 /* psm queue timer callback to check queue space */
