@@ -7,7 +7,12 @@
 %define _missing_doc_files_terminate_build      0
 %define _wrong_version_format_terminate_build   0
 
-Summary: Oracle Unbreakable Enterprise Kernel Release 7
+%define uek_release 7
+%define uek_release_name UEK%{uek_release}
+%define uek_release_name_full Unbreakable Enterprise Kernel %{uek_release}
+%define ol_release_name Oracle Linux %{oraclelinux}
+
+Summary: Oracle Unbreakable Enterprise Kernel Release %{uek_release}
 
 # For a stable, released kernel, released_kernel should be 1. For rawhide
 # and/or a kernel built from an rc or git snapshot, released_kernel should
