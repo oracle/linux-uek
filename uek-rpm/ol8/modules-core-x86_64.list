@@ -258,6 +258,7 @@ kernel/drivers/nvdimm/nd_pmem.ko
 kernel/drivers/nvdimm/nd_virtio.ko
 kernel/drivers/nvdimm/virtio_pmem.ko
 kernel/drivers/nvme/common/nvme-auth.ko
+kernel/drivers/nvme/common/nvme-keyring.ko
 kernel/drivers/nvme/host/nvme-core.ko
 kernel/drivers/nvme/host/nvme-fabrics.ko
 kernel/drivers/nvme/host/nvme-fc.ko
