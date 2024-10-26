@@ -137,6 +137,8 @@ struct rds_ib_mr_pool {
 	struct workqueue_struct *frwr_clean_wq;
 	struct delayed_work	frwr_clean_worker;
 	bool			condemned;
+	bool			cleaning;
+	wait_queue_head_t	wq_head;
 };
 
 static void rds_frwr_clean_worker(struct work_struct *work);
@@ -672,6 +674,7 @@ struct rds_ib_mr_pool *rds_ib_create_mr_pool(struct rds_ib_device *rds_ibdev,
 	INIT_XLIST_HEAD(&pool->drop_list);
 	INIT_LIST_HEAD(&pool->clean_list);
 	spin_lock_init(&pool->clean_lock);
+	init_waitqueue_head(&pool->wq_head);
 
 	if (pool_type == RDS_IB_MR_1M_POOL) {
 		pool->max_pages = RDS_MR_1M_MSG_SIZE + 1;
@@ -793,6 +796,10 @@ static inline struct rds_ib_mr *rds_ib_reuse_mr(struct rds_ib_mr_pool *pool)
 	unsigned long flags;
 
 	spin_lock_irqsave(&pool->clean_lock, flags);
+	wait_event_cmd(pool->wq_head, !pool->cleaning,
+		       spin_unlock_irqrestore(&pool->clean_lock, flags),
+		       spin_lock_irqsave(&pool->clean_lock, flags));
+
 	if (!list_empty(&pool->clean_list))
 		ibmr = list_last_entry(&pool->clean_list, struct rds_ib_mr,
 				       pool_list);
@@ -1044,6 +1051,10 @@ static void rds_frwr_clean(struct rds_ib_mr_pool *pool, bool clean_all)
 	qrtn_time = msecs_to_jiffies(rds_frwr_ibmr_qrtn_time);
 	now = get_jiffies_64();
 
+	spin_lock_irqsave(&pool->clean_lock, flags);
+	pool->cleaning = true;
+	spin_unlock_irqrestore(&pool->clean_lock, flags);
+
 	if (clean_all) {
 		spin_lock_irqsave(&pool->clean_lock, flags);
 		list_splice_init(&pool->clean_list, &free_list);
@@ -1107,6 +1118,11 @@ static void rds_frwr_clean(struct rds_ib_mr_pool *pool, bool clean_all)
 	}
 
 drop:
+	spin_lock_irqsave(&pool->clean_lock, flags);
+	pool->cleaning = false;
+	wake_up_all(&pool->wq_head);
+	spin_unlock_irqrestore(&pool->clean_lock, flags);
+
 	drop_cnt = xlist_append_to_list(&pool->drop_list, &drop_list);
 	list_for_each_entry_safe(ibmr, tmp_ibmr, &drop_list, pool_list) {
 		if (clean_all || (now - ibmr->free_time >= qrtn_time))
