@@ -159,6 +159,12 @@
 #define NIX_AF_LSO_ALT_FLAGS_CFG(a)	(0x4B00 | (a) << 3)
 #define NIX_AF_LSO_ALT_FLAGS_CFG1(a)	(0x4B20 | (a) << 3)
 
+/* NIX Registers */
+#define NIX_AF_RX_DEF_INLINEX(a)                (0x2c0 | (a) << 3)
+#define NIX_AF_RX_INLINE_GEN_CFGX(a)            (0x340 | (a) << 3)
+#define NIX_AF_RX_EXTRACT_INLINEX(a)            (0x380 | (a) << 3)
+#define NIX_AF_RX_PROT_FIELDX_INLINEX(a, b)     (0x4c00 | (a) << 6 | (b) << 3)
+
 /* SDP Regsiters */
 #define SDP_AF_BLK_RST				0xc000030
 #define SDP_AF_AP_EPFX_MBOX_SEND_INT		0x40c0000

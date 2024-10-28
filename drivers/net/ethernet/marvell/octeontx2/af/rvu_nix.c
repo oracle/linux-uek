@@ -5269,6 +5269,9 @@ static int rvu_nix_block_init(struct rvu *rvu, struct nix_hw *nix_hw)
 	if (!is_rvu_otx2(rvu))
 		rvu_nix_block_cn10k_init(rvu, nix_hw);
 
+	if (is_cn20k(rvu->pdev))
+		rvu_nix_block_cn20k_init(rvu, nix_hw);
+
 	if (is_block_implemented(hw, blkaddr)) {
 		err = nix_setup_txschq(rvu, nix_hw, blkaddr);
 		if (err)

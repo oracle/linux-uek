@@ -3217,6 +3217,8 @@ static void __rvu_flr_handler(struct rvu *rvu, u16 pcifunc)
 	/* Free allocated BPIDs */
 	rvu_nix_flr_free_bpids(rvu, pcifunc);
 
+	rvu_nix_cn20k_free_resources(rvu, pcifunc);
+
 	/* Free multicast/mirror node associated with the 'pcifunc' */
 	rvu_nix_mcast_flr_free_entries(rvu, pcifunc);
 

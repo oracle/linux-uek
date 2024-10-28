@@ -460,6 +460,9 @@ M(NIX_CN20K_AQ_ENQ,	0x802f, nix_cn20k_aq_enq, nix_cn20k_aq_enq_req,		\
 				nix_cn20k_aq_enq_rsp)				\
 M(NIX_LSO_ALT_FLAGS_CFG, 0x8030, nix_lso_alt_flags_cfg, nix_lso_alt_flags_cfg_req, \
 				nix_lso_alt_flags_cfg_rsp)			\
+M(NIX_RX_INLINE_PROFILE_CFG, 0x8031, nix_rx_inl_profile_cfg,			\
+				nix_rx_inl_profile_cfg_req,			\
+				nix_rx_inl_profile_cfg_rsp)			\
 M(NIX_AF_RX_FLOW_VEC_CTRL_SET, 0x8034, nix_af_rx_flow_vec_ctrl_set,		\
 				       nix_af_rx_flow_vec_ctrl_write_req, msg_rsp)	\
 /* MCS mbox IDs (range 0xA000 - 0xBFFF) */					\
@@ -1087,6 +1090,7 @@ enum nix_af_status {
 	NIX_AF_ERR_NON_CONTIG_MCE_LIST = -438,
 	NIX_AF_ERR_LSO_ALT_FLAGS_UNSUPPORTED = -439,
 	NIX_AF_ERR_LSO_ALT_FLAGS_CFG_FAIL = -440,
+	NIX_AF_ERR_RX_INL_PROFILE_NOT_FREE = -441,
 };
 
 /* For NIX RX vtag action  */
@@ -1644,6 +1648,22 @@ struct nix_inline_ipsec_cfg {
 	u8 enable;
 	u16 bpid;
 	u32 credit_th;
+};
+
+#define NIX_RX_INL_PROFILE_PROTO_CNT 9
+struct nix_rx_inl_profile_cfg_req {
+	struct mbox_msghdr hdr;
+	u64 def_cfg;
+	u64 extract_cfg;
+	u64 gen_cfg;
+	u64 prot_field_cfg[NIX_RX_INL_PROFILE_PROTO_CNT];
+	u64 rsvd[32];		/* reserved fields for future expansion */
+};
+
+struct nix_rx_inl_profile_cfg_rsp {
+	struct mbox_msghdr hdr;
+	u8 profile_id;
+	u8 rsvd[32];		/* reserved fields for future expansion */
 };
 
 /* Per NIX LF inline IPSec configuration */

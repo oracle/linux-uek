@@ -19,6 +19,7 @@
 #include "mbox.h"
 #include "npc.h"
 #include "rvu_reg.h"
+#include "cn20k/nix.h"
 #include "ptp.h"
 #include "mcs_fips_mbox.h"
 
@@ -492,6 +493,7 @@ struct nix_hw {
 	struct nix_bp bp;
 	u64    *tx_credits;
 	u8	cc_mcs_cnt;
+	struct nix_cn20k_hw cn20k;
 };
 
 /* RVU block's capabilities or functionality,
