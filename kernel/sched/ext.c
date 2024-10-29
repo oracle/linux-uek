@@ -5558,6 +5558,7 @@ static int bpf_scx_check_member(const struct btf_type *t,
 
 static int bpf_scx_reg(void *kdata, struct bpf_link *link)
 {
+	return -EACCES;
 	return scx_ops_enable(kdata, link);
 }
 
