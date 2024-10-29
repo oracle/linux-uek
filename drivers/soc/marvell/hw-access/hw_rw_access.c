@@ -24,6 +24,7 @@
 #include "rvu_struct.h"
 #include "rvu.h"
 #include "mbox.h"
+#include "lmac_common.h"
 
 #define OCTEONTX_ACCESS_REG_SMCID 0xc2000fff
 
@@ -62,6 +63,12 @@ struct hw_cgx_info {
 	u8	cgx_id;
 	u8	lmac_id;
 	u8	nix_idx;
+};
+
+struct hw_link_info {
+	u8 cgx_id;
+	u8 lmac_id;
+	struct cgx_link_user_info link_info;
 };
 
 struct hw_csr_mapping {
@@ -114,6 +121,7 @@ const struct hw_csr_lookup_tbl lkp_tbl[] = {
 #define HW_ACCESS_CSR_WRITE_IOCTL	_IO(HW_ACCESS_TYPE, 2)
 #define HW_ACCESS_CTX_READ_IOCTL	_IO(HW_ACCESS_TYPE, 3)
 #define HW_ACCESS_CGX_INFO_IOCTL	_IO(HW_ACCESS_TYPE, 4)
+#define HW_ACCESS_LINK_INFO_IOCTL	_IO(HW_ACCESS_TYPE, 5)
 
 #define MAX_ALPHA	32
 #define MAX_BETA	129
@@ -427,6 +435,44 @@ hw_access_cgx_info(struct rvu *rvu, unsigned long arg)
 	return 0;
 }
 
+static int
+hw_access_link_info(struct rvu *rvu, unsigned long arg)
+{
+	struct hw_link_info linfo;
+	struct lmac *lmac;
+	struct cgx *cgxd;
+
+	if (copy_from_user(&linfo, (void __user *)arg,
+			   sizeof(struct hw_link_info))) {
+		pr_err("Reading PF value failed: copy from user\n");
+		return -EFAULT;
+	}
+
+	if (linfo.cgx_id >= rvu->cgx_cnt_max)
+		return -ENODEV;
+
+	cgxd = rvu->cgx_idmap[linfo.cgx_id];
+	if (!cgxd)
+		return -ENODEV;
+
+	if (linfo.lmac_id >= cgxd->max_lmac_per_mac)
+		return -ENODEV;
+
+	lmac = cgxd->lmac_idmap[linfo.lmac_id];
+	if (!lmac)
+		return -ENODEV;
+
+	memcpy(&linfo.link_info, &lmac->link_info, sizeof(lmac->link_info));
+
+	if (copy_to_user((void __user *)(unsigned long)arg, &linfo,
+			 sizeof(struct hw_link_info))) {
+		pr_err("Fault in copy to user\n");
+
+		return -EFAULT;
+	}
+	return 0;
+}
+
 static long hw_access_ioctl(struct file *filp, unsigned int cmd,
 			    unsigned long arg)
 {
@@ -445,6 +491,9 @@ static long hw_access_ioctl(struct file *filp, unsigned int cmd,
 
 	case HW_ACCESS_CGX_INFO_IOCTL:
 		return hw_access_cgx_info(rvu, arg);
+
+	case HW_ACCESS_LINK_INFO_IOCTL:
+		return hw_access_link_info(rvu, arg);
 
 	default:
 		pr_info("Invalid IOCTL: %d\n", cmd);
