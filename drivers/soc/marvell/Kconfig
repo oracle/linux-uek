@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# MARVELL SoC drivers
+#
+
+menu "Marvell SoC drivers"
+
+config HW_CSR_ACCESS
+	tristate "Access HW Device Config Space"
+	depends on OCTEONTX2_AF
+	default m
+	help
+	  provides an interface which enables user space utility to read from or to write
+	  to HW Device Config Space Registers, Contexts, Memory.
+
+endmenu
