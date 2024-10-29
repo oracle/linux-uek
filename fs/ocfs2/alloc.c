@@ -5371,61 +5371,6 @@ static int ocfs2_truncate_rec(handle_t *handle,
 			goto out;
 		}
 
-		if (unlikely(ocfs2_is_empty_extent(&el->l_recs[0]))) {
-			int next_free;
-			u32 eb_last_rec_range, et_last_rec_range;
-			struct ocfs2_extent_block *eb;
-			struct ocfs2_extent_list *et_el = NULL;
-			struct ocfs2_extent_rec *eb_last_rec = NULL;
-			struct ocfs2_extent_rec *et_last_rec = NULL;
-			eb = (struct ocfs2_extent_block *)path_leaf_bh(path)->b_data;
-			if (eb->h_next_leaf_blk != 0) {
-				/* Find out if this is the rightmost leaf */
-				et_el = et->et_root_el;
-				next_free = le16_to_cpu(el->l_next_free_rec);
-				eb_last_rec = &el->l_recs[next_free-1];
-				next_free = le16_to_cpu(et_el->l_next_free_rec);
-				et_last_rec = &et_el->l_recs[next_free-1];
-				eb_last_rec_range = le32_to_cpu(eb_last_rec->e_cpos) +
-							ocfs2_rec_clusters(el, eb_last_rec);
-				et_last_rec_range = le32_to_cpu(et_last_rec->e_cpos) +
-							ocfs2_rec_clusters(et_el, et_last_rec);
-
-				if (eb_last_rec_range == et_last_rec_range) {
-					/* Current extent block is the rightmost leaf */
-					mlog(ML_ERROR, "Left rotation of extent tree failed "
-						"for Owner %llu: due to incorrect "
-						"h_next_leaf_blk %llu at block %llu\n",
-						(unsigned long long)ocfs2_metadata_cache_owner(et->et_ci),
-						le64_to_cpu(eb->h_next_leaf_blk),
-						le64_to_cpu(eb->h_blkno));
-					ret = ocfs2_path_bh_journal_access(handle, et->et_ci,
-								path, path->p_tree_depth);
-					if (ret) {
-						mlog_errno(ret);
-						goto out;
-					}
-
-					eb->h_next_leaf_blk = 0;
-					ocfs2_journal_dirty(handle, path_leaf_bh(path));
-					ret = ocfs2_rotate_tree_left(handle, et, path, dealloc);
-					if (ret) {
-						mlog_errno(ret);
-						goto out;
-					}
-					if (ocfs2_is_empty_extent(&el->l_recs[0]))
-						BUG();
-					else {
-						mlog(ML_NOTICE, "Fixed the h_next_leaf_blk "
-							"for Owner %llu: at leaf block %llu\n",
-							(unsigned long long)ocfs2_metadata_cache_owner(et->et_ci),
-							le64_to_cpu(eb->h_blkno));
-					}
-				} else
-					BUG();
-			} else
-				BUG();
-		}
 		index--;
 	}
 
