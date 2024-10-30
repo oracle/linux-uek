@@ -930,6 +930,8 @@ struct kvm_hyperv_eventfd {
 
 /* Trust Domain eXtension sub-ioctl() commands. */
 enum kvm_tdx_cmd_id {
+	KVM_TDX_CAPABILITIES = 0,
+
 	KVM_TDX_CMD_NR_MAX,
 };
 
@@ -949,6 +951,15 @@ struct kvm_tdx_cmd {
 	 * status code in addition to -Exxx.
 	 */
 	__u64 hw_error;
+};
+
+struct kvm_tdx_capabilities {
+	__u64 supported_attrs;
+	__u64 supported_xfam;
+	__u64 reserved[254];
+
+	/* Configurable CPUID bits for userspace */
+	struct kvm_cpuid2 cpuid;
 };
 
 #endif /* _ASM_X86_KVM_H */
