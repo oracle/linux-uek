@@ -4317,6 +4317,7 @@ static const struct ib_device_ops mlx5_ib_dev_ops = {
 	.req_notify_cq = mlx5_ib_arm_cq,
 	.rereg_user_mr = mlx5_ib_rereg_user_mr,
 	.resize_cq = mlx5_ib_resize_cq,
+	.ufile_hw_cleanup = mlx5_ib_ufile_hw_cleanup,
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 	.share_pd     = mlx5_ib_share_pd,
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
