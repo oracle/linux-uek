@@ -3,7 +3,7 @@
  * The driver supports SDE Interface notification
  * The driver supports error injection via SMC call
  *
- * Copyright (C) 2022 Marvell.
+ * Copyright (C) 2024 Marvell.
  */
 
 #include <linux/of_address.h>
@@ -13,6 +13,7 @@
 #include <linux/cper.h>
 #include "edac_module.h"
 #include "octeontx_edac.h"
+#include <soc/marvell/octeontx/octeontx_smc.h>
 
 static const struct soc_device_attribute cn10_socinfo[] = {
 	/* cn10ka */
@@ -148,9 +149,15 @@ static void octeontx_edac_inject_error(struct octeontx_edac_pvt *pvt)
 	if (soc_device_match(cn10_socinfo)) {
 		arg[0] = CN10K_EDAC_INJECT;
 		arg[1] = 0xd;
-		arg[2] = pvt->address;
-		arg[3] = (error_type >> 8) & 1;
-		arg[4] = error_type & 0xFF;
+		if (pvt->error_type & CN10K_DSS_EINJ_CAP) { // ECC
+			arg[2] = pvt->address; // Contains address of memory to inject error
+			arg[3] = (error_type >> 8) & 1;
+			arg[4] = error_type & 0xFF;
+		} else { // CRC
+			// arg[2] should be set to 0 for CRC error type
+			arg[3] = pvt->error_type;	// Full error type and let ATF handle it.
+			arg[4] = pvt->address;		// Address is in arg[4] instead of arg[2].
+		}
 		arm_smccc_smc(arg[0], arg[1], arg[2], arg[3], arg[4], arg[5], arg[6], arg[7], &res);
 	} else {
 		arg[0] = OCTEONTX2_EDAC_INJECT;
@@ -191,8 +198,13 @@ static void octeontx_edac_inject_error(struct octeontx_edac_pvt *pvt)
 static ssize_t inject(struct octeontx_edac_pvt *pvt,
 		const char *data, size_t count)
 {
-	if (!(pvt->error_type & pvt->ghes->ecc_cap))
+	if (!(pvt->error_type & pvt->ghes->ecc_cap)) {
+		otx_printk(KERN_ERR, "Neither ECC nor CRC flags set. Provide correct error type.\n");
 		return count;
+	} else if (IS_BITMASK_SET(pvt->error_type, (CN10K_DSS_EINJ_CAP | CN10K_DSS_EINJ_CRC))) {
+		otx_printk(KERN_ERR, "Both ECC and CRC flags set. Provide correct error type.\n");
+		return count;
+	}
 
 	if (!isdigit(*data))
 		return count;
@@ -846,6 +858,8 @@ static int octeontx_dss_probe(struct platform_device *pdev)
 		return ret;
 
 	ghes->ecc_cap = CN10K_DSS_EINJ_CAP;
+	if (is_soc_cn10kb())	// Only cn10kb supports CRC injection
+		ghes->ecc_cap |= CN10K_DSS_EINJ_CRC;
 
 	ret = octeontx_edac_mc_init(pdev, ghes);
 

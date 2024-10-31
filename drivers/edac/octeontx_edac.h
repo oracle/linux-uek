@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /* Marvell OcteonTx2, CN10K EDAC Firmware First RAS driver
  *
- * Copyright (C) 2022 Marvell.
+ * Copyright (C) 2024 Marvell.
  */
 
 #ifndef __OCTEONTX_EDAC_H__
@@ -18,7 +18,10 @@
 #define OCTEONTX2_MCC_EINJ_CAP	(0x40000000)
 
 #define CN10K_EDAC_INJECT	(0xc2000b10)
-#define CN10K_DSS_EINJ_CAP	(0x20000000)
+#define CN10K_DSS_EINJ_CAP	(0x20000000)	// ECC
+#define CN10K_DSS_EINJ_CRC	(0x40000000)	// CRC
+
+#define IS_BITMASK_SET(variable, bitmask) (((variable) & (bitmask)) == (bitmask))
 
 #define SIZE	CPER_REC_LEN
 #define NAME_SZ	8

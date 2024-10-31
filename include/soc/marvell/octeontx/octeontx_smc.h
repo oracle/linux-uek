@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 
 /*
- * Copyright (C) 2021 Marvell
+ * Copyright (C) 2024 Marvell
  *
  */
 
@@ -120,6 +120,15 @@ static inline bool is_soc_cnf10ka_ax(void)
 		return true;
 
 	return false;
+}
+
+static inline bool is_soc_cn10kb(void)
+{
+	static const struct soc_device_attribute socinfo[] = {
+		{.soc_id = "jep106:0369:00bd",},
+		{},
+	};
+	return soc_device_match(socinfo) ? true : false;
 }
 
 #endif /* _SOC_MRVL_OCTEONTX_SMC_H */
