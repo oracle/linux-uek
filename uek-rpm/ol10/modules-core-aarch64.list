@@ -43,6 +43,7 @@ kernel/crypto/crc32_generic.ko
 kernel/crypto/cryptd.ko
 kernel/crypto/crypto_engine.ko
 kernel/crypto/crypto_user.ko
+kernel/crypto/deflate.ko
 kernel/crypto/des_generic.ko
 kernel/crypto/ecc.ko
 kernel/crypto/ecdh_generic.ko
