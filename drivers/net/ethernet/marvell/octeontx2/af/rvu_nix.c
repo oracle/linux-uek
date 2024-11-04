@@ -6747,24 +6747,32 @@ int rvu_mbox_handler_nix_rx_sw_sync(struct rvu *rvu, struct msg_req *req,
 	return 0;
 }
 
-static inline void
-configure_rq_mask(struct rvu *rvu, int blkaddr, int nixlf,
-		  u8 rq_mask, bool enable)
+static inline void configure_rq_mask(struct rvu *rvu, int blkaddr, int nixlf,
+				     u8 rq_mask, bool enable)
 {
-	u64 cfg;
 	u64 reg;
 
-	cfg = rvu_read64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_CFG1(nixlf));
 	reg = rvu_read64(rvu, blkaddr, NIX_AF_LFX_CFG(nixlf));
-	if (enable) {
-		cfg |= BIT_ULL(43);
+	if (enable)
 		reg = (reg & ~GENMASK_ULL(36, 35)) | ((u64)rq_mask << 35);
-	} else {
-		cfg &= ~BIT_ULL(43);
+	else
 		reg = (reg & ~GENMASK_ULL(36, 35));
-	}
-	rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_CFG1(nixlf), cfg);
+
 	rvu_write64(rvu, blkaddr, NIX_AF_LFX_CFG(nixlf), reg);
+}
+
+static inline void configure_rq_enable(struct rvu *rvu, int blkaddr, int nixlf,
+				       bool enable)
+{
+	u64 cfg;
+
+	cfg = rvu_read64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_CFG1(nixlf));
+	if (enable)
+		cfg |= BIT_ULL(43);
+	else
+		cfg &= ~BIT_ULL(43);
+
+	rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_CFG1(nixlf), cfg);
 }
 
 static inline void
@@ -6863,8 +6871,14 @@ int rvu_mbox_handler_nix_lf_inline_rq_cfg(struct rvu *rvu,
 
 	configure_rq_mask(rvu, blkaddr, nixlf, rq_mask,
 			  req->ipsec_cfg1.rq_mask_enable);
-	configure_spb_cpt(rvu, blkaddr, nixlf, req,
-			  req->ipsec_cfg1.spb_cpt_enable);
+
+	if (!is_cn20k(rvu->pdev)) {
+		configure_rq_enable(rvu, blkaddr, nixlf,
+				    req->ipsec_cfg1.rq_mask_enable);
+		configure_spb_cpt(rvu, blkaddr, nixlf, req,
+				  req->ipsec_cfg1.spb_cpt_enable);
+	}
+
 	return 0;
 }
 
