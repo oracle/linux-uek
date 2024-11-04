@@ -1947,6 +1947,7 @@ struct cn20k_mcam_entry {
 	u64	kw_mask[NPC_CN20K_MAX_KWS_IN_KEY];
 	u64	action;
 	u64	vtag_action;
+	u64	action2;
 };
 
 struct npc_cn20k_mcam_write_entry_req {
