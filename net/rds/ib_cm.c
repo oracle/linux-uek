@@ -374,6 +374,15 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	 * is complete, since ring layout is different from 3.0 to 3.1.
 	 */
 	rds_ib_send_init_ring(ic);
+
+	if (!rds_ib_srq_enabled)
+		rds_ib_recv_init_ring(ic);
+
+	/* Post receive buffers - as a side effect, this will update
+	 * the posted credit count. */
+	if (!rds_ib_srq_enabled)
+		RDS_IB_RECV_REFILL(conn, 1, GFP_KERNEL, s_ib_rx_refill_from_cm);
+
 	rds_ib_check_rnr_timer(ic);
 
 	/* update ib_device with this local ipaddr */
@@ -1842,15 +1851,6 @@ static int rds_ib_cm_accept(struct rds_connection *conn,
 		rdma_set_ack_timeout(cm_id, rds_ib_sysctl_local_ack_timeout);
 
 	rdma_set_min_rnr_timer(cm_id, IB_RNR_TIMER_000_32);
-
-	/* Post receive buffers - as a side effect, this will update
-	 * the posted credit count.
-	 */
-	if (!rds_ib_srq_enabled) {
-		rds_ib_recv_init_ring(ic);
-		RDS_IB_RECV_REFILL(conn, 1, GFP_KERNEL, s_ib_rx_refill_from_cm);
-	}
-
 	err = rdma_accept(cm_id, &conn_param);
 	if (err) {
 		rds_conn_drop(conn, DR_IB_RDMA_ACCEPT_FAIL, err);
@@ -2234,14 +2234,6 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 				  conn->c_proposed_version, UINT_MAX, UINT_MAX,
 				  frag, isv6);
 	rdma_set_min_rnr_timer(cm_id, IB_RNR_TIMER_000_32);
-
-	/* Post receive buffers - as a side effect, this will update
-	 * the posted credit count.
-	 */
-	if (!rds_ib_srq_enabled) {
-		rds_ib_recv_init_ring(ic);
-		RDS_IB_RECV_REFILL(conn, 1, GFP_KERNEL, s_ib_rx_refill_from_cm);
-	}
 	ret = rdma_connect(cm_id, &conn_param);
 	if (ret) {
 		rds_conn_drop(conn, DR_IB_RDMA_CONNECT_FAIL, ret);
