@@ -1099,17 +1099,51 @@ static int nixlf_rss_ctx_init(struct rvu *rvu, int blkaddr,
 	return 0;
 }
 
+static void nix_aq_reset(struct rvu *rvu, struct rvu_block *block)
+{
+	struct admin_queue *aq = block->aq;
+	u64 reg, head, tail;
+	int timeout = 2000;
+
+	/* check if any AQ err is set and reset the AQ */
+	reg = rvu_read64(rvu, block->addr, NIX_AF_AQ_STATUS);
+	head = (reg >> 4) & AQ_PTR_MASK;
+	tail = (reg >> 36) & AQ_PTR_MASK;
+	dev_err(rvu->dev, "AQ error occurred head:0x%llx tail:%llx status:%llx\n", head, tail, reg);
+
+	/* Check if busy bit is set */
+	while (reg & BIT_ULL(62)) {
+		udelay(1);
+		timeout--;
+		if (!timeout)
+			dev_err(rvu->dev, "timeout waiting for busy bit to clear\n");
+	}
+	/*reset the AQ base and result */
+	memset(aq->inst->base, 0, sizeof(struct nix_aq_inst_s) * Q_COUNT(AQ_SIZE));
+	memset(aq->res->base, 0, sizeof(struct nix_aq_res_s) * Q_COUNT(AQ_SIZE));
+	/* Make sure the AQ memory is reset */
+	wmb();
+	reg = rvu_read64(rvu, block->addr, NIX_AF_AQ_STATUS);
+	reg |= BIT_ULL(63);
+	rvu_write64(rvu, block->addr, NIX_AF_AQ_STATUS, reg);
+	dev_info(rvu->dev, "AQ status after reset:0x%llx\n",
+		 rvu_read64(rvu, block->addr, NIX_AF_AQ_STATUS));
+}
+
 static int nix_aq_enqueue_wait(struct rvu *rvu, struct rvu_block *block,
 			       struct nix_aq_inst_s *inst)
 {
 	struct admin_queue *aq = block->aq;
 	struct nix_aq_res_s *result;
-	int timeout = 1000;
-	u64 reg, head;
+	u64 reg, head, intr;
+	int timeout = 2000;
 	int ret;
 
-	result = (struct nix_aq_res_s *)aq->res->base;
+	reg = rvu_read64(rvu, block->addr, NIX_AF_AQ_STATUS);
+	if (reg & BIT_ULL(63))
+		nix_aq_reset(rvu, block);
 
+	result = (struct nix_aq_res_s *)aq->res->base;
 	/* Get current head pointer where to append this instruction */
 	reg = rvu_read64(rvu, block->addr, NIX_AF_AQ_STATUS);
 	head = (reg >> 4) & AQ_PTR_MASK;
@@ -1123,18 +1157,28 @@ static int nix_aq_enqueue_wait(struct rvu *rvu, struct rvu_block *block,
 	/* Ring the doorbell and wait for result */
 	rvu_write64(rvu, block->addr, NIX_AF_AQ_DOOR, 1);
 	while (result->compcode == NIX_AQ_COMP_NOTDONE) {
+		intr = rvu_read64(rvu, block->addr, NIX_AF_ERR_INT);
 		cpu_relax();
 		udelay(1);
 		timeout--;
-		if (!timeout)
+		if (!timeout) {
+			dev_err_ratelimited(rvu->dev,
+					    "%s wait timeout intr=0x%llx status=0x%llx compcode:%d\n",
+					    __func__, intr,
+					   rvu_read64(rvu, block->addr, NIX_AF_AQ_STATUS),
+					    result->compcode);
 			return -EBUSY;
+		}
 	}
 
 	if (result->compcode != NIX_AQ_COMP_GOOD) {
 		/* TODO: Replace this with some error code */
+		dev_err(rvu->dev, "AQ failed with error:%d\n", result->compcode);
 		if (result->compcode == NIX_AQ_COMP_CTX_FAULT ||
 		    result->compcode == NIX_AQ_COMP_LOCKERR ||
 		    result->compcode == NIX_AQ_COMP_CTX_POISON) {
+			dev_err(rvu->dev, "AQ failed due to cache line error:%d\n",
+				result->compcode);
 			ret = rvu_ndc_fix_locked_cacheline(rvu, BLKADDR_NDC_NIX0_RX);
 			ret |= rvu_ndc_fix_locked_cacheline(rvu, BLKADDR_NDC_NIX0_TX);
 			ret |= rvu_ndc_fix_locked_cacheline(rvu, BLKADDR_NDC_NIX1_RX);
@@ -2518,6 +2562,33 @@ static void nix_smq_flush_fill_ctx(struct rvu *rvu, int blkaddr, int smq,
 	}
 }
 
+static void nix_dump_smq_status(struct rvu *rvu, int blkaddr, struct nix_smq_flush_ctx *ctx)
+{
+	u16 tl1_schq = ctx->smq_tree_ctx[NIX_TXSCH_LVL_TL1].schq;
+	u16 tl2_schq = ctx->smq_tree_ctx[NIX_TXSCH_LVL_TL2].schq;
+
+	dev_info(rvu->dev, "smq:%d tl1:%d tl2:%d tl3:%d tl4:%d\n", ctx->smq,
+		 ctx->smq_tree_ctx[NIX_TXSCH_LVL_TL1].schq,
+		 ctx->smq_tree_ctx[NIX_TXSCH_LVL_TL2].schq,
+		 ctx->smq_tree_ctx[NIX_TXSCH_LVL_TL3].schq,
+		 ctx->smq_tree_ctx[NIX_TXSCH_LVL_TL4].schq);
+
+	dev_info(rvu->dev, "NIX_AF_SMQX_CFG:0x%llx\n",
+		 rvu_read64(rvu, blkaddr, NIX_AF_SMQX_CFG(ctx->smq)));
+	dev_info(rvu->dev, "NIX_AF_SMQX_STATUS:0x%llx\n",
+		 rvu_read64(rvu, blkaddr, NIX_AF_SMQX_STATUS(ctx->smq)));
+	dev_info(rvu->dev, "NIX_AF_MDQX_MD_COUNT:0x%llx\n",
+		 rvu_read64(rvu, blkaddr, NIX_AF_MDQX_MD_COUNT));
+	dev_info(rvu->dev, "NIX_AF_MDQX_IN_MD_COUNT:0x%llx\n",
+		 rvu_read64(rvu, blkaddr, NIX_AF_MDQX_IN_MD_COUNT(ctx->smq)));
+	dev_info(rvu->dev, "NIX_AF_MDQX_OUT_MD_COUNT:0x%llx\n",
+		 rvu_read64(rvu, blkaddr, NIX_AF_MDQX_OUT_MD_COUNT(ctx->smq)));
+	dev_info(rvu->dev, "NIX_AF_TL1X_SW_XOFF:0x%llx\n",
+		 rvu_read64(rvu, blkaddr, NIX_AF_TL1X_SW_XOFF(tl1_schq)));
+	dev_info(rvu->dev, "NIX_AF_TL2X_SW_XOFF=0x%llx\n",
+		 rvu_read64(rvu, blkaddr, NIX_AF_TL2X_SW_XOFF(tl2_schq)));
+}
+
 static void nix_smq_flush_enadis_xoff(struct rvu *rvu, int blkaddr,
 				      struct nix_smq_flush_ctx *smq_flush_ctx, bool enable)
 {
@@ -2648,10 +2719,16 @@ static int nix_smq_flush(struct rvu *rvu, int blkaddr,
 	/* Wait for flush to complete */
 	err = rvu_poll_reg(rvu, blkaddr,
 			   NIX_AF_SMQX_CFG(smq), BIT_ULL(49), true);
-	if (err)
+	if (err) {
 		dev_info(rvu->dev,
 			 "NIXLF%d: SMQ%d flush failed, txlink might be busy\n",
 			 nixlf, smq);
+
+		nix_dump_smq_status(rvu, blkaddr, smq_flush_ctx);
+		link = (cgx_id * rvu->hw->lmac_per_cgx) + lmac_id;
+		dev_info(rvu->dev, "NIX_AF_TX_LINKX_NORM_CREDIT:0x%llx\n",
+			 rvu_read64(rvu, blkaddr, NIX_AF_TX_LINKX_NORM_CREDIT(link)));
+	}
 
 	/* Set NIX_AF_TL3_TL2_LINKX_CFG[ENA] for the TL3/TL2 queue */
 	for (i = 0; i < (rvu->hw->cgx_links + rvu->hw->lbk_links); i++) {
