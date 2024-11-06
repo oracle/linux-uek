@@ -13,6 +13,7 @@ static bool nix_spi_to_sa_index_check_duplicate(struct rvu *rvu,
 						int blkaddr, int16_t index, u8 way,
 						bool *is_valid, int lfidx)
 {
+	u8 profile_id = U8_MAX;
 	u32 spi_index;
 	u16 match_id;
 	bool valid;
@@ -22,14 +23,21 @@ static bool nix_spi_to_sa_index_check_duplicate(struct rvu *rvu,
 	wkey = rvu_read64(rvu, blkaddr, NIX_AF_SPI_TO_SA_KEYX_WAYX(index, way));
 	spi_index = (wkey & 0xFFFFFFFF);
 	match_id = ((wkey >> 32) & 0xFFFF);
-	lfid = ((wkey >> 48) & 0x7f);
-	valid = ((wkey >> 55) & 0x1);
+	if (is_cn20k(rvu->pdev)) {
+		lfid = ((wkey >> 48) & 0xff);
+		profile_id = ((wkey >> 60) & 0x7);
+		valid = ((wkey >> 63) & 0x1);
+	} else {
+		lfid = ((wkey >> 48) & 0x7f);
+		valid = ((wkey >> 55) & 0x1);
+	}
 
 	*is_valid = valid;
 	if (!valid)
 		return 0;
 
-	if (req->spi_index == spi_index && req->match_id == match_id &&
+	if ((profile_id == U8_MAX || req->inline_profile_id == profile_id) &&
+	    req->spi_index == spi_index && req->match_id == match_id &&
 	    lfidx == lfid) {
 		rsp->hash_index = index;
 		rsp->way = way;
@@ -45,11 +53,19 @@ static void  nix_spi_to_sa_index_table_update(struct rvu *rvu,
 					      int blkaddr, int16_t index, u8 way,
 					      int lfidx)
 {
+	u64 profile_id = req->inline_profile_id & 0x7;
 	u64 wvalue;
 	u64 wkey;
 
-	wkey = (req->spi_index | ((u64)req->match_id << 32) |
-		(((u64)lfidx) << 48) | ((u64)req->valid << 55));
+	if (is_cn20k(rvu->pdev)) {
+		wkey = (req->spi_index | ((u64)req->match_id << 32) |
+			(((u64)lfidx) << 48) | ((u64)profile_id << 60) |
+			((u64)req->valid << 63));
+	} else {
+		wkey = (req->spi_index | ((u64)req->match_id << 32) |
+			(((u64)lfidx) << 48) | ((u64)req->valid << 55));
+	}
+
 	rvu_write64(rvu, blkaddr, NIX_AF_SPI_TO_SA_KEYX_WAYX(index, way),
 		    wkey);
 	wvalue = (req->sa_index & 0xFFFFFFFF);
@@ -92,7 +108,10 @@ int rvu_mbox_handler_nix_spi_to_sa_delete(struct rvu *rvu,
 	wkey = rvu_read64(rvu, blkaddr,
 			  NIX_AF_SPI_TO_SA_KEYX_WAYX(req->hash_index,
 						     req->way));
-	lfid = ((wkey >> 48) & 0x7f);
+	if (is_cn20k(rvu->pdev))
+		lfid = ((wkey >> 48) & 0xff);
+	else
+		lfid = ((wkey >> 48) & 0x7f);
 	if (lfid != lfidx) {
 		ret = NIX_AF_ERR_AF_LF_INVALID;
 		goto unlock;
@@ -144,6 +163,9 @@ int rvu_mbox_handler_nix_spi_to_sa_add(struct rvu *rvu,
 	mutex_lock(&rvu->rsrc_lock);
 
 	key = (((u64)lfidx << 48) | ((u64)req->match_id << 32) | req->spi_index);
+	if (is_cn20k(rvu->pdev))
+		key |= ((u64)req->inline_profile_id & 0x7) << 60;
+
 	rvu_write64(rvu, blkaddr, NIX_AF_SPI_TO_SA_HASH_KEY, key);
 	value = rvu_read64(rvu, blkaddr, NIX_AF_SPI_TO_SA_HASH_VALUE);
 	way0_index = (value & 0x7ff);
@@ -206,7 +228,10 @@ int rvu_nix_free_spi_to_sa_table(struct rvu *rvu, uint16_t pcifunc)
 			key = rvu_read64(rvu, blkaddr,
 					 NIX_AF_SPI_TO_SA_KEYX_WAYX(index,
 								    way));
-			lfid = ((key >> 48) & 0x7f);
+			if (is_cn20k(rvu->pdev))
+				lfid = ((key >> 48) & 0xff);
+			else
+				lfid = ((key >> 48) & 0x7f);
 			if (lfid == lfidx) {
 				key = 0;
 				rvu_write64(rvu, blkaddr,

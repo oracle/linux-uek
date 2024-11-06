@@ -1081,6 +1081,7 @@ struct nix_spi_to_sa_add_req {
 	u32 spi_index;
 	u16 match_id;
 	bool valid;
+	u8 inline_profile_id;
 };
 
 struct nix_spi_to_sa_add_rsp {
