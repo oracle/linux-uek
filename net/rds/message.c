@@ -95,7 +95,7 @@ static void rds_cfu_cache_do_gc(void)
 
 			++nmbr_cleaned;
 			el = lfstack_next(el);
-			rds_page_free(entry->pg);
+			__free_page(entry->pg);
 		}
 
 		atomic_sub(nmbr_cleaned, nmbr_entries_ptr);
@@ -170,7 +170,7 @@ static void rds_message_purge(struct rds_message *rm)
 			entry->pg = sg_page(rm->data.op_sg + i);
 			last->next = NULL;
 		} else {
-			rds_page_free(sg_page(&rm->data.op_sg[i]));
+			__free_page(sg_page(&rm->data.op_sg[i]));
 		}
 	}
 	if (first) {

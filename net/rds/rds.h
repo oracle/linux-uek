@@ -1118,9 +1118,6 @@ struct rds_statistics {
 	uint64_t	s_recv_bytes_added_to_socket;
 	uint64_t	s_recv_bytes_removed_from_socket;
 	uint64_t	s_send_stuck_rm;
-	uint64_t	s_page_allocs;
-	uint64_t	s_page_frees;
-	uint64_t	s_page_gets;
 	uint64_t	s_mprds_catchup_tx0_retries;
 };
 
@@ -1649,19 +1646,6 @@ int rds_reg_pernet(void);
 void rds_unreg_pernet(void);
 
 /* ib.c */
-
-static inline void rds_page_free(struct page *page)
-{
-	__free_page(page);
-	rds_stats_inc(&rds_stats, s_page_frees);
-}
-
-static inline void rds_pages_free(struct page *page, int order)
-{
-	__free_pages(page, order);
-	rds_stats_inc(&rds_stats, s_page_frees);
-
-}
 
 static inline
 struct rds_conn_path *rds_conn_to_path(struct rds_connection *conn, struct rds_incoming *inc)
