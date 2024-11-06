@@ -219,7 +219,8 @@ restart:
 		ret = -EBUSY;
 
 		/* If we cannot send, may be refill the recv queue instead? */
-		if (conn->c_trans->t_type == RDS_TRANS_IB && conn->c_trans->recv_need_bufs(cp))
+		if (conn->c_trans->t_type == RDS_TRANS_IB && conn->c_trans->recv_need_bufs(cp) &&
+		    !(in_atomic() || irqs_disabled()))
 			conn->c_trans->recv_path(cp);
 		goto out;
 	}
