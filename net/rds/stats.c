@@ -112,9 +112,6 @@ static char *rds_stat_names[] = {
 	"recv_bytes_added_to_sock",
 	"recv_bytes_freed_fromsock",
 	"send_stuck_rm",
-	"page_allocs",
-	"page_frees",
-	"page_gets",
 	"mprds_catchup_tx0_retries",
 };
 
