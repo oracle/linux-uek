@@ -78,7 +78,6 @@ int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
 			ret = -ENOMEM;
 		} else {
 			sg_set_page(scat, page, PAGE_SIZE, 0);
-			rds_stats_inc(s_page_allocs);
 			ret = 0;
 		}
 		goto out;
@@ -91,7 +90,7 @@ int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
 		/* avoid a tiny region getting stuck by tossing it */
 		if (rem->r_page && bytes > (PAGE_SIZE - rem->r_offset)) {
 			rds_stats_inc(s_page_remainder_miss);
-			rds_page_free(rem->r_page);
+			__free_page(rem->r_page);
 			rem->r_page = NULL;
 		}
 
@@ -99,7 +98,6 @@ int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
 		if (rem->r_page && bytes <= (PAGE_SIZE - rem->r_offset)) {
 			sg_set_page(scat, rem->r_page, bytes, rem->r_offset);
 			get_page(sg_page(scat));
-			rds_stats_inc(s_page_gets);
 
 			if (rem->r_offset != 0)
 				rds_stats_inc(s_page_remainder_hit);
@@ -107,7 +105,7 @@ int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
 			/* some hw (e.g. sparc) require aligned memory */
 			rem->r_offset += ALIGN(bytes, 8);
 			if (rem->r_offset >= PAGE_SIZE) {
-				rds_page_free(rem->r_page);
+				__free_page(rem->r_page);
 				rem->r_page = NULL;
 			}
 			ret = 0;
@@ -127,11 +125,10 @@ int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
 			ret = -ENOMEM;
 			break;
 		}
-		rds_stats_inc(s_page_allocs);
 
 		/* did someone race to fill the remainder before us? */
 		if (rem->r_page) {
-			rds_page_free(page);
+			__free_page(page);
 			continue;
 		}
 
@@ -163,7 +160,7 @@ static int rds_page_remainder_cpu_notify(struct notifier_block *self,
 	switch (action) {
 	case CPU_DEAD:
 		if (rem->r_page)
-			rds_page_free(rem->r_page);
+			__free_page(rem->r_page);
 		rem->r_page = NULL;
 		break;
 	}

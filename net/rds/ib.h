@@ -129,7 +129,7 @@ struct rds_ib_incoming {
 
 struct rds_ib_cache_head {
 	struct lfstack		stack;
-	atomic_t		count;
+	atomic_t                count;
 	atomic64_t		hit_count;
 	atomic64_t		miss_count;
 	atomic64_t		gc_count;
@@ -587,16 +587,6 @@ struct rds_ib_statistics {
 	uint64_t        s_ib_rx_total_frags;
 	uint64_t        s_ib_rx_total_incs;
 	uint64_t	s_ib_rx_credit_updates;
-	uint64_t	s_ib_rx_cache_get;
-	uint64_t	s_ib_rx_cache_put;
-	uint64_t	s_ib_rx_cache_put_alloc;
-	uint64_t	s_ib_rx_cache_put_free;
-	uint64_t	s_ib_rx_cache_alloc;
-	uint64_t	s_ib_rx_cache_free;
-	uint64_t	s_ib_rx_cache_get_percpu;
-	uint64_t	s_ib_rx_cache_get_ready;
-	uint64_t	s_ib_rx_cache_get_miss;
-	uint64_t	s_ib_rx_cache_put_percpu;
 	uint64_t	s_ib_ack_sent;
 	uint64_t	s_ib_ack_send_failure;
 	uint64_t	s_ib_ack_send_delayed;
@@ -620,8 +610,6 @@ struct rds_ib_statistics {
 	uint64_t        s_ib_srq_empty_refills;
 	uint64_t	s_ib_recv_added_to_cache;
 	uint64_t	s_ib_recv_removed_from_cache;
-	uint64_t	s_ib_recv_nmb_added_to_cache;
-	uint64_t	s_ib_recv_nmb_removed_from_cache;
 	uint64_t	s_ib_yield_yielding;
 	uint64_t	s_ib_yield_right_of_way;
 	uint64_t	s_ib_yield_stale;
