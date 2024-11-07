@@ -1200,7 +1200,10 @@ blk_status_t blk_insert_cloned_request(struct request_queue *q, struct request *
 	 * bypass a potential scheduler on the bottom device for
 	 * insert.
 	 */
-	return blk_mq_request_issue_directly(rq, true);
+	ret = blk_mq_request_issue_directly(rq, true);
+	if (ret != BLK_STS_OK && blk_queue_io_stat(q))
+		blk_account_io_done(rq, ktime_get_ns());
+	return ret;
 }
 EXPORT_SYMBOL_GPL(blk_insert_cloned_request);
 
