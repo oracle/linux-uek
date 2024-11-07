@@ -262,6 +262,8 @@ sysret32_from_system_call:
 SYM_INNER_LABEL(entry_SYSRETL_compat_unsafe_stack, SYM_L_GLOBAL)
 	ANNOTATE_NOENDBR
 
+	TRACE_CLEAR_CPU_BUFFERS
+
 	/*
 	 * The original userspace %rsp (RSP-ORIG_RAX(%rsp)) is stored
 	 * on the process stack which is not mapped to userspace and
