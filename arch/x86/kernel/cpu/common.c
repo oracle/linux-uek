@@ -2520,3 +2520,46 @@ void __init arch_cpu_finalize_init(void)
 	 */
 	mem_encrypt_init();
 }
+
+
+/**
+ * x86_clear_cpu_buffers - Buffer clearing support for different x86 CPU vulns
+ *
+ * This uses the otherwise unused and obsolete VERW instructions in
+ * combination with microcode which triggers a CPU buffer flush when the
+ * instruction is executed.
+ */
+static inline void __x86_clear_cpu_buffers(void)
+{
+	static const u16 ds = __KERNEL_DS;
+
+	/*
+	 * Has to be the memory-operand variant because only that
+	 * guarantees the CPU buffer flush functionality according to
+	 * documentation. The register-operand variant does not.
+	 * Works with any segment selector, but a valid writable
+	 * data segment is the fastest variant.
+	 *
+	 * "cc" clobber is required because VERW modifies ZF.
+	 */
+	asm volatile("verw %[ds]" : : [ds] "m" (ds) : "cc");
+}
+inline void x86_clear_cpu_buffers(void)
+{
+	__x86_clear_cpu_buffers();
+}
+EXPORT_SYMBOL_GPL(x86_clear_cpu_buffers);
+
+/**
+ * x86_idle_clear_cpu_buffers - Buffer clearing support in idle for different
+ * x86 CPU vulns
+ *
+ * Clear CPU buffers if the corresponding static key is enabled
+ */
+inline void x86_idle_clear_cpu_buffers(void)
+{
+	if (static_branch_likely(&cpu_buf_idle_clear)) {
+		__x86_clear_cpu_buffers();
+	}
+}
+EXPORT_SYMBOL_GPL(x86_idle_clear_cpu_buffers);

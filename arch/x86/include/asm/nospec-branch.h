@@ -440,40 +440,8 @@ extern u16 x86_verw_sel;
 
 #include <asm/segment.h>
 
-/**
- * x86_clear_cpu_buffers - Buffer clearing support for different x86 CPU vulns
- *
- * This uses the otherwise unused and obsolete VERW instructions in
- * combination with microcode which triggers a CPU buffer flush when the
- * instruction is executed.
- */
-static __always_inline void x86_clear_cpu_buffers(void)
-{
-	static const u16 ds = __KERNEL_DS;
-
-	/*
-	 * Has to be the memory-operand variant because only that
-	 * guarantees the CPU buffer flush functionality according to
-	 * documentation. The register-operand variant does not.
-	 * Works with any segment selector, but a valid writable
-	 * data segment is the fastest variant.
-	 *
-	 * "cc" clobber is required because VERW modifies ZF.
-	 */
-	asm volatile("verw %[ds]" : : [ds] "m" (ds) : "cc");
-}
-
-/**
- * x86_idle_clear_cpu_buffers - clearing support in idle for different
- * x86 CPU vulns
- *
- * Clear CPU buffers if the corresponding static key is enabled
- */
-static inline void x86_idle_clear_cpu_buffers(void)
-{
-	if (static_branch_likely(&cpu_buf_idle_clear))
-		x86_clear_cpu_buffers();
-}
+extern inline void x86_clear_cpu_buffers(void);
+extern inline void x86_idle_clear_cpu_buffers(void);
 
 #endif /* __ASSEMBLY__ */
 
