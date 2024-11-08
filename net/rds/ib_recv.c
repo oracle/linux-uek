@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2024, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -759,7 +759,6 @@ static struct lfstack_el *rds_ib_recv_cache_get(struct rds_ib_refill_cache *cach
 
 int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 {
-	struct rds_csum csum = { .csum_val.raw = 0 };
 	struct rds_ib_connection *ic = inc->i_conn->c_transport_data;
 	struct rds_connection *conn = inc->i_conn;
 	struct rds_ib_incoming *ibinc;
@@ -767,6 +766,7 @@ int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 	struct scatterlist *sg;
 	unsigned long to_copy;
 	unsigned long frag_off = 0;
+	__wsum sum = 0;
 	int copied = 0;
 	int ret;
 	u32 len;
@@ -788,7 +788,7 @@ int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 		} else {
 			/* calculate full packet wsum checksum */
 			ret = rds_csum_and_copy_page_to_iter(sg_page(sg), sg->offset + frag_off,
-							     to_copy, &csum, to);
+							     to_copy, &sum, to);
 		}
 
 		if (ret != to_copy)
@@ -819,9 +819,13 @@ int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 
 	}
 
-	if (unlikely(inc->i_payload_csum.csum_enabled) && copied) {
-		rds_stats_inc(s_recv_payload_csum_ib);
-		rds_check_csum(inc, &csum);
+	if (unlikely(inc->i_payload_csum.csum_enabled)) {
+		if (likely(copied == len)) {
+			inc->i_usercopy_csum = csum_fold(sum);
+			rds_stats_inc(s_recv_payload_csum_ib);
+		} else {
+			rds_stats_inc(s_recv_payload_csum_ib_badlen);
+		}
 	}
 
 	return copied;
