@@ -1741,7 +1741,7 @@ modules:
 - mdio-regmap
 - mdio-xgene
 - mediatek-cpufreq-hw
-- mediatek-ge
+- mtk-ge
 - megaraid
 - meson-gxl
 - meson_gxbb_wdt
