@@ -1,6 +1,7 @@
 #ifndef _RDS_RDS_H
 #define _RDS_RDS_H
 
+#include <linux/kernel.h>
 #include <net/sock.h>
 #include <linux/interrupt.h>
 #include <linux/scatterlist.h>
@@ -15,7 +16,8 @@
 #include <linux/sizes.h>
 #include <linux/rhashtable.h>
 #include <linux/trace_events.h>
-#include <linux/tracepoint-defs.h>
+#include <linux/uaccess.h>
+#include <net/checksum.h>
 
 #include "info.h"
 
@@ -519,18 +521,20 @@ struct rds_ext_header_cap_bits {
 };
 
 #define RDS_EXTHDR_SPORT_IDX	8
-#define RDS_EXTHDR_CSUM		9
-struct rds_ext_header_rdma_csum {
-	__be32  h_rdma_csum_val;
+#define RDS_EXTHDR_CSUM_OLD	9
+struct rds_ext_header_rdma_csum_old {
+	__be32  h_rdma_wsum_val;
 	bool    h_rdma_csum_enabled;
 };
 
+#define RDS_EXTHDR_CSUM		10
+struct rds_ext_header_rdma_csum {
+	__be16  h_rdma_csum_val;
+};
+
 struct rds_csum {
-	union {
-		__wsum	csum;
-		u32	raw;
-	} csum_val;
-	bool csum_enabled;
+	__sum16	csum;
+	bool	csum_enabled;
 };
 
 /* Remember to update __RDS_EXTHDR_MAX when new extension headers are added */
@@ -561,6 +565,7 @@ struct rds_incoming {
 /* use same field for tx and rx as we need only one at a time */
 #define i_tx_lat		i_rx_lat_trace[RDS_MSG_RX_END]
 	struct rds_csum		i_payload_csum;
+	__sum16			i_usercopy_csum;
 };
 
 struct rds_mr {
@@ -1009,11 +1014,18 @@ struct rds_statistics {
 	uint64_t	s_recv_delayed_retry;
 	uint64_t	s_recv_ack_required;
 	uint64_t	s_recv_rdma_bytes;
-	uint64_t	s_recv_payload_bad_checksum;
+	uint64_t	s_recv_payload_csum_bad;
 	uint64_t	s_recv_payload_csum_ib;
+	uint64_t	s_recv_payload_csum_ib_badlen;
 	uint64_t	s_recv_payload_csum_loopback;
+	uint64_t	s_recv_payload_csum_loopback_badlen;
 	uint64_t	s_recv_payload_csum_tcp;
+	uint64_t	s_recv_payload_csum_tcp_badlen;
+	uint64_t	s_recv_payload_csum_old_ignored;
 	uint64_t	s_recv_payload_csum_ignored;
+	uint64_t	s_recv_payload_csum_trunc;
+	uint64_t        s_recv_payload_csum_old_rcvd;
+	uint64_t	s_recv_payload_csum_rcvd;
 	uint64_t	s_recv_ping;
 	uint64_t	s_recv_pong;
 	uint64_t	s_recv_hb_ping;
@@ -1427,7 +1439,6 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 int rds_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 		int msg_flags);
 void rds_clear_recv_queue(struct rds_sock *rs);
-void do_rds_receive_csum_err(struct rds_incoming *inc, u32 csum_calc);
 int rds_notify_queue_get(struct rds_sock *rs, struct msghdr *msg);
 void rds_inc_info_copy(struct rds_incoming *inc,
 		       struct rds_info_iterator *iter,
@@ -1583,111 +1594,21 @@ struct rds_conn_path *rds_conn_to_path(struct rds_connection *conn, struct rds_i
 	return conn->c_trans->t_mp_capable ? inc->i_conn_path : conn->c_path + 0;
 }
 
-/* RDS checksum version of copy_page_from_iter()
- *
- * This code is largely a functional copy of copy_page_from_iter() as found in
- * lib/iov_iter.c, as that code does not have a provision for calculating a
- * checksum but otherwise has the functionality needed.
- */
-static inline size_t
-rds_csum_and_copy_page_from_iter(struct page *page, size_t offset, size_t bytes,
-				 struct rds_csum *csum, struct iov_iter *i)
-{
-	size_t res = 0;
-	__wsum *wsump = &csum->csum_val.csum;
+/* RDS checksum structures and code */
 
-	page += offset / PAGE_SIZE; // first subpage
-	offset %= PAGE_SIZE;
+struct rds_csum_state {
+	__wsum csum;
+	size_t off;
+};
 
-	while (1) {
-		void *kaddr = kmap_local_page(page);
-		size_t n = min(bytes, (size_t)PAGE_SIZE - offset);
+size_t rds_csum_and_copy_page_from_iter(struct page *page, size_t offset,
+					size_t bytes, __wsum *sum,
+					struct iov_iter *i);
 
-		n = csum_and_copy_from_iter(kaddr + offset, n, wsump, i);
-		kunmap_local(kaddr);
-		res += n;
-		bytes -= n;
+size_t rds_csum_and_copy_page_to_iter(struct page *page, size_t offset,
+				      size_t bytes, __wsum *sum,
+				      struct iov_iter *i);
 
-		if (!bytes || !n)
-			break;
-
-		offset += n;
-
-		if (offset == PAGE_SIZE) {
-			page++;
-			offset = 0;
-		}
-	}
-
-	return res;
-}
-
-/* RDS checksum version of copy_page_to_iter()
- *
- * This code is largely a functional copy of copy_page_to_iter() as found in
- * lib/iov_iter.c, as that code does not have a provision for calculating a
- * checksum but otherwise has the functionality needed.
- */
-static inline size_t
-rds_csum_and_copy_page_to_iter(struct page *page, size_t offset, size_t bytes,
-			       struct rds_csum *csum, struct iov_iter *i)
-{
-	size_t res = 0;
-	struct csum_state csdata = { .csum = csum->csum_val.csum };
-
-	if (WARN_ON_ONCE(i->data_source))
-		return 0;
-
-	if (unlikely(iov_iter_is_pipe(i))) {
-		pr_err_ratelimited("rds: rds_csum_and_copy_page_to_iter() called with "
-				   "iov_iter pipe\n");
-		return 0;
-	}
-
-	page += offset / PAGE_SIZE; // first subpage
-	offset %= PAGE_SIZE;
-
-	while (1) {
-		void *kaddr = kmap_local_page(page);
-		size_t n = min(bytes, (size_t)PAGE_SIZE - offset);
-
-		n = csum_and_copy_to_iter(kaddr + offset, n, &csdata, i);
-		kunmap_local(kaddr);
-		res += n;
-		bytes -= n;
-
-		if (!bytes || !n)
-			break;
-
-		offset += n;
-
-		if (offset == PAGE_SIZE) {
-			page++;
-			offset = 0;
-		}
-	}
-
-	csum->csum_val.csum = csdata.csum;
-	return res;
-}
-
-/* end of routines based upon upstream generic code */
-
-/* The tracepoint documentation states tracepoint-defs.h and a C routine to
- * execute the actual tracepoint must be used if a tracepoint is called from
- * within an inline function.
- */
-DECLARE_TRACEPOINT(rds_receive_csum_err);
-
-static inline void
-rds_check_csum(struct rds_incoming *inc, struct rds_csum *csum)
-{
-	if (unlikely(inc->i_payload_csum.csum_val.raw != csum->csum_val.raw)) {
-		rds_stats_inc(s_recv_payload_bad_checksum);
-
-		if (unlikely(tracepoint_enabled(rds_receive_csum_err)))
-			do_rds_receive_csum_err(inc, csum->csum_val.raw);
-	}
-}
+void rds_check_csum(struct rds_incoming *inc);
 
 #endif
