@@ -1214,6 +1214,23 @@ static int rds_send_queue_rm(struct rds_sock *rs, struct rds_connection *conn,
 			goto out;
 		}
 		rm->m_inc.i_hdr.h_sequence = cpu_to_be64(cp->cp_next_tx_seq++);
+
+		/* If RDS payload checksums are enabled, only encode it into
+		 * the outgoing message extension header if this is isn't a
+		 * ping (dport == 0).
+		 */
+		if (unlikely(rm->m_payload_csum.csum_enabled && dport)) {
+			struct rds_ext_header_rdma_csum r_csum = {
+				.h_rdma_csum_enabled = true,
+				.h_rdma_csum_val =
+					cpu_to_be32(rm->m_payload_csum.csum_val.raw)
+			};
+
+			rds_message_add_extension(&rm->m_inc.i_hdr,
+						  RDS_EXTHDR_CSUM, &r_csum);
+			rds_stats_inc(s_send_payload_csum_added);
+		}
+
 		list_add_tail(&rm->m_conn_item, &cp->cp_send_queue);
 		rm->m_inc.i_tx_lat = jiffies;
 		rds_set_rm_flag_bit(rm, RDS_MSG_ON_CONN);
@@ -1745,15 +1762,6 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 
 	if (!dport)
 		rds_stats_inc(s_send_ping);
-	else if (unlikely(rm->m_payload_csum.csum_enabled)) {
-		struct rds_ext_header_rdma_csum r_csum = {
-			.h_rdma_csum_enabled = true,
-			.h_rdma_csum_val = cpu_to_be32(rm->m_payload_csum.csum_val.raw)
-		};
-
-		rds_message_add_extension(&rm->m_inc.i_hdr, RDS_EXTHDR_CSUM, &r_csum);
-		rds_stats_inc(s_send_payload_csum_added);
-	}
 
 	ret = rds_send_xmit(cpath);
 	if (ret == -ENOMEM || ret == -EAGAIN || ret == -EBUSY)
