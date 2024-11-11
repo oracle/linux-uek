@@ -42,8 +42,6 @@ static inline void __monitorx(const void *eax, unsigned long ecx,
 
 static inline void __mwait(unsigned long eax, unsigned long ecx)
 {
-	x86_idle_clear_cpu_buffers();
-
 	/* "mwait %eax, %ecx;" */
 	asm volatile(".byte 0x0f, 0x01, 0xc9;"
 		     :: "a" (eax), "c" (ecx));
@@ -89,7 +87,6 @@ static inline void __sti_mwait(unsigned long eax, unsigned long ecx)
 {
 	trace_hardirqs_on();
 
-	x86_idle_clear_cpu_buffers();
 	/* "mwait %eax, %ecx;" */
 	asm volatile("sti; .byte 0x0f, 0x01, 0xc9;"
 		     :: "a" (eax), "c" (ecx));
@@ -115,6 +112,8 @@ static inline void mwait_idle_with_hints(unsigned long eax, unsigned long ecx)
 		}
 
 		x86_spec_ctrl_set(SPEC_CTRL_IDLE_ENTER);
+
+		x86_idle_clear_cpu_buffers();
 
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
 		if (!need_resched())
