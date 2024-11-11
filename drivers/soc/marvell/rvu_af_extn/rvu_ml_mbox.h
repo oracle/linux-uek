@@ -13,7 +13,8 @@
 
 #define MBOX_EBLOCK_ML_MESSAGES                                           \
 	M(ML_RD_WR_REGISTER, 0xB000, ml_rd_wr_register, ml_rd_wr_reg_msg, \
-	  ml_rd_wr_reg_msg)
+	  ml_rd_wr_reg_msg)                                               \
+	M(ML_CAPS_GET, 0xB001, ml_caps_get, msg_req, ml_caps_rsp_msg)
 
 /* ML mailbox error codes
  * Range 1301 - 1400.
@@ -32,6 +33,11 @@ struct ml_rd_wr_reg_msg {
 	u64 *ret_val;
 	u64 val;
 	u8 is_write;
+};
+
+struct ml_caps_rsp_msg {
+	struct mbox_msghdr hdr;
+	u64 ml_af_const;
 };
 
 #define M(_name, _id, fn_name, req, rsp)                           \

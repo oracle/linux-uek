@@ -153,6 +153,17 @@ int rvu_mbox_handler_ml_rd_wr_register(struct rvu *rvu,
 	return 0;
 }
 
+int rvu_mbox_handler_ml_caps_get(struct rvu *rvu, struct msg_req *req,
+				 struct ml_caps_rsp_msg *rsp)
+{
+	if (!is_block_implemented(rvu->hw, BLKADDR_ML))
+		return ML_AF_ERR_BLOCK_NOT_IMPLEMENTED;
+
+	rsp->ml_af_const = rvu_read64(rvu, BLKADDR_ML, ML_AF_CONST);
+
+	return 0;
+}
+
 static int rvu_ml_mbox_handler(struct otx2_mbox *mbox, int devid,
 			       struct mbox_msghdr *req)
 {
