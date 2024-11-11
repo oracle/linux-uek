@@ -231,6 +231,8 @@ extern char __smccc_workaround_3_smc_start[];
 extern char __smccc_workaround_3_smc_end[];
 extern char __spectre_bhb_loop_k8_start[];
 extern char __spectre_bhb_loop_k8_end[];
+extern char __spectre_bhb_loop_k11_start[];
+extern char __spectre_bhb_loop_k11_end[];
 extern char __spectre_bhb_loop_k24_start[];
 extern char __spectre_bhb_loop_k24_end[];
 extern char __spectre_bhb_loop_k32_start[];
@@ -1554,6 +1556,8 @@ static const char *kvm_bhb_get_vecs_end(const char *start)
 		return __smccc_workaround_3_smc_end;
 	else if (start == __spectre_bhb_loop_k8_start)
 		return __spectre_bhb_loop_k8_end;
+	else if (start == __spectre_bhb_loop_k11_start)
+		return __spectre_bhb_loop_k11_end;
 	else if (start == __spectre_bhb_loop_k24_start)
 		return __spectre_bhb_loop_k24_end;
 	else if (start == __spectre_bhb_loop_k32_start)
@@ -1600,6 +1604,7 @@ static void kvm_setup_bhb_slot(const char *hyp_vecs_start)
 #else
 #define __smccc_workaround_3_smc_start NULL
 #define __spectre_bhb_loop_k8_start NULL
+#define __spectre_bhb_loop_k11_start NULL
 #define __spectre_bhb_loop_k24_start NULL
 #define __spectre_bhb_loop_k32_start NULL
 #define __spectre_bhb_clearbhb_start NULL
@@ -1637,6 +1642,9 @@ void spectre_bhb_enable_mitigation(const struct arm64_cpu_capabilities *entry)
 			 */
 			if (!__this_cpu_read(bp_hardening_data.fn))
 				kvm_setup_bhb_slot(__spectre_bhb_loop_k8_start);
+			break;
+		case 11:
+			kvm_setup_bhb_slot(__spectre_bhb_loop_k11_start);
 			break;
 		case 24:
 			kvm_setup_bhb_slot(__spectre_bhb_loop_k24_start);
