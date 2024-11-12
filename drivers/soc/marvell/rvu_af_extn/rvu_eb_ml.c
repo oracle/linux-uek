@@ -260,6 +260,28 @@ int rvu_mbox_handler_ml_detach_resources(struct rvu *rvu, struct msg_req *req,
 	return 0;
 }
 
+int rvu_mbox_handler_ml_msix_offset(struct rvu *rvu, struct msg_req *req,
+				    struct ml_msix_offset_rsp *rsp)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	u16 pcifunc = req->hdr.pcifunc;
+	struct rvu_pfvf *pfvf;
+	int lf, slot;
+
+	pfvf = rvu_get_pfvf(rvu, pcifunc);
+	if (!pfvf->msix.bmap)
+		return 0;
+
+	rsp->mllfs = pfvf->mllfs;
+	for (slot = 0; slot < rsp->mllfs; slot++) {
+		lf = rvu_get_lf(rvu, &hw->block[BLKADDR_ML], pcifunc, slot);
+		rsp->mllf_msixoff[slot] =
+			rvu_get_msix_offset(rvu, pfvf, BLKADDR_ML, lf);
+	}
+
+	return 0;
+}
+
 static int rvu_ml_mbox_handler(struct otx2_mbox *mbox, int devid,
 			       struct mbox_msghdr *req)
 {
