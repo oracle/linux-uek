@@ -434,6 +434,7 @@ BuildRequires: openssl, openssl-devel
 BuildRequires: rsync
 BuildRequires: numactl-devel
 BuildRequires: dwarves >= 1.25
+BuildRequires: slang-devel
 %if %{with_sparse}
 BuildRequires: sparse >= 0.4.1
 %endif
@@ -645,6 +646,7 @@ License: GPLv2
 BuildRequires: libtraceevent
 BuildRequires: libtraceevent-devel
 Requires: libtraceevent
+Requires: slang
 %ifnarch aarch64
 Provides: x86_energy_perf_policy = %{KVERREL}
 Provides: turbostat = %{KVERREL}
