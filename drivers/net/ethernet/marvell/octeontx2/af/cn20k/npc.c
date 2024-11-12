@@ -2936,7 +2936,7 @@ void npc_cn20k_enable_mcam_entry(struct rvu *rvu, int blkaddr, int index, bool e
 	if (kw_type == NPC_MCAM_KEY_X2) {
 		cfg = rvu_read64(rvu, blkaddr,
 				 NPC_AF_CN20K_MCAMEX_BANKX_CFG_EXT(mcam_idx, bank));
-		hw_prio = cfg & GENMASK_ULL(14, 8);
+		hw_prio = cfg & GENMASK_ULL(30, 24);
 		cfg = enable ? 1 : 0;
 		cfg |= hw_prio;
 		rvu_write64(rvu, blkaddr,
@@ -2951,7 +2951,7 @@ void npc_cn20k_enable_mcam_entry(struct rvu *rvu, int blkaddr, int index, bool e
 	for (bank = 0; bank < mcam->banks_per_entry; bank++) {
 		cfg = rvu_read64(rvu, blkaddr,
 				 NPC_AF_CN20K_MCAMEX_BANKX_CFG_EXT(mcam_idx, bank));
-		hw_prio = cfg & GENMASK_ULL(14, 8);
+		hw_prio = cfg & GENMASK_ULL(30, 24);
 		cfg = enable ? 1 : 0;
 		cfg |= hw_prio;
 		rvu_write64(rvu, blkaddr,
@@ -3129,7 +3129,7 @@ static void npc_cn20k_set_mcam_bank_cfg(struct rvu *rvu, int blkaddr, int mcam_i
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	u64 bank_cfg;
 
-	bank_cfg = (u64)hw_prio << 8;
+	bank_cfg = (u64)hw_prio << 24;
 	if (enable)
 		bank_cfg |= 0x1;
 
@@ -3289,7 +3289,7 @@ void npc_cn20k_read_mcam_entry(struct rvu *rvu, int blkaddr, u16 index,
 	bank_cfg = rvu_read64(rvu, blkaddr,
 			      NPC_AF_CN20K_MCAMEX_BANKX_CFG_EXT(index, bank));
 	*ena = bank_cfg & 0x1;
-	*hw_prio = (bank_cfg & GENMASK_ULL(14, 8)) >> 8;
+	*hw_prio = (bank_cfg & GENMASK_ULL(30, 24)) >> 24;
 	if (kw_type == NPC_MCAM_KEY_X2) {
 		cam1 = rvu_read64(rvu, blkaddr,
 				  NPC_AF_CN20K_MCAMEX_BANKX_CAMX_W0_EXT(index, bank, 1));
