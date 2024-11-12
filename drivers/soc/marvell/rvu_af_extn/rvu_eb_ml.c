@@ -164,6 +164,102 @@ int rvu_mbox_handler_ml_caps_get(struct rvu *rvu, struct msg_req *req,
 	return 0;
 }
 
+int rvu_mbox_handler_ml_free_rsrc_cnt(struct rvu *rvu, struct msg_req *req,
+				      struct ml_free_rsrcs_rsp *rsp)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	struct rvu_block *block;
+
+	mutex_lock(&rvu->rsrc_lock);
+
+	block = &hw->block[BLKADDR_ML];
+	rsp->ml = rvu_rsrc_free_count(&block->lf);
+
+	mutex_unlock(&rvu->rsrc_lock);
+
+	return 0;
+}
+
+int rvu_mbox_handler_ml_attach_resources(struct rvu *rvu,
+					 struct ml_rsrc_attach *attach,
+					 struct msg_rsp *rsp)
+{
+	u16 pcifunc = attach->hdr.pcifunc;
+	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
+	int free_lfs, mappedlfs;
+	struct rvu_hwinfo *hw = rvu->hw;
+	struct rvu_block *block;
+	int slot, lf;
+	u64 cfg;
+
+	if (!attach->mllfs)
+		return 0;
+
+	/* If first request, detach all existing attached resources */
+	if (!attach->modify)
+		rvu_detach_block(rvu, pcifunc, BLKTYPE_ML);
+
+	mutex_lock(&rvu->rsrc_lock);
+
+	block = &hw->block[BLKADDR_ML];
+	if (!block->lf.bmap)
+		goto exit;
+
+	if (attach->mllfs > block->lf.max) {
+		dev_err(&rvu->pdev->dev,
+			"Func 0x%x: Invalid MLLF req, %d > max %d\n", pcifunc,
+			attach->mllfs, block->lf.max);
+		return -EINVAL;
+	}
+
+	mappedlfs = rvu_get_rsrc_mapcount(pfvf, block->addr);
+	free_lfs = rvu_rsrc_free_count(&block->lf);
+	if (attach->mllfs > mappedlfs &&
+	    ((attach->mllfs - mappedlfs) > free_lfs))
+		goto fail;
+
+	if (attach->modify && !!mappedlfs)
+		rvu_detach_block(rvu, pcifunc, BLKTYPE_ML);
+
+	for (slot = 0; slot < attach->mllfs; slot++) {
+		/* Allocate the resource */
+		lf = rvu_alloc_rsrc(&block->lf);
+		if (lf < 0)
+			return 0;
+
+		cfg = (1ULL << 63) | (pcifunc << 8) | slot;
+		rvu_write64(rvu, BLKADDR_ML,
+			    block->lfcfg_reg | (lf << block->lfshift), cfg);
+		rvu_update_rsrc_map(rvu, pfvf, block, pcifunc, lf, true);
+
+		/* Set start MSIX vector for this LF within this PF/VF */
+		rvu_set_msix_offset(rvu, pfvf, block, lf);
+	}
+
+exit:
+	mutex_unlock(&rvu->rsrc_lock);
+
+	return 0;
+
+fail:
+	mutex_unlock(&rvu->rsrc_lock);
+	dev_info(rvu->dev, "Request for %s failed\n", block->name);
+
+	return -ENOSPC;
+}
+
+int rvu_mbox_handler_ml_detach_resources(struct rvu *rvu, struct msg_req *req,
+					 struct msg_rsp *rsp)
+{
+	mutex_lock(&rvu->rsrc_lock);
+
+	rvu_detach_block(rvu, req->hdr.pcifunc, BLKTYPE_ML);
+
+	mutex_unlock(&rvu->rsrc_lock);
+
+	return 0;
+}
+
 static int rvu_ml_mbox_handler(struct otx2_mbox *mbox, int devid,
 			       struct mbox_msghdr *req)
 {

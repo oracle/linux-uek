@@ -11,10 +11,15 @@
 #include "mbox.h"
 #include "rvu.h"
 
-#define MBOX_EBLOCK_ML_MESSAGES                                           \
-	M(ML_RD_WR_REGISTER, 0xB000, ml_rd_wr_register, ml_rd_wr_reg_msg, \
-	  ml_rd_wr_reg_msg)                                               \
-	M(ML_CAPS_GET, 0xB001, ml_caps_get, msg_req, ml_caps_rsp_msg)
+#define MBOX_EBLOCK_ML_MESSAGES                                             \
+	M(ML_RD_WR_REGISTER, 0xB000, ml_rd_wr_register, ml_rd_wr_reg_msg,   \
+	  ml_rd_wr_reg_msg)                                                 \
+	M(ML_CAPS_GET, 0xB001, ml_caps_get, msg_req, ml_caps_rsp_msg)       \
+	M(ML_FREE_RSRC_CNT, 0xB002, ml_free_rsrc_cnt, msg_req,              \
+	  ml_free_rsrcs_rsp)                                                \
+	M(ML_ATTACH_RESOURCES, 0xB003, ml_attach_resources, ml_rsrc_attach, \
+	  msg_rsp)                                                          \
+	M(ML_DETACH_RESOURCES, 0xB004, ml_detach_resources, msg_req, msg_rsp)
 
 /* ML mailbox error codes
  * Range 1301 - 1400.
@@ -38,6 +43,17 @@ struct ml_rd_wr_reg_msg {
 struct ml_caps_rsp_msg {
 	struct mbox_msghdr hdr;
 	u64 ml_af_const;
+};
+
+struct ml_free_rsrcs_rsp {
+	struct mbox_msghdr hdr;
+	u8 ml;
+};
+
+struct ml_rsrc_attach {
+	struct mbox_msghdr hdr;
+	u8 modify : 1;
+	u16 mllfs;
 };
 
 #define M(_name, _id, fn_name, req, rsp)                           \
