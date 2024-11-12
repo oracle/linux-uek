@@ -126,6 +126,35 @@ static bool is_ml_af_reg(u64 offset)
 	return false;
 }
 
+int rvu_ml_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot)
+{
+	u64 reg;
+	u8 pid;
+
+	if (!is_block_implemented(rvu->hw, BLKADDR_ML))
+		return 0;
+
+	/* Disable queuing requests to all partitions */
+	for (pid = 0; pid < ML_MAX_PARTITIONS; pid++) {
+		reg = rvu_read64(rvu, BLKADDR_ML, ML_AF_PIDX_LF_ALLOW(pid));
+		reg &= ~BIT(lf);
+		rvu_write64(rvu, BLKADDR_ML, ML_AF_PIDX_LF_ALLOW(pid), reg);
+	}
+
+	/* Wait for LF jobs to finish */
+	rvu_poll_reg(rvu, BLKADDR_ML, ML_AF_LFX_JOB_IN_JMGR(lf),
+		     GENMASK_ULL(6, 0), true);
+
+	/* Reset LF */
+	reg = BIT(12) | ((u64)lf & 0x1F);
+	rvu_write64(rvu, BLKADDR_ML, ML_AF_LF_RST, reg);
+
+	/* Clear LF MLR BASE */
+	rvu_write64(rvu, BLKADDR_ML, ML_AF_LFX_MLR_BASE(lf), 0);
+
+	return 0;
+}
+
 int rvu_mbox_handler_ml_rd_wr_register(struct rvu *rvu,
 				       struct ml_rd_wr_reg_msg *req,
 				       struct ml_rd_wr_reg_msg *rsp)
@@ -277,6 +306,83 @@ int rvu_mbox_handler_ml_msix_offset(struct rvu *rvu, struct msg_req *req,
 		lf = rvu_get_lf(rvu, &hw->block[BLKADDR_ML], pcifunc, slot);
 		rsp->mllf_msixoff[slot] =
 			rvu_get_msix_offset(rvu, pfvf, BLKADDR_ML, lf);
+	}
+
+	return 0;
+}
+
+int rvu_mbox_handler_ml_lf_alloc(struct rvu *rvu, struct ml_lf_alloc_req *req,
+				 struct msg_rsp *rsp)
+{
+	u16 pcifunc = req->hdr.pcifunc;
+	struct rvu_block *block;
+	int mllf;
+	int num_lfs, slot;
+	u64 val;
+
+	if (!is_block_implemented(rvu->hw, BLKADDR_ML))
+		return ML_AF_ERR_BLOCK_NOT_IMPLEMENTED;
+
+	block = &rvu->hw->block[BLKADDR_ML];
+	num_lfs =
+		rvu_get_rsrc_mapcount(rvu_get_pfvf(rvu, pcifunc), block->addr);
+	if (!num_lfs)
+		return ML_AF_ERR_LF_INVALID;
+
+	/* Check if requested 'MLLF <=> SSOLF' mapping is valid */
+	if (req->sso_pf_func) {
+		/* If default, use 'this' MLLF's PFFUNC */
+		if (req->sso_pf_func == RVU_DEFAULT_PF_FUNC)
+			req->sso_pf_func = pcifunc;
+		if (!is_pffunc_map_valid(rvu, req->sso_pf_func, BLKTYPE_SSO))
+			return ML_AF_ERR_SSO_PF_FUNC_INVALID;
+	}
+
+	for (slot = 0; slot < num_lfs; slot++) {
+		mllf = rvu_get_lf(rvu, block, pcifunc, slot);
+		if (mllf < 0)
+			return ML_AF_ERR_LF_INVALID;
+
+		/* Set ML LF SSO_PF_FUNC. */
+		val = rvu_read64(rvu, BLKADDR_ML, ML_AF_LFX_GMCTL(mllf));
+		val &= ~GENMASK_ULL(15, 0);
+		val |= (u64)req->sso_pf_func;
+		rvu_write64(rvu, BLKADDR_ML, ML_AF_LFX_GMCTL(mllf), val);
+	}
+
+	return 0;
+}
+
+int rvu_mbox_handler_ml_lf_free(struct rvu *rvu, struct msg_req *req,
+				struct msg_rsp *rsp)
+{
+	u16 pcifunc = req->hdr.pcifunc;
+	int num_lfs, mllf, slot, err;
+	struct rvu_block *block;
+
+	if (!is_block_implemented(rvu->hw, BLKADDR_ML))
+		return ML_AF_ERR_BLOCK_NOT_IMPLEMENTED;
+
+	block = &rvu->hw->block[BLKADDR_ML];
+	num_lfs =
+		rvu_get_rsrc_mapcount(rvu_get_pfvf(rvu, pcifunc), block->addr);
+	if (!num_lfs)
+		return 0;
+
+	for (slot = 0; slot < num_lfs; slot++) {
+		mllf = rvu_get_lf(rvu, block, pcifunc, slot);
+		if (mllf < 0)
+			return ML_AF_ERR_LF_INVALID;
+
+		/* Perform teardown */
+		rvu_ml_lf_teardown(rvu, pcifunc, mllf, slot);
+
+		/* Reset LF */
+		err = rvu_lf_reset(rvu, block, mllf);
+		if (err) {
+			dev_err(rvu->dev, "Failed to reset blkaddr %d LF%d\n",
+				block->addr, mllf);
+		}
 	}
 
 	return 0;

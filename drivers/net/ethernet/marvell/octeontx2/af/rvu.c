@@ -1475,6 +1475,8 @@ static bool is_blktype_attached(struct rvu_pfvf *pfvf, int blktype)
 		return pfvf->ree0_lfs || pfvf->ree1_lfs;
 	case BLKTYPE_DPI:
 		return pfvf->dpilfs || pfvf->dpi1_lfs;
+	case BLKTYPE_ML:
+		return !!pfvf->mllfs;
 	}
 
 	return false;
@@ -3419,6 +3421,8 @@ static void rvu_blklf_teardown(struct rvu *rvu, u16 pcifunc, u8 blkaddr)
 			 (block->addr == BLKADDR_DPI1))
 			rvu_dpi_lf_teardown(rvu, pcifunc, block->addr, lf,
 					    slot);
+		else if (block->addr == BLKADDR_ML)
+			rvu_ml_lf_teardown(rvu, pcifunc, lf, slot);
 
 		err = rvu_lf_reset(rvu, block, lf);
 		if (err) {
@@ -3468,6 +3472,7 @@ void __rvu_flr_handler(struct rvu *rvu, u16 pcifunc)
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_CPT1);
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_REE0);
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_REE1);
+	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_ML);
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_TIM);
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_SSOW);
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_SSO);
