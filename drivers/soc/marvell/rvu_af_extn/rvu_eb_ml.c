@@ -388,6 +388,33 @@ int rvu_mbox_handler_ml_lf_free(struct rvu *rvu, struct msg_req *req,
 	return 0;
 }
 
+int rvu_mbox_handler_ml_lf_set_pid(struct rvu *rvu,
+				   struct ml_lf_set_pid_req *req,
+				   struct msg_rsp *rsp)
+{
+	u64 regval;
+	u16 pid;
+
+	if (!is_block_implemented(rvu->hw, BLKADDR_ML))
+		return ML_AF_ERR_BLOCK_NOT_IMPLEMENTED;
+
+	/* This message is accepted only if sent from ML PF/VF */
+	if (!is_ml_pf(rvu, req->hdr.pcifunc) &&
+	    !is_ml_vf(rvu, req->hdr.pcifunc))
+		return ML_AF_ERR_ACCESS_DENIED;
+
+	for (pid = 0; pid < ML_MAX_PARTITIONS; pid++) {
+		if (!(req->pid_mask & BIT(pid)))
+			continue;
+
+		regval = rvu_read64(rvu, BLKADDR_ML, ML_AF_PIDX_LF_ALLOW(pid));
+		regval |= BIT(req->lf_id);
+		rvu_write64(rvu, BLKADDR_ML, ML_AF_PIDX_LF_ALLOW(pid), regval);
+	}
+
+	return 0;
+}
+
 static int rvu_ml_mbox_handler(struct otx2_mbox *mbox, int devid,
 			       struct mbox_msghdr *req)
 {

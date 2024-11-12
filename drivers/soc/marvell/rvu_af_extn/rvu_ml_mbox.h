@@ -22,7 +22,8 @@
 	M(ML_DETACH_RESOURCES, 0xB004, ml_detach_resources, msg_req, msg_rsp)  \
 	M(ML_MSIX_OFFSET, 0xB005, ml_msix_offset, msg_req, ml_msix_offset_rsp) \
 	M(ML_LF_ALLOC, 0xB006, ml_lf_alloc, ml_lf_alloc_req, msg_rsp)          \
-	M(ML_LF_FREE, 0xB007, ml_lf_free, msg_req, msg_rsp)
+	M(ML_LF_FREE, 0xB007, ml_lf_free, msg_req, msg_rsp)                    \
+	M(ML_LF_SET_PID, 0xB008, ml_lf_set_pid, ml_lf_set_pid_req, msg_rsp)
 
 /* ML mailbox error codes
  * Range 1301 - 1400.
@@ -70,6 +71,12 @@ struct ml_msix_offset_rsp {
 struct ml_lf_alloc_req {
 	struct mbox_msghdr hdr;
 	u16 sso_pf_func;
+};
+
+struct ml_lf_set_pid_req {
+	struct mbox_msghdr hdr;
+	u16 lf_id;
+	u16 pid_mask;
 };
 
 #define M(_name, _id, fn_name, req, rsp)                           \
