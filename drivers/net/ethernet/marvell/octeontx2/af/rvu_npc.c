@@ -3027,7 +3027,6 @@ static int __npc_mcam_alloc_counter(struct rvu *rvu,
 	if (!req->contig && req->count > NPC_MAX_NONCONTIG_COUNTERS)
 		return NPC_MCAM_INVALID_REQ;
 
-
 	/* Check if unused counters are available or not */
 	if (!rvu_rsrc_free_count(&mcam->counters)) {
 		return NPC_MCAM_ALLOC_FAILED;
@@ -3433,17 +3432,34 @@ int rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
 
 {
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
-	int blkaddr, nixlf, rc, intf_mode;
 	int pf = rvu_get_pf(rvu->pdev, pcifunc);
+	bool enable_higig2 = false;
+	int blkaddr, nixlf, rc;
 	u64 rxpkind, txpkind;
 	u8 cgx_id, lmac_id;
 
 	/* use default pkind to disable edsa/higig */
 	rxpkind = rvu_npc_get_pkind(rvu, pf);
 	txpkind = NPC_TX_DEF_PKIND;
-	intf_mode = NPC_INTF_MODE_DEF;
 
-	if (mode & OTX2_PRIV_FLAGS_CUSTOM) {
+	if (mode & OTX2_PRIV_FLAGS_EDSA) {
+		rxpkind = NPC_RX_EDSA_PKIND;
+	} else if (mode & OTX2_PRIV_FLAGS_HIGIG) {
+		/* Silicon does not support enabling higig in time stamp mode */
+		/* TODO : uncomment once rvu_nix_is_ptp_tx_enabled is added */
+		/*
+		 * if (pfvf->hw_rx_tstamp_en ||
+		 *   rvu_nix_is_ptp_tx_enabled(rvu, pcifunc))
+		 *	return NPC_AF_ERR_HIGIG_CONFIG_FAIL;
+		 */
+
+		if (!is_mac_feature_supported(rvu, pf, RVU_LMAC_FEAT_HIGIG2))
+			return NPC_AF_ERR_HIGIG_NOT_SUPPORTED;
+
+		rxpkind = NPC_RX_HIGIG_PKIND;
+		txpkind = NPC_TX_HIGIG_PKIND;
+		enable_higig2 = true;
+	} else if (mode & OTX2_PRIV_FLAGS_CUSTOM) {
 		if (pkind == NPC_RX_CUSTOM_PRE_L2_PKIND) {
 			rc = npc_set_var_len_offset_pkind(rvu, pcifunc, pkind,
 							  var_len_off,
@@ -3478,11 +3494,16 @@ int rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
 			    txpkind);
 	}
 
-	pfvf->intf_mode = intf_mode;
+	/* TODO: uncomment later */
+	/* if (enable_higig2 ^ rvu_cgx_is_higig2_enabled(rvu, pf))
+		rvu_cgx_enadis_higig2(rvu, pf, enable_higig2);
+	*/
+
 	return 0;
 }
 
-int rvu_mbox_handler_npc_set_pkind(struct rvu *rvu, struct npc_set_pkind *req,
+int rvu_mbox_handler_npc_set_pkind(struct rvu *rvu,
+		                   struct npc_set_pkind *req,
 				   struct msg_rsp *rsp)
 {
 	return rvu_npc_set_parse_mode(rvu, req->hdr.pcifunc, req->mode,
