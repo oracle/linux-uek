@@ -39,6 +39,14 @@
 #define CPT_INST_CREDIT_BPID  GENMASK_ULL(30, 22)
 #define CPT_INST_CREDIT_CNT   GENMASK_ULL(21, 0)
 
+#define RXC_ZOMBIE_COUNT  GENMASK_ULL(60, 48)
+#define RXC_ZOMBIE_THRES  GENMASK_ULL(59, 48)
+#define RXC_ZOMBIE_LIMIT  GENMASK_ULL(43, 32)
+
+#define RXC_ACTIVE_COUNT  GENMASK_ULL(60, 48)
+#define RXC_ACTIVE_THRES  GENMASK_ULL(27, 16)
+#define RXC_ACTIVE_LIMIT  GENMASK_ULL(11, 0)
+
 struct rvu_cpt {
 	/* PCIFUNC to CPT RX Queue map */
 	u16                     cptpfvf_map[CPT_AF_MAX_RXC_QUEUES];
@@ -47,5 +55,9 @@ struct rvu_cpt {
 
 void rvu_cn20k_cpt_init(struct rvu *rvu);
 int otx2_cpt_que_pri_mask(struct rvu *rvu);
+void cpt_cn20k_rxc_time_cfg(struct rvu *rvu, int blkaddr,
+			    struct cpt_rxc_time_cfg_req *req,
+			    struct cpt_rxc_time_cfg_req *save);
+void cpt_cn20k_rxc_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr);
 
 #endif /* RVU_CPT_H */

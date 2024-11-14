@@ -1035,13 +1035,6 @@ int rvu_mbox_handler_cpt_sts(struct rvu *rvu, struct cpt_sts_req *req,
 	return 0;
 }
 
-#define RXC_ZOMBIE_THRES  GENMASK_ULL(59, 48)
-#define RXC_ZOMBIE_LIMIT  GENMASK_ULL(43, 32)
-#define RXC_ACTIVE_THRES  GENMASK_ULL(27, 16)
-#define RXC_ACTIVE_LIMIT  GENMASK_ULL(11, 0)
-#define RXC_ACTIVE_COUNT  GENMASK_ULL(60, 48)
-#define RXC_ZOMBIE_COUNT  GENMASK_ULL(60, 48)
-
 static void cpt_rxc_time_cfg(struct rvu *rvu, struct cpt_rxc_time_cfg_req *req,
 			     int blkaddr, struct cpt_rxc_time_cfg_req *save)
 {
@@ -1065,33 +1058,6 @@ static void cpt_rxc_time_cfg(struct rvu *rvu, struct cpt_rxc_time_cfg_req *req,
 
 	rvu_write64(rvu, blkaddr, CPT_AF_RXC_TIME_CFG, req->step);
 	rvu_write64(rvu, blkaddr, CPT_AF_RXC_DFRG, dfrg_reg);
-}
-
-static void cpt_cn20k_rxc_time_cfg(struct rvu *rvu, int blkaddr,
-				   struct cpt_rxc_time_cfg_req *req,
-				   struct cpt_rxc_time_cfg_req *save)
-{
-	u16 qid = req->queue_id;
-	u64 dfrg_reg;
-
-	if (save) {
-		/* Save older config */
-		dfrg_reg = rvu_read64(rvu, blkaddr, CPT_AF_RXC_QUEX_DFRG(qid));
-		save->zombie_thres = FIELD_GET(RXC_ZOMBIE_THRES, dfrg_reg);
-		save->zombie_limit = FIELD_GET(RXC_ZOMBIE_LIMIT, dfrg_reg);
-		save->active_thres = FIELD_GET(RXC_ACTIVE_THRES, dfrg_reg);
-		save->active_limit = FIELD_GET(RXC_ACTIVE_LIMIT, dfrg_reg);
-
-		save->step = rvu_read64(rvu, blkaddr, CPT_AF_RXC_TIME_CFG);
-	}
-
-	dfrg_reg = FIELD_PREP(RXC_ZOMBIE_THRES, req->zombie_thres);
-	dfrg_reg |= FIELD_PREP(RXC_ZOMBIE_LIMIT, req->zombie_limit);
-	dfrg_reg |= FIELD_PREP(RXC_ACTIVE_THRES, req->active_thres);
-	dfrg_reg |= FIELD_PREP(RXC_ACTIVE_LIMIT, req->active_limit);
-
-	rvu_write64(rvu, blkaddr, CPT_AF_RXC_TIME_CFG, req->step);
-	rvu_write64(rvu, blkaddr, CPT_AF_RXC_QUEX_DFRG(qid), dfrg_reg);
 }
 
 int rvu_mbox_handler_cpt_rxc_time_cfg(struct rvu *rvu,
@@ -1234,88 +1200,6 @@ static void cpt_cn10k_rxc_teardown(struct rvu *rvu, int blkaddr)
 
 	/* Restore config */
 	cpt_rxc_time_cfg(rvu, &prev, blkaddr, NULL);
-}
-
-static void cpt_cn20k_rxc_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr)
-{
-	struct cpt_rxc_time_cfg_req req, prev;
-	struct rvu_cpt *cpt = &rvu->cpt;
-	int timeout = 2000, queue_idx;
-	u64 reg;
-
-	/* Set time limit to minimum values, so that rxc entries will be
-	 * flushed out quickly.
-	 */
-	req.step = 1;
-	req.zombie_thres = 1;
-	req.zombie_limit = 1;
-	req.active_thres = 1;
-	req.active_limit = 1;
-
-	for_each_set_bit(queue_idx, cpt->cpt_rx_queue_bitmap,
-			 CPT_AF_MAX_RXC_QUEUES) {
-		/* Skip queues that don't match the given pcifunc, unless
-		 * it's queue 0.
-		 */
-		if (cpt->cptpfvf_map[queue_idx] != pcifunc && queue_idx)
-			continue;
-
-		req.queue_id = queue_idx;
-		prev.queue_id = queue_idx;
-
-		cpt_cn20k_rxc_time_cfg(rvu, blkaddr, &req, &prev);
-
-		do {
-			reg = rvu_read64(rvu, blkaddr,
-					 CPT_AF_RXC_QUEX_ACTIVE_STS(queue_idx));
-			udelay(1);
-			if (FIELD_GET(RXC_ACTIVE_COUNT, reg))
-				timeout--;
-			else
-				break;
-		} while (timeout);
-
-		if (timeout == 0)
-			dev_warn(rvu->dev,
-				 "Poll for RXC active count hits hard loop counter\n");
-
-		timeout = 2000;
-		do {
-			reg = rvu_read64(rvu, blkaddr,
-					 CPT_AF_RXC_QUEX_ZOMBIE_STS(queue_idx));
-			udelay(1);
-			if (FIELD_GET(RXC_ZOMBIE_COUNT, reg))
-				timeout--;
-			else
-				break;
-		} while (timeout);
-
-		if (timeout == 0)
-			dev_warn(rvu->dev,
-				 "Poll for RXC zombie count hits hard loop counter\n");
-
-		/* Restore config */
-		cpt_cn20k_rxc_time_cfg(rvu, blkaddr, &prev, NULL);
-
-		/* Reset CPT_AF_RXC_QUE(0..15)_X2P(0..1)_LINK_CFG to default */
-		reg = rvu_read64(rvu, blkaddr,
-				 CPT_AF_RXC_QUEX_X2PX_LINK_CFG(queue_idx, 0));
-		if (reg != RXC_QUEX_X2PX_LINK_CFG_DEFAUT)
-			rvu_write64(rvu, blkaddr,
-				    CPT_AF_RXC_QUEX_X2PX_LINK_CFG(queue_idx, 0),
-				    RXC_QUEX_X2PX_LINK_CFG_DEFAUT);
-
-		reg = rvu_read64(rvu, blkaddr,
-				 CPT_AF_RXC_QUEX_X2PX_LINK_CFG(queue_idx, 1));
-		if (reg != RXC_QUEX_X2PX_LINK_CFG_DEFAUT)
-			rvu_write64(rvu, blkaddr,
-				    CPT_AF_RXC_QUEX_X2PX_LINK_CFG(queue_idx, 1),
-				    RXC_QUEX_X2PX_LINK_CFG_DEFAUT);
-
-		/* Free queue: clear bit and reset mapping */
-		__clear_bit(queue_idx, cpt->cpt_rx_queue_bitmap);
-		cpt->cptpfvf_map[queue_idx] = 0;
-	}
 }
 
 static void cpt_rxc_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr)
