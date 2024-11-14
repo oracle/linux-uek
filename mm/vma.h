@@ -42,7 +42,8 @@ struct vma_munmap_struct {
 	int vma_count;                  /* Number of vmas that will be removed */
 	bool unlock;                    /* Unlock after the munmap */
 	bool clear_ptes;                /* If there are outstanding PTE to be cleared */
-	/* 2 byte hole */
+	bool has_rsvd_vmas;		/* rsvd va vmas are being unmapped */
+	bool partly_spans_reserved;	/* Has reserved and unreserved ranges */
 	unsigned long nr_pages;         /* Number of pages being removed */
 	unsigned long locked_vm;        /* Number of locked pages */
 	unsigned long nr_accounted;     /* Number of VM_ACCOUNT pages */
@@ -197,6 +198,8 @@ static inline void init_vma_munmap(struct vma_munmap_struct *vms,
 	vms->unmap_start = FIRST_USER_ADDRESS;
 	vms->unmap_end = USER_PGTABLES_CEILING;
 	vms->clear_ptes = false;
+	vms->has_rsvd_vmas = false;
+	vms->partly_spans_reserved = false;
 }
 #endif
 

@@ -732,7 +732,11 @@ static int do_mprotect_pkey(unsigned long start, size_t len,
 	end = start + len;
 	if (end <= start)
 		return -ENOMEM;
-	if (!arch_validate_prot(prot, start))
+	/*
+	 * Remove PROT_RESERVED rather than teach architectures that
+	 * it is okay.
+	 */
+	if (!arch_validate_prot(prot & ~PROT_RESERVED, start))
 		return -EINVAL;
 
 	reqprot = prot;
@@ -751,6 +755,13 @@ static int do_mprotect_pkey(unsigned long start, size_t len,
 	vma_iter_init(&vmi, current->mm, start);
 	vma = vma_find(&vmi, end);
 	error = -ENOMEM;
+	if (prot & PROT_RESERVED) {
+		if (vma || !access_ok((const void *)start, len))
+			error = -EINVAL;
+		else
+			error = install_rsvd_mapping(current->mm, start, len);
+		goto out;
+	}
 	if (!vma)
 		goto out;
 
