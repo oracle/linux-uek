@@ -420,6 +420,16 @@ extern unsigned int kobjsize(const void *objp);
 #define VM_SEALED	VM_NONE
 #endif
 
+#ifdef CONFIG_64BIT
+# define VM_RSVD_VA_BIT			48
+# define VM_RSVD_VA			BIT(VM_RSVD_VA_BIT) /* Reserved VA range */
+# define VM_RSVD_PLACEHOLDER_BIT	49
+# define VM_RSVD_PLACEHOLDER		BIT(VM_RSVD_PLACEHOLDER_BIT)
+#else
+# define VM_RSVD_VA			VM_NONE
+# define VM_RSVD_PLACEHOLDER		VM_NONE
+#endif
+
 /* Bits set in the VMA until the stack is in its final location */
 #define VM_STACK_INCOMPLETE_SETUP (VM_RAND_READ | VM_SEQ_READ | VM_STACK_EARLY)
 
@@ -849,6 +859,16 @@ static inline bool is_shared_maywrite(vm_flags_t vm_flags)
 static inline bool vma_is_shared_maywrite(struct vm_area_struct *vma)
 {
 	return is_shared_maywrite(vma->vm_flags);
+}
+
+static inline bool vma_is_rsvd_va(const struct vm_area_struct *vma)
+{
+	return vma->vm_flags & VM_RSVD_VA;
+}
+
+static inline bool vma_is_rsvd_placeholder(const struct vm_area_struct *vma)
+{
+	return vma->vm_flags & VM_RSVD_PLACEHOLDER;
 }
 
 static inline
@@ -3292,6 +3312,8 @@ void anon_vma_interval_tree_verify(struct anon_vma_chain *node);
 	     avc; avc = anon_vma_interval_tree_iter_next(avc, start, last))
 
 /* mmap.c */
+int install_rsvd_mapping(struct mm_struct *mm, unsigned long addr,
+			 unsigned long len);
 extern int __vm_enough_memory(struct mm_struct *mm, long pages, int cap_sys_admin);
 extern int insert_vm_struct(struct mm_struct *, struct vm_area_struct *);
 extern void exit_mmap(struct mm_struct *);

@@ -41,4 +41,6 @@
 #define AT_MINSIGSTKSZ	51	/* minimal stack size for signal delivery */
 #endif
 
+#define AT_VA_RESERVATION	61	/* VA reservation support */
+
 #endif /* _UAPI_LINUX_AUXVEC_H */
