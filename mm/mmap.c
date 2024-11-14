@@ -1394,6 +1394,15 @@ static unsigned long __mmap_region(struct file *file, unsigned long addr,
 		vmg.next = vma_iter_next_rewind(&vmi, &vmg.prev);
 	}
 
+	if (vms.has_rsvd_vmas) {
+		if (vms.partly_spans_reserved) {
+			error = -EINVAL;
+			goto abort_munmap;
+		}
+		vm_flags |= VM_RSVD_VA;
+		vmg.flags = vm_flags;
+	}
+
 	/* Check against address space limit. */
 	if (!may_expand_vm(mm, vm_flags, pglen - vms.nr_pages)) {
 		error = -ENOMEM;
