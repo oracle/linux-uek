@@ -1583,8 +1583,7 @@ stop_traffic()
 {
 	local pid=${1-%%}; shift
 
-	# Suppress noise from killing mausezahn.
-	{ kill $pid && wait $pid; } 2>/dev/null
+	kill_process "$pid"
 }
 
 declare -A cappid
