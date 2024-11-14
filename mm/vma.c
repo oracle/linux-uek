@@ -1070,10 +1070,19 @@ struct vm_area_struct *vma_merge_new_range(struct vma_merge_struct *vmg)
 
 	vmg->state = VMA_MERGE_NOMERGE;
 
-	/* Special VMAs are unmergeable, also if no prev/next. */
-	if (vma_flags_test_any_mask(&vmg->vma_flags, VMA_SPECIAL_FLAGS) ||
-	    (!prev && !next))
+	/* Nothing to merge. */
+	if (!prev && !next)
 		return NULL;
+
+	/* Special VMAs are unmergeable with one exception. */
+	if (vma_flags_test_any_mask(&vmg->vma_flags, VMA_SPECIAL_FLAGS)) {
+		/*
+		 * VMA_RSVD_PLACEHOLDER is treated differently - we know we can
+		 * merge these.
+		 */
+		if (!(vma_flags_test(&vmg->vma_flags, VMA_RSVD_PLACEHOLDER_BIT)))
+			return NULL;
+	}
 
 	can_merge_left = can_vma_merge_left(vmg);
 	can_merge_right = !vmg->just_expand && can_vma_merge_right(vmg, can_merge_left);
@@ -1400,6 +1409,7 @@ static int vms_gather_munmap_vmas(struct vma_munmap_struct *vms,
 {
 	struct vm_area_struct *next = NULL;
 	int error;
+	unsigned long nr_reserved = 0;
 
 	/*
 	 * If we need to split any vma, do it now to save pain later.
@@ -1458,6 +1468,11 @@ static int vms_gather_munmap_vmas(struct vma_munmap_struct *vms,
 		vma_mark_detached(next);
 		nrpages = vma_pages(next);
 
+		if (vma_is_rsvd_va(next)) {
+			vms->has_rsvd_vmas = true;
+			nr_reserved += nrpages;
+		}
+
 		vms->nr_pages += nrpages;
 		if (vma_test(next, VMA_LOCKED_BIT))
 			vms->locked_vm += nrpages;
@@ -1491,6 +1506,14 @@ static int vms_gather_munmap_vmas(struct vma_munmap_struct *vms,
 		BUG_ON(next->vm_start < vms->start);
 		BUG_ON(next->vm_start > vms->end);
 #endif
+	}
+
+	if (nr_reserved) {
+		unsigned long total_pages;
+
+		total_pages  = (vms->end - vms->start) >> PAGE_SHIFT;
+		if (total_pages != nr_reserved)
+			vms->partly_spans_reserved = true;
 	}
 
 	vms->next = vma_next(vms->vmi);
@@ -1533,6 +1556,184 @@ map_count_exceeded:
 	return error;
 }
 
+#ifdef CONFIG_64BIT
+static int rsvd_va_mapping_mprotect(struct vm_area_struct *vma, unsigned long start,
+					unsigned long end, unsigned long newflags)
+{
+	return -EINVAL;
+}
+
+static const char *rsvd_va_mapping_name(struct vm_area_struct *vma)
+{
+	return ((char *)"[rsvd]");
+}
+
+static const struct vm_operations_struct rsvd_va_mapping_vmops = {
+	.mprotect	= rsvd_va_mapping_mprotect,
+	.name		= rsvd_va_mapping_name,
+};
+
+#define VMA_RSVD_VA_FLAGS mk_vma_flags(VMA_PFNMAP_BIT, VMA_DONTEXPAND_BIT, \
+				VMA_RSVD_PLACEHOLDER_BIT, VMA_RSVD_VA_BIT)
+
+int install_rsvd_mapping(struct mm_struct *mm, unsigned long addr,
+				unsigned long len)
+{
+	struct vm_area_struct *vma;
+	unsigned long end = addr + len;
+	vma_flags_t vma_flags;
+	pgoff_t pgoff = addr >> PAGE_SHIFT;
+	VMA_ITERATOR(vmi, mm, addr);
+	VMG_STATE(vmg, mm, &vmi, addr, end, VMA_RSVD_VA_FLAGS, pgoff);
+	int ret;
+
+	mmap_assert_write_locked(mm);
+
+	if (mm->map_count > get_sysctl_max_map_count())
+		return -ENOMEM;
+
+	vma_flags = VMA_RSVD_VA_FLAGS;
+        if (!may_expand_vm(mm, &vma_flags, len >> PAGE_SHIFT))
+		return -ENOMEM;
+
+	vmg.next = vma_next(&vmi);
+	vmg.prev = vma_prev(&vmi);
+	vma_iter_set(&vmi, addr);
+
+	if (vma_merge_new_range(&vmg))
+		goto complete;
+
+	vma = vm_area_alloc(mm);
+	if (unlikely(!vma))
+		return -ENOMEM;
+
+	vma_set_range(vma, addr, end, pgoff);
+	vma_set_flags_mask(vma, VMA_RSVD_VA_FLAGS);
+	vma->vm_page_prot = vm_get_page_prot(vma->vm_flags);
+	vma->vm_ops = &rsvd_va_mapping_vmops;
+
+	ret = insert_vm_struct(mm, vma);
+	if (ret) {
+		vm_area_free(vma);
+		return ret;
+	}
+
+complete:
+	vm_stat_account(mm, vma_flags_to_legacy(VMA_RSVD_VA_FLAGS), len >> PAGE_SHIFT);
+
+	return 0;
+}
+
+static int vmi_install_rsvd_placeholder(struct mm_struct *mm, struct vma_iterator *vmi,
+		unsigned long start, unsigned long end)
+{
+	unsigned long nrpages;
+	struct vm_area_struct *vma;
+
+	vma = vm_area_alloc(mm);
+	if (unlikely(!vma))
+		return -ENOMEM;
+
+	vma_set_range(vma, start, end, start >> PAGE_SHIFT);
+	vma_set_flags_mask(vma, VMA_RSVD_VA_FLAGS);
+	vma->vm_page_prot = vm_get_page_prot(vma->vm_flags);
+	vma->vm_ops = &rsvd_va_mapping_vmops;
+
+	vma_start_write(vma);
+	if (vma_iter_store_gfp(vmi, vma, GFP_KERNEL))
+		goto mas_store_fail;
+
+	vma_iter_next_range(vmi);
+	mm->map_count++;
+	nrpages = vma_pages(vma);
+	vm_stat_account(mm, vma_flags_to_legacy(VMA_RSVD_VA_FLAGS), nrpages);
+
+	return 0;
+
+mas_store_fail:
+	vm_area_free(vma);
+	return -ENOMEM;
+}
+
+/*
+ * Process the list of vmas that are going away as part of munmap,
+ * and replace any contiguous range of reserved va vmas with a
+ * reserved va placeholder.
+ */
+static int replace_reserved_vmas(struct vma_munmap_struct *vms,
+			struct ma_state *mas_detach)
+{
+	struct vma_iterator *vmi = vms->vmi;
+	struct vm_area_struct *vma;
+	struct mm_struct *mm;
+	unsigned long start, end;
+	bool seen_reserved = false;
+	int error = 0;
+
+	if (!vms->has_rsvd_vmas)
+		return 0;
+
+	vms_clean_up_area(vms, mas_detach);
+	mas_set(mas_detach, 0);
+	mas_for_each(mas_detach, vma, ULONG_MAX) {
+		bool is_reserved = vma_is_rsvd_va(vma);
+
+		if (!is_reserved && !seen_reserved)
+			continue;
+
+		mm = vma->vm_mm;
+
+		if (!seen_reserved) {
+			/* Start a new reserved range. */
+			start = vma->vm_start;
+			end = vma->vm_end;
+			seen_reserved = true;
+			continue;
+		}
+
+		if (!is_reserved) {
+			/* Non-reserved range found after reserved range */
+			error = vmi_install_rsvd_placeholder(mm, vmi, start, end);
+			if (error)
+				return error;
+			seen_reserved = false;
+			continue;
+		}
+
+		if (vma->vm_start != end) {
+			/* Gap between reserved ranges. */
+			error = vmi_install_rsvd_placeholder(mm, vmi, start, end);
+			if (error)
+				return error;
+			start = vma->vm_start;
+			end = vma->vm_end;
+			continue;
+		}
+
+		/* Contiguous reserved range, extend end. */
+		end = vma->vm_end;
+	}
+
+	/* Last vma was reserved */
+	if (seen_reserved)
+		error = vmi_install_rsvd_placeholder(mm, vmi, start, end);
+
+	return error;
+}
+#else
+int install_rsvd_mapping(struct mm_struct *mm, unsigned long addr,
+				unsigned long len)
+{
+	return 0;
+}
+
+static int replace_reserved_vmas(struct vma_munmap_struct *vms,
+		struct ma_state *mas_detach)
+{
+	return 0;
+}
+#endif
+
 /*
  * init_vma_munmap() - Initializer wrapper for vma_munmap_struct
  * @vms: The vma munmap struct
@@ -1564,6 +1765,8 @@ static void init_vma_munmap(struct vma_munmap_struct *vms,
 	vms->unmap_start = FIRST_USER_ADDRESS;
 	vms->unmap_end = USER_PGTABLES_CEILING;
 	vms->clear_ptes = false;
+	vms->has_rsvd_vmas = false;
+	vms->partly_spans_reserved = false;
 }
 
 /*
@@ -1599,6 +1802,18 @@ int do_vmi_align_munmap(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	error = vma_iter_clear_gfp(vmi, start, end, GFP_KERNEL);
 	if (error)
 		goto clear_tree_failed;
+
+	error = replace_reserved_vmas(&vms, &mas_detach);
+	if (error) {
+		/*
+		 * Warn on failure, for now.
+		 * To be fixed by implementing an unwind to free already
+		 * replaced vmas after which vms_abort_munmap_vmas() can
+		 * be called.
+		 */
+		pr_warn("%s (%d): failure to replace reserved vma after munmap, error %d\n",
+			current->comm, current->pid, error);
+	}
 
 	/* Point of no return */
 	vms_complete_munmap_vmas(&vms, &mas_detach);
@@ -2447,6 +2662,12 @@ static int __mmap_setup(struct mmap_state *map, struct vm_area_desc *desc,
 		map->prev = vms->prev;
 	} else {
 		map->next = vma_iter_next_rewind(vmi, &map->prev);
+	}
+
+	if (vms->has_rsvd_vmas) {
+		if (vms->partly_spans_reserved)
+			return -EINVAL;
+		vma_flags_set(&map->vma_flags, VMA_RSVD_VA_BIT);
 	}
 
 	/* Check against address space limit. */
