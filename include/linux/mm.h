@@ -353,6 +353,8 @@ enum {
 #endif
 	DECLARE_VMA_BIT(UFFD_MINOR, 41),
 	DECLARE_VMA_BIT(SEALED, 42),
+	DECLARE_VMA_BIT(RSVD_VA, 48),
+	DECLARE_VMA_BIT(RSVD_PLACEHOLDER, 49),
 	/* Flags that reuse flags above. */
 	DECLARE_VMA_BIT_ALIAS(PKEY_BIT0, HIGH_ARCH_0),
 	DECLARE_VMA_BIT_ALIAS(PKEY_BIT1, HIGH_ARCH_1),
@@ -509,6 +511,17 @@ enum {
 #else
 #define VM_DROPPABLE		VM_NONE
 #define VMA_DROPPABLE		EMPTY_VMA_FLAGS
+#endif
+#ifdef CONFIG_64BIT
+#define VM_RSVD_VA		INIT_VM_FLAG(RSVD_VA)
+#define VM_RSVD_PLACEHOLDER	INIT_VM_FLAG(RSVD_PLACEHOLDER)
+#define VMA_RSVD_VA		mk_vma_flags(VMA_RSVD_VA_BIT)
+#define VMA_RSVD_PLACEHOLDER	mk_vma_flags(VMA_RSVD_PLACEHOLDER_BIT)
+#else
+#define VM_RSVD_VA		VM_NONE
+#define VM_RSVD_PLACEHOLDER	VM_NONE
+#define VMA_RSVD_VA		EMPTY_VMA_FLAGS
+#define VMA_RSVD_PLACEHOLDER	EMPTY_VMA_FLAGS
 #endif
 
 /* Bits set in the VMA until the stack is in its final location */
@@ -1580,6 +1593,16 @@ static inline unsigned long vma_kernel_pagesize(struct vm_area_struct *vma)
 }
 
 unsigned long vma_mmu_pagesize(struct vm_area_struct *vma);
+
+static inline bool vma_is_rsvd_va(const struct vm_area_struct *vma)
+{
+	return vma_test_single_mask(vma, VMA_RSVD_VA);
+}
+
+static inline bool vma_is_rsvd_placeholder(const struct vm_area_struct *vma)
+{
+	return vma_test_single_mask(vma, VMA_RSVD_PLACEHOLDER);
+}
 
 static inline
 struct vm_area_struct *vma_find(struct vma_iterator *vmi, unsigned long max)
@@ -4063,6 +4086,8 @@ void anon_vma_interval_tree_verify(struct anon_vma_chain *node);
 	     avc; avc = anon_vma_interval_tree_iter_next(avc, start, last))
 
 /* mmap.c */
+int install_rsvd_mapping(struct mm_struct *mm, unsigned long addr,
+			 unsigned long len);
 extern int __vm_enough_memory(const struct mm_struct *mm, long pages, int cap_sys_admin);
 extern int insert_vm_struct(struct mm_struct *, struct vm_area_struct *);
 extern void exit_mmap(struct mm_struct *);
