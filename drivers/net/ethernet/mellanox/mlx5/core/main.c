@@ -2202,7 +2202,7 @@ static void shutdown(struct pci_dev *pdev)
 	 * case: 00661169, and Orabug: 36175806.
 	 */
 	if (static_key_enabled(&on_exadata))
-		err = system_state > SYSTEM_RUNNING ? 0 : -ENOPKG;
+		err = -1;
 	else
 		err = mlx5_try_fast_unload(dev);
 #else
