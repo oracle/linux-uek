@@ -2196,18 +2196,7 @@ static void shutdown(struct pci_dev *pdev)
 
 	mlx5_core_info(dev, "Shutdown was called\n");
 	set_bit(MLX5_BREAK_FW_WAIT, &dev->intf_state);
-#ifndef WITHOUT_ORACLE_EXTENSIONS
-	/* We specifically disable the "fast unload" feature on Exadata
-	 * systems to avoid the firmware bug described in the Nvidia
-	 * case: 00661169, and Orabug: 36175806.
-	 */
-	if (static_key_enabled(&on_exadata))
-		err = -1;
-	else
-		err = mlx5_try_fast_unload(dev);
-#else
 	err = mlx5_try_fast_unload(dev);
-#endif /* WITHOUT_ORACLE_EXTENSIONS */
 	if (err)
 		mlx5_unload_one(dev, false);
 	mlx5_pci_disable_device(dev);
