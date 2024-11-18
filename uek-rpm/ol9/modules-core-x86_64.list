@@ -129,8 +129,8 @@ kernel/drivers/dma/ioat/ioatdma.ko
 kernel/drivers/edac/edac_mce_amd.ko
 kernel/drivers/edac/i10nm_edac.ko
 kernel/drivers/edac/sb_edac.ko
-kernel/drivers/edac/skx_edac.ko
 kernel/drivers/edac/skx_edac_common.ko
+kernel/drivers/edac/skx_edac.ko
 kernel/drivers/firmware/iscsi_ibft.ko
 kernel/drivers/firmware/qemu_fw_cfg.ko
 kernel/drivers/gnss/gnss.ko
@@ -150,6 +150,8 @@ kernel/drivers/hwmon/coretemp.ko
 kernel/drivers/hwmon/i5500_temp.ko
 kernel/drivers/hwmon/k10temp.ko
 kernel/drivers/i2c/algos/i2c-algo-bit.ko
+kernel/drivers/i2c/busses/i2c-designware-core.ko
+kernel/drivers/i2c/busses/i2c-designware-platform.ko
 kernel/drivers/i2c/busses/i2c-i801.ko
 kernel/drivers/i2c/busses/i2c-piix4.ko
 kernel/drivers/i2c/i2c-smbus.ko
