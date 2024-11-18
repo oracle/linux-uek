@@ -313,8 +313,6 @@ kernel/net/netfilter/xt_TEE.ko
 kernel/net/netfilter/xt_time.ko
 kernel/net/netfilter/xt_TPROXY.ko
 kernel/net/netfilter/xt_TRACE.ko
-kernel/net/netlink/netlink_diag.ko
-kernel/net/packet/af_packet_diag.ko
 kernel/net/psample/psample.ko
 kernel/net/qrtr/qrtr.ko
 kernel/net/qrtr/qrtr-mhi.ko
@@ -364,7 +362,6 @@ kernel/net/sched/sch_tbf.ko
 kernel/net/sunrpc/auth_gss/auth_rpcgss.ko
 kernel/net/sunrpc/auth_gss/rpcsec_gss_krb5.ko
 kernel/net/sunrpc/sunrpc.ko
-kernel/net/unix/unix_diag.ko
 kernel/net/vmw_vsock/vmw_vsock_virtio_transport_common.ko
 kernel/net/vmw_vsock/vmw_vsock_virtio_transport.ko
 kernel/net/vmw_vsock/vsock_diag.ko
