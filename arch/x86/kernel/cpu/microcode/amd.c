@@ -398,11 +398,25 @@ static void scan_containers(u8 *ucode, size_t size, struct cont_desc *desc)
 	}
 }
 
-static int __apply_microcode_amd(struct microcode_amd *mc)
+static int __apply_microcode_amd(struct microcode_amd *mc, unsigned int psize)
 {
+	unsigned long p_addr = (unsigned long)&mc->hdr.data_code;
 	u32 rev, dummy;
 
-	native_wrmsrl(MSR_AMD64_PATCH_LOADER, (u64)(long)&mc->hdr.data_code);
+	native_wrmsrl(MSR_AMD64_PATCH_LOADER, p_addr);
+
+	if (x86_family(bsp_cpuid_1_eax) == 0x17) {
+		unsigned long p_addr_end = p_addr + psize - 1;
+
+		asm volatile("invlpg (%0)" ::"r" (p_addr) : "memory");
+
+		/*
+		 * Flush next page too if patch image is crossing a page
+		 * boundary.
+		 */
+		if (p_addr >> PAGE_SHIFT != p_addr_end >> PAGE_SHIFT)
+			asm volatile("invlpg (%0)" ::"r" (p_addr_end) : "memory");
+	}
 
 	/* verify patch application was successful */
 	native_rdmsr(MSR_AMD64_PATCH_LEVEL, rev, dummy);
@@ -460,7 +474,7 @@ apply_microcode_early_amd(u32 cpuid_1_eax, void *ucode, size_t size, bool save_p
 	if (rev > mc->hdr.patch_id)
 		return ret;
 
-	if (!__apply_microcode_amd(mc)) {
+	if (!__apply_microcode_amd(mc, desc.psize)) {
 		*new_rev = mc->hdr.patch_id;
 		*new_size = desc.psize;
 		ret      = true;
@@ -530,14 +544,16 @@ void load_ucode_amd_ap(unsigned int cpuid_1_eax)
 {
 	struct microcode_amd *mc;
 	struct cpio_data cp;
-	u32 *new_rev, rev, dummy;
+	u32 *new_rev, *new_size, rev, dummy;
 
 	if (IS_ENABLED(CONFIG_X86_32)) {
 		mc	= (struct microcode_amd *)__pa_nodebug(amd_ucode_patch);
 		new_rev = (u32 *)__pa_nodebug(&ucode_new_rev);
+		new_size = (u32 *)__pa_nodebug(&ucode_new_size);
 	} else {
 		mc	= (struct microcode_amd *)amd_ucode_patch;
 		new_rev = &ucode_new_rev;
+		new_size = &ucode_new_size;
 	}
 
 	native_rdmsr(MSR_AMD64_PATCH_LEVEL, rev, dummy);
@@ -548,7 +564,7 @@ void load_ucode_amd_ap(unsigned int cpuid_1_eax)
 	 * if the sibling SMT thread already has an up-to-date revision.
 	 */
 	if (*new_rev && rev <= mc->hdr.patch_id) {
-		if (!__apply_microcode_amd(mc)) {
+		if (!__apply_microcode_amd(mc, *new_size)) {
 			*new_rev = mc->hdr.patch_id;
 			return;
 		}
@@ -596,7 +612,7 @@ void reload_ucode_amd(unsigned int cpu)
 	rdmsr(MSR_AMD64_PATCH_LEVEL, rev, dummy);
 
 	if (rev < mc->hdr.patch_id) {
-		if (!__apply_microcode_amd(mc)) {
+		if (!__apply_microcode_amd(mc, ucode_new_size)) {
 			ucode_new_rev = mc->hdr.patch_id;
 			pr_info("reload patch_level=0x%08x\n", ucode_new_rev);
 		}
@@ -720,7 +736,7 @@ static enum ucode_state apply_microcode_amd(int cpu)
 		goto out;
 	}
 
-	if (__apply_microcode_amd(mc_amd)) {
+	if (__apply_microcode_amd(mc_amd, p->size)) {
 		pr_err("CPU%d: update failed for patch_level=0x%08x\n",
 			cpu, mc_amd->hdr.patch_id);
 		return UCODE_ERROR;
