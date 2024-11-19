@@ -73,10 +73,12 @@
 	 * This is only accessed by the of_scan_flat_dt() function in
 	 * early boot. Putting this up here avoids an unneeded
 	 * additional scan of the whole FDT. This is carved out of
-	 * memory allocated for the pciemgr component.
+	 * memory allocated for the pciemgr component. The 32 bytes of
+	 * data immediately following the 32Mb HWMEM region are used
+	 * for this purpose.
 	 */
 	oracle {
-	        linux,mem-reserve = <0x0 0xc5F70000>;
+		linux,mem-reserve = <0x0 0xc5ffffe0>;
 	};
 
 	soc: soc {
