@@ -20,6 +20,9 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %endif
 %define ol_release_name Oracle Linux %{oraclelinux}
 
+# identify the toolchain to use
+%define uek_toolset gcc-toolset-14
+
 # For a stable, released kernel, released_kernel should be 1. For rawhide
 # and/or a kernel built from an rc or git snapshot, released_kernel should
 # be 0.
@@ -390,13 +393,13 @@ Requires: %{name}-modules-core-uname-r = %{KVERREL}
 #
 BuildRequires: kmod, patch >= 2.5.4, bash >= 2.03, tar, git
 BuildRequires: bzip2, xz, findutils, gzip, m4, perl-interpreter, perl-Carp, perl-devel, perl-generators, make >= 3.78, diffutils, gawk
-BuildRequires: gcc-toolset-13-annobin-plugin-gcc
-BuildRequires: gcc-toolset-13-binutils
-BuildRequires: gcc-toolset-13-gcc
-BuildRequires: gcc-toolset-13-gcc-c++
-BuildRequires: gcc-toolset-13-runtime
-BuildRequires: gcc-toolset-13-gcc-plugin-annobin
-BuildRequires: gcc-toolset-13-binutils-devel
+BuildRequires: %{uek_toolset}-annobin-plugin-gcc
+BuildRequires: %{uek_toolset}-binutils
+BuildRequires: %{uek_toolset}-gcc
+BuildRequires: %{uek_toolset}-gcc-c++
+BuildRequires: %{uek_toolset}-runtime
+BuildRequires: %{uek_toolset}-gcc-plugin-annobin
+BuildRequires: %{uek_toolset}-binutils-devel
 BuildRequires: redhat-rpm-config, hmaccalc, python3-devel
 BuildRequires: net-tools, hostname
 BuildRequires: python3, python3-devel
@@ -715,12 +718,12 @@ Provides: kernel-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: installonlypkg(%{installonly_variant_name})\
 AutoReqProv: no\
 Requires(pre): /usr/bin/find\
-Requires: gcc-toolset-13-annobin-plugin-gcc\
-Requires: gcc-toolset-13-binutils\
-Requires: gcc-toolset-13-gcc\
-Requires: gcc-toolset-13-gcc-c++\
-Requires: gcc-toolset-13-runtime\
-Requires: gcc-toolset-13-binutils-devel\
+Requires: %{uek_toolset}-annobin-plugin-gcc\
+Requires: %{uek_toolset}-binutils\
+Requires: %{uek_toolset}-gcc\
+Requires: %{uek_toolset}-gcc-c++\
+Requires: %{uek_toolset}-runtime\
+Requires: %{uek_toolset}-binutils-devel\
 %description -n %{variant_name}-devel\
 This package provides kernel headers and makefiles sufficient to build modules\
 against the %{?2:%{2}} kernel package.\
@@ -874,8 +877,8 @@ of the operating system: memory allocation, process allocation, device
 input and output, etc.
 
 %prep
-# Enable gcc-toolset-13
-source /opt/rh/gcc-toolset-13/enable
+# Enable correct toolchain
+source /opt/rh/%{uek_toolset}/enable
 gcc --version
 
 
@@ -939,8 +942,8 @@ find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
 ### build
 ###
 %build
-# Enable gcc-toolset-13
-source /opt/rh/gcc-toolset-13/enable
+# Enable correct toolchain
+source /opt/rh/%{uek_toolset}/enable
 gcc --version
 
 %if %{with_sparse}
@@ -1567,8 +1570,8 @@ popd
 ###
 
 %install
-# Enable gcc-toolset-13
-source /opt/rh/gcc-toolset-13/enable
+# Enable correct toolchain
+source /opt/rh/%{uek_toolset}/enable
 gcc --version
 
 
