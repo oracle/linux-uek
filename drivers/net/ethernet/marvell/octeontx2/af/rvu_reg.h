@@ -846,6 +846,7 @@
 #define CPT_AF_CTX_PSP_TIMER_CTL        (0x49610ull)
 #define CPT_AF_CTX_CAM_DATA(a)          (0x49800ull | (u64)(a) << 3)
 #define CPT_AF_RXC_CFG1                 (0x50000ull)
+#define CPT_AF_RXC_CFG2                 (0x50008ull)
 #define CPT_AF_RXC_TIME                 (0x50010ull)
 #define CPT_AF_RXC_TIME_CFG             (0x50018ull)
 /* CN10K RXC Registers */

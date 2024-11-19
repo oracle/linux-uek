@@ -22,7 +22,15 @@ int rvu_mbox_handler_nix_cn20k_aq_enq(struct rvu *rvu,
 
 void rvu_nix_block_cn20k_init(struct rvu *rvu, struct nix_hw *nix_hw)
 {
+	int blkaddr = nix_hw->blkaddr;
 	int i;
+
+	/* Set NIX_AF_CFG.cpt_mp_ena_swap because CPT Parse and Frag info
+	 * headers received from CPT via X2P bus are configured to be byte
+	 * swapped.
+	 */
+	rvu_write64(rvu, blkaddr, NIX_AF_CFG,
+		    rvu_read64(rvu, blkaddr, NIX_AF_CFG) | BIT_ULL(11));
 
 	bitmap_zero(nix_hw->cn20k.rx_inl_profile_bmap, NIX_RX_INL_PROFILE_CNT);
 

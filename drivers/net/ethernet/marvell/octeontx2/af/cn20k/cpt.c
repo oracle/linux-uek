@@ -291,5 +291,16 @@ static void cpt_rx_qid_init(struct rvu *rvu)
 
 void rvu_cn20k_cpt_init(struct rvu *rvu)
 {
+	u64 reg_val;
+
+	/* Enable CPT parse and Frag info header byte swapping. This
+	 * must be consistent with NIX_AF_CFG.CPT_MP_ENA_SWAP, So that
+	 * nix knows that these headers are byte swapped.
+	 */
+
+	reg_val = rvu_read64(rvu, BLKADDR_CPT0, CPT_AF_RXC_CFG2);
+	reg_val |= BIT_ULL(8);
+	rvu_write64(rvu, BLKADDR_CPT0, CPT_AF_RXC_CFG2, reg_val);
+
 	cpt_rx_qid_init(rvu);
 }
