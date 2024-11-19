@@ -550,7 +550,7 @@ static int map_resources(struct platform_device *pfdev)
 			}
 			kpci_memcpy(ks->code_base, ks->persistent_base,
 				    ks->code_size);
-			flush_icache_range((long)ks->code_base, (long)ks->code_size);
+			flush_icache_range((long)ks->code_base, (long)ks->code_base + ks->code_size);
 			set_memory_x((unsigned long)ks->code_base,
 				     ks->code_size >> PAGE_SHIFT);
 		}
