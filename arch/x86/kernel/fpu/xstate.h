@@ -71,6 +71,16 @@ static inline u64 xfeatures_mask_independent(void)
 	return xfeatures_mask_indep;
 }
 
+/*
+ * Update the value of PKRU register that was already pushed onto the signal frame.
+ */
+static inline int update_pkru_in_sigframe(struct xregs_state __user *buf, u32 pkru)
+{
+	if (unlikely(!cpu_feature_enabled(X86_FEATURE_OSPKE)))
+		return 0;
+	return __put_user(pkru, (unsigned int __user *)get_xsave_addr_user(buf, XFEATURE_PKRU));
+}
+
 /* XSAVE/XRSTOR wrapper functions */
 
 #ifdef CONFIG_X86_64
@@ -270,7 +280,7 @@ static inline u64 xfeatures_need_sigframe_write(void)
  * The caller has to zero buf::header before calling this because XSAVE*
  * does not touch the reserved fields in the header.
  */
-static inline int xsave_to_user_sigframe(struct xregs_state __user *buf)
+static inline int xsave_to_user_sigframe(struct xregs_state __user *buf, u32 pkru)
 {
 	/*
 	 * Include the features which are not xsaved/rstored by the kernel
@@ -294,6 +304,9 @@ static inline int xsave_to_user_sigframe(struct xregs_state __user *buf)
 	stac();
 	XSTATE_OP(XSAVE, buf, lmask, hmask, err);
 	clac();
+
+	if (!err)
+		err = update_pkru_in_sigframe(buf, pkru);
 
 	return err;
 }
