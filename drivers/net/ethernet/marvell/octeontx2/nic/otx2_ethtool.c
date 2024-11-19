@@ -44,13 +44,19 @@ enum link_mode {
 };
 
 static const struct otx2_stat otx2_dev_stats[] = {
+	OTX2_DEV_STAT(rx_bytes),
+	OTX2_DEV_STAT(rx_frames),
 	OTX2_DEV_STAT(rx_ucast_frames),
 	OTX2_DEV_STAT(rx_bcast_frames),
 	OTX2_DEV_STAT(rx_mcast_frames),
+	OTX2_DEV_STAT(rx_drops),
 
+	OTX2_DEV_STAT(tx_bytes),
+	OTX2_DEV_STAT(tx_frames),
 	OTX2_DEV_STAT(tx_ucast_frames),
 	OTX2_DEV_STAT(tx_bcast_frames),
 	OTX2_DEV_STAT(tx_mcast_frames),
+	OTX2_DEV_STAT(tx_drops),
 };
 
 /* Driver level stats */
@@ -291,6 +297,7 @@ static void otx2_get_channels(struct net_device *dev,
 {
 	struct otx2_nic *pfvf = netdev_priv(dev);
 
+	memset(channel, 0, sizeof(*channel));
 	channel->max_rx = pfvf->hw.max_queues;
 	channel->max_tx = pfvf->hw.max_queues;
 
@@ -307,6 +314,10 @@ static int otx2_set_channels(struct net_device *dev,
 	int err, qos_txqs;
 
 	if (!channel->rx_count || !channel->tx_count)
+		return -EINVAL;
+	if (channel->rx_count > pfvf->hw.max_queues)
+		return -EINVAL;
+	if (channel->tx_count > pfvf->hw.max_queues)
 		return -EINVAL;
 
 	if (bitmap_weight(&pfvf->rq_bmap, pfvf->hw.rx_queues) > 1) {
