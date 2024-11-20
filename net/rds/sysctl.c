@@ -95,6 +95,9 @@ unsigned int rds_sysctl_cfu_cache_cap = 512;
 
 unsigned int rds_cfu_cache_gc_interval = 1;
 
+/* Disallow connection reaping via SO RDS_CONN_REAP by default. */
+unsigned int rds_sysctl_conn_user_reap_enable;
+
 static struct ctl_table rds_sysctl_rds_table[] = {
 	{
 		.procname       = "reconnect_min_delay_ms",
@@ -238,6 +241,13 @@ static struct ctl_table rds_sysctl_rds_table[] = {
 		.maxlen         = sizeof(rds_cfu_cache_gc_interval),
 		.mode           = 0644,
 		.proc_handler   = proc_douintvec,
+	},
+	{
+		.procname	= "conn_user_reap_enable",
+		.data		= &rds_sysctl_conn_user_reap_enable,
+		.maxlen		= sizeof(rds_sysctl_conn_user_reap_enable),
+		.mode		= 0644,
+		.proc_handler	= proc_douintvec,
 	},
 };
 
