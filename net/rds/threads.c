@@ -73,6 +73,9 @@
 struct workqueue_struct *rds_wq;
 EXPORT_SYMBOL_GPL(rds_wq);
 
+struct workqueue_struct *rds_conn_reaper_wq;
+EXPORT_SYMBOL_GPL(rds_conn_reaper_wq);
+
 static inline void rds_update_avg_connect_time(struct rds_conn_path *cp)
 {
 	/* Implement:
@@ -536,8 +539,28 @@ void rds_up_or_down_worker(struct work_struct *work)
 	rds_conn_put(cp->cp_conn); /* get in rds_cond_queue_reconnect_work() */
 }
 
+void rds_conn_reap_worker(struct work_struct *work)
+{
+	struct rds_conn_path *cp = container_of(work,
+						struct rds_conn_path,
+						cp_reap_w.work);
+	bool is_tcp = cp->cp_conn->c_trans->t_type == RDS_TRANS_TCP;
+	struct rds_connection *conn = cp->cp_conn;
+
+	trace_rds_queue_worker(cp->cp_conn, cp, cp->cp_wq, work, 0,
+			       "reap worker");
+
+	pr_info("RDS/%s: Reaping connection <%pI6c,%pI6c,%d>\n",
+		(is_tcp ? "TCP" : "IB"),
+		&conn->c_laddr, &conn->c_faddr, conn->c_tos);
+
+	rds_conn_destroy_init(conn, 0);
+	rds_conn_put(conn); /* get in rds_conn_reap */
+}
+
 void rds_threads_exit(void)
 {
+	destroy_workqueue(rds_conn_reaper_wq);
 	destroy_workqueue(rds_wq);
 }
 
@@ -546,6 +569,12 @@ int rds_threads_init(void)
 	rds_wq = create_singlethread_workqueue("krdsd");
 	if (!rds_wq)
 		return -ENOMEM;
+
+	rds_conn_reaper_wq = alloc_workqueue("krds_conn_reaper_wq", 0, RDS_CP_WQ_MAX_ACTIVE);
+	if (!rds_conn_reaper_wq) {
+		destroy_workqueue(rds_wq);
+		return -ENOMEM;
+	}
 
 	return 0;
 }
