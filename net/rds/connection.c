@@ -219,6 +219,7 @@ static void __rds_conn_path_init(struct rds_connection *conn,
 	INIT_DELAYED_WORK(&cp->cp_hb_w, rds_hb_worker);
 	INIT_DELAYED_WORK(&cp->cp_up_or_down_w, rds_up_or_down_worker);
 	INIT_DELAYED_WORK(&cp->cp_down_wait_w, rds_conn_shutdown_check_wait);
+	INIT_DELAYED_WORK(&cp->cp_reap_w, rds_conn_reap_worker);
 	mutex_init(&cp->cp_cm_lock);
 	atomic_set(&cp->cp_rdma_map_pending, 0);
 	init_waitqueue_head(&cp->cp_up_waitq);
@@ -1512,6 +1513,33 @@ void rds_conn_drop(struct rds_connection *conn, int reason, int err)
 }
 EXPORT_SYMBOL_GPL(rds_conn_drop);
 
+int rds_conn_reap(struct rds_connection *conn)
+{
+	int npaths = (conn->c_trans->t_mp_capable ? RDS_MPATH_WORKERS : 1);
+	struct rds_conn_path *cp, *cp0 = &conn->c_path[0];
+	int i;
+
+	smp_rmb();
+	if (conn->c_destroy_in_prog)
+		return -EALREADY;
+
+	for (i = 0; i < npaths; i++) {
+		cp = &conn->c_path[i];
+		if (rds_conn_path_up(cp))
+			return -EISCONN;
+	}
+
+	rds_conn_get(conn);
+	if (!rds_queue_delayed_work(cp0, rds_conn_reaper_wq, &cp0->cp_reap_w,
+				    0, "reap worker")) {
+		rds_conn_put(conn);
+		return -EALREADY;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(rds_conn_reap);
+
 static void rds_conn_ha_changed_task(struct work_struct *work)
 {
 	struct rds_connection *conn = container_of(work,
@@ -1583,8 +1611,8 @@ void rds_conn_faddr_ha_changed(const struct in6_addr *faddr,
 EXPORT_SYMBOL_GPL(rds_conn_faddr_ha_changed);
 
 /*
- * If the connection is down, trigger a connect. We may have scheduled a
- * delayed reconnect however - in this case we should not interfere.
+ * If the connection is down and not being destroyed,
+ * trigger a connect.
  */
 void rds_conn_path_connect_if_down(struct rds_conn_path *cp)
 {
