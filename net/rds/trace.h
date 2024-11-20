@@ -260,6 +260,15 @@ DEFINE_EVENT(rds_status, rds_conn_drop,
 
 );
 
+DEFINE_EVENT(rds_status, rds_conn_reap,
+
+	TP_PROTO(struct rds_sock *rs, struct rds_connection *conn,
+		 struct rds_conn_path *cp, char *reason, int err),
+
+	TP_ARGS(rs, conn, cp, reason, err)
+
+);
+
 DEFINE_EVENT(rds_status, rds_conn_update_connect_time,
 
 	TP_PROTO(struct rds_sock *rs, struct rds_connection *conn,
