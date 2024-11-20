@@ -27,6 +27,9 @@ void cpt_cn20k_rxc_time_cfg(struct rvu *rvu, int blkaddr,
 		save->active_limit = FIELD_GET(RXC_ACTIVE_LIMIT, dfrg_reg);
 
 		save->step = rvu_read64(rvu, blkaddr, CPT_AF_RXC_TIME_CFG);
+
+		save->cpt_af_rxc_que_cfg = rvu_read64(rvu, blkaddr,
+						      CPT_AF_RXC_QUEX_CFG(qid));
 	}
 
 	dfrg_reg = FIELD_PREP(RXC_ZOMBIE_THRES, req->zombie_thres);
@@ -36,6 +39,8 @@ void cpt_cn20k_rxc_time_cfg(struct rvu *rvu, int blkaddr,
 
 	rvu_write64(rvu, blkaddr, CPT_AF_RXC_TIME_CFG, req->step);
 	rvu_write64(rvu, blkaddr, CPT_AF_RXC_QUEX_DFRG(qid), dfrg_reg);
+	rvu_write64(rvu, blkaddr, CPT_AF_RXC_QUEX_CFG(qid),
+		    req->cpt_af_rxc_que_cfg);
 }
 
 void cpt_cn20k_rxc_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr)

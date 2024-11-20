@@ -850,6 +850,7 @@
 #define CPT_AF_RXC_ZOMBIE_STS           (0x50030ull)
 #define CPT_AF_X2PX_LINK_CFG(a)         (0x51000ull | (u64)(a) << 3)
 /* CN20K RXC Registers */
+#define CPT_AF_RXC_QUEX_CFG(a)		(0x50800ull | (u64)(a) << 3)
 #define CPT_AF_RXC_QUEX_DFRG(a)		(0x50080ull | (u64)(a) << 3)
 #define CPT_AF_RXC_QUEX_ACTIVE_STS(a)	(0x50100ull | (u64)(a) << 3)
 #define CPT_AF_RXC_QUEX_ZOMBIE_STS(a)	(0x50180ull | (u64)(a) << 3)
