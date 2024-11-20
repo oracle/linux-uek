@@ -74,6 +74,9 @@
  * read.
  */
 #define SO_RDS_INQ			12
+/* Socket option to reap/destroy connection */
+#define RDS_CONN_REAP			15
+#define RDS6_CONN_REAP			16
 
 /* supported values for SO_RDS_TRANSPORT */
 #define	RDS_TRANS_IB	0
