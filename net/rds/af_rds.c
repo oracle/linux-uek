@@ -561,6 +561,9 @@ static int rds_user_reset_or_reap(struct rds_sock *rs, int optname,
 	LIST_HEAD(s_addr_conns);
 	int ret = 0, reap_ret = 0;
 
+	if (optname == RDS_CONN_REAP && !rds_sysctl_conn_user_reap_enable)
+		return -EPERM;
+
 	/* Support struct rds_reset with/out all_tos */
 	if (optlen != sizeof(struct rds_reset) &&
 	    optlen != offsetof(struct rds_reset, all_tos))
@@ -631,6 +634,9 @@ static int rds6_user_reset_or_reap(struct rds_sock *rs, int optname,
 	struct rds_connection *conn;
 	LIST_HEAD(s_addr_conns);
 	int ret = 0, reap_ret = 0;
+
+	if (optname == RDS6_CONN_REAP && !rds_sysctl_conn_user_reap_enable)
+		return -EPERM;
 
 	/* Support struct rds_reset with/out all_tos */
 	if (optlen != sizeof(struct rds6_reset) &&
