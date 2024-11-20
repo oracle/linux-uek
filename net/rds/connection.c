@@ -1532,6 +1532,7 @@ int rds_conn_reap(struct rds_connection *conn)
 			return -EISCONN;
 	}
 
+	trace_rds_conn_reap(NULL, conn, NULL, NULL, 0);
 	rds_conn_get(conn);
 	if (!rds_queue_delayed_work(cp0, rds_conn_reaper_wq, &cp0->cp_reap_w,
 				    0, "reap worker")) {
