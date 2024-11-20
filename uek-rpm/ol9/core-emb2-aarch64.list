@@ -26,7 +26,6 @@ kernel/drivers/bus/mhi/host/mhi_pci_generic.ko
 kernel/drivers/char/virtio_console.ko
 kernel/drivers/cxl/cxl_pci.ko
 kernel/drivers/firmware/efi/capsule-loader.ko
-kernel/drivers/md/dm-crypt.ko
 kernel/drivers/md/dm-writecache.ko
 kernel/drivers/net/mhi_net.ko
 kernel/drivers/net/net_failover.ko
@@ -367,4 +366,3 @@ kernel/net/vmw_vsock/vmw_vsock_virtio_transport.ko
 kernel/net/vmw_vsock/vsock_diag.ko
 kernel/net/vmw_vsock/vsock.ko
 kernel/net/vmw_vsock/vsock_loopback.ko
-kernel/security/keys/encrypted-keys/encrypted-keys.ko
