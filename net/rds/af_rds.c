@@ -552,12 +552,14 @@ static void rds_user_conn_paths_drop(struct rds_connection *conn)
 	}
 }
 
-static int rds_user_reset(struct rds_sock *rs, sockptr_t optval, int optlen)
+static int rds_user_reset_or_reap(struct rds_sock *rs, int optname,
+				  sockptr_t optval, int optlen)
 {
 	struct rds_reset reset;
 	struct rds_connection *conn;
 	struct in6_addr src6, dst6;
 	LIST_HEAD(s_addr_conns);
+	int ret = 0, reap_ret = 0;
 
 	if (optlen != sizeof(struct rds_reset))
 		return -EINVAL;
@@ -566,11 +568,12 @@ static int rds_user_reset(struct rds_sock *rs, sockptr_t optval, int optlen)
 				sizeof(struct rds_reset)))
 		return -EFAULT;
 
-	/* Reset all conns associated with source addr */
+	/* Reset or reap all conns associated with source addr */
 	ipv6_addr_set_v4mapped(reset.src.s_addr, &src6);
-	if (reset.dst.s_addr ==  0) {
-		pr_info("RDS: Reset ALL conns for Source %pI4\n",
-			 &reset.src.s_addr);
+	if (reset.dst.s_addr ==	 0) {
+		pr_info("RDS: %s ALL conns for Source %pI4\n",
+			(optname == RDS_CONN_RESET ? "Reset" : "Reap"),
+			&reset.src.s_addr);
 
 		mutex_lock(&conn_reset_zero_dest);
 		rds_conn_laddr_list(rs->rs_rns, &src6, &s_addr_conns);
@@ -579,11 +582,15 @@ static int rds_user_reset(struct rds_sock *rs, sockptr_t optval, int optlen)
 			goto done;
 		}
 
-		list_for_each_entry(conn, &s_addr_conns, c_laddr_node)
-			if (conn) {
+		list_for_each_entry(conn, &s_addr_conns, c_laddr_node) {
+			if (optname == RDS_CONN_RESET) {
 				rds_user_conn_paths_drop(conn);
-				rds_conn_put(conn); /* for rds_conn_laddr_list */
+			} else if (optname == RDS_CONN_REAP) {
+				reap_ret = rds_conn_reap(conn);
+				ret = ret ? : reap_ret;
 			}
+			rds_conn_put(conn); /* for rds_conn_laddr_list */
+		}
 		mutex_unlock(&conn_reset_zero_dest);
 		goto done;
 	}
@@ -596,23 +603,28 @@ static int rds_user_reset(struct rds_sock *rs, sockptr_t optval, int optlen)
 	if (conn) {
 		bool is_tcp = conn->c_trans->t_type == RDS_TRANS_TCP;
 
-		printk(KERN_NOTICE "Resetting RDS/%s connection <%pI4,%pI4,%d>\n",
-		       is_tcp ? "TCP" : "IB",
-		       &reset.src.s_addr,
-		       &reset.dst.s_addr, conn->c_tos);
-		rds_user_conn_paths_drop(conn);
+		if (optname == RDS_CONN_RESET) {
+			pr_info("Resetting RDS/%s connection <%pI4,%pI4,%d>\n",
+				is_tcp ? "TCP" : "IB", &reset.src.s_addr,
+				&reset.dst.s_addr, conn->c_tos);
+			rds_user_conn_paths_drop(conn);
+		} else if (optname == RDS_CONN_REAP) {
+			ret = rds_conn_reap(conn);
+		}
 		rds_conn_put(conn); /* for rds_conn_find */
 	}
 done:
-	return 0;
+	return ret;
 }
 
 #if IS_ENABLED(CONFIG_IPV6)
-static int rds6_user_reset(struct rds_sock *rs, sockptr_t optval, int optlen)
+static int rds6_user_reset_or_reap(struct rds_sock *rs, int optname,
+				   sockptr_t optval, int optlen)
 {
 	struct rds6_reset reset;
 	struct rds_connection *conn;
 	LIST_HEAD(s_addr_conns);
+	int ret = 0, reap_ret = 0;
 
 	if (optlen != sizeof(struct rds6_reset))
 		return -EINVAL;
@@ -623,7 +635,8 @@ static int rds6_user_reset(struct rds_sock *rs, sockptr_t optval, int optlen)
 
 	/* Reset all conns associated with source addr */
 	if (ipv6_addr_any(&reset.dst)) {
-		pr_info("RDS: Reset ALL conns for Source %pI6c\n",
+		pr_info("RDS: %s ALL conns for Source %pI6c\n",
+			(optname == RDS6_CONN_RESET ? "Reset" : "Reap"),
 			&reset.src);
 
 		mutex_lock(&conn_reset_zero_dest);
@@ -633,11 +646,15 @@ static int rds6_user_reset(struct rds_sock *rs, sockptr_t optval, int optlen)
 			goto done;
 		}
 
-		list_for_each_entry(conn, &s_addr_conns, c_laddr_node)
-			if (conn) {
+		list_for_each_entry(conn, &s_addr_conns, c_laddr_node) {
+			if (optname == RDS6_CONN_RESET) {
 				rds_user_conn_paths_drop(conn);
-				rds_conn_put(conn); /* for rds_conn_laddr_list */
+			} else if (optname == RDS6_CONN_REAP) {
+				reap_ret = rds_conn_reap(conn);
+				ret = ret ? : reap_ret;
 			}
+			rds_conn_put(conn); /* for rds_conn_laddr_list */
+		}
 		mutex_unlock(&conn_reset_zero_dest);
 		goto done;
 	}
@@ -649,14 +666,18 @@ static int rds6_user_reset(struct rds_sock *rs, sockptr_t optval, int optlen)
 	if (conn) {
 		bool is_tcp = conn->c_trans->t_type == RDS_TRANS_TCP;
 
-		printk(KERN_NOTICE "Resetting RDS/%s connection <%pI6c,%pI6c,%d>\n",
-		       is_tcp ? "tcp" : "IB",
-		       &reset.src, &reset.dst, conn->c_tos);
-		rds_user_conn_paths_drop(conn);
+		if (conn && optname == RDS6_CONN_RESET) {
+			pr_info("Resetting RDS/%s connection <%pI6c,%pI6c,%d>\n",
+				is_tcp ? "tcp" : "IB",
+				&reset.src, &reset.dst, conn->c_tos);
+			rds_user_conn_paths_drop(conn);
+		} else if (conn && optname == RDS6_CONN_REAP) {
+			ret = rds_conn_reap(conn);
+		}
 		rds_conn_put(conn); /* for rds_conn_find */
 	}
 done:
-	return 0;
+	return ret;
 }
 #endif
 
@@ -766,19 +787,21 @@ static int rds_setsockopt(struct socket *sock, int level, int optname,
 		ret = rds_cong_monitor(rs, optval, optlen);
 		break;
 	case RDS_CONN_RESET:
+	case RDS_CONN_REAP:
 		if (!ns_capable(net->user_ns, CAP_NET_ADMIN)) {
 			ret =  -EACCES;
 			break;
 		}
-		ret = rds_user_reset(rs, optval, optlen);
+		ret = rds_user_reset_or_reap(rs, optname, optval, optlen);
 		break;
 #if IS_ENABLED(CONFIG_IPV6)
 	case RDS6_CONN_RESET:
+	case RDS6_CONN_REAP:
 		if (!ns_capable(net->user_ns, CAP_NET_ADMIN)) {
 			ret =  -EACCES;
 			break;
 		}
-		ret = rds6_user_reset(rs, optval, optlen);
+		ret = rds6_user_reset_or_reap(rs, optname, optval, optlen);
 		break;
 #endif
 	case SO_RDS_TRANSPORT:

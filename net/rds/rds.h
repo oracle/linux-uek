@@ -335,6 +335,7 @@ struct rds_conn_path {
 	struct delayed_work     cp_hb_w;
 	struct delayed_work	cp_up_or_down_w;
 	struct delayed_work	cp_down_wait_w;
+	struct delayed_work	cp_reap_w;	/* queue on rds_conn_reaper_wq */
 	struct mutex		cp_cm_lock;	/* protect cp_state & cm */
 	wait_queue_head_t	cp_waitq;
 
@@ -1222,6 +1223,7 @@ void rds_conn_put_trace(struct rds_connection *conn, const char *func, int line)
 void rds_conn_reset(struct rds_connection *conn);
 void rds_conn_drop(struct rds_connection *conn, int reason, int err);
 void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err);
+int  rds_conn_reap(struct rds_connection *conn);
 void rds_conn_faddr_ha_changed(const struct in6_addr *faddr,
 			       const unsigned char *ha,
 			       unsigned ha_len);
@@ -1650,8 +1652,10 @@ extern unsigned int  rds_cfu_cache_gc_interval;
 int rds_threads_init(void);
 void rds_threads_exit(void);
 extern struct workqueue_struct *rds_wq;
+extern struct workqueue_struct *rds_conn_reaper_wq;
 void rds_queue_reconnect(struct rds_conn_path *cp, bool immediate);
 void rds_up_or_down_worker(struct work_struct *);
+void rds_conn_reap_worker(struct work_struct *work);
 void rds_send_worker(struct work_struct *);
 void rds_recv_worker(struct work_struct *);
 void rds_hb_worker(struct work_struct *);
