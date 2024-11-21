@@ -1227,8 +1227,9 @@ int  rds_conn_reap(struct rds_connection *conn);
 void rds_conn_faddr_ha_changed(const struct in6_addr *faddr,
 			       const unsigned char *ha,
 			       unsigned ha_len);
-void rds_conn_laddr_list(struct rds_net *rns, struct in6_addr *laddr,
-			 struct list_head *laddr_conns);
+void rds_conn_addr_list(struct rds_net *rns, struct in6_addr *laddr,
+			struct in6_addr *faddr,
+			struct list_head *laddr_conns);
 void rds_conn_connect_if_down(struct rds_connection *conn);
 void rds_conn_path_connect_if_down(struct rds_conn_path *conn);
 void rds_check_all_paths(struct rds_connection *conn);
