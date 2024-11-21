@@ -479,12 +479,14 @@ struct rds_reset {
 	__u8		tos;
 	struct in_addr	src;
 	struct in_addr	dst;
+	__u8		all_tos;  /* new - for all tos b/w src & dst */
 };
 
 struct rds6_reset {
 	__u8		tos;
 	struct in6_addr	src;
 	struct in6_addr	dst;
+	__u8		all_tos;  /* new - for all tos b/w src & dst */
 };
 
 struct rds_asend_args {
