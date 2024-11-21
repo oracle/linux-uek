@@ -515,5 +515,25 @@ static inline void ibpb_disable(void)
 	static_branch_disable(&switch_mm_cond_ibpb);
 }
 
+static inline void __msr_flip_bit_all_cpus(u32 msr, u8 bit, bool set)
+{
+	int cpu;
+
+	get_online_cpus();
+	for_each_online_cpu(cpu)
+		msr_flip_bit_on_cpu(cpu, msr, bit, set);
+	put_online_cpus();
+}
+
+static inline void msr_set_bit_all_cpus(u32 msr, u8 bit)
+{
+	__msr_flip_bit_all_cpus(msr, bit, true);
+}
+
+static inline void msr_clear_bit_all_cpus(u32 msr, u8 bit)
+{
+	__msr_flip_bit_all_cpus(msr, bit, false);
+}
+
 #endif /* __ASSEMBLY__ */
 #endif /* _ASM_X86_SPEC_CTRL_H */

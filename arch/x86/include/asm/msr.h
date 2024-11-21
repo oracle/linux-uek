@@ -348,6 +348,7 @@ int rdmsrl_safe_on_cpu(unsigned int cpu, u32 msr_no, u64 *q);
 int wrmsrl_safe_on_cpu(unsigned int cpu, u32 msr_no, u64 q);
 int rdmsr_safe_regs_on_cpu(unsigned int cpu, u32 regs[8]);
 int wrmsr_safe_regs_on_cpu(unsigned int cpu, u32 regs[8]);
+int msr_flip_bit_on_cpu(unsigned int cpu, u32 msr, u8 bit, bool set);
 #else  /*  CONFIG_SMP  */
 static inline int rdmsr_on_cpu(unsigned int cpu, u32 msr_no, u32 *l, u32 *h)
 {
@@ -403,6 +404,11 @@ static inline int rdmsr_safe_regs_on_cpu(unsigned int cpu, u32 regs[8])
 static inline int wrmsr_safe_regs_on_cpu(unsigned int cpu, u32 regs[8])
 {
 	return wrmsr_safe_regs(regs);
+}
+static inline int msr_flip_bit_on_cpu(unsigned int cpu, u32 msr, u8 bit,
+				      bool set)
+{
+	return set ? msr_set_bit(msr, bit) : msr_clear_bit(msr, bit);
 }
 #endif  /* CONFIG_SMP */
 #endif /* __ASSEMBLY__ */

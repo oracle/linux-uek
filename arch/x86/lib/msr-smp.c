@@ -278,3 +278,35 @@ int wrmsr_safe_regs_on_cpu(unsigned int cpu, u32 regs[8])
 	return err ? err : rv.err;
 }
 EXPORT_SYMBOL(wrmsr_safe_regs_on_cpu);
+
+struct msr_bit {
+	u32 msr_no;		/* MSR number */
+	u8 bit;			/* bit to set/clear */
+	bool set;		/* set (true) or clear (false) bit */
+};
+
+static void __msr_flip_bit_on_cpu(void *info)
+{
+	struct msr_bit *mb = info;
+
+	if (mb->set)
+		msr_set_bit(mb->msr_no, mb->bit);
+	else
+		msr_clear_bit(mb->msr_no, mb->bit);
+}
+
+int msr_flip_bit_on_cpu(unsigned int cpu, u32 msr, u8 bit, bool set)
+{
+
+	struct msr_bit mb;
+	int err;
+
+	mb.msr_no = msr;
+	mb.bit = bit;
+	mb.set = set;
+
+	err = smp_call_function_single(cpu, __msr_flip_bit_on_cpu, &mb, 1);
+
+	return err;
+
+}
