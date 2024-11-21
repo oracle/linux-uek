@@ -555,28 +555,35 @@ static void rds_user_conn_paths_drop(struct rds_connection *conn)
 static int rds_user_reset_or_reap(struct rds_sock *rs, int optname,
 				  sockptr_t optval, int optlen)
 {
-	struct rds_reset reset;
+	struct rds_reset reset = {};
 	struct rds_connection *conn;
 	struct in6_addr src6, dst6;
 	LIST_HEAD(s_addr_conns);
 	int ret = 0, reap_ret = 0;
 
-	if (optlen != sizeof(struct rds_reset))
+	/* Support struct rds_reset with/out all_tos */
+	if (optlen != sizeof(struct rds_reset) &&
+	    optlen != offsetof(struct rds_reset, all_tos))
 		return -EINVAL;
 
-	if (copy_from_sockptr(&reset, optval,
-				sizeof(struct rds_reset)))
+	if (copy_from_sockptr(&reset, optval, optlen))
 		return -EFAULT;
 
-	/* Reset or reap all conns associated with source addr */
 	ipv6_addr_set_v4mapped(reset.src.s_addr, &src6);
-	if (reset.dst.s_addr ==	 0) {
-		pr_info("RDS: %s ALL conns for Source %pI4\n",
-			(optname == RDS_CONN_RESET ? "Reset" : "Reap"),
-			&reset.src.s_addr);
+	ipv6_addr_set_v4mapped(reset.dst.s_addr, &dst6);
+
+	/* Reset or reap all conns associated with source addr.
+	 * If reset.dst == 0, option reset.all_tos is ignored.
+	 */
+	if (reset.all_tos || reset.dst.s_addr == 0) {
+	       pr_info("RDS: %s ALL conns for Source %pI4 Destination %pI4\n",
+		       (optname == RDS_CONN_RESET ? "Reset" : "Reap"),
+		       &reset.src.s_addr, &reset.dst.s_addr);
 
 		mutex_lock(&conn_reset_zero_dest);
-		rds_conn_laddr_list(rs->rs_rns, &src6, &s_addr_conns);
+		rds_conn_addr_list(rs->rs_rns, &src6,
+				   (reset.dst.s_addr == 0) ? NULL : &dst6,
+				   &s_addr_conns);
 		if (list_empty(&s_addr_conns)) {
 			mutex_unlock(&conn_reset_zero_dest);
 			goto done;
@@ -595,7 +602,6 @@ static int rds_user_reset_or_reap(struct rds_sock *rs, int optname,
 		goto done;
 	}
 
-	ipv6_addr_set_v4mapped(reset.dst.s_addr, &dst6);
 	conn = rds_conn_find(rs->rs_rns, &src6, &dst6,
 			     rs->rs_transport, reset.tos,
 			     rs->rs_bound_scope_id);
@@ -621,26 +627,31 @@ done:
 static int rds6_user_reset_or_reap(struct rds_sock *rs, int optname,
 				   sockptr_t optval, int optlen)
 {
-	struct rds6_reset reset;
+	struct rds6_reset reset = {};
 	struct rds_connection *conn;
 	LIST_HEAD(s_addr_conns);
 	int ret = 0, reap_ret = 0;
 
-	if (optlen != sizeof(struct rds6_reset))
+	/* Support struct rds_reset with/out all_tos */
+	if (optlen != sizeof(struct rds6_reset) &&
+	    optlen != offsetof(struct rds6_reset, all_tos))
 		return -EINVAL;
 
-	if (copy_from_sockptr(&reset, optval,
-			      sizeof(struct rds6_reset)))
+	if (copy_from_sockptr(&reset, optval, optlen))
 		return -EFAULT;
 
-	/* Reset all conns associated with source addr */
-	if (ipv6_addr_any(&reset.dst)) {
-		pr_info("RDS: %s ALL conns for Source %pI6c\n",
+	/* Reset or reap all conns associated with source addr.
+	 * If reset.dst == 0, option reset.all_tos is ignored.
+	 */
+	if (reset.all_tos || ipv6_addr_any(&reset.dst)) {
+		pr_info("RDS: %s ALL conns for Source %pI6c Destination %pI6c\n",
 			(optname == RDS6_CONN_RESET ? "Reset" : "Reap"),
-			&reset.src);
+			&reset.src, &reset.dst);
 
 		mutex_lock(&conn_reset_zero_dest);
-		rds_conn_laddr_list(rs->rs_rns, &reset.src, &s_addr_conns);
+		rds_conn_addr_list(rs->rs_rns, &reset.src,
+				   ipv6_addr_any(&reset.dst) ? NULL : &reset.dst,
+				   &s_addr_conns);
 		if (list_empty(&s_addr_conns)) {
 			mutex_unlock(&conn_reset_zero_dest);
 			goto done;

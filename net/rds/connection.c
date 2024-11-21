@@ -140,17 +140,20 @@ static struct rds_connection *rds_conn_lookup(struct hlist_head *head,
 	return ret;
 }
 
-void rds_conn_laddr_list(struct rds_net *rns, struct in6_addr *laddr,
-			 struct list_head *laddr_conns)
+void rds_conn_addr_list(struct rds_net *rns, struct in6_addr *laddr,
+			struct in6_addr *faddr,
+			struct list_head *laddr_conns)
 {
 	struct rds_connection *conn;
 	struct hlist_head *head;
 
 	rcu_read_lock();
 
+	/* Optional faddr can be NULL */
 	for_each_conn_hash_bucket(rns, head) {
 		hlist_for_each_entry_rcu(conn, head, c_hash_node)
-			if (ipv6_addr_equal(&conn->c_laddr, laddr)) {
+			if (ipv6_addr_equal(&conn->c_laddr, laddr) &&
+			    (faddr ? ipv6_addr_equal(&conn->c_faddr, faddr) : 1)) {
 				rds_conn_get(conn);
 				list_add(&conn->c_laddr_node, laddr_conns);
 			}
