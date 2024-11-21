@@ -1681,7 +1681,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 		goto out;
 	}
 
-	if (test_bit(RDS_DESTROY_PENDING, &cpath->cp_flags)) {
+	if (conn->c_destroy_in_prog) {
 		ret = -EAGAIN;
 		reason = "destroy pending";
 		goto out;
