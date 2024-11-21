@@ -20,6 +20,26 @@ enum mitigation_action {
 	MITIGATION_ENABLE_EIBRS_RETPOLINE,
 };
 
+static void msr_set_ibrs_all_cpus(void)
+{
+	if (boot_cpu_has(X86_FEATURE_AUTOIBRS)) {
+		msr_set_bit_all_cpus(MSR_EFER, _EFER_AUTOIBRS);
+	} else {
+		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
+					 x86_spec_ctrl_priv);
+	}
+}
+
+static void msr_clear_ibrs_all_cpus(void)
+{
+	if (boot_cpu_has(X86_FEATURE_AUTOIBRS)) {
+		msr_clear_bit_all_cpus(MSR_EFER, _EFER_AUTOIBRS);
+	} else {
+		spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
+					 x86_spec_ctrl_base);
+	}
+}
+
 static void change_mitigation(enum mitigation_action action)
 {
 	bool ibrs_requested, ibrs_fw_requested, retpoline_requested;
@@ -109,10 +129,8 @@ static void change_mitigation(enum mitigation_action action)
 		if (ibrs_requested) {
 			clear_ibrs_disabled();
 			/* If enhanced IBRS is available, turn it on now */
-			if (eibrs_supported) {
-				spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
-							 x86_spec_ctrl_priv);
-			}
+			if (eibrs_supported)
+				msr_set_ibrs_all_cpus();
 			if (!boot_cpu_has(X86_FEATURE_SMEP)) {
 				/* IBRS without SMEP needs RSB overwrite */
 				rsb_overwrite_enable();
@@ -121,8 +139,7 @@ static void change_mitigation(enum mitigation_action action)
 			set_ibrs_disabled();
 			if (use_ibrs & SPEC_CTRL_IBRS_SUPPORTED) {
 				rsb_overwrite_disable();
-				spec_ctrl_flush_all_cpus(MSR_IA32_SPEC_CTRL,
-							 x86_spec_ctrl_base);
+				msr_clear_ibrs_all_cpus();
 			}
 		}
 		changes++;
