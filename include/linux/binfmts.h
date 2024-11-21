@@ -43,6 +43,8 @@ struct linux_binprm {
 		 * original userspace.
 		 */
 		point_of_no_return:1,
+		/* Set when "comm" must come from the dentry. */
+		comm_from_dentry:1,
 		/*
 		 * Set if the binary being exec'd will accept memory marked
 		 * for preservation by the outgoing process.
