@@ -180,7 +180,6 @@ static void rds_conn_path_reset(struct rds_conn_path *cp)
 	 * and also clears "RDS_SHUTDOWN_WAITING" which
 	 * must stay on for "rds_conn_shutdown_check_wait" to
 	 * make progress.
-	 * Also, "RDS_DESTROY_PENDING" should never be turned off.
 	 *
 	 * So instead we no longer clear all flags, but only
 	 * those that should be safe to be cleared here.
@@ -671,7 +670,6 @@ static void rds_conn_path_destroy(struct rds_conn_path *cp, int shutdown)
 	LIST_HEAD(to_be_dropped);
 
 	cp->cp_drop_source = DR_CONN_DESTROY;
-	set_bit(RDS_DESTROY_PENDING, &cp->cp_flags);
 
 	if (!cp->cp_transport_data)
 		return;
@@ -1376,9 +1374,9 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err)
 
 	rds_conn_path_state_change(cp, RDS_CONN_ERROR, reason, err);
 
-	if (reason != DR_CONN_DESTROY && test_bit(RDS_DESTROY_PENDING, &cp->cp_flags)) {
+	if (reason != DR_CONN_DESTROY && conn->c_destroy_in_prog) {
 		trace_rds_queue_noop(conn, cp, NULL, NULL, 0,
-				     "not queueing work, destroy pending");
+				     "not queueing work, destroy in progress");
 		return;
 	}
 

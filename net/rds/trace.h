@@ -42,8 +42,7 @@
 		{ 1 << RDS_LL_SEND_FULL,	"ll_send_full" },	\
 		{ 1 << RDS_RECONNECT_PENDING,	"reconnect_pending" },	\
 		{ 1 << RDS_IN_XMIT,		"in_xmit" },		\
-		{ 1 << RDS_RECV_REFILL,		"recv_refill" },	\
-		{ 1 << RDS_DESTROY_PENDING,	"destroy_pending" })
+		{ 1 << RDS_RECV_REFILL,		"recv_refill" })
 
 #define show_send_status(status)					\
 	__print_symbolic(status,					\
