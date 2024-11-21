@@ -174,7 +174,6 @@ static inline const char *conn_state_mnem(int state)
 #define RDS_RECONNECT_PENDING	1
 #define RDS_IN_XMIT		2
 #define RDS_RECV_REFILL		3
-#define RDS_DESTROY_PENDING	4
 #define RDS_SEND_WORK_QUEUED	5
 #define RDS_RECV_WORK_QUEUED	6
 #define RDS_SHUTDOWN_WORK_QUEUED 7
