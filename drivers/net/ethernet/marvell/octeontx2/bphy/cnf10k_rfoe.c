@@ -297,7 +297,8 @@ static bool cnf10k_validate_network_transport(struct sk_buff *skb)
 }
 
 static bool cnf10k_is_ptp_sync_ecpri_req(struct sk_buff *skb, int *offset,
-					 int *udp_csum, int *pkt_type)
+					 int *udp_csum, int *pkt_type,
+					 bool *read_tx_ts)
 {
 	struct ethhdr *eth = (struct ethhdr *)(skb->data);
 	struct roe_ecpri_msg_5_hdr_s *ecpri_t5_hdr;
@@ -305,6 +306,8 @@ static bool cnf10k_is_ptp_sync_ecpri_req(struct sk_buff *skb, int *offset,
 	u8 *data = skb->data, *msgtype;
 	__be16 proto = eth->h_proto;
 	int network_depth = 0;
+
+	*read_tx_ts = false;
 
 	if (eth_type_vlan(eth->h_proto))
 		proto = __vlan_get_protocol(skb, eth->h_proto, &network_depth);
@@ -327,17 +330,21 @@ static bool cnf10k_is_ptp_sync_ecpri_req(struct sk_buff *skb, int *offset,
 	}
 
 	if (ntohs(proto) == ETH_P_ECPRI) {
-		ecpri_hdr = (struct roe_ecpri_cmn_hdr_s *)(skb->data + sizeof(*eth));
-		ecpri_t5_hdr = (struct roe_ecpri_msg_5_hdr_s *)(skb->data + sizeof(*eth) +
-				sizeof(*ecpri_hdr));
+		ecpri_hdr = (struct roe_ecpri_cmn_hdr_s *)(skb->data + *offset);
+		ecpri_t5_hdr = (struct roe_ecpri_msg_5_hdr_s *)(skb->data + *offset +
+								sizeof(*ecpri_hdr));
 		if (ecpri_hdr->msg_type == ECPRI_MSG_TYPE_5) {
 			*pkt_type = PACKET_TYPE_ECPRI;
 			switch (ecpri_t5_hdr->action_type) {
 			case ACTION_REQ:
-			case ACTION_RESP:
 				*offset = *offset + sizeof(*ecpri_hdr);
+				*read_tx_ts = true;
 				return true;
+			case ACTION_RESP:
 			case ACTION_REQ_WITH_FOLLOWUP:
+				*read_tx_ts = true;
+				return false;
+			case ACTION_FOLLOWUP:
 			case ACTION_REMOTE_REQ:
 			case ACTION_REMOTE_REQ_WITH_FOLLOWUP:
 			default:
@@ -353,6 +360,7 @@ static bool cnf10k_is_ptp_sync_ecpri_req(struct sk_buff *skb, int *offset,
 		}
 	} else {
 		msgtype = data + *offset;
+		*read_tx_ts = ((*msgtype & 0xf) == DELAY_REQUEST_MSG_ID);
 	}
 
 	*pkt_type = PACKET_TYPE_PTP;
@@ -1126,7 +1134,11 @@ static netdev_tx_t cnf10k_rfoe_ptp_xmit(struct sk_buff *skb,
 
 	/* check if one-step is enabled */
 	if (priv->ptp_onestep_sync) {
-		if (cnf10k_is_ptp_sync_ecpri_req(skb, &proto_data_offset, &udp_csum, &pkt_type)) {
+		bool read_tx_ts = false;
+
+		if (cnf10k_is_ptp_sync_ecpri_req(skb, &proto_data_offset,
+						 &udp_csum, &pkt_type,
+						 &read_tx_ts)) {
 			cnf10k_rfoe_prepare_onestep_ptp_header(priv,
 							       &tx_mem, skb,
 							       proto_data_offset,
@@ -1138,9 +1150,7 @@ static netdev_tx_t cnf10k_rfoe_ptp_xmit(struct sk_buff *skb,
 				cnf10k_rfoe_compute_udp_csum(skb);
 		}
 
-		if ((pkt_type == PACKET_TYPE_PTP && ((*(skb->data + proto_data_offset) & 0xF) !=
-				    DELAY_REQUEST_MSG_ID)) || pkt_type == PACKET_TYPE_ECPRI)
-
+		if (!read_tx_ts)
 			goto ptp_one_step_out;
 	}
 
