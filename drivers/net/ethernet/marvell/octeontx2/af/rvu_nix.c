@@ -5585,6 +5585,7 @@ int rvu_mbox_handler_nix_lf_start_rx(struct rvu *rvu, struct msg_req *req,
 	rvu_switch_update_rules(rvu, pcifunc, true);
 
 	pf = rvu_get_pf(rvu->pdev, pcifunc);
+	/* Notify RVU REP PF about representee coming up */
 	if (is_pf_cgxmapped(rvu, pf) && rvu->rep_cnt)
 		rvu_rep_notify_pfvf_state(rvu, pcifunc, true);
 
