@@ -147,10 +147,6 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 8
 # See also 'make debug' and 'make release'.
 %define debugbuildsenabled 1
 
-# Want to build a vanilla kernel build without any non-upstream patches?
-# (well, almost none, we need nonintconfig for build purposes). Default to 0 (off).
-%define with_vanilla %{?_with_vanilla: 1} %{?!_with_vanilla: 0}
-
 # pkg_release is what we'll fill in for the rpm Release: field
 %if 0%{?released_kernel}
 
@@ -186,10 +182,6 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 8
 
 %if 0%{!?nopatches:1}
 %define nopatches 0
-%endif
-
-%if %{with_vanilla}
-%define nopatches 1
 %endif
 
 %define pkg_release 1%{?dist}uek%{?buildid}
@@ -882,121 +874,12 @@ exit 1
 %endif
 %endif
 
-patch_command='patch -p1 -F1 -s'
-ApplyPatch()
-{
-  local patch=$1
-  shift
-  if [ ! -f $RPM_SOURCE_DIR/$patch ]; then
-    exit 1;
-  fi
-  if ! egrep "^Patch[0-9]+: $patch\$" %{_specdir}/%{name}*.spec ; then
-    [ "${patch:0:10}" != "patch-2.6." ] && echo "Patch $patch not listed in specfile" && exit 1;
-  fi
-  case "$patch" in
-  *.bz2) bunzip2 < "$RPM_SOURCE_DIR/$patch" | $patch_command ${1+"$@"} ;;
-  *.gz) gunzip < "$RPM_SOURCE_DIR/$patch" | $patch_command ${1+"$@"} ;;
-  *) $patch_command ${1+"$@"} < "$RPM_SOURCE_DIR/$patch" ;;
-  esac
-}
 
 # First we unpack the kernel tarball.
 # If this isn't the first make prep, we use links to the existing clean tarball
 # which speeds things up quite a bit.
 
-# Update to latest upstream.
-%if 0%{?released_kernel}
-%define vanillaversion 6.6.%{base_sublevel}
-# non-released_kernel case
-%else
-%if 0%{?rcrev}
-%define vanillaversion 6.6.%{upstream_sublevel}-rc%{rcrev}
-%if 0%{?gitrev}
-%define vanillaversion 6.6.%{upstream_sublevel}-rc%{rcrev}-git%{gitrev}
-%endif
-%else
-# pre-{base_sublevel+1}-rc1 case
-%if 0%{?gitrev}
-%define vanillaversion 6.6.%{base_sublevel}-git%{gitrev}
-%endif
-%endif
-%endif
-
-# We can share hardlinked source trees by putting a list of
-# directory names of the CVS checkouts that we want to share
-# with in .shared-srctree. (Full pathnames are required.)
-[ -f .shared-srctree ] && sharedirs=$(cat .shared-srctree)
-
-if [ ! -d kernel-%{kversion}/vanilla-%{vanillaversion} ]; then
-
-  if [ -d kernel-%{kversion}/vanilla-%{kversion} ]; then
-
-    cd kernel-%{kversion}
-
-    # Any vanilla-* directories other than the base one are stale.
-    for dir in vanilla-*; do
-      [ "$dir" = vanilla-%{kversion} ] || rm -rf $dir &
-    done
-
-  else
-
-    # Ok, first time we do a make prep.
-    rm -f pax_global_header
-    for sharedir in $sharedirs ; do
-      if [[ ! -z $sharedir  &&  -d $sharedir/kernel-%{kversion}/vanilla-%{kversion} ]] ; then
-        break
-      fi
-    done
-    if [[ ! -z $sharedir  &&  -d $sharedir/kernel-%{kversion}/vanilla-%{kversion} ]] ; then
-%setup -q -n kernel-%{kversion} -c -T
-      cp -rl $sharedir/kernel-%{kversion}/vanilla-%{kversion} .
-    else
 %setup -q -n kernel-%{kversion} -c
-      mv linux-%{kversion} vanilla-%{kversion}
-    fi
-
-  fi
-
-%if "%{kversion}" != "%{vanillaversion}"
-
-  for sharedir in $sharedirs ; do
-    if [[ ! -z $sharedir  &&  -d $sharedir/kernel-%{kversion}/vanilla-%{vanillaversion} ]] ; then
-      break
-    fi
-  done
-  if [[ ! -z $sharedir  &&  -d $sharedir/kernel-%{kversion}/vanilla-%{vanillaversion} ]] ; then
-
-    cp -rl $sharedir/kernel-%{kversion}/vanilla-%{vanillaversion} .
-
-  else
-
-    cp -rl vanilla-%{kversion} vanilla-%{vanillaversion}
-    cd vanilla-%{vanillaversion}
-
-# Update vanilla to the latest upstream.
-# (non-released_kernel case only)
-%if 0%{?rcrev}
-    ApplyPatch patch-2.6.%{upstream_sublevel}-rc%{rcrev}.bz2
-%if 0%{?gitrev}
-    ApplyPatch patch-2.6.%{upstream_sublevel}-rc%{rcrev}-git%{gitrev}.bz2
-%endif
-%else
-# pre-{base_sublevel+1}-rc1 case
-%if 0%{?gitrev}
-    ApplyPatch patch-2.6.%{base_sublevel}-git%{gitrev}.bz2
-%endif
-%endif
-
-    cd ..
-
-  fi
-
-%endif
-
-else
-  # We already have a vanilla dir.
-  cd kernel-%{kversion}
-fi
 
 if [ -d linux-%{kversion}.%{_target_cpu} ]; then
   # Just in case we ctrl-c'd a prep already
@@ -1006,16 +889,8 @@ if [ -d linux-%{kversion}.%{_target_cpu} ]; then
   rm -rf deleteme.%{_target_cpu} &
 fi
 
-cp -rl vanilla-%{vanillaversion} linux-%{kversion}-%{release}
+cp -rl linux-%{kversion} linux-%{kversion}-%{release}
 cd linux-%{kversion}-%{release}
-
-# released_kernel with possible stable updates
-%if 0%{?stable_base}
-ApplyPatch %{stable_patch_00}
-%endif
-%if 0%{?stable_rc}
-ApplyPatch %{stable_patch_01}
-%endif
 
 # only deal with configs if we are going to build for the arch
 # %ifnarch %nobuildarches
