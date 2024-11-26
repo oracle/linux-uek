@@ -66,6 +66,12 @@ static const struct otx2_stat otx2_queue_stats[] = {
 	{ "frames", 1 },
 };
 
+static const char otx2_test_list[][ETH_GSTRING_LEN] = {
+	"Mbox test (on/offline)",
+};
+
+#define OTX2_TEST_LEN	ARRAY_SIZE(otx2_test_list)
+
 static const unsigned int otx2_n_dev_stats = ARRAY_SIZE(otx2_dev_stats);
 static const unsigned int otx2_n_drv_stats = ARRAY_SIZE(otx2_drv_stats);
 static const unsigned int otx2_n_queue_stats = ARRAY_SIZE(otx2_queue_stats);
@@ -108,6 +114,11 @@ static void otx2_get_strings(struct net_device *netdev, u32 sset, u8 *data)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
 	int stats;
+
+	if (sset == ETH_SS_TEST) {
+		memcpy(data, otx2_test_list, sizeof(otx2_test_list));
+		return;
+	}
 
 	if (sset != ETH_SS_STATS)
 		return;
@@ -241,6 +252,9 @@ static int otx2_get_sset_count(struct net_device *netdev, int sset)
 {
 	struct otx2_nic *pfvf = netdev_priv(netdev);
 	int qstats_count, mac_stats = 0;
+
+	if (sset == ETH_SS_TEST)
+		return OTX2_TEST_LEN;
 
 	if (sset != ETH_SS_STATS)
 		return -EINVAL;
@@ -1342,6 +1356,17 @@ static void otx2_get_fec_stats(struct net_device *netdev,
 	}
 }
 
+static void otx2_self_test(struct net_device *netdev,
+		    struct ethtool_test *test, u64 *data)
+{
+	struct otx2_nic *pfvf = netdev_priv(netdev);
+	int rc;
+
+	rc = otx2_selftest_mbox(pfvf);
+	if (rc)
+		test->flags |= ETH_TEST_FL_FAILED;
+}
+
 static const struct ethtool_ops otx2_ethtool_ops = {
 	.cap_rss_ctx_supported	= true,
 	.supported_coalesce_params = ETHTOOL_COALESCE_USECS |
@@ -1378,6 +1403,7 @@ static const struct ethtool_ops otx2_ethtool_ops = {
 	.set_link_ksettings     = otx2_set_link_ksettings,
 	.get_module_info	= otx2_get_module_info,
 	.get_module_eeprom	= otx2_get_module_eeprom,
+	.self_test		= otx2_self_test,
 };
 
 void otx2_set_ethtool_ops(struct net_device *netdev)

@@ -1283,6 +1283,7 @@ void otx2_dma_unmap_skb_frags(struct otx2_nic *pfvf, struct sg_list *sg);
 int otx2_read_free_sqe(struct otx2_nic *pfvf, u16 qidx);
 void otx2_queue_vf_work(struct mbox *mw, struct workqueue_struct *mbox_wq,
 			int first, int mdevs, u64 intr);
+int otx2_selftest_mbox(struct otx2_nic *pf);
 
 int otx2_del_mcam_flow_entry(struct otx2_nic *nic, u16 entry,
 			     u16 *cntr_val);
