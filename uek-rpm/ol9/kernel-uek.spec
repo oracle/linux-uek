@@ -134,13 +134,13 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 8
 # Additional options for user-friendly one-off kernel building:
 #
 # Only build the base kernel (--with baseonly):
-%define with_baseonly  %{?_with_baseonly:     1} %{?!_with_baseonly:     0}
+%define with_baseonly   %{?_with_baseonly:     1} %{?!_with_baseonly:     0}
 
 # Only build the 64k page size kernel (--with 64konly):
-%define with_64konly    %{?_with_64konly:       1} %{?!_with_64konly:       0}
+%define with_64konly    %{?_with_64konly:      1} %{?!_with_64konly:      0}
 
 # should we do C=1 builds with sparse
-%define with_sparse	%{?_with_sparse:      1} %{?!_with_sparse:      0}
+%define with_sparse     %{?_with_sparse:       1} %{?!_with_sparse:       0}
 
 # Set debugbuildsenabled to 1 for production (build separate debug kernels)
 #  and 0 for rawhide (all kernels are debug kernels).
@@ -278,7 +278,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release 8
 # so that the PVH .note section is created in the location expected
 # by the bootloader.
 #
-%define container_cflags	EXTRA_CFLAGS="-Wa,-mx86-used-note=no"
+%define container_cflags       EXTRA_CFLAGS="-Wa,-mx86-used-note=no"
 %endif
 %endif
 
@@ -621,7 +621,7 @@ This package contains some of tools/ directory binaries from the kernel source.
 
 #
 # This macro does requires, provides, conflicts, obsoletes for a kernel package.
-#	%%kernel_reqprovconf <subpackage>
+#       %%kernel_reqprovconf <subpackage>
 # It uses any kernel_<subpackage>_conflicts and kernel_<subpackage>_obsoletes
 # macros defined above.
 #
@@ -662,7 +662,7 @@ AutoProv: yes\
 
 #
 # This macro creates a kernel%%{?variant}-<subpackage>-debuginfo package.
-#	%%kernel_debuginfo_package [-o] <subpackage>
+#       %%kernel_debuginfo_package [-o] <subpackage>
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
 %define kernel_debuginfo_package(o) \
@@ -682,7 +682,7 @@ This is required to use SystemTap with %{variant_name}-%{KVERREL}.\
 
 #
 # This macro creates a kernel%%{?variant}-<subpackage>-devel package.
-#	%%kernel_devel_package [-o] <subpackage> <pretty-name>
+#       %%kernel_devel_package [-o] <subpackage> <pretty-name>
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
 %define kernel_devel_package(o) \
@@ -801,8 +801,8 @@ The meta-package for the %{1} kernel\
 
 #
 # This macro creates a kernel%%{?variant}-<subpackage> and its -devel and -debuginfo too.
-#	%%define variant_summary The Linux kernel compiled for <configuration>
-#	%%kernel_variant_package [-n <pretty-name>] [-o] <subpackage>
+#       %%define variant_summary The Linux kernel compiled for <configuration>
+#       %%kernel_variant_package [-n <pretty-name>] [-o] <subpackage>
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
 %define kernel_variant_package(n:o) \
@@ -897,19 +897,19 @@ cd linux-%{kversion}-%{release}
 
 mkdir -p configs
 %ifarch x86_64
-	cp %{SOURCE1002} configs/config-container
-	cp %{SOURCE1001} configs/config-debug
-	cp %{SOURCE1000} configs/config
+    cp %{SOURCE1002} configs/config-container
+    cp %{SOURCE1001} configs/config-debug
+    cp %{SOURCE1000} configs/config
 %endif
 
 %ifarch aarch64
-	cp %{SOURCE1009} configs/config-container
-	cp %{SOURCE1008} configs/config-debug
-	cp %{SOURCE1007} configs/config
+    cp %{SOURCE1009} configs/config-container
+    cp %{SOURCE1008} configs/config-debug
+    cp %{SOURCE1007} configs/config
 %endif
 
-	echo 'CONFIG_DTRACE=y' >> configs/config
-	echo 'CONFIG_DTRACE=y' >> configs/config-debug
+echo 'CONFIG_DTRACE=y' >> configs/config
+echo 'CONFIG_DTRACE=y' >> configs/config-debug
 
 # get rid of unwanted files resulting from patch fuzz
 find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
@@ -923,7 +923,7 @@ source /opt/rh/gcc-toolset-13/enable
 gcc --version
 
 %if %{with_sparse}
-%define sparse_mflags	C=1
+%define sparse_mflags    C=1
 %endif
 
 %if %{with_compression}
@@ -936,13 +936,14 @@ cp_vmlinux()
 }
 
 # adapted from scripts/subarch.incl
-Arch=$(echo %{_target_cpu} | sed -e s/i.86/x86/ -e s/x86_64/x86/ \
-				 -e s/sun4u/sparc64/ \
-				 -e s/arm.*/arm/ -e s/sa110/arm/ \
-				 -e s/s390x/s390/ \
-				 -e s/ppc.*/powerpc/ -e s/mips.*/mips/ \
-				 -e s/sh[234].*/sh/ -e s/aarch64.*/arm64/ \
-				 -e s/riscv.*/riscv/ -e s/loongarch.*/loongarch/)
+Arch=$(echo %{_target_cpu} \
+           | sed -e s/i.86/x86/ -e s/x86_64/x86/ \
+                 -e s/sun4u/sparc64/ \
+                 -e s/arm.*/arm/ -e s/sa110/arm/ \
+                 -e s/s390x/s390/ \
+                 -e s/ppc.*/powerpc/ -e s/mips.*/mips/ \
+                 -e s/sh[234].*/sh/ -e s/aarch64.*/arm64/ \
+                 -e s/riscv.*/riscv/ -e s/loongarch.*/loongarch/)
 
 BuildContainerKernel() {
     MakeTarget=$1
@@ -1013,21 +1014,21 @@ BuildKernel() {
 %endif
 
     if [ "$Flavour" == "debug" ]; then
-	cp configs/config-debug .config
-	modlistVariant=../kernel%{?variant}-debug
+        cp configs/config-debug .config
+        modlistVariant=../kernel%{?variant}-debug
     elif [ "$Flavour" == "64k" ]; then
-	sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config
-	echo 'CONFIG_ARM64_64K_PAGES=y' >> configs/config
-	cp configs/config .config
-	modlistVariant=../kernel%{?variant}64k
+        sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config
+        echo 'CONFIG_ARM64_64K_PAGES=y' >> configs/config
+        cp configs/config .config
+        modlistVariant=../kernel%{?variant}64k
     elif [ "$Flavour" == "64kdebug" ]; then
-	sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config-debug
-	echo 'CONFIG_ARM64_64K_PAGES=y' >> configs/config-debug
-	cp configs/config-debug .config
-	modlistVariant=../kernel%{?variant}64kdebug
+        sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config-debug
+        echo 'CONFIG_ARM64_64K_PAGES=y' >> configs/config-debug
+        cp configs/config-debug .config
+        modlistVariant=../kernel%{?variant}64kdebug
     else
-	cp configs/config .config
-	modlistVariant=../kernel%{?variant}${Flavour:+-${Flavour}}
+        cp configs/config .config
+        modlistVariant=../kernel%{?variant}${Flavour:+-${Flavour}}
     fi
 
     echo USING ARCH=$Arch
@@ -1070,7 +1071,7 @@ BuildKernel() {
     mv $KernelImage.signed $KernelImage
 %endif
     $CopyKernel $KernelImage \
-		$RPM_BUILD_ROOT/%{image_install_path}/$InstallName-$KernelVer
+                $RPM_BUILD_ROOT/%{image_install_path}/$InstallName-$KernelVer
     chmod 755 $RPM_BUILD_ROOT/%{image_install_path}/$InstallName-$KernelVer
     cp $RPM_BUILD_ROOT/%{image_install_path}/$InstallName-$KernelVer $RPM_BUILD_ROOT/lib/modules/$KernelVer/$InstallName
 
@@ -1232,7 +1233,7 @@ BuildKernel() {
     xargs --no-run-if-empty chmod u+x < modnames
 
     # Generate a list of modules for block and networking.
-    fgrep /drivers/ modnames | xargs --no-run-if-empty nm -upA |
+    grep -F /drivers/ modnames | xargs --no-run-if-empty nm -upA |
     sed -n 's,^.*/\([^/]*\.ko\):  *U \(.*\)$,\1 \2,p' > drivers.undef
 
     collect_modules_list()
@@ -1242,13 +1243,13 @@ BuildKernel() {
     }
 
     collect_modules_list networking \
-			 'register_netdev|ieee80211_register_hw|usbnet_probe|phy_driver_register|register_netdevice'
+                         'register_netdev|ieee80211_register_hw|usbnet_probe|phy_driver_register|register_netdevice'
     collect_modules_list block \
-			 'ata_scsi_ioctl|scsi_add_host|scsi_add_host_with_dma|blk_init_queue|register_mtd_blktrans|scsi_esp_register|scsi_register_device_handler|blk_queue_physical_block_size'
+                         'ata_scsi_ioctl|scsi_add_host|scsi_add_host_with_dma|blk_init_queue|register_mtd_blktrans|scsi_esp_register|scsi_register_device_handler|blk_queue_physical_block_size'
     collect_modules_list drm \
-			 'drm_open|drm_init'
+                         'drm_open|drm_init'
     collect_modules_list modesetting \
-			 'drm_crtc_init'
+                         'drm_crtc_init'
 
     # detect missing or incorrect license tags
     rm -f modinfo
@@ -1258,7 +1259,7 @@ BuildKernel() {
       /sbin/modinfo -l $i >> modinfo
     done < modnames
 
-    egrep -v \
+    grep -Ev \
 	  'GPL( v2)?$|Dual BSD/GPL$|Dual MPL/GPL$|GPL and additional rights$' \
 	  modinfo && exit 1
 
@@ -1484,7 +1485,7 @@ make %{?make_opts} %{?_smp_mflags} htmldocs || %{doc_build_fail}
 %define __modcompress_install_post \
   if [ "%{with_compression}" == "1" ]; then \
      find $RPM_BUILD_ROOT/lib/modules/ -type f -name '*.ko' -print0 | \
-	xargs -0r -P$( nproc ) -n 1 /usr/bin/xz -T1 -f \
+        xargs -0r -P$( nproc ) -n 1 /usr/bin/xz -T1 -f \
   fi \
 %{nil}
 
@@ -1588,7 +1589,7 @@ make %{?make_opts} ARCH=%{hdrarch} INSTALL_HDR_PATH=$RPM_BUILD_ROOT/usr headers_
 
 find $RPM_BUILD_ROOT/usr/include \
      \( -name .install -o -name .check -o \
-	-name ..install.cmd -o -name ..check.cmd \) | xargs rm -f
+        -name ..install.cmd -o -name ..check.cmd \) | xargs rm -f
 
 # glibc provides scsi headers for itself, for now
 rm -rf $RPM_BUILD_ROOT/usr/include/scsi
@@ -1619,7 +1620,7 @@ rm -rf $RPM_BUILD_ROOT
 
 #
 # This macro defines a %%post script for a kernel*-devel package.
-#	%%kernel_devel_post [-o] [<subpackage>]
+#        %%kernel_devel_post [-o] [<subpackage>]
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
 %define kernel_devel_post(o) \
@@ -1691,7 +1692,7 @@ ls /lib/modules/%{KVERREL}%{?1:.%{1}}/modules.* | grep -v builtin | xargs rm -f\
 %{nil}
 
 # This macro defines a %%posttrans script for a kernel package.
-#	%%kernel_variant_posttrans [-o] [<subpackage>]
+#        %%kernel_variant_posttrans [-o] [<subpackage>]
 # -o flag omits the hyphen preceding <subpackage> in the package name
 # More text can follow to go at the end of this variant's %%post.
 #
@@ -1711,7 +1712,7 @@ fi\
 
 #
 # This macro defines a %%post script for a kernel package and its devel package.
-#	%%kernel_variant_post [-o][-v <subpackage>] [-r <replace>]
+#        %%kernel_variant_post [-o][-v <subpackage>] [-r <replace>]
 # -o flag omits the hyphen preceding <subpackage> in the package name
 # More text can follow to go at the end of this variant's %%post.
 #
@@ -1769,7 +1770,7 @@ fi\
 
 #
 # This macro defines a %%preun script for a kernel package.
-#	%%kernel_variant_preun [-o] <subpackage>
+#        %%kernel_variant_preun [-o] <subpackage>
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
 %define kernel_variant_preun(o) \
@@ -1779,7 +1780,7 @@ fi\
 
 #
 # This macro defines a %%pre script for a kernel package.
-#	%%kernel_variant_pre [-o] <subpackage>
+#        %%kernel_variant_pre [-o] <subpackage>
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
 %define kernel_variant_pre(o) \
@@ -1787,13 +1788,13 @@ fi\
 message="Change references of /dev/hd in /etc/fstab to disk label"\
 if [ -f /etc/fstab ]\
 then\
-awk '($2=="/boot")&&/^\\/dev\\/hd/{print $1}' /etc/fstab | egrep -q "^/dev/hd"\
+awk '($2=="/boot")&&/^\\/dev\\/hd/{print $1}' /etc/fstab | grep -Eq "^/dev/hd"\
 bdretval=$?\
-awk '($2=="/")&&/^\\/dev\\/hd/{print $1}' /etc/fstab | egrep -q "^/dev/hd"\
+awk '($2=="/")&&/^\\/dev\\/hd/{print $1}' /etc/fstab | grep -Eq "^/dev/hd"\
 rdretval=$?\
-awk '($2=="/boot")&&/^LABEL=/{print $1}' /etc/fstab | egrep -q "^LABEL="\
+awk '($2=="/boot")&&/^LABEL=/{print $1}' /etc/fstab | grep -Eq "^LABEL="\
 blretval=$?\
-awk '($2=="/")&&/^LABEL=/{print $1}' /etc/fstab | egrep -q "^LABEL="\
+awk '($2=="/")&&/^LABEL=/{print $1}' /etc/fstab | grep -Eq "^LABEL="\
 rlretval=$?\
 if [ $bdretval == 0 ] || [ $rdretval == 0 ]\
 then\
@@ -1801,28 +1802,28 @@ echo -e $message\
 exit 1\
 elif [ $blretval == 0 ] && [ $rlretval == 0 ]\
 then\
-grep -v "^#" /etc/fstab | egrep -q "/dev/hd"\
+grep -v "^#" /etc/fstab | grep -Eq "/dev/hd"\
 if [ $? == 0 ]\
 then\
 echo -e $message\
 fi\
 elif [ $blretval == 0 ] && [ $rdretval != 0 ]\
 then\
-grep -v "^#" /etc/fstab | egrep -q "/dev/hd"\
+grep -v "^#" /etc/fstab | grep -Eq "/dev/hd"\
 if [ $? == 0 ]\
 then\
 echo -e $message\
 fi\
 elif [ $bdretval != 0 ] && [ $rlretval == 0 ]\
 then\
-grep -v "^#" /etc/fstab | egrep -q "/dev/hd"\
+grep -v "^#" /etc/fstab | grep -Eq "/dev/hd"\
 if [ $? == 0 ]\
 then\
 echo -e $message\
 fi\
 elif [ $bdretval != 0 ] && [ $rdretval != 0 ]\
 then\
-grep -v "^#" /etc/fstab | egrep -q "/dev/hd"\
+grep -v "^#" /etc/fstab | grep -Eq "/dev/hd"\
 if [ $? == 0 ]\
 then\
 echo -e $message\
@@ -1928,7 +1929,7 @@ fi
 #
 # This macro defines the %%files sections for a kernel package
 # and its devel and debuginfo packages.
-#	%%kernel_variant_files [-k vmlinux] [-o] <condition> <subpackage>
+#        %%kernel_variant_files [-k vmlinux] [-o] <condition> <subpackage>
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
 %define kernel_variant_files(k:o) \
