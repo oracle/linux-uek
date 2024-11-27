@@ -1407,6 +1407,18 @@ BuildKernel() {
     fi
     ln -sf $DevelDir $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
 
+    # bpftool bootstrap to generate the baseline header
+    export BPFBOOTSTRAP_CFLAGS=$(echo "%{__global_compiler_flags}" | sed -r "s/\-specs=[^\ ]+\/redhat-annobin-cc1//")
+    export BPFBOOTSTRAP_LDFLAGS=$(echo "%{__global_ldflags}" | sed -r "s/\-specs=[^\ ]+\/redhat-annobin-cc1//")
+
+    CFLAGS="" LDFLAGS="" make \
+	  EXTRA_CFLAGS="${BPFBOOTSTRAP_CFLAGS}" \
+	  EXTRA_CXXFLAGS="${BPFBOOTSTRAP_CFLAGS}" \
+	  EXTRA_LDFLAGS="${BPFBOOTSTRAP_LDFLAGS}" \
+	  %{?make_opts} %{?clang_make_opts} V=1 -C tools/bpf/bpftool bootstrap
+
+    tools/bpf/bpftool/bootstrap/bpftool btf dump file vmlinux format c > $RPM_BUILD_ROOT/$DevelDir/vmlinux.h
+
     # prune junk from kernel-devel
     find $RPM_BUILD_ROOT/usr/src/kernels -name ".*.cmd" -exec rm -f {} \;
 
@@ -1438,8 +1450,9 @@ BuildKernel %make_target %kernel_image debug
 %endif
 %endif
 
-%if %{with_up}
+%if %{with_up} || %{with_bpftool}
 BuildKernel %make_target %kernel_image
+BpfDevelDir=/usr/src/kernels/%{KVERREL}
 %endif
 
 %if %{with_64k_ps}
@@ -1451,7 +1464,7 @@ BuildKernel %make_target %kernel_image 64kdebug
 %endif
 
 %global bpftool_make \
-  %{make} EXTRA_CFLAGS="${RPM_OPT_FLAGS}" EXTRA_LDFLAGS="%{__global_ldflags}" DESTDIR=$RPM_BUILD_ROOT
+  %{make} EXTRA_CFLAGS="${RPM_OPT_FLAGS}" EXTRA_LDFLAGS="%{__global_ldflags}" DESTDIR=$RPM_BUILD_ROOT VMLINUX_H=$RPM_BUILD_ROOT/$BpfDevelDir/vmlinux.h
 %if %{with_bpftool}
 pushd tools/bpf/bpftool
 %{bpftool_make}
