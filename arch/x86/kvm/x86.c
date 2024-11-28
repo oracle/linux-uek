@@ -1534,10 +1534,10 @@ static u64 kvm_dr6_fixed(struct kvm_vcpu *vcpu)
 {
 	u64 fixed = DR6_FIXED_1;
 
-	if (!guest_cpuid_has(vcpu, X86_FEATURE_RTM))
+	if (!guest_cpu_cap_has(vcpu, X86_FEATURE_RTM))
 		fixed |= DR6_RTM;
 
-	if (!guest_cpuid_has(vcpu, X86_FEATURE_BUS_LOCK_DETECT))
+	if (!guest_cpu_cap_has(vcpu, X86_FEATURE_BUS_LOCK_DETECT))
 		fixed |= DR6_BUS_LOCK;
 	return fixed;
 }
@@ -1715,20 +1715,20 @@ static int do_get_feature_msr(struct kvm_vcpu *vcpu, unsigned index, u64 *data)
 
 static bool __kvm_valid_efer(struct kvm_vcpu *vcpu, u64 efer)
 {
-	if (efer & EFER_AUTOIBRS && !guest_cpuid_has(vcpu, X86_FEATURE_AUTOIBRS))
+	if (efer & EFER_AUTOIBRS && !guest_cpu_cap_has(vcpu, X86_FEATURE_AUTOIBRS))
 		return false;
 
-	if (efer & EFER_FFXSR && !guest_cpuid_has(vcpu, X86_FEATURE_FXSR_OPT))
+	if (efer & EFER_FFXSR && !guest_cpu_cap_has(vcpu, X86_FEATURE_FXSR_OPT))
 		return false;
 
-	if (efer & EFER_SVME && !guest_cpuid_has(vcpu, X86_FEATURE_SVM))
+	if (efer & EFER_SVME && !guest_cpu_cap_has(vcpu, X86_FEATURE_SVM))
 		return false;
 
 	if (efer & (EFER_LME | EFER_LMA) &&
-	    !guest_cpuid_has(vcpu, X86_FEATURE_LM))
+	    !guest_cpu_cap_has(vcpu, X86_FEATURE_LM))
 		return false;
 
-	if (efer & EFER_NX && !guest_cpuid_has(vcpu, X86_FEATURE_NX))
+	if (efer & EFER_NX && !guest_cpu_cap_has(vcpu, X86_FEATURE_NX))
 		return false;
 
 	return true;
@@ -1870,8 +1870,8 @@ static int __kvm_set_msr(struct kvm_vcpu *vcpu, u32 index, u64 data,
 			return 1;
 
 		if (!host_initiated &&
-		    !guest_cpuid_has(vcpu, X86_FEATURE_RDTSCP) &&
-		    !guest_cpuid_has(vcpu, X86_FEATURE_RDPID))
+		    !guest_cpu_cap_has(vcpu, X86_FEATURE_RDTSCP) &&
+		    !guest_cpu_cap_has(vcpu, X86_FEATURE_RDPID))
 			return 1;
 
 		/*
@@ -1928,8 +1928,8 @@ int __kvm_get_msr(struct kvm_vcpu *vcpu, u32 index, u64 *data,
 			return 1;
 
 		if (!host_initiated &&
-		    !guest_cpuid_has(vcpu, X86_FEATURE_RDTSCP) &&
-		    !guest_cpuid_has(vcpu, X86_FEATURE_RDPID))
+		    !guest_cpu_cap_has(vcpu, X86_FEATURE_RDTSCP) &&
+		    !guest_cpu_cap_has(vcpu, X86_FEATURE_RDPID))
 			return 1;
 		break;
 	}
@@ -2115,7 +2115,7 @@ EXPORT_SYMBOL_GPL(kvm_handle_invalid_op);
 static int kvm_emulate_monitor_mwait(struct kvm_vcpu *vcpu, const char *insn)
 {
 	if (!kvm_check_has_quirk(vcpu->kvm, KVM_X86_QUIRK_MWAIT_NEVER_UD_FAULTS) &&
-	    !guest_cpuid_has(vcpu, X86_FEATURE_MWAIT))
+	    !guest_cpu_cap_has(vcpu, X86_FEATURE_MWAIT))
 		return kvm_handle_invalid_op(vcpu);
 
 	pr_warn_once("%s instruction emulated as NOP!\n", insn);
@@ -3786,13 +3786,13 @@ int kvm_set_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		break;
 	case MSR_IA32_ARCH_CAPABILITIES:
 		if (!msr_info->host_initiated ||
-		    !guest_cpuid_has(vcpu, X86_FEATURE_ARCH_CAPABILITIES))
+		    !guest_cpu_cap_has(vcpu, X86_FEATURE_ARCH_CAPABILITIES))
 			return KVM_MSR_RET_UNSUPPORTED;
 		vcpu->arch.arch_capabilities = data;
 		break;
 	case MSR_IA32_PERF_CAPABILITIES:
 		if (!msr_info->host_initiated ||
-		    !guest_cpuid_has(vcpu, X86_FEATURE_PDCM))
+		    !guest_cpu_cap_has(vcpu, X86_FEATURE_PDCM))
 			return KVM_MSR_RET_UNSUPPORTED;
 
 		if (data & ~kvm_caps.supported_perf_cap)
@@ -3816,11 +3816,11 @@ int kvm_set_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 			if ((!guest_has_pred_cmd_msr(vcpu)))
 				return 1;
 
-			if (!guest_cpuid_has(vcpu, X86_FEATURE_SPEC_CTRL) &&
-			    !guest_cpuid_has(vcpu, X86_FEATURE_AMD_IBPB))
+			if (!guest_cpu_cap_has(vcpu, X86_FEATURE_SPEC_CTRL) &&
+			    !guest_cpu_cap_has(vcpu, X86_FEATURE_AMD_IBPB))
 				reserved_bits |= PRED_CMD_IBPB;
 
-			if (!guest_cpuid_has(vcpu, X86_FEATURE_SBPB))
+			if (!guest_cpu_cap_has(vcpu, X86_FEATURE_SBPB))
 				reserved_bits |= PRED_CMD_SBPB;
 		}
 
@@ -3841,7 +3841,7 @@ int kvm_set_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 	}
 	case MSR_IA32_FLUSH_CMD:
 		if (!msr_info->host_initiated &&
-		    !guest_cpuid_has(vcpu, X86_FEATURE_FLUSH_L1D))
+		    !guest_cpu_cap_has(vcpu, X86_FEATURE_FLUSH_L1D))
 			return 1;
 
 		if (!boot_cpu_has(X86_FEATURE_FLUSH_L1D) || (data & ~L1D_FLUSH))
@@ -3892,7 +3892,7 @@ int kvm_set_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		kvm_set_lapic_tscdeadline_msr(vcpu, data);
 		break;
 	case MSR_IA32_TSC_ADJUST:
-		if (guest_cpuid_has(vcpu, X86_FEATURE_TSC_ADJUST)) {
+		if (guest_cpu_cap_has(vcpu, X86_FEATURE_TSC_ADJUST)) {
 			if (!msr_info->host_initiated) {
 				s64 adj = data - vcpu->arch.ia32_tsc_adjust_msr;
 				adjust_tsc_offset_guest(vcpu, adj);
@@ -3919,7 +3919,7 @@ int kvm_set_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 
 		if (!kvm_check_has_quirk(vcpu->kvm, KVM_X86_QUIRK_MISC_ENABLE_NO_MWAIT) &&
 		    ((old_val ^ data)  & MSR_IA32_MISC_ENABLE_MWAIT)) {
-			if (!guest_cpuid_has(vcpu, X86_FEATURE_XMM3))
+			if (!guest_cpu_cap_has(vcpu, X86_FEATURE_XMM3))
 				return 1;
 			vcpu->arch.ia32_misc_enable_msr = data;
 			kvm_update_cpuid_runtime(vcpu);
@@ -4096,12 +4096,12 @@ int kvm_set_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		kvm_pr_unimpl_wrmsr(vcpu, msr, data);
 		break;
 	case MSR_AMD64_OSVW_ID_LENGTH:
-		if (!guest_cpuid_has(vcpu, X86_FEATURE_OSVW))
+		if (!guest_cpu_cap_has(vcpu, X86_FEATURE_OSVW))
 			return 1;
 		vcpu->arch.osvw.length = data;
 		break;
 	case MSR_AMD64_OSVW_STATUS:
-		if (!guest_cpuid_has(vcpu, X86_FEATURE_OSVW))
+		if (!guest_cpu_cap_has(vcpu, X86_FEATURE_OSVW))
 			return 1;
 		vcpu->arch.osvw.status = data;
 		break;
@@ -4122,7 +4122,7 @@ int kvm_set_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 #ifdef CONFIG_X86_64
 	case MSR_IA32_XFD:
 		if (!msr_info->host_initiated &&
-		    !guest_cpuid_has(vcpu, X86_FEATURE_XFD))
+		    !guest_cpu_cap_has(vcpu, X86_FEATURE_XFD))
 			return 1;
 
 		if (data & ~kvm_guest_supported_xfd(vcpu))
@@ -4132,7 +4132,7 @@ int kvm_set_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		break;
 	case MSR_IA32_XFD_ERR:
 		if (!msr_info->host_initiated &&
-		    !guest_cpuid_has(vcpu, X86_FEATURE_XFD))
+		    !guest_cpu_cap_has(vcpu, X86_FEATURE_XFD))
 			return 1;
 
 		if (data & ~kvm_guest_supported_xfd(vcpu))
@@ -4247,12 +4247,12 @@ int kvm_get_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		msr_info->data = vcpu->arch.microcode_version;
 		break;
 	case MSR_IA32_ARCH_CAPABILITIES:
-		if (!guest_cpuid_has(vcpu, X86_FEATURE_ARCH_CAPABILITIES))
+		if (!guest_cpu_cap_has(vcpu, X86_FEATURE_ARCH_CAPABILITIES))
 			return KVM_MSR_RET_UNSUPPORTED;
 		msr_info->data = vcpu->arch.arch_capabilities;
 		break;
 	case MSR_IA32_PERF_CAPABILITIES:
-		if (!guest_cpuid_has(vcpu, X86_FEATURE_PDCM))
+		if (!guest_cpu_cap_has(vcpu, X86_FEATURE_PDCM))
 			return KVM_MSR_RET_UNSUPPORTED;
 		msr_info->data = vcpu->arch.perf_capabilities;
 		break;
@@ -4453,12 +4453,12 @@ int kvm_get_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		msr_info->data = 0xbe702111;
 		break;
 	case MSR_AMD64_OSVW_ID_LENGTH:
-		if (!guest_cpuid_has(vcpu, X86_FEATURE_OSVW))
+		if (!guest_cpu_cap_has(vcpu, X86_FEATURE_OSVW))
 			return 1;
 		msr_info->data = vcpu->arch.osvw.length;
 		break;
 	case MSR_AMD64_OSVW_STATUS:
-		if (!guest_cpuid_has(vcpu, X86_FEATURE_OSVW))
+		if (!guest_cpu_cap_has(vcpu, X86_FEATURE_OSVW))
 			return 1;
 		msr_info->data = vcpu->arch.osvw.status;
 		break;
@@ -4477,14 +4477,14 @@ int kvm_get_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 #ifdef CONFIG_X86_64
 	case MSR_IA32_XFD:
 		if (!msr_info->host_initiated &&
-		    !guest_cpuid_has(vcpu, X86_FEATURE_XFD))
+		    !guest_cpu_cap_has(vcpu, X86_FEATURE_XFD))
 			return 1;
 
 		msr_info->data = vcpu->arch.guest_fpu.fpstate->xfd;
 		break;
 	case MSR_IA32_XFD_ERR:
 		if (!msr_info->host_initiated &&
-		    !guest_cpuid_has(vcpu, X86_FEATURE_XFD))
+		    !guest_cpu_cap_has(vcpu, X86_FEATURE_XFD))
 			return 1;
 
 		msr_info->data = vcpu->arch.guest_fpu.xfd_err;
@@ -8528,17 +8528,17 @@ static bool emulator_get_cpuid(struct x86_emulate_ctxt *ctxt,
 
 static bool emulator_guest_has_movbe(struct x86_emulate_ctxt *ctxt)
 {
-	return guest_cpuid_has(emul_to_vcpu(ctxt), X86_FEATURE_MOVBE);
+	return guest_cpu_cap_has(emul_to_vcpu(ctxt), X86_FEATURE_MOVBE);
 }
 
 static bool emulator_guest_has_fxsr(struct x86_emulate_ctxt *ctxt)
 {
-	return guest_cpuid_has(emul_to_vcpu(ctxt), X86_FEATURE_FXSR);
+	return guest_cpu_cap_has(emul_to_vcpu(ctxt), X86_FEATURE_FXSR);
 }
 
 static bool emulator_guest_has_rdpid(struct x86_emulate_ctxt *ctxt)
 {
-	return guest_cpuid_has(emul_to_vcpu(ctxt), X86_FEATURE_RDPID);
+	return guest_cpu_cap_has(emul_to_vcpu(ctxt), X86_FEATURE_RDPID);
 }
 
 static bool emulator_guest_cpuid_is_intel_compatible(struct x86_emulate_ctxt *ctxt)
