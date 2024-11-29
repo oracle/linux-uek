@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2017 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006 Oracle.  All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -33,103 +33,52 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/in.h>
-#include <linux/ipv6.h>
 
 #include "rds.h"
 #include "loop.h"
 
-static char * const rds_trans_modules[] = {
-	[RDS_TRANS_IB] = "rds_rdma",
-	[RDS_TRANS_GAP] = NULL,
-	[RDS_TRANS_TCP] = "rds_tcp",
-};
-
-static struct rds_transport *transports[RDS_TRANS_COUNT];
+static LIST_HEAD(rds_transports);
 static DECLARE_RWSEM(rds_trans_sem);
 
-void rds_trans_register(struct rds_transport *trans)
+int rds_trans_register(struct rds_transport *trans)
 {
 	BUG_ON(strlen(trans->t_name) + 1 > TRANSNAMSIZ);
 
 	down_write(&rds_trans_sem);
 
-	if (transports[trans->t_type])
-		printk(KERN_ERR "RDS Transport type %d already registered\n",
-			trans->t_type);
-	else {
-		transports[trans->t_type] = trans;
-		printk(KERN_INFO "Registered RDS/%s transport\n", trans->t_name);
-	}
+	list_add_tail(&trans->t_item, &rds_transports);
+	printk(KERN_INFO "Registered RDS/%s transport\n", trans->t_name);
 
 	up_write(&rds_trans_sem);
+
+	return 0;
 }
-EXPORT_SYMBOL_GPL(rds_trans_register);
 
 void rds_trans_unregister(struct rds_transport *trans)
 {
 	down_write(&rds_trans_sem);
 
-	transports[trans->t_type] = NULL;
+	list_del_init(&trans->t_item);
 	printk(KERN_INFO "Unregistered RDS/%s transport\n", trans->t_name);
 
 	up_write(&rds_trans_sem);
 }
-EXPORT_SYMBOL_GPL(rds_trans_unregister);
 
-void rds_trans_put(struct rds_transport *trans)
+struct rds_transport *rds_trans_get_preferred(__be32 addr)
 {
-	if (trans)
-		module_put(trans->t_owner);
-}
-
-struct rds_transport *rds_trans_get_preferred(struct net *net,
-					      const struct in6_addr *addr,
-					      __u32 scope_id)
-{
-	struct rds_transport *ret = NULL;
 	struct rds_transport *trans;
-	unsigned int i;
+	struct rds_transport *ret = NULL;
 
-	if (ipv6_addr_v4mapped(addr)) {
-		if (*(u_int8_t *)&addr->s6_addr32[3] == IN_LOOPBACKNET)
-			return &rds_loop_transport;
-	} else if (ipv6_addr_loopback(addr)) {
+	if (IN_LOOPBACK(ntohl(addr)))
 		return &rds_loop_transport;
-	}
 
 	down_read(&rds_trans_sem);
-	for (i = 0; i < RDS_TRANS_COUNT; i++) {
-		trans = transports[i];
-
-		if (trans && (trans->laddr_check(net, addr, scope_id) == 0) &&
-		    (!trans->t_owner || try_module_get(trans->t_owner))) {
+	list_for_each_entry(trans, &rds_transports, t_item) {
+		if (trans->laddr_check(addr) == 0) {
 			ret = trans;
 			break;
 		}
 	}
-	up_read(&rds_trans_sem);
-
-	return ret;
-}
-
-struct rds_transport *rds_trans_get(int t_type)
-{
-	struct rds_transport *ret = NULL;
-	struct rds_transport *trans;
-
-	down_read(&rds_trans_sem);
-	trans = transports[t_type];
-	if (!trans) {
-		up_read(&rds_trans_sem);
-		if (rds_trans_modules[t_type])
-			request_module(rds_trans_modules[t_type]);
-		down_read(&rds_trans_sem);
-		trans = transports[t_type];
-	}
-	if (trans && trans->t_type == t_type &&
-	    (!trans->t_owner || try_module_get(trans->t_owner)))
-		ret = trans;
-
 	up_read(&rds_trans_sem);
 
 	return ret;
@@ -148,14 +97,12 @@ unsigned int rds_trans_stats_info_copy(struct rds_info_iterator *iter,
 	struct rds_transport *trans;
 	unsigned int total = 0;
 	unsigned int part;
-	int i;
 
 	rds_info_iter_unmap(iter);
 	down_read(&rds_trans_sem);
 
-	for (i = 0; i < RDS_TRANS_COUNT; i++) {
-		trans = transports[i];
-		if (!trans || !trans->stats_info_copy)
+	list_for_each_entry(trans, &rds_transports, t_item) {
+		if (trans->stats_info_copy == NULL)
 			continue;
 
 		part = trans->stats_info_copy(iter, avail);
@@ -167,3 +114,4 @@ unsigned int rds_trans_stats_info_copy(struct rds_info_iterator *iter,
 
 	return total;
 }
+
