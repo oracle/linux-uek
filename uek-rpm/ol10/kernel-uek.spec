@@ -705,7 +705,6 @@ Requires: annobin-plugin-gcc\
 Requires: binutils\
 Requires: gcc\
 Requires: gcc-c++\
-Requires: runtime\
 Requires: binutils-devel\
 %description -n %{variant_name}-devel\
 This package provides kernel headers and makefiles sufficient to build modules\
