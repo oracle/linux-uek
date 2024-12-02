@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009, 2021 Oracle and/or its affiliates.
+ * Copyright (c) 2009, 2025, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -246,17 +246,6 @@ static void rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_RESOLVED:
-		/* Connection could have been dropped so make sure the
-		 * cm_id is valid before proceeding */
-
-		/* ibacm caches the path record without considering the tos/sl.
-		 * It is considered a match if the <src,dest> matches the
-		 * cache. In order to create qp with the correct sl/vl, RDS
-		 * needs to update the sl manually. As for now, RDS is assuming
-		 * that it is a 1:1 in tos to sl mapping.
-		 */
-		cm_id->route.path_rec[0].sl = TOS_TO_SL(conn->c_tos);
-		cm_id->route.path_rec[0].qos_class = conn->c_tos;
 		ret = trans->cm_initiate_connect(cm_id, isv6);
 		if (ret)
 			reason = "initiate connect failed";
