@@ -61,6 +61,6 @@ void cpt_cn20k_rxc_time_cfg(struct rvu *rvu, int blkaddr,
 			    struct cpt_rxc_time_cfg_req *req,
 			    struct cpt_rxc_time_cfg_req *save);
 void cpt_cn20k_rxc_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr);
-int cpt_cn20k_ctx_flush(struct rvu *rvu, int cpt_blkaddr, u16 pcifunc);
+int cpt_cn20k_ctx_flush(struct rvu *rvu, int blkaddr, u16 pcifunc);
 
 #endif /* RVU_CPT_H */

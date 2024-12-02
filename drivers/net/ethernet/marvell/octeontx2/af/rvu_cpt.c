@@ -1156,11 +1156,14 @@ int rvu_mbox_handler_cpt_flt_eng_info(struct rvu *rvu, struct cpt_flt_eng_info_r
 	return 0;
 }
 
-static void cpt_cn10k_rxc_teardown(struct rvu *rvu, int blkaddr)
+static void cpt_cn10k_rxc_flush(struct rvu *rvu, int blkaddr)
 {
 	struct cpt_rxc_time_cfg_req req, prev;
 	int timeout = 2000;
 	u64 reg;
+
+	if (!rvu->hw->cap.cpt_rxc)
+		return;
 
 	/* Set time limit to minimum values, so that rxc entries will be
 	 * flushed out quickly.
@@ -1204,15 +1207,10 @@ static void cpt_cn10k_rxc_teardown(struct rvu *rvu, int blkaddr)
 
 static void cpt_rxc_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr)
 {
-	struct rvu_hwinfo *hw = rvu->hw;
-
-	if (!hw->cap.cpt_rxc)
-		return;
-
 	if (is_cn20k(rvu->pdev))
 		cpt_cn20k_rxc_teardown(rvu, pcifunc, blkaddr);
 	else
-		cpt_cn10k_rxc_teardown(rvu, blkaddr);
+		cpt_cn10k_rxc_flush(rvu, blkaddr);
 }
 
 #define INFLIGHT   GENMASK_ULL(8, 0)
@@ -1423,7 +1421,7 @@ int rvu_cpt_ctx_flush(struct rvu *rvu, u16 pcifunc)
 		return rc;
 
 	/* Wait for rxc entries to be flushed out */
-	cpt_rxc_teardown(rvu, pcifunc, blkaddr);
+	cpt_cn10k_rxc_flush(rvu, blkaddr);
 
 	reg = rvu_read64(rvu, blkaddr, CPT_AF_CONSTANTS0);
 	max_ctx_entries = (reg >> 48) & 0xFFF;

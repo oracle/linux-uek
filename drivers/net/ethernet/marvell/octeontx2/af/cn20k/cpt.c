@@ -43,7 +43,7 @@ void cpt_cn20k_rxc_time_cfg(struct rvu *rvu, int blkaddr,
 		    req->cpt_af_rxc_que_cfg);
 }
 
-void cpt_cn20k_rxc_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr)
+static void cpt_cn20k_rxc_flush(struct rvu *rvu, u16 pcifunc, int blkaddr)
 {
 	struct cpt_rxc_time_cfg_req req, prev;
 	struct rvu_cpt *cpt = &rvu->cpt;
@@ -103,38 +103,48 @@ void cpt_cn20k_rxc_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr)
 
 		/* Restore config */
 		cpt_cn20k_rxc_time_cfg(rvu, blkaddr, &prev, NULL);
-
-		/* Reset CPT_AF_RXC_QUE(0..15)_X2P(0..1)_LINK_CFG to default */
-		reg = rvu_read64(rvu, blkaddr,
-				 CPT_AF_RXC_QUEX_X2PX_LINK_CFG(queue_idx, 0));
-		if (reg != RXC_QUEX_X2PX_LINK_CFG_DEFAUT)
-			rvu_write64(rvu, blkaddr,
-				    CPT_AF_RXC_QUEX_X2PX_LINK_CFG(queue_idx, 0),
-				    RXC_QUEX_X2PX_LINK_CFG_DEFAUT);
-
-		reg = rvu_read64(rvu, blkaddr,
-				 CPT_AF_RXC_QUEX_X2PX_LINK_CFG(queue_idx, 1));
-		if (reg != RXC_QUEX_X2PX_LINK_CFG_DEFAUT)
-			rvu_write64(rvu, blkaddr,
-				    CPT_AF_RXC_QUEX_X2PX_LINK_CFG(queue_idx, 1),
-				    RXC_QUEX_X2PX_LINK_CFG_DEFAUT);
-
-		/* Free queue: clear bit and reset mapping */
-		__clear_bit(queue_idx, cpt->cpt_rx_queue_bitmap);
-		cpt->cptpfvf_map[queue_idx] = 0;
 	}
 }
 
-int cpt_cn20k_ctx_flush(struct rvu *rvu, int cpt_blkaddr, u16 pcifunc)
+int cpt_cn20k_ctx_flush(struct rvu *rvu, int blkaddr, u16 pcifunc)
 {
-	/* Teardown RXC */
-	cpt_cn20k_rxc_teardown(rvu, pcifunc, cpt_blkaddr);
+	/* Flush RXC */
+	cpt_cn20k_rxc_flush(rvu, pcifunc, blkaddr);
 
 	 /* Invalidate all context entries for the given 'pcifunc' */
-	rvu_write64(rvu, cpt_blkaddr, CPT_AF_CTX_PFF_INVAL,
+	rvu_write64(rvu, blkaddr, CPT_AF_CTX_PFF_INVAL,
 		    FIELD_PREP(CPT_CTX_INVAL_PFFUNC, pcifunc));
 
 	return 0;
+}
+
+void cpt_cn20k_rxc_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr)
+{
+	struct rvu_cpt *cpt = &rvu->cpt;
+	int queue_idx = 1;
+
+	/* Flush RXC and context */
+	cpt_cn20k_ctx_flush(rvu, blkaddr, pcifunc);
+
+	for_each_set_bit_from(queue_idx, cpt->cpt_rx_queue_bitmap,
+			      CPT_AF_MAX_RXC_QUEUES) {
+		/* Skip queues that don't match the given pcifunc */
+		if (cpt->cptpfvf_map[queue_idx] != pcifunc)
+			continue;
+
+		/* Reset CPT_AF_RXC_QUE(0..15)_X2P(0..1)_LINK_CFG to default */
+		rvu_write64(rvu, blkaddr,
+			    CPT_AF_RXC_QUEX_X2PX_LINK_CFG(queue_idx, 0),
+			    RXC_QUEX_X2PX_LINK_CFG_DEFAUT);
+
+		rvu_write64(rvu, blkaddr,
+			    CPT_AF_RXC_QUEX_X2PX_LINK_CFG(queue_idx, 1),
+			    RXC_QUEX_X2PX_LINK_CFG_DEFAUT);
+
+		/* Free queue except global queue and remove pf-func mapping */
+		__clear_bit(queue_idx, cpt->cpt_rx_queue_bitmap);
+		cpt->cptpfvf_map[queue_idx] = 0;
+	}
 }
 
 static int cpt_rx_inline_queue_cfg(struct rvu *rvu, int blkaddr, u8 cptlf,
