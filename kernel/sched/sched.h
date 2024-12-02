@@ -766,7 +766,7 @@ struct cfs_rq {
 #endif /* CONFIG_CFS_BANDWIDTH */
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 
-	UEK_KABI_RESERVE(1)
+	UEK_KABI_USE(1, unsigned int h_nr_runnable) /* SCHED_{NORMAL,BATCH,IDLE} */
 	UEK_KABI_RESERVE(2)
 };
 
