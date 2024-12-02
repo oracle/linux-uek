@@ -200,6 +200,7 @@ kernel/drivers/net/ethernet/mellanox/mlx4/mlx4_en.ko
 kernel/drivers/net/ethernet/mellanox/mlx5/core/mlx5_core.ko
 kernel/drivers/net/ethernet/mellanox/mlxbf_gige/mlxbf_gige.ko
 kernel/drivers/net/ethernet/mellanox/mlxfw/mlxfw.ko
+kernel/drivers/net/ethernet/mellanox/mstflint_access/mstflint_access.ko
 kernel/drivers/net/ethernet/pensando/ionic/ionic.ko
 kernel/drivers/net/geneve.ko
 kernel/drivers/net/ipvlan/ipvlan.ko
