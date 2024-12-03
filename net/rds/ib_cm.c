@@ -367,6 +367,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	}
 
 	ic->i_sl = ic->i_cm_id->route.path_rec->sl;
+	ic->i_tc = ic->i_cm_id->route.path_rec->traffic_class;
 	clear_bit_mb(RDS_IB_CQ_ERR, &ic->i_flags);
 
 	/*
