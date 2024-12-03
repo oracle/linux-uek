@@ -368,6 +368,7 @@ struct rds_ib_connection {
 	/* Wake up receiver once in a while */
 	unsigned int		i_unsolicited_wrs;
 	u8                      i_sl;
+	u8                      i_tc;
 
 	atomic_t                i_cache_allocs;
 
