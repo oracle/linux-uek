@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008, 2023 Oracle and/or its affiliates.
+ * Copyright (c) 2008, 2025 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -325,6 +325,7 @@ struct rds_info_rdma_connection {
 	__s32		rcq_vector;
 	__s32		scq_irq;
 	__s32		rcq_irq;
+	__u8		tc;
 };
 
 struct rds6_info_rdma_connection {
@@ -363,6 +364,7 @@ struct rds6_info_rdma_connection {
 	__s32		rcq_vector;
 	__s32		scq_irq;
 	__s32		rcq_irq;
+	__u8		tc;
 };
 
 struct rds_path_info {

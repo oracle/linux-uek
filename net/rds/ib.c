@@ -963,6 +963,7 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 
 	iinfo->tos = conn->c_tos;
 	iinfo->sl = ic->i_sl;
+	iinfo->tc = ic->i_tc;
 	iinfo->conn_state = rds_conn_state(conn);
 	iinfo->frag = ic->i_frag_sz;
 	iinfo->max_send_wr = ic->i_send_ring.w_nr;
@@ -1034,6 +1035,7 @@ static int rds6_ib_conn_info_visitor(struct rds_connection *conn,
 
 	iinfo6->tos = conn->c_tos;
 	iinfo6->sl = ic->i_sl;
+	iinfo6->tc = ic->i_tc;
 	iinfo6->conn_state = rds_conn_state(conn);
 	iinfo6->frag = ic->i_frag_sz;
 	iinfo6->max_send_wr = ic->i_send_ring.w_nr;
