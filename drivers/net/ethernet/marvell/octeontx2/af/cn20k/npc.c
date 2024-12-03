@@ -1613,7 +1613,7 @@ static int npc_subbank_noref_alloc(struct rvu *rvu, int key_type, bool contig,
 		/* Minimize allocation from restricted subbanks
 		 * in noref allocations.
 		 */
-		if (npc_subbank_restrict_usage(rvu, index))
+		if (npc_subbank_restrict_usage(rvu, idx))
 			continue;
 
 		sb = &npc_priv.sb[idx];
@@ -1680,7 +1680,7 @@ static int npc_subbank_noref_alloc(struct rvu *rvu, int key_type, bool contig,
 		/* Minimize allocation from restricted subbanks
 		 * in noref allocations.
 		 */
-		if (npc_subbank_restrict_usage(rvu, index))
+		if (npc_subbank_restrict_usage(rvu, idx))
 			continue;
 
 		if (!npc_subbank_suits(sb, key_type))
