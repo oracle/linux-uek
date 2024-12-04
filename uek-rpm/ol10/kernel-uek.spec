@@ -364,7 +364,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define kernel_prereq  coreutils, systemd >= 203-2, /usr/bin/kernel-install
 %define initrd_prereq  dracut >= 027
 
-%define variant %{?build_variant:%{build_variant}}%{!?build_variant:-luci}
+%define variant %{?build_variant:%{build_variant}}%{!?build_variant:-uek}
 
 %define installonly_variant_name kernel-uek
 
