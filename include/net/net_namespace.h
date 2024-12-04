@@ -178,6 +178,18 @@ struct net {
 #if IS_ENABLED(CONFIG_SMC)
 	struct netns_smc	smc;
 #endif
+/*
+ * Size allocated for struct net is 4608, and actual size is 4584,
+ * creating a padding of 32 bytes which can accomodate struct llist_node which
+ * is 8 bytes.
+ *
+ * >-------struct sock *              crypto_nlsk;          //  4568     8
+ * >-------struct sock *              diag_nlsk;            //  4576     8
+ *
+ * >-------size: 4608, cachelines: 72, members: 52
+ * >-------sum members: 4569, holes: 3, sum holes: 15
+ */
+UEK_KABI_FILL_HOLE(struct llist_node defer_free_list)
 } __randomize_layout;
 
 #include <linux/seq_file_net.h>
