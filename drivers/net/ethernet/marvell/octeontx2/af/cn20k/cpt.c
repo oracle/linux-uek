@@ -143,7 +143,7 @@ static int cpt_rx_inline_queue_cfg(struct rvu *rvu, int blkaddr, u8 cptlf,
 {
 	u8 pri_mask = otx2_cpt_que_pri_mask(rvu);
 	u16 sso_pf_func = req->sso_pf_func;
-	u8 nix_queue;
+	u8 nix_queue = req->rx_queue_id;
 	u64 val;
 
 	val = rvu_read64(rvu, blkaddr, CPT_AF_LFX_CTL(cptlf));
@@ -166,44 +166,46 @@ static int cpt_rx_inline_queue_cfg(struct rvu *rvu, int blkaddr, u8 cptlf,
 			return CPT_AF_ERR_NIX_PF_FUNC_INVALID;
 	}
 
-	if (req->eng_grpmsk == 0x0)
-		return CPT_AF_ERR_GRP_INVALID;
+	/* Disable CPT LF for IPsec inline inbound operations */
+	val &= ~BIT_ULL(9);
 
-	if (req->queue_pri > pri_mask)
-		return CPT_AF_ERR_PRI_INVALID;
+	if (req->enable) {
+		if (req->eng_grpmsk == 0x0)
+			return CPT_AF_ERR_GRP_INVALID;
 
-	if (req->ctx_ilen > CPT_AF_MAX_CTX_ILEN)
-		return CPT_AF_ERR_CTX_ILEN_INVALID;
+		if (req->queue_pri > pri_mask)
+			return CPT_AF_ERR_PRI_INVALID;
 
-	nix_queue = req->rx_queue_id;
-	/* Enable CPT LF for IPsec inline inbound operations */
-	if (req->enable)
+		if (req->ctx_ilen > CPT_AF_MAX_CTX_ILEN)
+			return CPT_AF_ERR_CTX_ILEN_INVALID;
+
+		/* Enable CPT LF for IPsec inline inbound operations */
 		val |= BIT_ULL(9);
-	else
-		val &= ~BIT_ULL(9);
 
-	if (req->pf_func_ctx)
-		val |= BIT_ULL(20);
-	else
-		val &= ~BIT_ULL(20);
+		if (req->pf_func_ctx)
+			val |= BIT_ULL(20);
+		else
+			val &= ~BIT_ULL(20);
 
-	val &= ~CPT_AF_ENG_GRPMASK;
-	val |= FIELD_PREP(CPT_AF_ENG_GRPMASK, req->eng_grpmsk);
-	val &= ~pri_mask;
-	val |= FIELD_PREP(CPT_AF_QUEUE_PRI, req->queue_pri);
-	val &= ~CPT_AF_INFLIGHT_LIMIT;
-	val |= FIELD_PREP(CPT_AF_INFLIGHT_LIMIT, req->inflight_limit);
-	if (req->ctx_ilen) {
-		val &= ~CPT_AF_CTX_ILEN;
-		val |= FIELD_PREP(CPT_AF_CTX_ILEN, req->ctx_ilen);
-	} else {
-		val &= ~CPT_AF_CTX_ILEN;
-		val |= FIELD_PREP(CPT_AF_CTX_ILEN, CPT_CTX_ILEN);
+		val &= ~CPT_AF_ENG_GRPMASK;
+		val |= FIELD_PREP(CPT_AF_ENG_GRPMASK, req->eng_grpmsk);
+		val &= ~pri_mask;
+		val |= FIELD_PREP(CPT_AF_QUEUE_PRI, req->queue_pri);
+		val &= ~CPT_AF_INFLIGHT_LIMIT;
+		val |= FIELD_PREP(CPT_AF_INFLIGHT_LIMIT, req->inflight_limit);
+		if (req->ctx_ilen) {
+			val &= ~CPT_AF_CTX_ILEN;
+			val |= FIELD_PREP(CPT_AF_CTX_ILEN, req->ctx_ilen);
+		} else {
+			val &= ~CPT_AF_CTX_ILEN;
+			val |= FIELD_PREP(CPT_AF_CTX_ILEN, CPT_CTX_ILEN);
+		}
+		val &= ~CPT_AF_RXC_QUEUE;
+		val |= FIELD_PREP(CPT_AF_RXC_QUEUE, nix_queue);
+		val &= ~CPT_AF_NIX_QUEUE;
+		val |= FIELD_PREP(CPT_AF_NIX_QUEUE, nix_queue);
 	}
-	val &= ~CPT_AF_RXC_QUEUE;
-	val |= FIELD_PREP(CPT_AF_RXC_QUEUE, nix_queue);
-	val &= ~CPT_AF_NIX_QUEUE;
-	val |= FIELD_PREP(CPT_AF_NIX_QUEUE, nix_queue);
+
 	rvu_write64(rvu, blkaddr, CPT_AF_LFX_CTL(cptlf), val);
 
 	val = rvu_read64(rvu, blkaddr, CPT_AF_LFX_CTL2(cptlf));
