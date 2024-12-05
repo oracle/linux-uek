@@ -887,7 +887,7 @@ TEST_F(guard_pages, fork)
 		   MAP_ANON | MAP_PRIVATE, -1, 0);
 	ASSERT_NE(ptr, MAP_FAILED);
 
-	/* Establish guard apges in the first 5 pages. */
+	/* Establish guard pages in the first 5 pages. */
 	ASSERT_EQ(madvise(ptr, 5 * page_size, MADV_GUARD_INSTALL), 0);
 
 	pid = fork();
@@ -920,6 +920,77 @@ TEST_F(guard_pages, fork)
 		bool result = try_read_write_buf(curr);
 
 		ASSERT_TRUE(i >= 5 ? result : !result);
+	}
+
+	/* Cleanup. */
+	ASSERT_EQ(munmap(ptr, 10 * page_size), 0);
+}
+
+/*
+ * Assert expected behaviour after we fork populated ranges of anonymous memory
+ * and then guard and unguard the range.
+ */
+TEST_F(guard_pages, fork_cow)
+{
+	const unsigned long page_size = self->page_size;
+	char *ptr;
+	pid_t pid;
+	int i;
+
+	/* Map 10 pages. */
+	ptr = mmap(NULL, 10 * page_size, PROT_READ | PROT_WRITE,
+		   MAP_ANON | MAP_PRIVATE, -1, 0);
+	ASSERT_NE(ptr, MAP_FAILED);
+
+	/* Populate range. */
+	for (i = 0; i < 10 * page_size; i++) {
+		char chr = 'a' + (i % 26);
+
+		ptr[i] = chr;
+	}
+
+	pid = fork();
+	ASSERT_NE(pid, -1);
+	if (!pid) {
+		/* This is the child process now. */
+
+		/* Ensure the range is as expected. */
+		for (i = 0; i < 10 * page_size; i++) {
+			char expected = 'a' + (i % 26);
+			char actual = ptr[i];
+
+			ASSERT_EQ(actual, expected);
+		}
+
+		/* Establish guard pages across the whole range. */
+		ASSERT_EQ(madvise(ptr, 10 * page_size, MADV_GUARD_INSTALL), 0);
+		/* Remove it. */
+		ASSERT_EQ(madvise(ptr, 10 * page_size, MADV_GUARD_REMOVE), 0);
+
+		/*
+		 * By removing the guard pages, the page tables will be
+		 * cleared. Assert that we are looking at the zero page now.
+		 */
+		for (i = 0; i < 10 * page_size; i++) {
+			char actual = ptr[i];
+
+			ASSERT_EQ(actual, '\0');
+		}
+
+		exit(0);
+	}
+
+	/* Parent process. */
+
+	/* Parent simply waits on child. */
+	waitpid(pid, NULL, 0);
+
+	/* Ensure the range is unchanged in parent anon range. */
+	for (i = 0; i < 10 * page_size; i++) {
+		char expected = 'a' + (i % 26);
+		char actual = ptr[i];
+
+		ASSERT_EQ(actual, expected);
 	}
 
 	/* Cleanup. */
