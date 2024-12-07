@@ -607,6 +607,8 @@ struct module {
 #define MODULE_ARCH_INIT {}
 #endif
 
+extern int load_module_mem(const char *mem, size_t size);
+
 #ifndef HAVE_ARCH_KALLSYMS_SYMBOL_VALUE
 static inline unsigned long kallsyms_symbol_value(const Elf_Sym *sym)
 {

@@ -2851,30 +2851,16 @@ static int early_mod_check(struct load_info *info, int flags)
 /*
  * Allocate and load the module: note that size of section 0 is always
  * zero, and we rely on this for optional sections.
+ *
+ * NOTE: module signature verification must have been done already.
  */
-static int load_module(struct load_info *info, const char __user *uargs,
-		       int flags)
+static int _load_module(struct load_info *info, const char __user *uargs,
+			int flags)
 {
 	struct module *mod;
 	bool module_allocated = false;
 	long err = 0;
 	char *after_dashes;
-
-	/*
-	 * Do the signature check (if any) first. All that
-	 * the signature check needs is info->len, it does
-	 * not need any of the section info. That can be
-	 * set up later. This will minimize the chances
-	 * of a corrupt module causing problems before
-	 * we even get to the signature check.
-	 *
-	 * The check will also adjust info->len by stripping
-	 * off the sig length at the end of the module, making
-	 * checks against info->len more correct.
-	 */
-	err = module_sig_check(info, flags);
-	if (err)
-		goto free_copy;
 
 	/*
 	 * Do basic sanity checks against the ELF header and
@@ -2954,10 +2940,14 @@ static int load_module(struct load_info *info, const char __user *uargs,
 	flush_module_icache(mod);
 
 	/* Now copy in args */
-	mod->args = strndup_user(uargs, ~0UL >> 1);
-	if (IS_ERR(mod->args)) {
-		err = PTR_ERR(mod->args);
-		goto free_arch_cleanup;
+	if (uargs) {
+		mod->args = strndup_user(uargs, ~0UL >> 1);
+		if (IS_ERR(mod->args)) {
+			err = PTR_ERR(mod->args);
+			goto free_arch_cleanup;
+		}
+	} else {
+		mod->args = kstrdup("", GFP_KERNEL);
 	}
 
 	init_build_id(mod, info);
@@ -2998,9 +2988,6 @@ static int load_module(struct load_info *info, const char __user *uargs,
 		if (err < 0)
 			goto sysfs_cleanup;
 	}
-
-	/* Get rid of temporary copy. */
-	free_copy(info, flags);
 
 	codetag_load_module(mod);
 
@@ -3060,7 +3047,53 @@ static int load_module(struct load_info *info, const char __user *uargs,
 	 */
 	if (!module_allocated)
 		mod_stat_bump_becoming(info, flags);
+	return err;
+}
+
+/*
+ * Load module from kernel memory without signature check.
+ */
+int load_module_mem(const char *mem, size_t size)
+{
+	int err;
+	struct load_info info = { };
+
+	info.sig_ok = true;
+	info.hdr = (Elf64_Ehdr *) mem;
+	info.len = size;
+
+	err = _load_module(&info, NULL, 0);
+	if (0)
+		free_copy(&info, 0);
+
+	return err;
+}
+EXPORT_SYMBOL(load_module_mem);
+
+static int load_module(struct load_info *info, const char __user *uargs,
+		       int flags)
+{
+	int err;
+
+	/*
+	 * Do the signature check (if any) first. All that
+	 * the signature check needs is info->len, it does
+	 * not need any of the section info. That can be
+	 * set up later. This will minimize the chances
+	 * of a corrupt module causing problems before
+	 * we even get to the signature check.
+	 *
+	 * The check will also adjust info->len by stripping
+	 * off the sig length at the end of the module, making
+	 * checks against info->len more correct.
+	 */
+	err = module_sig_check(info, flags);
+	if (!err)
+		err = _load_module(info, uargs, flags);
+
+	/* Get rid of temporary copy. */
 	free_copy(info, flags);
+
 	return err;
 }
 
