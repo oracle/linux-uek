@@ -301,6 +301,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define hdrarch arm64
 %define make_target Image
 %define kernel_image arch/arm64/boot/Image
+%define with_tools 0
 %if %{with_64konly}
 %define with_64k_ps 1
 %define with_up 0
@@ -308,7 +309,6 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define with_debug 0
 %define with_headers 0
 %define with_bpftool 0
-%define with_tools 0
 %else
 %define with_headers 1
 %define with_bpftool 1
