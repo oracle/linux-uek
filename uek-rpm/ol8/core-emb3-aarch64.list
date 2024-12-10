@@ -163,6 +163,7 @@ kernel/drivers/mmc/host/mmc_spi.ko
 kernel/drivers/mmc/host/of_mmc_spi.ko
 kernel/drivers/mmc/host/sdhci-acpi.ko
 kernel/drivers/mmc/host/sdhci-cadence.ko
+kernel/drivers/mmc/host/sdhci-uhs2.ko
 kernel/drivers/mmc/host/sdhci.ko
 kernel/drivers/mmc/host/sdhci-of-arasan.ko
 kernel/drivers/mmc/host/sdhci-of-dwcmshc.ko

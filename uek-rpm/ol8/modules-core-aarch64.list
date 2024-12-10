@@ -101,6 +101,7 @@ kernel/drivers/firmware/iscsi_ibft.ko
 kernel/drivers/firmware/qemu_fw_cfg.ko
 kernel/drivers/gnss/gnss.ko
 kernel/drivers/gpu/drm/ast/ast.ko
+kernel/drivers/gpu/drm/drm_client_lib.ko
 kernel/drivers/gpu/drm/drm_kms_helper.ko
 kernel/drivers/gpu/drm/drm.ko
 kernel/drivers/gpu/drm/drm_shmem_helper.ko
@@ -192,6 +193,7 @@ kernel/drivers/net/macsec.ko
 kernel/drivers/net/macvlan.ko
 kernel/drivers/net/macvtap.ko
 kernel/drivers/net/mdio.ko
+kernel/drivers/net/mii.ko
 kernel/drivers/net/net_failover.ko
 kernel/drivers/net/tap.ko
 kernel/drivers/net/tun.ko
@@ -682,7 +684,6 @@ kernel/net/vmw_vsock/vsock_diag.ko
 kernel/net/vmw_vsock/vsock.ko
 kernel/net/vmw_vsock/vsock_loopback.ko
 kernel/net/wireless/cfg80211.ko
-kernel/net/wireless/lib80211.ko
 kernel/net/xfrm/xfrm_interface.ko
 kernel/net/xfrm/xfrm_ipcomp.ko
 kernel/security/keys/trusted-keys/trusted.ko
