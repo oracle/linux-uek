@@ -613,6 +613,8 @@ int rvu_mbox_handler_cpt_lf_alloc(struct rvu *rvu,
 		if (req->rxc_ena && slot == req->rxc_ena_lf_id) {
 			if (is_cn10ka_b0(rvu) || is_cn10kb_a0(rvu) || is_cn10kb_a1(rvu))
 				val |= BIT_ULL(12) | BIT_ULL(11);
+			else if (is_cn20k(rvu->pdev))
+				val |= BIT_ULL(11);
 		}
 
 		rvu_write64(rvu, blkaddr, CPT_AF_LFX_CTL(cptlf), val);
@@ -1064,24 +1066,28 @@ int rvu_mbox_handler_cpt_rxc_time_cfg(struct rvu *rvu,
 				      struct cpt_rxc_time_cfg_req *req,
 				      struct msg_rsp *rsp)
 {
+	struct rvu_cpt *cpt = &rvu->cpt;
 	int blkaddr;
 
 	blkaddr = validate_and_get_cpt_blkaddr(req->blkaddr);
 	if (blkaddr < 0)
 		return blkaddr;
 
-	/* This message is accepted only if sent from CPT PF/VF */
-	if (!is_cpt_pf(rvu, req->hdr.pcifunc) &&
-	    !is_cpt_vf(rvu, req->hdr.pcifunc))
-		return CPT_AF_ERR_ACCESS_DENIED;
-
 	if (is_cn20k(rvu->pdev)) {
 		if  (req->queue_id >= CPT_AF_MAX_RXC_QUEUES)
+			return CPT_AF_ERR_RXC_QUEUE_INVALID;
+
+		if (cpt->cptpfvf_map[req->queue_id] != req->hdr.pcifunc)
 			return CPT_AF_ERR_RXC_QUEUE_INVALID;
 
 		cpt_cn20k_rxc_time_cfg(rvu, blkaddr, req, NULL);
 		return 0;
 	}
+
+	/* This message is accepted only if sent from CPT PF/VF */
+	if (!is_cpt_pf(rvu, req->hdr.pcifunc) &&
+	    !is_cpt_vf(rvu, req->hdr.pcifunc))
+		return CPT_AF_ERR_ACCESS_DENIED;
 
 	cpt_rxc_time_cfg(rvu, req, blkaddr, NULL);
 
@@ -1205,7 +1211,8 @@ static void cpt_cn10k_rxc_flush(struct rvu *rvu, int blkaddr)
 	cpt_rxc_time_cfg(rvu, &prev, blkaddr, NULL);
 }
 
-static void cpt_rxc_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr)
+static void cpt_rxc_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr,
+			     int cptlf)
 {
 	if (is_cn20k(rvu->pdev))
 		cpt_cn20k_rxc_teardown(rvu, pcifunc, blkaddr);
@@ -1272,12 +1279,14 @@ static void cpt_lf_disable_iqueue(struct rvu *rvu, int blkaddr, int slot)
 	udelay(2);
 }
 
-int rvu_cpt_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int lf, int slot)
+int rvu_cpt_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int lf,
+			int slot)
 {
 	u64 reg;
 
-	if (is_cpt_pf(rvu, pcifunc) || is_cpt_vf(rvu, pcifunc))
-		cpt_rxc_teardown(rvu, pcifunc, blkaddr);
+	if (is_cpt_pf(rvu, pcifunc) || is_cpt_vf(rvu, pcifunc) ||
+	    is_cn20k(rvu->pdev))
+		cpt_rxc_teardown(rvu, pcifunc, blkaddr, lf);
 
 	mutex_lock(&rvu->alias_lock);
 	/* Enable BAR2 ALIAS for this pcifunc. */
