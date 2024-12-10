@@ -1084,6 +1084,7 @@ static int __init vt_init(void)
 				sizeof(struct vcpu_tdx));
 		vcpu_align = max_t(unsigned, vcpu_align,
 				__alignof__(struct vcpu_tdx));
+		kvm_caps.supported_vm_types |= BIT(KVM_X86_TDX_VM);
 	}
 
 	/*
