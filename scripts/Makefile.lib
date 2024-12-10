@@ -21,8 +21,8 @@ obj-m := $(filter-out $(obj-y),$(obj-m))
 lib-y := $(filter-out $(obj-y), $(sort $(lib-y) $(lib-m)))
 
 # Subdirectories we need to descend into
-subdir-ym := $(sort $(subdir-y) $(subdir-m) \
-			$(patsubst %/,%, $(filter %/, $(obj-y) $(obj-m))))
+subdir-ym := $(sort $(subdir-y) $(subdir-Y) $(subdir-m) $(subdir-M) \
+			$(patsubst %/,%, $(filter %/, $(obj-y) $(obj-Y) $(obj-m) $(obj-M))))
 
 # Handle objects in subdirs:
 # - If we encounter foo/ in $(obj-y), replace it by foo/built-in.a and
