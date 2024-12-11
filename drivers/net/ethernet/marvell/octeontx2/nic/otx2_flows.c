@@ -280,12 +280,10 @@ int otx2_mcam_entry_init(struct otx2_nic *pfvf)
 	struct npc_mcam_alloc_entry_rsp *rsp;
 	int vf_vlan_max_flows, count;
 	int rc, ref, prio, ent;
-	u8 key_type;
 	u16 dft_idx;
 
 	ref = 0;
 	prio = 0;
-	key_type = 0;	/* Ignored for cn10k */
 	if (is_cn20k(pfvf->pdev)) {
 		rc = otx2_get_dft_rl_idx(pfvf, &dft_idx);
 		if (rc) {

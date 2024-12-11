@@ -2198,8 +2198,8 @@ int npc_defrag_move_vdx_to_free(struct rvu *rvu,
 				int cnt, u16 *save)
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
-	int i, vidx_cnt, free_cnt, rc, sb_off;
 	u16 new_midx, old_midx, vidx;
+	int i, vidx_cnt, rc, sb_off;
 	struct npc_subbank *sb;
 	bool deleted;
 	u16 pcifunc;
@@ -2209,7 +2209,6 @@ int npc_defrag_move_vdx_to_free(struct rvu *rvu,
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 
 	vidx_cnt = v->vidx_cnt;
-	free_cnt = f->free_cnt;
 	for (i = 0; i < cnt; i++) {
 		vidx = v->vidx[vidx_cnt - i - 1];
 		old_midx = npc_vidx2idx(vidx);
@@ -2411,9 +2410,9 @@ int npc_cn20k_defrag(struct rvu *rvu)
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct npc_defrag_node *node, *tnode;
 	struct list_head x4lh, x2lh, *lh;
-	unsigned long index, start;
 	int rc = 0, i, sb_off, tot;
 	struct npc_subbank *sb;
+	unsigned long index;
 	void *map;
 	u16 midx;
 
@@ -2423,7 +2422,6 @@ int npc_cn20k_defrag(struct rvu *rvu)
 	INIT_LIST_HEAD(&x4lh);
 	INIT_LIST_HEAD(&x2lh);
 
-	start = npc_priv.bank_depth * 2;
 	node = kcalloc(npc_priv.num_subbanks, sizeof(*node), GFP_KERNEL);
 	if (!node)
 		return -ENOMEM;
@@ -2628,9 +2626,9 @@ static void npc_config_kpmcam(struct rvu *rvu, int blkaddr,
 		    NPC_AF_KPMX_ENTRYX_CAMX(kpm, entry, 1), *(u64 *)&cam1);
 }
 
-void npc_config_kpmaction(struct rvu *rvu, int blkaddr,
-			  const struct npc_kpu_profile_action *kpuaction,
-			  int kpm, int entry, bool pkind)
+static void npc_config_kpmaction(struct rvu *rvu, int blkaddr,
+				 const struct npc_kpu_profile_action *kpuaction,
+				 int kpm, int entry, bool pkind)
 {
 	struct npc_kpm_action0 action0 = {0};
 	struct npc_kpu_action1 action1 = {0};
@@ -2960,7 +2958,8 @@ void npc_cn20k_enable_mcam_entry(struct rvu *rvu, int blkaddr, int index, bool e
 	}
 }
 
-void npc_cn20k_clear_mcam_entry(struct rvu *rvu, int blkaddr, int bank, int index)
+static void npc_cn20k_clear_mcam_entry(struct rvu *rvu, int blkaddr,
+				       int bank, int index)
 {
 	rvu_write64(rvu, blkaddr,
 		    NPC_AF_CN20K_MCAMEX_BANKX_CAMX_INTF_EXT(index, bank, 1), 0);
@@ -3533,7 +3532,7 @@ int rvu_mbox_handler_npc_get_dft_rl_idxs(struct rvu *rvu, struct msg_req *req,
 	return 0;
 }
 
-bool npc_is_cgx_or_lbk(struct rvu *rvu, u16 pcifunc)
+static bool npc_is_cgx_or_lbk(struct rvu *rvu, u16 pcifunc)
 {
 	return is_pf_cgxmapped(rvu, rvu_get_pf(rvu->pdev, pcifunc)) ||
 		is_lbk_vf(rvu, pcifunc);
