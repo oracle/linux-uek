@@ -826,12 +826,13 @@ static void otx2_cpri_enable_rx(struct otx2_cpri_ndev_priv *priv)
 {
 	struct otx2_bphy_cdev_priv *cdev_priv;
 	u64 intr_en, regval;
+	unsigned long flags;
 
 	cdev_priv = priv->cdev_priv;
 
 	/* Re enable the Rx interrupts if needed */
 	intr_en = 1 << CPRI_RX_INTR_SHIFT(priv->cpri_num);
-	spin_lock(&cdev_priv->lock);
+	spin_lock_irqsave(&cdev_priv->lock, flags);
 	if (priv->gp_int_disabled) {
 		regval = readq(priv->bphy_reg_base + PSM_INT_GP_ENA_W1S(1));
 		regval |= intr_en;
@@ -840,5 +841,5 @@ static void otx2_cpri_enable_rx(struct otx2_cpri_ndev_priv *priv)
 		writeq(0x1, priv->cpri_reg_base +
 		       CPRIX_ETH_UL_INT(priv->cpri_num));
 	}
-	spin_unlock(&cdev_priv->lock);
+	spin_unlock_irqrestore(&cdev_priv->lock, flags);
 }
