@@ -2394,7 +2394,7 @@ static int bnxt_re_netdev_event(struct notifier_block *notifier,
 		real_dev = netdev;
 
 	if (real_dev != netdev)
-		goto exit;
+		return NOTIFY_DONE;
 
 	rdev = bnxt_re_from_netdev(real_dev);
 	if (!rdev)
@@ -2413,7 +2413,7 @@ static int bnxt_re_netdev_event(struct notifier_block *notifier,
 		break;
 	}
 	ib_device_put(&rdev->ibdev);
-exit:
+
 	return NOTIFY_DONE;
 }
 
