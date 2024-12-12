@@ -43,21 +43,23 @@
 	(_rsp)->free_sts_##etype = free_sts;                        \
 })
 
+#define MAX_RE  GENMASK_ULL(63, 48)
 #define MAX_AE  GENMASK_ULL(47, 32)
 #define MAX_IE  GENMASK_ULL(31, 16)
 #define MAX_SE  GENMASK_ULL(15, 0)
 
 static u16 cpt_max_engines_get(struct rvu *rvu)
 {
-	u16 max_ses, max_ies, max_aes;
+	u16 max_ses, max_ies, max_aes, max_re;
 	u64 reg;
 
 	reg = rvu_read64(rvu, BLKADDR_CPT0, CPT_AF_CONSTANTS1);
 	max_ses = FIELD_GET(MAX_SE, reg);
 	max_ies = FIELD_GET(MAX_IE, reg);
 	max_aes = FIELD_GET(MAX_AE, reg);
+	max_re = FIELD_GET(MAX_RE, reg);
 
-	return max_ses + max_ies + max_aes;
+	return max_ses + max_ies + max_aes + max_re;
 }
 
 /* Number of flt interrupt vectors are depends on number of engines that the
@@ -280,6 +282,12 @@ static int cpt_10k_register_interrupts(struct rvu_block *block, int off)
 		case CPT_10K_AF_INT_VEC_FLT2:
 			flt_fn = rvu_cpt_af_flt2_intr_handler;
 			break;
+		default:
+			/* TODO: Add fault handler for 20x */
+			dev_err(rvu->dev,
+				"Missing CPT fault vector-%d max-engines-%d\n",
+				i, cpt_max_engines_get(rvu));
+			continue;
 		}
 		ret = rvu_cpt_do_register_interrupt(block, off + i,
 						    flt_fn, &rvu->irq_name[(off + i) * NAME_SIZE]);
