@@ -5627,7 +5627,7 @@ _base_static_config_pages(struct MPT3SAS_ADAPTER *ioc)
 	if (rc)
 		return rc;
 	if (!ioc->is_gen35_ioc && ioc->manu_pg11.EEDPTagMode == 0) {
-		pr_err("%s: overriding NVDATA EEDPTagMode setting\n",
+		pr_err("%s: overriding NVDATA EEDPTagMode setting from 0 to 1\n",
 		    ioc->name);
 		ioc->manu_pg11.EEDPTagMode = 0x1;
 		mpt3sas_config_set_manufacturing_pg11(ioc, &mpi_reply,
