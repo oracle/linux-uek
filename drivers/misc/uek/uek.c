@@ -22,6 +22,9 @@ MODULE_VERSION(UEK_MISC_VER);
 DEFINE_STATIC_KEY_FALSE(on_exadata);
 EXPORT_SYMBOL_GPL(on_exadata);
 
+DEFINE_STATIC_KEY_FALSE(on_oci);
+EXPORT_SYMBOL_GPL(on_oci);
+
 /* Override to disable optimizations on Exadata systems. */
 static bool exadata_disable;
 
@@ -35,6 +38,9 @@ static int __init uek_params(char *str)
 		return 1;
 	} else if ((strncmp(str, "noexadata", 9) == 0)) {
 		exadata_disable = true;
+		return 1;
+	} else if (strncmp(str, "oci", 3) == 0) {
+		static_branch_enable(&on_oci);
 		return 1;
 	}
 
