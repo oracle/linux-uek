@@ -358,6 +358,13 @@ enum
 	LINUX_MIB_TLSRXDEVICERESYNC,		/* TlsRxDeviceResync */
 	LINUX_MIB_TLSDECRYPTRETRY,		/* TlsDecryptRetry */
 	LINUX_MIB_TLSRXNOPADVIOL,		/* TlsRxNoPadViolation */
+#ifndef __GENKSYMS__
+	LINUX_MIB_TLSRXREKEYOK,			/* TlsRxRekeyOk */
+	LINUX_MIB_TLSRXREKEYERROR,		/* TlsRxRekeyError */
+	LINUX_MIB_TLSTXREKEYOK,			/* TlsTxRekeyOk */
+	LINUX_MIB_TLSTXREKEYERROR,		/* TlsTxRekeyError */
+	LINUX_MIB_TLSRXREKEYRECEIVED,		/* TlsRxRekeyReceived */
+#endif
 	__LINUX_MIB_TLSMAX
 };
 
