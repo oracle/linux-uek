@@ -171,6 +171,23 @@ static inline void enable_oci(char **reason)
 {
 	static_branch_enable(&on_oci);
 	pr_info("Detected OCI (%s)", *reason);
+
+#ifdef CONFIG_X86_64
+	/*
+	 * For certain platforms with known errata we avoid advertising support
+	 * for the AVIC feature so that initialization is not attempted by SVM
+	 * code.
+	 * As a proxy for a platform identifier, use the fact that only Zen4 and
+	 * newer platforms have X2AVIC capability, and avoid exposing the AVIC
+	 * capability on earlier ones.
+	 */
+	if (!boot_cpu_has(X86_FEATURE_X2AVIC) &&
+	    boot_cpu_has(X86_FEATURE_AVIC)) {
+		pr_notice("Disabling AVIC on pre-Zen4 processors\n");
+		setup_clear_cpu_cap(X86_FEATURE_AVIC);
+	}
+#endif
+
 }
 
 static int uek_misc_init(void)
