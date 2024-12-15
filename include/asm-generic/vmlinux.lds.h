@@ -444,6 +444,40 @@
 #endif
 #endif
 
+#ifdef CONFIG_CRYPTO_FIPS140_EXTMOD
+/*
+ * We have an external module; include it and its digest in their own
+ * named sections so they are easy to extract from the vmlinux ELF file
+ * after the kernel has been built.
+ */
+#define FIPS140 \
+	. = ALIGN(PAGE_SIZE); \
+	__fips140_module : AT(ADDR(__fips140_module) - LOAD_OFFSET) {	\
+		*(__fips140_module)					\
+	}								\
+	. = ALIGN(PAGE_SIZE);						\
+	__fips140_digest : AT(ADDR(__fips140_digest) - LOAD_OFFSET) {	\
+		*(__fips140_digest)					\
+	}
+#else
+#ifdef CONFIG_CRYPTO_FIPS140_EXTMOD
+/*
+ * We don't have an external module (yet) but the kernel has been built
+ * with the loader, so this just defines an empty byte array where the
+ * module will go eventually.
+ */
+#define FIPS140 \
+	_binary_fips140_ko_start = .; \
+	_binary_fips140_ko_end = .; \
+	_binary_fips140_hmac_start = .; \
+	_binary_fips140_hmac_end = .;
+#else
+#define FIPS140
+#endif
+#endif
+
+
+
 /*
  * Read only Data
  */
@@ -1145,7 +1179,8 @@
 		INIT_CALLS						\
 		CON_INITCALL						\
 		INIT_RAM_FS						\
-	}
+	}								\
+	FIPS140
 
 #define BSS_SECTION(sbss_align, bss_align, stop_align)			\
 	. = ALIGN(sbss_align);						\
