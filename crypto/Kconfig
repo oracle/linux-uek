@@ -1477,4 +1477,15 @@ source "drivers/crypto/Kconfig"
 source "crypto/asymmetric_keys/Kconfig"
 source "certs/Kconfig"
 
+config CRYPTO_FIPS_LOADER
+	bool "Support loading prebuilt FIPS 140-3 cryptographic module"
+	help
+	  Support loading a prebuilt FIPS 140-3 cryptographic module.
+
+config CRYPTO_FIPS_MODULE
+	depends on CRYPTO_FIPS_LOADER
+	bool "External FIPS 140-3 cryptographic module"
+	help
+	  Include prebuilt FIPS 140-3 cryptographic module in the build.
+
 endif	# if CRYPTO
