@@ -88,7 +88,6 @@ static struct ctl_table cma_ctl_table[] = {
 		.extra1	       = &cma_max_cm_retries_min,
 		.extra2	       = &cma_max_cm_retries_max,
 	},
-	{ }
 };
 
 #define cma_pr(priv, format, arg...) \
