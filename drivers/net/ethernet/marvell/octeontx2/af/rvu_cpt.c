@@ -866,18 +866,19 @@ static bool validate_and_update_reg_offset(struct rvu *rvu,
 			return true;
 		}
 
+		if (offset & 7)
+			return false;
+
+		if ((offset & 0xFF00) == CPT_AF_UCCX_CTL(0))
+			return true;
+
 		switch (offset & 0xFF000) {
 		case CPT_AF_EXEX_STS(0):
 		case CPT_AF_EXEX_CTL(0):
 		case CPT_AF_EXEX_CTL2(0):
 		case CPT_AF_EXEX_UCODE_BASE(0):
-			if (offset & 7)
-				return false;
-			break;
-		default:
-			return false;
+			return true;
 		}
-		return true;
 	}
 	return false;
 }

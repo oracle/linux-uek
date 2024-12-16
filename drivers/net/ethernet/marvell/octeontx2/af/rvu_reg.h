@@ -775,6 +775,7 @@
 #define CPT_AF_CONSTANTS1               (0x1000)
 #define CPT_AF_DIAG                     (0x3000)
 #define CPT_AF_ECO                      (0x4000)
+#define CPT_AF_UCCX_CTL(a)              (0x6800ull | (u64)(a) << 3)
 #define CPT_AF_FLTX_INT(a)              (0xa000ull | (u64)(a) << 3)
 #define CPT_AF_FLTX_INT_W1S(a)          (0xb000ull | (u64)(a) << 3)
 #define CPT_AF_FLTX_INT_ENA_W1C(a)      (0xc000ull | (u64)(a) << 3)
