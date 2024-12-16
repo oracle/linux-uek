@@ -29,8 +29,6 @@
 #define DRV_NAME	"rvu_af"
 #define DRV_STRING      "Marvell OcteonTX2 RVU Admin Function Driver"
 
-static void rvu_set_msix_offset(struct rvu *rvu, struct rvu_pfvf *pfvf,
-				struct rvu_block *block, int lf);
 static void rvu_clear_msix_offset(struct rvu *rvu, struct rvu_pfvf *pfvf,
 				  struct rvu_block *block, int lf);
 
@@ -397,9 +395,9 @@ exit:
 	return -ENODEV;
 }
 
-static void rvu_update_rsrc_map(struct rvu *rvu, struct rvu_pfvf *pfvf,
-				struct rvu_block *block, u16 pcifunc,
-				u16 lf, bool attach)
+void rvu_update_rsrc_map(struct rvu *rvu, struct rvu_pfvf *pfvf,
+			 struct rvu_block *block, u16 pcifunc, u16 lf,
+			 bool attach)
 {
 	int devnum, num_lfs = 0;
 	bool is_pf;
@@ -1552,7 +1550,7 @@ int rvu_get_blkaddr_from_slot(struct rvu *rvu, int blktype, u16 pcifunc,
 	return blkaddr;
 }
 
-static void rvu_detach_block(struct rvu *rvu, int pcifunc, int blktype)
+void rvu_detach_block(struct rvu *rvu, int pcifunc, int blktype)
 {
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
 	struct rvu_hwinfo *hw = rvu->hw;
@@ -2053,8 +2051,8 @@ static u16 rvu_get_msix_offset(struct rvu *rvu, struct rvu_pfvf *pfvf,
 	return MSIX_VECTOR_INVALID;
 }
 
-static void rvu_set_msix_offset(struct rvu *rvu, struct rvu_pfvf *pfvf,
-				struct rvu_block *block, int lf)
+void rvu_set_msix_offset(struct rvu *rvu, struct rvu_pfvf *pfvf,
+			 struct rvu_block *block, int lf)
 {
 	u16 nvecs, vec, offset;
 	u64 cfg;
@@ -3255,6 +3253,10 @@ static void rvu_blklf_teardown(struct rvu *rvu, u16 pcifunc, u8 blkaddr)
 			 (block->addr == BLKADDR_CPT1))
 			rvu_cpt_lf_teardown(rvu, pcifunc, block->addr, lf,
 					    slot);
+		else if ((block->addr == BLKADDR_DPI0) ||
+			 (block->addr == BLKADDR_DPI1))
+			rvu_dpi_lf_teardown(rvu, pcifunc, block->addr, lf,
+					    slot);
 
 		err = rvu_lf_reset(rvu, block, lf);
 		if (err) {
@@ -3308,6 +3310,8 @@ void __rvu_flr_handler(struct rvu *rvu, u16 pcifunc)
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_SSOW);
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_SSO);
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_NPA);
+	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_DPI0);
+	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_DPI1);
 	rvu_reset_lmt_map_tbl(rvu, pcifunc);
 	rvu_detach_rsrcs(rvu, NULL, pcifunc);
 	rvu_sso_pfvf_rst(rvu, pcifunc);
