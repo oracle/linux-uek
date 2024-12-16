@@ -25,6 +25,9 @@
 /* Default CPT_AF_RXC_CFG1:max_rxc_icb_cnt */
 #define CPT_DFLT_MAX_RXC_ICB_CNT  0xC0ULL
 
+/* Max RXC queues */
+#define CPT_AF_MAX_RXC_QUEUES 16
+
 #define cpt_get_eng_sts(e_min, e_max, rsp, etype)                   \
 ({                                                                  \
 	u64 free_sts = 0, busy_sts = 0;                             \
@@ -1031,6 +1034,33 @@ static void cpt_rxc_time_cfg(struct rvu *rvu, struct cpt_rxc_time_cfg_req *req,
 	rvu_write64(rvu, blkaddr, CPT_AF_RXC_DFRG, dfrg_reg);
 }
 
+static void cpt_cn20k_rxc_time_cfg(struct rvu *rvu, int blkaddr,
+				   struct cpt_rxc_time_cfg_req *req,
+				   struct cpt_rxc_time_cfg_req *save)
+{
+	u16 qid = req->queue_id;
+	u64 dfrg_reg;
+
+	if (save) {
+		/* Save older config */
+		dfrg_reg = rvu_read64(rvu, blkaddr, CPT_AF_RXC_QUEX_DFRG(qid));
+		save->zombie_thres = FIELD_GET(RXC_ZOMBIE_THRES, dfrg_reg);
+		save->zombie_limit = FIELD_GET(RXC_ZOMBIE_LIMIT, dfrg_reg);
+		save->active_thres = FIELD_GET(RXC_ACTIVE_THRES, dfrg_reg);
+		save->active_limit = FIELD_GET(RXC_ACTIVE_LIMIT, dfrg_reg);
+
+		save->step = rvu_read64(rvu, blkaddr, CPT_AF_RXC_TIME_CFG);
+	}
+
+	dfrg_reg = FIELD_PREP(RXC_ZOMBIE_THRES, req->zombie_thres);
+	dfrg_reg |= FIELD_PREP(RXC_ZOMBIE_LIMIT, req->zombie_limit);
+	dfrg_reg |= FIELD_PREP(RXC_ACTIVE_THRES, req->active_thres);
+	dfrg_reg |= FIELD_PREP(RXC_ACTIVE_LIMIT, req->active_limit);
+
+	rvu_write64(rvu, blkaddr, CPT_AF_RXC_TIME_CFG, req->step);
+	rvu_write64(rvu, blkaddr, CPT_AF_RXC_QUEX_DFRG(qid), dfrg_reg);
+}
+
 int rvu_mbox_handler_cpt_rxc_time_cfg(struct rvu *rvu,
 				      struct cpt_rxc_time_cfg_req *req,
 				      struct msg_rsp *rsp)
@@ -1045,6 +1075,14 @@ int rvu_mbox_handler_cpt_rxc_time_cfg(struct rvu *rvu,
 	if (!is_cpt_pf(rvu, req->hdr.pcifunc) &&
 	    !is_cpt_vf(rvu, req->hdr.pcifunc))
 		return CPT_AF_ERR_ACCESS_DENIED;
+
+	if (is_cn20k(rvu->pdev)) {
+		if  (req->queue_id >= CPT_AF_MAX_RXC_QUEUES)
+			return CPT_AF_ERR_RXC_QUE_INVALID;
+
+		cpt_cn20k_rxc_time_cfg(rvu, blkaddr, req, NULL);
+		return 0;
+	}
 
 	cpt_rxc_time_cfg(rvu, req, blkaddr, NULL);
 

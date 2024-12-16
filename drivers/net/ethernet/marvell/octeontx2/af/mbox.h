@@ -2654,7 +2654,8 @@ enum cpt_af_status {
 	CPT_AF_ERR_SSO_PF_FUNC_INVALID	= -905,
 	CPT_AF_ERR_NIX_PF_FUNC_INVALID	= -906,
 	CPT_AF_ERR_INLINE_IPSEC_INB_ENA	= -907,
-	CPT_AF_ERR_INLINE_IPSEC_OUT_ENA	= -908
+	CPT_AF_ERR_INLINE_IPSEC_OUT_ENA	= -908,
+	CPT_AF_ERR_RXC_QUE_INVALID	= -909
 };
 
 /* CPT mbox message formats */
@@ -2751,6 +2752,7 @@ struct cpt_rxc_time_cfg_req {
 	u16 zombie_limit;
 	u16 active_thres;
 	u16 active_limit;
+	u16 queue_id;
 };
 
 /* Mailbox message request format to request for CPT_INST_S lmtst. */
