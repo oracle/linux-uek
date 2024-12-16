@@ -85,7 +85,7 @@ static int nix_get_rx_inl_profile(struct nix_rx_inl_profile_cfg_req *req,
 
 static void nix_free_rx_inl_profiles(struct rvu *rvu, u16 pcifunc,
 				     struct nix_cn20k_hw *nix_cn20k_hw,
-				     int blkaddr)
+				     int blkaddr, int nixlf)
 {
 	struct nix_rx_inl_profile_users *user, *next;
 	struct nix_rx_inl_profile *inl_profile;
@@ -101,6 +101,13 @@ static void nix_free_rx_inl_profiles(struct rvu *rvu, u16 pcifunc,
 				kfree(user);
 			}
 		}
+
+		rvu_write64(rvu, blkaddr,
+			    NIX_AF_LFX_RX_INLINE_SA_BASE(nixlf, pf_id), 0);
+		rvu_write64(rvu, blkaddr,
+			    NIX_AF_LFX_RX_INLINE_CFG0(nixlf, pf_id), 0);
+		rvu_write64(rvu, blkaddr,
+			    NIX_AF_LFX_RX_INLINE_CFG1(nixlf, pf_id), 0);
 
 		/* Do not free profile if there are users of this profile */
 		if (!list_empty(&inl_profile->pfvf_list))
@@ -212,21 +219,92 @@ unlock:
 	return err;
 }
 
+int rvu_mbox_handler_nix_rx_inl_lf_cfg(struct rvu *rvu,
+				       struct nix_rx_inl_lf_cfg_req *req,
+				       struct msg_rsp *rsp)
+{
+	struct nix_rx_inl_profile_users *user, *next;
+	struct nix_rx_inl_profile *inl_profile;
+	struct nix_cn20k_hw *nix_cn20k_hw;
+	u16 pcifunc = req->hdr.pcifunc;
+	u8 profile = req->profile_id;
+	int err, nixlf, blkaddr;
+	struct nix_hw *nix_hw;
+	bool match = false;
+
+	if (profile >= NIX_RX_INL_PROFILE_CNT)
+		return NIX_AF_ERR_RX_INL_INVALID_PROFILE_ID;
+
+	err = nix_get_nixlf(rvu, pcifunc, &nixlf, &blkaddr);
+	if (err)
+		return err;
+
+	nix_hw = get_nix_hw(rvu->hw, blkaddr);
+	if (!nix_hw)
+		return NIX_AF_ERR_INVALID_NIXBLK;
+
+	nix_cn20k_hw = &nix_hw->cn20k;
+
+	mutex_lock(&nix_cn20k_hw->rx_inl_lock);
+	if (!test_bit(profile, nix_cn20k_hw->rx_inl_profile_bmap)) {
+		err = NIX_AF_ERR_RX_INL_INVALID_PROFILE_ID;
+		goto unlock;
+	}
+
+	inl_profile = &nix_cn20k_hw->inl_profiles[profile];
+	list_for_each_entry_safe(user, next, &inl_profile->pfvf_list, list) {
+		if (user->pf_func == pcifunc) {
+			match = true;
+			break;
+		}
+	}
+
+	if (!match) {
+		err = NIX_AF_ERR_RX_INL_INVALID_PROFILE_ID;
+		goto unlock;
+	}
+
+	if (!req->enable) {
+		rvu_write64(rvu, blkaddr,
+			    NIX_AF_LFX_RX_INLINE_SA_BASE(nixlf, profile), 0);
+		rvu_write64(rvu, blkaddr,
+			    NIX_AF_LFX_RX_INLINE_CFG0(nixlf, profile), 0);
+		rvu_write64(rvu, blkaddr,
+			    NIX_AF_LFX_RX_INLINE_CFG1(nixlf, profile), 0);
+		goto unlock;
+	}
+
+	rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_INLINE_SA_BASE(nixlf, profile),
+		    req->rx_inline_sa_base);
+	rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_INLINE_CFG0(nixlf, profile),
+		    req->rx_inline_cfg0);
+	rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_INLINE_CFG1(nixlf, profile),
+		    req->rx_inline_cfg1);
+
+unlock:
+	mutex_unlock(&nix_cn20k_hw->rx_inl_lock);
+	return err;
+}
+
 int rvu_nix_cn20k_free_resources(struct rvu *rvu, u16 pcifunc)
 {
 	struct nix_cn20k_hw *nix_cn20k_hw;
 	struct nix_hw *nix_hw;
+	int err, nixlf;
 	int blkaddr;
-	int err;
 
 	err = nix_get_struct_ptrs(rvu, pcifunc, &nix_hw, &blkaddr);
+	if (err)
+		return err;
+
+	err = nix_get_nixlf(rvu, pcifunc, &nixlf, &blkaddr);
 	if (err)
 		return err;
 
 	nix_cn20k_hw = &nix_hw->cn20k;
 
 	mutex_lock(&nix_cn20k_hw->rx_inl_lock);
-	nix_free_rx_inl_profiles(rvu, pcifunc, nix_cn20k_hw, blkaddr);
+	nix_free_rx_inl_profiles(rvu, pcifunc, nix_cn20k_hw, blkaddr, nixlf);
 	mutex_unlock(&nix_cn20k_hw->rx_inl_lock);
 
 	return 0;

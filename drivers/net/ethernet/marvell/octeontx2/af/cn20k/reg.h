@@ -93,6 +93,18 @@
 #define NPC_AF_KPMX_PASS2_OFFSET(a)	(0x60040ull | (a) << 12)
 #define NPC_AF_MCAM_SECTIONX_CFG_EXT(a)	(0xf000000ull | (a) << 3)
 
+#define NIX_AF_LSO_ALT_FLAGS_CFG(a)	(0x4B00 | (a) << 3)
+#define NIX_AF_LSO_ALT_FLAGS_CFG1(a)	(0x4B20 | (a) << 3)
+
+/* NIX Registers */
+#define NIX_AF_RX_DEF_INLINEX(a)		(0x2c0 | (a) << 3)
+#define NIX_AF_RX_INLINE_GEN_CFGX(a)		(0x340 | (a) << 3)
+#define NIX_AF_RX_EXTRACT_INLINEX(a)		(0x380 | (a) << 3)
+#define NIX_AF_RX_PROT_FIELDX_INLINEX(a, b)	(0x4c00 | (a) << 6 | (b) << 3)
+#define NIX_AF_LFX_RX_INLINE_SA_BASE(a, b)	(0x4240 | (a) << 17 | (b) << 3)
+#define NIX_AF_LFX_RX_INLINE_CFG0(a, b)		(0x4280 | (a) << 17 | (b) << 3)
+#define NIX_AF_LFX_RX_INLINE_CFG1(a, b)		(0x42c0 | (a) << 17 | (b) << 3)
+
 #define NPC_AF_CN20K_MCAMEX_BANKX_CAMX_INTF_EXT(a, b, c) ({		\
 	u64 offset;							\
 	offset = (0x8000000ull | (a) << 4 | (b) << 20 | (c) << 3);	\

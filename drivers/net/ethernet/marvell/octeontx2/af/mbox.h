@@ -463,6 +463,8 @@ M(NIX_LSO_ALT_FLAGS_CFG, 0x8030, nix_lso_alt_flags_cfg, nix_lso_alt_flags_cfg_re
 M(NIX_RX_INLINE_PROFILE_CFG, 0x8031, nix_rx_inl_profile_cfg,			\
 				nix_rx_inl_profile_cfg_req,			\
 				nix_rx_inl_profile_cfg_rsp)			\
+M(NIX_RX_INLINE_LF_CFG, 0x8032, nix_rx_inl_lf_cfg, nix_rx_inl_lf_cfg_req,	\
+				msg_rsp)					\
 M(NIX_AF_RX_FLOW_VEC_CTRL_SET, 0x8034, nix_af_rx_flow_vec_ctrl_set,		\
 				       nix_af_rx_flow_vec_ctrl_write_req, msg_rsp)	\
 /* MCS mbox IDs (range 0xA000 - 0xBFFF) */					\
@@ -1091,6 +1093,7 @@ enum nix_af_status {
 	NIX_AF_ERR_LSO_ALT_FLAGS_UNSUPPORTED = -439,
 	NIX_AF_ERR_LSO_ALT_FLAGS_CFG_FAIL = -440,
 	NIX_AF_ERR_RX_INL_PROFILE_NOT_FREE = -441,
+	NIX_AF_ERR_RX_INL_INVALID_PROFILE_ID = -442,
 };
 
 /* For NIX RX vtag action  */
@@ -1662,6 +1665,16 @@ struct nix_rx_inl_profile_cfg_req {
 
 struct nix_rx_inl_profile_cfg_rsp {
 	struct mbox_msghdr hdr;
+	u8 profile_id;
+	u8 rsvd[32];		/* reserved fields for future expansion */
+};
+
+struct nix_rx_inl_lf_cfg_req {
+	struct mbox_msghdr hdr;
+	u64 rx_inline_cfg0;
+	u64 rx_inline_cfg1;
+	u64 rx_inline_sa_base;
+	u8 enable;
 	u8 profile_id;
 	u8 rsvd[32];		/* reserved fields for future expansion */
 };
