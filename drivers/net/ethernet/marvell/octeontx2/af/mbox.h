@@ -294,6 +294,8 @@ M(CPT_FLT_ENG_INFO,     0xA09, cpt_flt_eng_info, cpt_flt_eng_info_req,	\
 			       cpt_flt_eng_info_rsp)			\
 M(CPT_RX_INLINE_QALLOC, 0xA0A, cpt_rx_inline_qalloc, msg_req,		\
 			       cpt_rx_inline_qalloc_rsp)		\
+M(CPT_RX_INL_QUEUE_CFG,	0xA0B, cpt_rx_inl_queue_cfg,			\
+			       cpt_rx_inline_qcfg_req, msg_rsp)		\
 M(CPT_SET_QUEQE_PRI,    0xBFB, cpt_set_que_pri, cpt_queue_pri_req_msg,	\
 			       msg_rsp)					\
 /* SDP mbox IDs (range 0x1000 - 0x11FF) */				\
@@ -2698,7 +2700,9 @@ enum cpt_af_status {
 	CPT_AF_ERR_INLINE_IPSEC_INB_ENA	= -907,
 	CPT_AF_ERR_INLINE_IPSEC_OUT_ENA	= -908,
 	CPT_AF_ERR_RXC_QUEUE_INVALID	= -909,
-	CPT_AF_ERR_PRI_INVALID		= -910
+	CPT_AF_ERR_PRI_INVALID		= -910,
+	CPT_AF_ERR_QUEUE_PCIFUNC_MAP_INVALID = -911,
+	CPT_AF_ERR_CTX_ILEN_INVALID	= -912
 };
 
 /* CPT mbox message formats */
@@ -2733,6 +2737,22 @@ struct cpt_queue_pri_req_msg {
 	struct mbox_msghdr hdr;
 	u32 slot;
 	u8 queue_pri;
+};
+
+struct cpt_rx_inline_qcfg_req {
+	struct mbox_msghdr hdr;
+	u16 sso_pf_func; /* inbound path SSO_PF_FUNC */
+	u16 nix_pf_func; /* outbound path NIX_PF_FUNC */
+	u16 ctx_pf_func;
+	u8 eng_grpmsk;
+	u8 enable;
+	u8 slot;
+	u8 rx_queue_id;
+	u8 ctx_ilen;
+	u8 pf_func_ctx;
+	u8 inflight_limit;
+	u8 queue_pri;
+	u8 rsvd[32]; /* For future extensions */
 };
 
 #define CPT_INLINE_INBOUND      0

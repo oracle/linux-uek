@@ -16,9 +16,6 @@
 #define	PCI_PF_DEVID_OTX2_CPT_PF 0xFD
 #define	PCI_PF_DEVID_CN10K_CPT_PF 0xF2
 
-/* Length of initial context fetch in 128 byte words */
-#define CPT_CTX_ILEN    1ULL
-
 /* Interrupt vector count of CPT RVU and RAS interrupts */
 #define CPT_10K_AF_RVU_RAS_INT_VEC_CNT  2
 
@@ -519,7 +516,7 @@ static int validate_and_get_cpt_blkaddr(int req_blkaddr)
 	return blkaddr;
 }
 
-static inline int otx2_cpt_que_pri_mask(struct rvu *rvu)
+int otx2_cpt_que_pri_mask(struct rvu *rvu)
 {
 	return (is_cn20k(rvu->pdev)) ? ((1 << CN20K_NUM_PRI_BITS) - 1)
 				     : ((1 << CN10K_NUM_PRI_BITS) - 1);
