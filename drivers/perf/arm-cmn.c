@@ -614,7 +614,7 @@ static_assert(sizeof(struct arm_cmn_hw_event) <= offsetof(struct hw_perf_event, 
 
 /* @i is the DTC number, @idx is the counter index on that DTC */
 #define for_each_hw_dtc_idx(hw, i, idx) \
-	for (int i = 0, idx; i < CMN_MAX_DTCS; i++) if ((idx = hw->dtc_idx[i]) >= 0)
+	for (i = 0; i < CMN_MAX_DTCS; i++) if ((idx = hw->dtc_idx[i]) >= 0)
 
 static struct arm_cmn_hw_event *to_cmn_hw(struct perf_event *event)
 {
@@ -1485,6 +1485,7 @@ static void arm_cmn_init_counter(struct perf_event *event)
 	struct arm_cmn *cmn = to_cmn(event->pmu);
 	struct arm_cmn_hw_event *hw = to_cmn_hw(event);
 	u64 count;
+	int i, idx;
 
 	for_each_hw_dtc_idx(hw, i, idx) {
 		writel_relaxed(CMN_COUNTER_INIT, CMN_DT_PMEVCNT(&cmn->dtc[i], idx));
@@ -1501,6 +1502,7 @@ static void arm_cmn_event_read(struct perf_event *event)
 	struct arm_cmn_hw_event *hw = to_cmn_hw(event);
 	u64 delta, new, prev;
 	unsigned long flags;
+	int i, idx;
 
 	if (CMN_EVENT_TYPE(event) == CMN_TYPE_DTC) {
 		delta = arm_cmn_read_cc(cmn->dtc + hw->dtc_idx[0]);
@@ -1652,7 +1654,7 @@ static void arm_cmn_val_add_event(struct arm_cmn *cmn, struct arm_cmn_val *val,
 	struct arm_cmn_hw_event *hw = to_cmn_hw(event);
 	struct arm_cmn_node *dn;
 	enum cmn_node_type type;
-	int i;
+	int dtc, idx, i;
 
 	if (is_software_event(event))
 		return;
@@ -1751,8 +1753,9 @@ static enum cmn_filter_select arm_cmn_filter_sel(const struct arm_cmn *cmn,
 {
 	struct arm_cmn_event_attr *e;
 	enum cmn_model model = arm_cmn_model(cmn);
+	int i;
 
-	for (int i = 0; i < ARRAY_SIZE(arm_cmn_event_attrs) - 1; i++) {
+	for (i = 0; i < ARRAY_SIZE(arm_cmn_event_attrs) - 1; i++) {
 		e = container_of(arm_cmn_event_attrs[i], typeof(*e), attr.attr);
 		if (e->model & model && e->type == type && e->eventid == eventid)
 			return e->fsel;
@@ -1839,6 +1842,7 @@ static void arm_cmn_event_clear(struct arm_cmn *cmn, struct perf_event *event,
 {
 	struct arm_cmn_hw_event *hw = to_cmn_hw(event);
 	enum cmn_node_type type = CMN_EVENT_TYPE(event);
+	int j, idx;
 
 	while (i--) {
 		struct arm_cmn_dtm *dtm = &cmn->dtms[hw->dn[i].dtm] + hw->dtm_offset;
@@ -1870,6 +1874,7 @@ static int arm_cmn_event_add(struct perf_event *event, int flags)
 	struct arm_cmn_node *dn;
 	enum cmn_node_type type = CMN_EVENT_TYPE(event);
 	unsigned int input_sel, i = 0;
+	int j, idx;
 
 	if (type == CMN_TYPE_DTC) {
 		while (cmn->dtc[i].cycles)
@@ -2167,9 +2172,11 @@ static int arm_cmn_init_dtcs(struct arm_cmn *cmn)
 	cmn->xps = arm_cmn_node(cmn, CMN_TYPE_XP);
 
 	if (cmn->part == PART_CMN600 && cmn->num_dtcs > 1) {
+		int i;
+
 		/* We do at least know that a DTC's XP must be in that DTC's domain */
 		dn = arm_cmn_node(cmn, CMN_TYPE_DTC);
-		for (int i = 0; i < cmn->num_dtcs; i++)
+		for (i = 0; i < cmn->num_dtcs; i++)
 			arm_cmn_node_to_xp(cmn, dn + i)->dtc = i;
 	}
 
@@ -2341,6 +2348,7 @@ static int arm_cmn_discover(struct arm_cmn *cmn, unsigned int rgn_offset)
 		void __iomem *xp_region = cmn->base + xp_offset[i];
 		struct arm_cmn_node *xp = dn++;
 		unsigned int xp_ports = 0;
+		int p;
 
 		arm_cmn_init_node_info(cmn, xp_offset[i], xp);
 		/*
@@ -2364,7 +2372,7 @@ static int arm_cmn_discover(struct arm_cmn *cmn, unsigned int rgn_offset)
 		 * unnecessary XP events easily, and also infer the per-XP
 		 * part of the node ID format.
 		 */
-		for (int p = 0; p < CMN_MAX_PORTS; p++)
+		for (p = 0; p < CMN_MAX_PORTS; p++)
 			if (arm_cmn_device_connect_info(cmn, xp, p))
 				xp_ports |= BIT(p);
 
