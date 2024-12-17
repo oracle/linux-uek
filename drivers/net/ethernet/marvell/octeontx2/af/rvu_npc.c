@@ -1621,10 +1621,15 @@ static int npc_prepare_default_kpu(struct rvu *rvu, struct npc_kpu_profile_adapt
 	profile->kpu = npc_kpu_profiles;
 	profile->kpus = ARRAY_SIZE(npc_kpu_profiles);
 	profile->lt_def = &npc_lt_defaults;
-	if (is_cn20k(rvu->pdev))
+	if (is_cn20k(rvu->pdev)) {
 		profile->mcam_kex_prfl.mkex_extr = npc_mkex_extr_default_get();
-	else
+		ikpu_action_entries[NPC_RX_CPT_HDR_PKIND].offset = 6;
+		ikpu_action_entries[NPC_RX_CPT_HDR_PKIND].mask = 0xe0;
+		ikpu_action_entries[NPC_RX_CPT_HDR_PKIND].shift = 0x5;
+		ikpu_action_entries[NPC_RX_CPT_HDR_PKIND].right = 0x1;
+	} else {
 		profile->mcam_kex_prfl.mkex = &npc_mkex_default;
+	}
 	profile->mkex_hash = &npc_mkex_hash_default;
 
 	return 0;
