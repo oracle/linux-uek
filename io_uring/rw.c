@@ -293,7 +293,7 @@ static int io_prep_rw_pi(struct io_kiocb *req, struct io_rw *rw, int ddir,
 			  pi_attr.len, &io->meta.iter);
 	if (unlikely(ret < 0))
 		return ret;
-	rw->kiocb.ki_flags |= IOCB_HAS_METADATA;
+	req->flags |= REQ_F_HAS_METADATA;
 	io_meta_save_state(io);
 	return ret;
 }
@@ -798,16 +798,15 @@ static bool io_rw_should_retry(struct io_kiocb *req)
 	struct io_rw *rw = io_kiocb_to_cmd(req, struct io_rw);
 	struct kiocb *kiocb = &rw->kiocb;
 
-	/* never retry for NOWAIT, we just complete with -EAGAIN */
-	if (req->flags & REQ_F_NOWAIT)
+	/*
+	 * Never retry for NOWAIT or a request with metadata, we just complete
+	 * with -EAGAIN.
+	 */
+	if (req->flags & (REQ_F_NOWAIT | REQ_F_HAS_METADATA))
 		return false;
 
 	/* Only for buffered IO */
 	if (kiocb->ki_flags & (IOCB_DIRECT | IOCB_HIPRI))
-		return false;
-
-	/* never retry for meta io */
-	if (kiocb->ki_flags & IOCB_HAS_METADATA)
 		return false;
 
 	/*
@@ -860,7 +859,7 @@ static int io_rw_init_file(struct io_kiocb *req, fmode_t mode, int rw_type)
 	if (!(req->flags & REQ_F_FIXED_FILE))
 		req->flags |= io_file_get_flags(file);
 
-	kiocb->ki_flags |= file->f_iocb_flags;
+	kiocb->ki_flags = file->f_iocb_flags;
 	ret = kiocb_set_rw_flags(kiocb, rw->flags, rw_type);
 	if (unlikely(ret))
 		return ret;
@@ -889,7 +888,7 @@ static int io_rw_init_file(struct io_kiocb *req, fmode_t mode, int rw_type)
 		kiocb->ki_complete = io_complete_rw;
 	}
 
-	if (kiocb->ki_flags & IOCB_HAS_METADATA) {
+	if (req->flags & REQ_F_HAS_METADATA) {
 		struct io_async_rw *io = req->async_data;
 
 		/*
@@ -898,6 +897,7 @@ static int io_rw_init_file(struct io_kiocb *req, fmode_t mode, int rw_type)
 		 */
 		if (!(req->file->f_flags & O_DIRECT))
 			return -EOPNOTSUPP;
+		kiocb->ki_flags |= IOCB_HAS_METADATA;
 		kiocb->private = &io->meta;
 	}
 
