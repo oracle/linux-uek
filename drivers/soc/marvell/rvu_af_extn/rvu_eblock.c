@@ -404,5 +404,6 @@ void rvu_eblock_module_exit(void)
 	 * module goes here.
 	 */
 	ree_eb_module_exit();
+	dpi_eb_module_exit();
 	sdp_eb_module_exit();
 }

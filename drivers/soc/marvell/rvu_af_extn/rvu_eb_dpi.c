@@ -66,9 +66,38 @@ static unsigned long eng_fifo_buf = 0x101008080808;
 #define DPI_WPORT				(0x1ULL << 4)
 #define DPI_RPORT				(0x1ULL << 0)
 
+struct dpi_rsrc {
+	struct qmem	*dpi_ctx[DPI_MAX_CHAN_TBL];
+	struct rsrc_bmap chan_tbl;
+	/* Serialize chan table resource alloc/free */
+	struct mutex chan_tbl_lock;
+};
+
 struct dpi_drvdata {
+	struct dpi_rsrc	rsrc;
 	int res_idx;
 };
+
+static int dpi_alloc_chan_tbl(struct dpi_rsrc *rsrc)
+{
+	struct rsrc_bmap *chan_tbl;
+	int idx;
+
+	chan_tbl = &rsrc->chan_tbl;
+	idx = rvu_alloc_rsrc(chan_tbl);
+	if (idx < 0)
+		return -ENOSPC;
+
+	return idx;
+}
+
+static void dpi_free_chan_tbl(struct dpi_rsrc *rsrc, int idx)
+{
+	struct rsrc_bmap *chan_tbl;
+
+	chan_tbl = &rsrc->chan_tbl;
+	rvu_free_rsrc(chan_tbl, idx);
+}
 
 static int dpi_dma_engine_get_num(void)
 {
@@ -148,8 +177,11 @@ int rvu_mbox_handler_dpi_lf_ring_cfg(struct rvu *rvu,
 	cfg = ((u64)req->err_rsp_en << 36) | ((u64)(req->xtype & 0x7) << 12);
 	cfg |= ((u64)(req->pri & 0x3) << 8);
 
-	if (req->xtype == OUTBOUND  || req->xtype == EXTERNAL)
-		cfg |= (DPI_WPORT |  DPI_RPORT);
+	if (req->wport)
+		cfg |= DPI_WPORT;
+
+	if (req->rport)
+		cfg |= DPI_RPORT;
 
 	lf = rvu_get_lf(rvu, &hw->block[req->dpi_blkaddr], pcifunc,
 			req->lf_slot);
@@ -390,6 +422,161 @@ exit:
 	return err;
 }
 
+int rvu_mbox_handler_dpi_lf_chan_tbl_alloc(struct rvu *rvu,
+					   struct dpi_lf_chan_tbl_alloc_req *req,
+					   struct dpi_lf_chan_tbl_alloc_rsp *rsp)
+{
+	int err, blknr, tbl_idx;
+	struct dpi_rsrc *dpi;
+
+	blknr = (req->dpi_blkaddr == BLKADDR_DPI0) ? 0 : 1;
+	if (blknr)
+		dpi = rvu->hw->dpi1;
+	else
+		dpi = rvu->hw->dpi;
+
+	mutex_lock(&dpi->chan_tbl_lock);
+
+	tbl_idx = dpi_alloc_chan_tbl(dpi);
+	if (tbl_idx < 0) {
+		mutex_unlock(&dpi->chan_tbl_lock);
+		return DPI_AF_ERR_LF_NO_MORE_RESOURCES;
+	}
+
+	/* Alloc DPI Channel table and config the base */
+	err = qmem_alloc(rvu->dev, &dpi->dpi_ctx[tbl_idx], req->tbl_size,
+			 sizeof(struct dpi_chan_tble_s));
+	if (err) {
+		dpi_free_chan_tbl(dpi, tbl_idx);
+		mutex_unlock(&dpi->chan_tbl_lock);
+		return err;
+	}
+
+	rvu_write64(rvu, req->dpi_blkaddr, DPI_AF_CHAN_TBLX_CFG(tbl_idx),
+		    (u64)dpi->dpi_ctx[tbl_idx]->iova);
+
+	mutex_unlock(&dpi->chan_tbl_lock);
+
+	rsp->tbl_num = tbl_idx;
+
+	return 0;
+}
+
+int rvu_mbox_handler_dpi_lf_chan_tbl_free(struct rvu *rvu,
+					  struct dpi_lf_chan_tbl_free_req *req,
+					  struct msg_rsp *rsp)
+{
+	struct dpi_rsrc *dpi;
+	int blknr;
+
+	blknr = (req->dpi_blkaddr == BLKADDR_DPI0) ? 0 : 1;
+	dpi = &rvu->hw->dpi[blknr];
+
+	mutex_lock(&dpi->chan_tbl_lock);
+
+	if (is_rsrc_free(&dpi->chan_tbl, req->tbl_num)) {
+		mutex_unlock(&dpi->chan_tbl_lock);
+		return DPI_AF_ERR_PARAM;
+	}
+
+	if (dpi->dpi_ctx[req->tbl_num])
+		qmem_free(rvu->dev, dpi->dpi_ctx[req->tbl_num]);
+	else
+		dev_err(rvu->dev, "RVUAF: Channel table %d not found\n",
+			req->tbl_num);
+
+	dpi_free_chan_tbl(dpi, req->tbl_num);
+	/* Config DPI table sel, enable */
+	rvu_write64(rvu, req->dpi_blkaddr, DPI_AF_CHAN_TBLX_CFG(req->tbl_num),
+		    0);
+
+	mutex_unlock(&dpi->chan_tbl_lock);
+
+	return 0;
+}
+
+int rvu_mbox_handler_dpi_lf_chan_tbl_sel(struct rvu *rvu,
+					 struct dpi_lf_chan_tbl_sel_req *req,
+					 struct msg_rsp *rsp)
+{
+	u16 pcifunc = req->hdr.pcifunc;
+	struct rvu_block *block;
+	int dpilf;
+	u64 val;
+
+	block = &rvu->hw->block[req->dpi_blkaddr];
+
+	dpilf = rvu_get_lf(rvu, block, pcifunc, req->lf_slot);
+	if (dpilf < 0)
+		return DPI_AF_ERR_LF_INVALID;
+
+	/* Config DPI table sel, enable, make sure no traffic while update */
+	val = BIT_ULL(63) | (req->chan_tbl & 0xff);
+	rvu_write64(rvu, req->dpi_blkaddr, DPI_AF_CHAN_LFX_CFG(dpilf),
+		    val);
+
+	return 0;
+}
+
+int rvu_mbox_handler_dpi_lf_chan_tbl_ena_dis(struct rvu *rvu,
+					     struct dpi_lf_chan_tbl_ena_dis_req *req,
+					     struct msg_rsp *rsp)
+{
+	u16 pcifunc = req->hdr.pcifunc;
+	struct rvu_block *block;
+	int dpilf;
+	u64 val;
+
+	block = &rvu->hw->block[req->dpi_blkaddr];
+
+	dpilf = rvu_get_lf(rvu, block, pcifunc, req->lf_slot);
+	if (dpilf < 0)
+		return DPI_AF_ERR_LF_INVALID;
+
+	val = rvu_read64(rvu, req->dpi_blkaddr, DPI_AF_CHAN_LFX_CFG(dpilf));
+	if (req->ena_dis)
+		val |= BIT_ULL(63);
+	else
+		val &= ~BIT_ULL(63);
+	rvu_write64(rvu, req->dpi_blkaddr, DPI_AF_CHAN_LFX_CFG(dpilf),
+		    val);
+
+	return 0;
+}
+
+int rvu_mbox_handler_dpi_lf_chan_tbl_update(struct rvu *rvu,
+					    struct dpi_lf_chan_tbl_update_req *req,
+					    struct msg_rsp *rsp)
+{
+	u64 *req_base, *alloc_end;
+	struct qmem *tbl_entry;
+	struct dpi_rsrc *dpi;
+	u32 tot_entries;
+	u64 *chan_base;
+	int blknr, cnt;
+
+	blknr = (req->dpi_blkaddr == BLKADDR_DPI0) ? 0 : 1;
+	if (blknr)
+		dpi = &rvu->hw->dpi1[blknr];
+	else
+		dpi = &rvu->hw->dpi[blknr];
+
+	tbl_entry = dpi->dpi_ctx[req->chan_tbl];
+	tot_entries = tbl_entry->alloc_sz / tbl_entry->entry_sz;
+	req_base = tbl_entry->base + req->idx_offset;
+	alloc_end = tbl_entry->base + tbl_entry->alloc_sz;
+	if (tot_entries < req->num_entries || req_base > alloc_end)
+		return DPI_AF_ERR_PARAM;
+
+	chan_base = tbl_entry->base;
+	for (cnt = 0; cnt < req->num_entries; cnt++) {
+		*((u64 *)(chan_base + req->idx_offset) + cnt) =
+			(u64)req->config[cnt];
+	}
+
+	return 0;
+}
+
 int rvu_mbox_handler_dpi_lf_chan_cfg(struct rvu *rvu,
 				     struct dpi_lf_chan_cfg_req *req,
 				     struct msg_rsp *rsp)
@@ -495,7 +682,7 @@ static int dpi_exit(struct rvu *rvu)
 
 static int rvu_dpi_init_block(struct rvu_block *block, void *data)
 {
-	int engine, blkaddr, port = 0, mrrs, mps, blkid;
+	int engine, blkaddr, port = 0, mrrs, mps, blkid, err;
 	u8 *eng_buf = (u8 *)&eng_fifo_buf;
 	struct dpi_drvdata *drvdata = data;
 	struct rvu *rvu = block->rvu;
@@ -507,6 +694,10 @@ static int rvu_dpi_init_block(struct rvu_block *block, void *data)
 
 	blkid = drvdata->res_idx;
 	blkaddr = blkid ? BLKADDR_DPI1 : BLKADDR_DPI0;
+	if (blkid)
+		rvu->hw->dpi1 = &drvdata->rsrc;
+	else
+		rvu->hw->dpi = &drvdata->rsrc;
 
 	for (engine = 0; engine < dpi_dma_engine_get_num(); engine++) {
 		val = DPI_ENG_BUF_BLKS(eng_buf[engine & 0x7]);
@@ -596,16 +787,31 @@ static int rvu_dpi_init_block(struct rvu_block *block, void *data)
 	rvu_write64(rvu, blkaddr, DPI_AF_PSWX_OPKT_RATE_CTRL(1), val);
 
 	mutex_init(&rvu->dpi_rsrc_lock);
+	mutex_init(&drvdata->rsrc.chan_tbl_lock);
+
+	drvdata->rsrc.chan_tbl.max = DPI_MAX_CHAN_TBL;
+	err = rvu_alloc_bitmap(&drvdata->rsrc.chan_tbl);
+	if (err)
+		return err;
 
 	return 0;
 }
 
 static void rvu_dpi_freemem_block(struct rvu_block *block, void *data)
 {
-	(void)block;
-	(void)data;
+	struct dpi_drvdata *drvdata = data;
+	struct rvu *rvu = block->rvu;
+	struct dpi_rsrc *dpi;
+	int i;
+
+	dpi  = &drvdata->rsrc;
 
 	/* Free up resources related to DPI channel tables etc.. */
+	for (i = 0; i < DPI_MAX_CHAN_TBL; i++) {
+		if (dpi->dpi_ctx[i])
+			qmem_free(rvu->dev, dpi->dpi_ctx[i]);
+	}
+	rvu_free_bitmap(&dpi->chan_tbl);
 }
 
 static int rvu_setup_dpi_hw_resource(struct rvu_block *block, void *data)
