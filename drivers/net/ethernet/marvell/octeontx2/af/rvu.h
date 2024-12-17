@@ -16,6 +16,7 @@
 #include "rvu_struct.h"
 #include "rvu_devlink.h"
 #include "common.h"
+#include "rvu_cpt.h"
 #include "mbox.h"
 #include "npc.h"
 #include "rvu_reg.h"
@@ -764,6 +765,8 @@ struct rvu {
 
 	/* NPA */
 	struct rsrc_bmap	npa_dpc;
+
+	struct rvu_cpt		cpt;
 
 	struct mutex		mbox_lock; /* Serialize mbox up and down msgs */
 	u16			rep_pcifunc;

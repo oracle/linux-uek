@@ -292,6 +292,8 @@ M(CPT_CTX_CACHE_SYNC,   0xA07, cpt_ctx_cache_sync, msg_req, msg_rsp)    \
 M(CPT_LF_RESET,         0xA08, cpt_lf_reset, cpt_lf_rst_req, msg_rsp)	\
 M(CPT_FLT_ENG_INFO,     0xA09, cpt_flt_eng_info, cpt_flt_eng_info_req,	\
 			       cpt_flt_eng_info_rsp)			\
+M(CPT_RX_INLINE_QALLOC, 0xA0A, cpt_rx_inline_qalloc, msg_req,		\
+			       cpt_rx_inline_qalloc_rsp)		\
 M(CPT_SET_QUEQE_PRI,    0xBFB, cpt_set_que_pri, cpt_queue_pri_req_msg,	\
 			       msg_rsp)					\
 /* SDP mbox IDs (range 0x1000 - 0x11FF) */				\
@@ -2695,7 +2697,7 @@ enum cpt_af_status {
 	CPT_AF_ERR_NIX_PF_FUNC_INVALID	= -906,
 	CPT_AF_ERR_INLINE_IPSEC_INB_ENA	= -907,
 	CPT_AF_ERR_INLINE_IPSEC_OUT_ENA	= -908,
-	CPT_AF_ERR_RXC_QUE_INVALID	= -909,
+	CPT_AF_ERR_RXC_QUEUE_INVALID	= -909,
 	CPT_AF_ERR_PRI_INVALID		= -910
 };
 
@@ -2719,6 +2721,12 @@ struct cpt_lf_alloc_req_msg {
 	u8 ctx_ilen : 7;
 	u8 rxc_ena : 1;
 	u8 rxc_ena_lf_id : 7;
+};
+
+struct cpt_rx_inline_qalloc_rsp {
+	struct mbox_msghdr hdr;
+	u8 rx_queue_id;
+	u64 rsvd[8]; /* For future extensions */
 };
 
 struct cpt_queue_pri_req_msg {
