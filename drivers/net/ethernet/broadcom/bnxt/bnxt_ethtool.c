@@ -4402,6 +4402,9 @@ static int bnxt_get_module_info(struct net_device *dev,
 	struct bnxt *bp = netdev_priv(dev);
 	int rc;
 
+	if (BNXT_VF(bp) && !BNXT_VF_IS_TRUSTED(bp))
+		return -EPERM;
+
 	/* No point in going further if phy status indicates
 	 * module is not inserted or if it is powered down or
 	 * if it is of type 10GBase-T
@@ -4452,6 +4455,9 @@ static int bnxt_get_module_eeprom(struct net_device *dev,
 	struct bnxt *bp = netdev_priv(dev);
 	u16  start = eeprom->offset, length = eeprom->len;
 	int rc = 0;
+
+	if (BNXT_VF(bp) && !BNXT_VF_IS_TRUSTED(bp))
+		return -EPERM;
 
 	memset(data, 0, eeprom->len);
 
@@ -4506,6 +4512,12 @@ static int bnxt_get_module_eeprom_by_page(struct net_device *dev,
 {
 	struct bnxt *bp = netdev_priv(dev);
 	int rc;
+
+	if (BNXT_VF(bp) && !BNXT_VF_IS_TRUSTED(bp)) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "Module read not permitted on untrusted VF");
+		return -EPERM;
+	}
 
 	rc = bnxt_get_module_status(bp, extack);
 	if (rc)
