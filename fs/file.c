@@ -22,6 +22,9 @@
 #include <linux/close_range.h>
 #include <linux/nospec.h>
 #include <net/sock.h>
+#ifndef __GENKSYMS__
+#include <linux/init_task.h>
+#endif
 
 #include "internal.h"
 
