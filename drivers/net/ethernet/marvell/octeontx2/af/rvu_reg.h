@@ -222,7 +222,6 @@
 #define NIX_AF_RVU_INT_ENA_W1S		(0x01D0)
 #define NIX_AF_RVU_INT_ENA_W1C		(0x01D8)
 #define NIX_AF_TCP_TIMER		(0x01E0)
-#define NIX_AF_RX_DEF_ET(a)		(0x01F0ull | (uint64_t)(a) << 3)
 #define NIX_AF_RX_DEF_OL2		(0x0200)
 #define NIX_AF_RX_DEF_OIP4		(0x0210)
 #define NIX_AF_RX_DEF_IIP4		(0x0220)
@@ -470,6 +469,14 @@
 #define NIX_AF_TL2_PARENT_MASK         GENMASK_ULL(20, 16)
 
 #define NIX_RQ_MSK_PROFILES             4
+
+#define NIX_AF_RX_DEF_ET(a) ({						   \
+	u64 offset;							   \
+									   \
+	offset = (0x01F0ull | (uint64_t)(a) << 3);			   \
+	if (is_cn20k(rvu->pdev))					   \
+		offset = (0x01E0ull | (uint64_t)(a) << 3);		   \
+	offset; })							   \
 
 #define NIX_AF_LF_CFG_SHIFT		17
 #define NIX_AF_LF_SSO_PF_FUNC_SHIFT	16
