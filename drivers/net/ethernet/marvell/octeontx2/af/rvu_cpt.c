@@ -1407,6 +1407,14 @@ int rvu_cpt_ctx_flush(struct rvu *rvu, u16 pcifunc)
 
 	blkaddr = (nix_blkaddr == BLKADDR_NIX1) ? BLKADDR_CPT1 : BLKADDR_CPT0;
 
+	/* Return if PF/VF has no CPT LF attached to it */
+	num_lfs = rvu_get_rsrc_mapcount(rvu_get_pfvf(rvu, pcifunc), blkaddr);
+	if (num_lfs == 0)
+		return 0;
+
+	if (is_cn20k(rvu->pdev))
+		return cpt_cn20k_ctx_flush(rvu, blkaddr, pcifunc);
+
 	/* Submit CPT_INST_S to track when all packets have been
 	 * flushed through for the NIX PF FUNC in inline inbound case.
 	 */
@@ -1421,12 +1429,6 @@ int rvu_cpt_ctx_flush(struct rvu *rvu, u16 pcifunc)
 	max_ctx_entries = (reg >> 48) & 0xFFF;
 
 	mutex_lock(&rvu->rsrc_lock);
-
-	num_lfs = rvu_get_rsrc_mapcount(rvu_get_pfvf(rvu, pcifunc),
-					blkaddr);
-	if (num_lfs == 0)
-		goto unlock;
-
 	/* Enable BAR2 ALIAS for this pcifunc. */
 	reg = BIT_ULL(16) | pcifunc;
 	rvu_bar2_sel_write64(rvu, blkaddr, CPT_AF_BAR2_SEL, reg);
@@ -1443,8 +1445,6 @@ int rvu_cpt_ctx_flush(struct rvu *rvu, u16 pcifunc)
 		}
 	}
 	rvu_bar2_sel_write64(rvu, blkaddr, CPT_AF_BAR2_SEL, 0);
-
-unlock:
 	mutex_unlock(&rvu->rsrc_lock);
 
 	return 0;

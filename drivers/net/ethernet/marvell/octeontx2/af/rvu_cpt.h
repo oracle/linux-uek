@@ -39,6 +39,8 @@
 #define CPT_INST_CREDIT_BPID  GENMASK_ULL(30, 22)
 #define CPT_INST_CREDIT_CNT   GENMASK_ULL(21, 0)
 
+#define CPT_CTX_INVAL_PFFUNC  GENMASK_ULL(63, 48)
+
 #define RXC_ZOMBIE_COUNT  GENMASK_ULL(60, 48)
 #define RXC_ZOMBIE_THRES  GENMASK_ULL(59, 48)
 #define RXC_ZOMBIE_LIMIT  GENMASK_ULL(43, 32)
@@ -59,5 +61,6 @@ void cpt_cn20k_rxc_time_cfg(struct rvu *rvu, int blkaddr,
 			    struct cpt_rxc_time_cfg_req *req,
 			    struct cpt_rxc_time_cfg_req *save);
 void cpt_cn20k_rxc_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr);
+int cpt_cn20k_ctx_flush(struct rvu *rvu, int cpt_blkaddr, u16 pcifunc);
 
 #endif /* RVU_CPT_H */

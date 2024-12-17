@@ -125,6 +125,18 @@ void cpt_cn20k_rxc_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr)
 	}
 }
 
+int cpt_cn20k_ctx_flush(struct rvu *rvu, int cpt_blkaddr, u16 pcifunc)
+{
+	/* Teardown RXC */
+	cpt_cn20k_rxc_teardown(rvu, pcifunc, cpt_blkaddr);
+
+	 /* Invalidate all context entries for the given 'pcifunc' */
+	rvu_write64(rvu, cpt_blkaddr, CPT_AF_CTX_PFF_INVAL,
+		    FIELD_PREP(CPT_CTX_INVAL_PFFUNC, pcifunc));
+
+	return 0;
+}
+
 static int cpt_rx_inline_queue_cfg(struct rvu *rvu, int blkaddr, u8 cptlf,
 				   struct cpt_rx_inline_qcfg_req *req)
 {
