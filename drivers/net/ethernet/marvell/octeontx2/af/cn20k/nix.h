@@ -34,5 +34,8 @@ struct nix_hw;
 
 void rvu_nix_block_cn20k_init(struct rvu *rvu, struct nix_hw *nix_hw);
 int rvu_nix_cn20k_free_resources(struct rvu *rvu, u16 pcifunc);
+void nix_free_rx_inl_queues(struct rvu *rvu, u16 pcifunc);
 
+#define NIX_AF_CN20K_CPT_INST_CREDIT_TH    GENMASK_ULL(54, 33)
+#define NIX_AF_CN20K_CPT_INST_CREDIT_BPID  GENMASK_ULL(32, 22)
 #endif /* NIX_CN20K_H */

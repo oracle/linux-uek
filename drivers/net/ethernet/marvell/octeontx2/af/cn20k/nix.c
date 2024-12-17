@@ -305,7 +305,92 @@ int rvu_nix_cn20k_free_resources(struct rvu *rvu, u16 pcifunc)
 
 	mutex_lock(&nix_cn20k_hw->rx_inl_lock);
 	nix_free_rx_inl_profiles(rvu, pcifunc, nix_cn20k_hw, blkaddr, nixlf);
+	nix_free_rx_inl_queues(rvu, pcifunc);
 	mutex_unlock(&nix_cn20k_hw->rx_inl_lock);
 
 	return 0;
+}
+
+void nix_free_rx_inl_queues(struct rvu *rvu, u16 pcifunc)
+{
+	struct rvu_cpt *cpt = &rvu->cpt;
+	int queue_idx;
+	u64 val;
+
+	for_each_set_bit(queue_idx, cpt->cpt_rx_queue_bitmap,
+			 CPT_AF_MAX_RXC_QUEUES) {
+		/* Skip queues that don't match the given pcifunc, unless
+		 * it's queue 0.
+		 */
+		if (cpt->cptpfvf_map[queue_idx] != pcifunc && queue_idx)
+			continue;
+
+		rvu_write64(rvu, BLKADDR_NIX0,
+			    NIX_AF_CN20K_RX_CPTX_INST_QSEL(queue_idx),
+			    0x0);
+		val = rvu_read64(rvu, BLKADDR_NIX0,
+				 NIX_AF_CN20K_RX_CPTX_CREDIT(queue_idx));
+		if ((val & 0x3FFFFF) != 0x3FFFFF)
+			rvu_write64(rvu, BLKADDR_NIX0,
+				    NIX_AF_CN20K_RX_CPTX_CREDIT(queue_idx),
+				    0x3FFFFF - val);
+	}
+}
+
+static int nix_rx_inline_queue_cfg(struct rvu *rvu,
+				   struct nix_rx_inline_qcfg_req *req,
+				   int blkaddr)
+{
+	u64 val;
+	u8 qsel;
+
+	qsel = req->rx_queue_id;
+	if (!req->enable) {
+		rvu_write64(rvu, blkaddr, NIX_AF_CN20K_RX_CPTX_INST_QSEL(qsel),
+			    0x0);
+		val = rvu_read64(rvu, blkaddr,
+				 NIX_AF_CN20K_RX_CPTX_CREDIT(qsel));
+		if ((val & 0x3FFFFF) != 0x3FFFFF)
+			rvu_write64(rvu, blkaddr,
+				    NIX_AF_CN20K_RX_CPTX_CREDIT(qsel),
+				    0x3FFFFF - val);
+		return 0;
+	}
+
+	/* Set CPT queue for inline IPSec */
+	val = FIELD_PREP(CPT_INST_QSEL_SLOT, req->cpt_slot);
+	val |= FIELD_PREP(CPT_INST_QSEL_PF_FUNC, req->cpt_pf_func);
+	val |= FIELD_PREP(CPT_INST_QSEL_BLOCK, BLKADDR_CPT0);
+	rvu_write64(rvu, blkaddr, NIX_AF_CN20K_RX_CPTX_INST_QSEL(qsel), val);
+	/* Set CPT credit */
+	val = rvu_read64(rvu, blkaddr, NIX_AF_CN20K_RX_CPTX_CREDIT(qsel));
+	if ((val & 0x3FFFFF) != 0x3FFFFF)
+		rvu_write64(rvu, blkaddr,
+			    NIX_AF_CN20K_RX_CPTX_CREDIT(qsel), 0x3FFFFF - val);
+
+	val = FIELD_PREP(CPT_INST_CREDIT_CNT, req->cpt_credit);
+	val |= FIELD_PREP(NIX_AF_CN20K_CPT_INST_CREDIT_BPID, req->bpid);
+	val |= FIELD_PREP(NIX_AF_CN20K_CPT_INST_CREDIT_TH, req->credit_th);
+	val |= FIELD_PREP(CPT_INST_CREDIT_HYST, req->hysteresis);
+	rvu_write64(rvu, blkaddr, NIX_AF_CN20K_RX_CPTX_CREDIT(qsel), val);
+
+	return 0;
+}
+
+int rvu_mbox_handler_nix_rx_inl_queue_cfg(struct rvu *rvu,
+					  struct nix_rx_inline_qcfg_req *req,
+					  struct msg_rsp *rsp)
+{
+	struct rvu_cpt *cpt = &rvu->cpt;
+
+	if (!is_block_implemented(rvu->hw, BLKADDR_CPT0))
+		return 0;
+
+	if (req->rx_queue_id >= CPT_AF_MAX_RXC_QUEUES)
+		return CPT_AF_ERR_RXC_QUEUE_INVALID;
+
+	if (cpt->cptpfvf_map[req->rx_queue_id] != req->hdr.pcifunc)
+		return CPT_AF_ERR_QUEUE_PCIFUNC_MAP_INVALID;
+
+	return nix_rx_inline_queue_cfg(rvu, req, BLKADDR_NIX0);
 }

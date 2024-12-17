@@ -23,6 +23,20 @@
 /* Length of initial context fetch in 128 byte words */
 #define CPT_CTX_ILEN    1ULL
 
+#define IPSEC_GEN_CFG_EGRP    GENMASK_ULL(50, 48)
+#define IPSEC_GEN_CFG_OPCODE  GENMASK_ULL(47, 32)
+#define IPSEC_GEN_CFG_PARAM1  GENMASK_ULL(31, 16)
+#define IPSEC_GEN_CFG_PARAM2  GENMASK_ULL(15, 0)
+
+#define CPT_INST_QSEL_BLOCK   GENMASK_ULL(28, 24)
+#define CPT_INST_QSEL_PF_FUNC GENMASK_ULL(23, 8)
+#define CPT_INST_QSEL_SLOT    GENMASK_ULL(7, 0)
+
+#define CPT_INST_CREDIT_HYST  GENMASK_ULL(61, 56)
+#define CPT_INST_CREDIT_TH    GENMASK_ULL(53, 32)
+#define CPT_INST_CREDIT_BPID  GENMASK_ULL(30, 22)
+#define CPT_INST_CREDIT_CNT   GENMASK_ULL(21, 0)
+
 struct rvu_cpt {
 	/* PCIFUNC to CPT RX Queue map */
 	u16                     cptpfvf_map[CPT_AF_MAX_RXC_QUEUES];
