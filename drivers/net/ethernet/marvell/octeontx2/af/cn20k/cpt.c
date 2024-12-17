@@ -228,17 +228,6 @@ static int cpt_rx_inline_queue_cfg(struct rvu *rvu, int blkaddr, u8 cptlf,
 	}
 	rvu_write64(rvu, blkaddr, CPT_AF_LFX_CTL2(cptlf), val);
 
-	/* Configure the X2P Link register with the cpt base channel number and
-	 * range of channels it should propagate to X2P
-	 */
-	val = (ilog2(NIX_CHAN_CPT_X2P_MASK + 1) << 16);
-	val |= (u64)rvu->hw->cpt_chan_base;
-	/* There is 1:1 mapping between RX, and RXC Queues */
-	rvu_write64(rvu, blkaddr,
-		    CPT_AF_RXC_QUEX_X2PX_LINK_CFG(nix_queue, 0), val);
-	rvu_write64(rvu, blkaddr,
-		    CPT_AF_RXC_QUEX_X2PX_LINK_CFG(nix_queue, 1), val);
-
 	return 0;
 }
 

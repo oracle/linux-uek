@@ -1882,7 +1882,7 @@ int rvu_mbox_handler_nix_lf_alloc(struct rvu *rvu,
 	}
 
 	if (is_rep_dev(rvu, pcifunc)) {
-		pfvf->tx_chan_base = RVU_SWITCH_LBK_CHAN;
+		pfvf->tx_chan_base = hw->lbk_chan_base + RVU_SWITCH_LBK_CHAN;
 		pfvf->tx_chan_cnt = 1;
 		/* Setting the TX link as that of LBK */
 		rsp->tx_link = hw->cgx_links;
@@ -3092,7 +3092,8 @@ void rvu_nix_tx_tl2_cfg(struct rvu *rvu, int blkaddr, u16 pcifunc,
 	if (!is_pf_cgxmapped(rvu, pf) && !is_rep_dev(rvu, pcifunc))
 		return;
 
-	cfg = enable ? (BIT_ULL(12) | RVU_SWITCH_LBK_CHAN) : 0;
+	cfg = enable ?
+	      (BIT_ULL(12) | (hw->lbk_chan_base + RVU_SWITCH_LBK_CHAN)) : 0;
 	lbk_link_start = hw->cgx_links;
 
 	for (schq = 0; schq < txsch->schq.max; schq++) {

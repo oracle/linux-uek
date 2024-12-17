@@ -9,6 +9,7 @@
 #include "rvu.h"
 #include "cgx.h"
 #include "rvu_reg.h"
+#include "cn20k/api.h"
 
 /* RVU LMTST */
 #define LMT_TBL_OP_READ		0
@@ -301,6 +302,9 @@ int rvu_set_channels_base(struct rvu *rvu)
 	u64 nix_const, nix_const1;
 	int blkaddr;
 
+	if (is_cn20k(rvu->pdev))
+		return rvu_cn20k_set_channels_base(rvu);
+
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, 0);
 	if (blkaddr < 0)
 		return blkaddr;
@@ -554,6 +558,7 @@ void rvu_program_channels(struct rvu *rvu)
 	rvu_nix_set_channels(rvu);
 	rvu_lbk_set_channels(rvu);
 	rvu_rpm_set_channels(rvu);
+	rvu_cn20k_cpt_chan_cfg(rvu);
 }
 
 void rvu_nix_block_cn10k_init(struct rvu *rvu, struct nix_hw *nix_hw)

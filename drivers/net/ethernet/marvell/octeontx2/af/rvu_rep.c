@@ -236,6 +236,7 @@ static int rvu_rep_install_rx_rule(struct rvu *rvu, u16 pcifunc,
 {
 	struct npc_install_flow_req req = {};
 	struct npc_install_flow_rsp rsp = {};
+	struct rvu_hwinfo *hw = rvu->hw;
 	struct rvu_pfvf *pfvf;
 	u16 vlan_tci, rep_id;
 
@@ -265,7 +266,7 @@ static int rvu_rep_install_rx_rule(struct rvu *rvu, u16 pcifunc,
 	req.packet.vlan_tci = cpu_to_be16(vlan_tci);
 	req.mask.vlan_tci = cpu_to_be16(0xffff);
 
-	req.channel = RVU_SWITCH_LBK_CHAN;
+	req.channel = hw->lbk_chan_base + RVU_SWITCH_LBK_CHAN;
 	req.chan_mask = 0xffff;
 	req.intf = pfvf->nix_rx_intf;
 
@@ -277,6 +278,7 @@ static int rvu_rep_install_tx_rule(struct rvu *rvu, u16 pcifunc, u16 entry,
 {
 	struct npc_install_flow_req req = {};
 	struct npc_install_flow_rsp rsp = {};
+	struct rvu_hwinfo *hw = rvu->hw;
 	struct rvu_pfvf *pfvf;
 	int vidx, err;
 	u16 vlan_tci;
@@ -304,7 +306,7 @@ static int rvu_rep_install_tx_rule(struct rvu *rvu, u16 pcifunc, u16 entry,
 	req.entry = entry;
 	req.intf = pfvf->nix_tx_intf;
 	req.op = NIX_TX_ACTIONOP_UCAST_CHAN;
-	req.index = (lbkid << 8) | RVU_SWITCH_LBK_CHAN;
+	req.index = (lbkid << 8) | (hw->lbk_chan_base + RVU_SWITCH_LBK_CHAN);
 	req.set_cntr = 1;
 	req.vtag0_def = vidx;
 	req.vtag0_op = 1;

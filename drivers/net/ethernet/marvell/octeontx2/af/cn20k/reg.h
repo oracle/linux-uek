@@ -97,15 +97,16 @@
 #define NIX_AF_LSO_ALT_FLAGS_CFG1(a)	(0x4B20 | (a) << 3)
 
 /* NIX Registers */
+#define NIX_AF_RX_CPT_CHAN_CFG			(0x0E8)
 #define NIX_AF_RX_DEF_INLINEX(a)		(0x2c0 | (a) << 3)
 #define NIX_AF_RX_INLINE_GEN_CFGX(a)		(0x340 | (a) << 3)
 #define NIX_AF_RX_EXTRACT_INLINEX(a)		(0x380 | (a) << 3)
+#define NIX_AF_CN20K_RX_CPTX_INST_QSEL(a)	(0x3C0 | (a) << 16)
+#define NIX_AF_CN20K_RX_CPTX_CREDIT(a)		(0x3D0 | (a) << 16)
 #define NIX_AF_RX_PROT_FIELDX_INLINEX(a, b)	(0x4c00 | (a) << 6 | (b) << 3)
 #define NIX_AF_LFX_RX_INLINE_SA_BASE(a, b)	(0x4240 | (a) << 17 | (b) << 3)
 #define NIX_AF_LFX_RX_INLINE_CFG0(a, b)		(0x4280 | (a) << 17 | (b) << 3)
 #define NIX_AF_LFX_RX_INLINE_CFG1(a, b)		(0x42c0 | (a) << 17 | (b) << 3)
-#define NIX_AF_CN20K_RX_CPTX_INST_QSEL(a)	(0x03C0 | (a) << 16)
-#define NIX_AF_CN20K_RX_CPTX_CREDIT(a)		(0x03D0 | (a) << 16)
 #define NPC_AF_CN20K_MCAMEX_BANKX_CAMX_INTF_EXT(a, b, c) ({		\
 	u64 offset;							\
 	offset = (0x8000000ull | (a) << 4 | (b) << 20 | (c) << 3);	\
@@ -195,5 +196,12 @@
 #define SDP_AF_RX_OUT_DROP_PKT_CNT(a)		(0x8000580 | (a) << 16)
 #define SDP_AF_RX_OUT_DROP_BYTE_CNT(a)		(0x8000590 | (a) << 16)
 #define SDP_AF_RX_OUT_PTP_STATS(a)		(0x8000710 | (a) << 16)
+/* CPT Registers */
+#define CPT_AF_RXC_QUEX_CFG(a)		(0x50800ull | (u64)(a) << 3)
+#define CPT_AF_RXC_QUEX_DFRG(a)		(0x50080ull | (u64)(a) << 3)
+#define CPT_AF_RXC_QUEX_ACTIVE_STS(a)	(0x50100ull | (u64)(a) << 3)
+#define CPT_AF_RXC_QUEX_ZOMBIE_STS(a)	(0x50180ull | (u64)(a) << 3)
+#define CPT_AF_RXC_QUEX_X2PX_LINK_CFG(a, b) \
+			(0x51000ull | (u64)(a) << 4 | (u64)(b) << 3)
 
 #endif /* RVU_MBOX_REG_H */

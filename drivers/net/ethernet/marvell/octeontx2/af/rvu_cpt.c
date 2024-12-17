@@ -11,6 +11,7 @@
 #include "rvu_reg.h"
 #include "mbox.h"
 #include "rvu.h"
+#include "cn20k/reg.h"
 
 /* CPT PF device id */
 #define	PCI_PF_DEVID_OTX2_CPT_PF 0xFD
