@@ -817,10 +817,10 @@ The meta-package for the %{1} kernel\
 #
 # This macro creates a kernel%%{?variant}-<subpackage> and its -devel and -debuginfo too.
 #       %%define variant_summary The Linux kernel compiled for <configuration>
-#       %%kernel_variant_package [-n <pretty-name>] [-o] <subpackage>
+#       %%kernel_variant_package [-o] <subpackage>
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_variant_package(n:o) \
+%define kernel_variant_package(o) \
 %define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
 %package -n %{variant_name}-core\
 Summary: %{variant_summary}\
@@ -836,10 +836,10 @@ Provides: kernel-ueknano = %{KVERREL}%{?1:.%{1}}\
 %if %{?1:1} %{!?1:0} \
 %{expand:%%kernel_meta_package %{-o:%{-o}} %{?1:%{1}}}\
 %endif\
-%{expand:%%kernel_devel_package %{-o:%{-o}} %{?1:%{1}} %{!?{-n}:%{1}}%{?{-n}:%{-n*}}}\
-%{expand:%%kernel_modules_package %{-o:%{-o}} %{?1:%{1}} %{!?{-n}:%{1}}%{?{-n}:%{-n*}}}\
-%{expand:%%kernel_modules_core_package %{-o:%{-o}} %{?1:%{1}} %{!?{-n}:%{1}}%{?{-n}:%{-n*}}}\
-%{expand:%%kernel_modules_extra_package %{-o:%{-o}} %{?1:%{1}} %{!?{-n}:%{1}}%{?{-n}:%{-n*}}}\
+%{expand:%%kernel_devel_package %{-o:%{-o}} %{?1:%{1}}}\
+%{expand:%%kernel_modules_package %{-o:%{-o}} %{?1:%{1}}}\
+%{expand:%%kernel_modules_core_package %{-o:%{-o}} %{?1:%{1}}}\
+%{expand:%%kernel_modules_extra_package %{-o:%{-o}} %{?1:%{1}}}\
 %{expand:%%kernel_debuginfo_package %{-o:-o} %{?1:%{1}}}\
 %{nil}
 
