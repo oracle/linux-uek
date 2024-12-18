@@ -78,6 +78,16 @@ cpp = subprocess.run(['cpp'] + [f'-D{arg}' for arg in args.D] +
 denylist = set(cpp.stdout.splitlines())
 
 #
+# Write out modules.packages
+#
+
+with open(f"lib/modules/{args.version}/modules.packages", 'w') as f:
+    for subpackage, modnames in modules_by_subpackage.items():
+        for modname in sorted(modnames):
+            rpm_name = f"{os.path.basename(args.output)}-{subpackage}-{args.version}"
+            print(f"{modname} {rpm_name}", file=f)
+
+#
 # Write out .list files (for use with %files -f)
 #
 

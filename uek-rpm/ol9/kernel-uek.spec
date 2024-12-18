@@ -1759,7 +1759,7 @@ fi\
 /sbin/depmod -a %{KVERREL}%{?1:.%{1}}\
 %{nil}\
 %{expand:%%postun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-modules-core}\
-ls /lib/modules/%{KVERREL}%{?1:.%{1}}/modules.* | grep -v builtin | xargs rm -f\
+ls /lib/modules/%{KVERREL}%{?1:.%{1}}/modules.* | grep -v builtin | grep -v packages | xargs rm -f\
 %{nil}
 
 # This macro defines a %%posttrans script for a kernel package.
@@ -2031,6 +2031,7 @@ fi
 %ghost /boot/symvers-%{KVERREL}%{?2:.%{2}}.gz\
 %ghost /boot/initramfs-%{KVERREL}%{?2:.%{2}}.img\
 %ghost /boot/config-%{KVERREL}%{?2:.%{2}}\
+/lib/modules/%{KVERREL}%{?2:.%{2}}/modules.packages\
 %{expand:%%files -f %{variant_name}-modules-core.list -n %{variant_name}-modules-core}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/build\
