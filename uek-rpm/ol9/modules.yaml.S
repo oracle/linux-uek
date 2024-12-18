@@ -3178,7 +3178,6 @@ modules:
 - asus_atk0110
 - at76c50x-usb
 - atlas_btns
-- atmtcp
 - aty128fb
 - atyfb
 - b2c2-flexcop-usb
@@ -3412,9 +3411,6 @@ modules:
 - padlock-aes
 - padlock-sha
 - panasonic-laptop
-- parport
-- parport_pc
-- parport_serial
 - pata_ali
 - pata_amd
 - pata_artop
@@ -3696,7 +3692,6 @@ modules-extra:
 - act_mpls
 - aer_inject
 - bareudp
-- batman-adv
 - br2684
 - c_can_platform
 - ch_ipsec
@@ -3862,5 +3857,16 @@ modules-extra:
 - stm_heartbeat
 - think-lmi
 - wire
+#endif /* Arch_x86_64 */
+
+modules-deprecated:
+- batman-adv
+
+/* modules-deprecated: */
+#ifdef Arch_x86_64
+- atmtcp
+- parport
+- parport_pc
+- parport_serial
 #endif /* Arch_x86_64 */
 
