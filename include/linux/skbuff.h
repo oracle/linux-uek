@@ -614,7 +614,7 @@ struct skb_shared_info {
 	 * remains valid until skb destructor */
 	void *		destructor_arg;
 
-	UEK_KABI_RESERVE(1)
+	UEK_KABI_USE(1, u32 xdp_frags_truesize)
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
