@@ -577,6 +577,7 @@ modules-core:
 - vmac
 - vmw_vsock_virtio_transport
 - vmw_vsock_virtio_transport_common
+- vmwgfx
 - vp_vdpa
 - vringh
 - vsock
@@ -809,6 +810,9 @@ modules-core:
 - vboxvideo
 - virtio-vfio-pci
 - vmd
+- vmw_balloon
+- vmw_pvrdma
+- vmw_pvscsi
 - vmw_vmci
 - vmw_vsock_vmci_transport
 - wmi
@@ -2357,7 +2361,6 @@ modules:
 - visor
 - vitesse
 - vkms
-- vmwgfx
 - vp27smpx
 - vport-geneve
 - vport-gre
@@ -3665,9 +3668,6 @@ modules:
 - via_wdt
 - viafb
 - virtio_mem
-- vmw_balloon
-- vmw_pvrdma
-- vmw_pvscsi
 - vmxnet3
 - vt1211
 - w6692
