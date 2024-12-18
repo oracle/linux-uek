@@ -60,7 +60,6 @@ modules-core:
 - ccp
 - cdc_ether
 - cec
-- cfg80211
 - ch
 - chacha20poly1305
 - chacha_generic
@@ -315,7 +314,6 @@ modules-core:
 - lz4_compress
 - lz4hc
 - lz4hc_compress
-- mac80211
 - mac802154
 - macsec
 - macvlan
@@ -995,6 +993,7 @@ modules:
 - cdc_ncm
 - cdc_subset
 - ceph
+- cfg80211
 - cfi_cmdset_0001
 - cfi_cmdset_0002
 - cfi_cmdset_0020
@@ -1508,6 +1507,7 @@ modules:
 - mac-roman
 - mac-romanian
 - mac-turkish
+- mac80211
 - mac80211_hwsim
 - mantis
 - mantis_core
