@@ -698,13 +698,13 @@ This is required to use SystemTap with %{variant_name}-%{KVERREL}.\
 
 #
 # This macro creates a kernel%%{?variant}-<subpackage>-devel package.
-#       %%kernel_devel_package [-o] <subpackage> <pretty-name>
+#       %%kernel_devel_package [-o] <subpackage>
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
 %define kernel_devel_package(o) \
 %define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
 %package -n %{variant_name}-devel\
-Summary: Development package for building kernel modules to match the %{?2:%{2}} kernel\
+Summary: Development package for building kernel modules to match the %{variant_name} kernel\
 Group: System Environment/Kernel\
 Provides: %{variant_name}-devel-%{_target_cpu} = %{version}-%{release}\
 Provides: kernel%{?variant}-xen-devel = %{version}-%{release}%{?1:.%{1}}\
@@ -725,18 +725,18 @@ Requires: gcc-c++\
 Requires: binutils-devel\
 %description -n %{variant_name}-devel\
 This package provides kernel headers and makefiles sufficient to build modules\
-against the %{?2:%{2}} kernel package.\
+against the %{variant_name} kernel package.\
 %{nil}
 
 #
 # This macro creates a kernel%%{?variant}-<subpackage>-modules-extra package.
-#       %%kernel_modules_extra_package [-o] <subpackage> <pretty-name>
+#       %%kernel_modules_extra_package [-o] <subpackage>
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
 %define kernel_modules_extra_package(o) \
 %define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
 %package -n %{variant_name}-modules-extra\
-Summary: Extra kernel modules to match the %{?2:%{2}-}core kernel\
+Summary: Extra kernel modules to match the %{variant_name}-core kernel\
 Group: System Environment/Kernel\
 Provides: %{variant_name}-modules-extra-%{_target_cpu} = %{version}-%{release}%{?1:.%{1}}\
 Provides: %{variant_name}-modules-extra = %{version}-%{release}%{?1:.%{1}}\
@@ -747,18 +747,18 @@ Requires: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
 AutoReq: no\
 AutoProv: yes\
 %description -n %{variant_name}-modules-extra\
-This package provides less commonly used kernel modules for the %{?2:%{2}-}core kernel package.\
+This package provides less commonly used kernel modules for the %{variant_name}-core kernel package.\
 %{nil}
 
 #
 # This macro creates a kernel%%{?variant}-<subpackage>-modules package.
-#       %%kernel_modules_package [-o] <subpackage> <pretty-name>
+#       %%kernel_modules_package [-o] <subpackage>
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
 %define kernel_modules_package(o) \
 %define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
 %package -n %{variant_name}-modules\
-Summary: kernel modules to match the %{?2:%{2}-}core kernel\
+Summary: kernel modules to match the %{variant_name}-core kernel\
 Group: System Environment/Kernel\
 Provides: %{variant_name}-modules-%{_target_cpu} = %{version}-%{release}%{?1:.%{1}}\
 Provides: %{variant_name}-modules = %{version}-%{release}%{?1:.%{1}}\
@@ -770,18 +770,18 @@ Requires: linux-firmware >= 999:20230516-999.26.git6c9e0ed5\
 AutoReq: no\
 AutoProv: yes\
 %description -n %{variant_name}-modules\
-This package provides commonly used kernel modules for the %{?2:%{2}-}core kernel package.\
+This package provides commonly used kernel modules for the %{variant_name}-core kernel package.\
 %{nil}
 
 #
 # This macro creates a kernel%%{?variant}-<subpackage>-modules-core package.
-#       %%kernel_modules_core_package [-o] <subpackage> <pretty-name>
+#       %%kernel_modules_core_package [-o] <subpackage>
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
 %define kernel_modules_core_package(o) \
 %define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
 %package -n %{variant_name}-modules-core\
-Summary: Core kernel modules to match the %{?2:%{2}-}core kernel\
+Summary: Core kernel modules to match the %{variant_name}-core kernel\
 Group: System Environment/Kernel\
 Provides: %{variant_name}-modules-core-%{_target_cpu} = %{version}-%{release}%{?1:.%{1}}\
 Provides: %{variant_name}-modules-core = %{version}-%{release}%{?1:.%{1}}\
@@ -793,7 +793,7 @@ Requires: libdnf >= 0.69.0-6.0.2\
 AutoReq: no\
 AutoProv: yes\
 %description -n %{variant_name}-modules-core\
-This package provides essential kernel modules for the %{?2:%{2}-}core kernel package.\
+This package provides essential kernel modules for the %{variant_name}-core kernel package.\
 %{nil}
 
 #
@@ -811,7 +811,7 @@ Requires: %{variant_name}-modules-uname-r = %{KVERREL}.%{1}\
 Requires: %{variant_name}-modules-core-uname-r = %{KVERREL}.%{1}\
 Provides: installonlypkg(%{installonly_variant_name})\
 %description -n %{variant_name}\
-The meta-package for the %{1} kernel\
+The meta-package for the %{1} kernel.\
 %{nil}
 
 #
