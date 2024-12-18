@@ -93,7 +93,8 @@ enum cpt_cnxk_flt_int_vec_e {
 	CPT_CNXK_AF_INT_VEC_FLT0 = 0x0,
 	CPT_CNXK_AF_INT_VEC_FLT1 = 0x1,
 	CPT_CNXK_AF_INT_VEC_FLT2 = 0x2,
-	CPT_CNXK_AF_INT_VEC_FLT_MAX = 0x3,
+	CPT_CNXK_AF_INT_VEC_FLT3 = 0x3,
+	CPT_CNXK_AF_INT_VEC_FLT_MAX = 0x4,
 };
 
 /* NPA Admin function Interrupt Vector Enumeration */

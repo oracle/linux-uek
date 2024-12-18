@@ -104,6 +104,9 @@ static irqreturn_t cpt_af_flt_intr_handler(int vec, void *ptr)
 		case 2:
 			eng = i + 128;
 			break;
+		case 3:
+			eng = i + 192;
+			break;
 		}
 		grp = rvu_read64(rvu, blkaddr, CPT_AF_EXEX_CTL2(eng)) & 0xFF;
 		/* Disable and enable the engine which triggers fault */
@@ -140,6 +143,11 @@ static irqreturn_t rvu_cpt_af_flt1_intr_handler(int irq, void *ptr)
 static irqreturn_t rvu_cpt_af_flt2_intr_handler(int irq, void *ptr)
 {
 	return cpt_af_flt_intr_handler(CPT_CNXK_AF_INT_VEC_FLT2, ptr);
+}
+
+static irqreturn_t rvu_cpt_af_flt3_intr_handler(int irq, void *ptr)
+{
+	return cpt_af_flt_intr_handler(CPT_CNXK_AF_INT_VEC_FLT3, ptr);
 }
 
 static irqreturn_t rvu_cpt_af_rvu_intr_handler(int irq, void *ptr)
@@ -235,7 +243,7 @@ static void cpt_unregister_interrupts(struct rvu *rvu, int blkaddr)
 	}
 	block = &hw->block[blkaddr];
 
-	if (!is_rvu_otx2(rvu))
+	if (!is_rvu_otx2(rvu) || (is_cn20k(rvu->pdev)))
 		return cpt_cnxk_unregister_interrupts(block, offs);
 
 	/* Disable all CPT AF interrupts */
@@ -282,8 +290,10 @@ static int cpt_cnxkflt_register_interrupts(struct rvu_block *block, int off,
 		case CPT_CNXK_AF_INT_VEC_FLT2:
 			flt_fn = rvu_cpt_af_flt2_intr_handler;
 			break;
+		case CPT_CNXK_AF_INT_VEC_FLT3:
+			flt_fn = rvu_cpt_af_flt3_intr_handler;
+			break;
 		default:
-			/* TODO: Add fault handler for 20x */
 			dev_err(rvu->dev,
 				"Missing CPT fault vector-%d max-engines-%d\n",
 				i, cpt_max_engines_get(rvu));
@@ -301,6 +311,43 @@ static int cpt_cnxkflt_register_interrupts(struct rvu_block *block, int off,
 	}
 
 err:
+	return ret;
+}
+
+static int cpt_20k_register_interrupts(struct rvu_block *block, int off)
+{
+	int rvu_intr_vec, ras_intr_vec;
+	struct rvu *rvu = block->rvu;
+	int blkaddr = block->addr;
+	u32 max_engs;
+	int ret;
+
+	max_engs = cpt_max_engines_get(rvu);
+
+	ret = cpt_cnxkflt_register_interrupts(block, off, max_engs);
+	if (ret)
+		goto err;
+
+	rvu_intr_vec = cpt_cnxk_flt_nvecs_get(rvu, max_engs);
+	ras_intr_vec = rvu_intr_vec + 1;
+
+	ret = rvu_cpt_do_register_interrupt(block, off + rvu_intr_vec,
+					    rvu_cpt_af_rvu_intr_handler,
+					    "CPTAF RVU");
+	if (ret)
+		goto err;
+	rvu_write64(rvu, blkaddr, CPT_AF_RVU_INT_ENA_W1S, 0x1);
+
+	ret = rvu_cpt_do_register_interrupt(block, off + ras_intr_vec,
+					    rvu_cpt_af_ras_intr_handler,
+					    "CPTAF RAS");
+	if (ret)
+		goto err;
+	rvu_write64(rvu, blkaddr, CPT_AF_RAS_INT_ENA_W1S, 0x1);
+
+	return 0;
+err:
+	rvu_cpt_unregister_interrupts(rvu);
 	return ret;
 }
 
@@ -358,6 +405,9 @@ static int cpt_register_interrupts(struct rvu *rvu, int blkaddr)
 			 "Failed to get CPT_AF_INT vector offsets\n");
 		return 0;
 	}
+
+	if (is_cn20k(rvu->pdev))
+		return cpt_20k_register_interrupts(block, offs);
 
 	if (!is_rvu_otx2(rvu))
 		return cpt_10k_register_interrupts(block, offs);
