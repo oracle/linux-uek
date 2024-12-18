@@ -767,7 +767,6 @@ modules:
 - can-raw
 - catc
 - cb710
-- cb710-mmc
 - cc770
 - cc770_platform
 - ccp-crypto
@@ -794,7 +793,6 @@ modules:
 - cm109
 - cortina
 - cp210x
-- cqhci
 - cramfs
 - cs3308
 - cs5345
@@ -1322,7 +1320,6 @@ modules:
 - microchip
 - microchip_t1
 - microtek
-- mmc_block
 - mn88472
 - mn88473
 - mos7720
@@ -1700,10 +1697,8 @@ modules:
 - rtl2832_sdr
 - rtl8150
 - rtsx_pci
-- rtsx_pci_sdmmc
 - rtsx_usb
 - rtsx_usb_ms
-- rtsx_usb_sdmmc
 - s2255drv
 - s5h1409
 - s5h1411
@@ -1727,11 +1722,6 @@ modules:
 - sc92031
 - scsi_debug
 - scsi_transport_spi
-- sdhci
-- sdhci-acpi
-- sdhci-pci
-- sdhci-pltfm
-- sdio_uart
 - serial_ir
 - sermouse
 - sht15
@@ -1763,7 +1753,6 @@ modules:
 - smsc95xx
 - smsdvb
 - smsmdtv
-- smssdio
 - smsusb
 - snd
 - snd-ac97-codec
@@ -1951,7 +1940,6 @@ modules:
 - tifm_7xx1
 - tifm_core
 - tifm_ms
-- tifm_sd
 - timeriomem-rng
 - tipc
 - tipc_diag
@@ -2029,7 +2017,6 @@ modules:
 - usbtmc
 - usbtouchscreen
 - userspace-consumer
-- ushc
 - uvc
 - uvcvideo
 - v4l2-async
@@ -2042,7 +2029,6 @@ modules:
 - ves1x93
 - vfb
 - vgem
-- via-sdmmc
 - via686a
 - video
 - videobuf2-common
@@ -2065,7 +2051,6 @@ modules:
 - vsockmon
 - vsxxxaa
 - vt8231
-- vub300
 - vx855
 - vxcan
 - w83781d
@@ -2133,7 +2118,6 @@ modules:
 - arm_mhu
 - arm_mhu_db
 - arm_scpi
-- armmmci
 - as102_fe
 - ascot2e
 - at25
@@ -2236,12 +2220,6 @@ modules:
 - dw_dmac_core
 - dw_dmac_pci
 - dw_drm_dsi
-- dw_mmc
-- dw_mmc-exynos
-- dw_mmc-k3
-- dw_mmc-pci
-- dw_mmc-pltfm
-- dw_mmc-rockchip
 - dw_wdt
 - dwc2
 - dwc2_pci
@@ -2445,7 +2423,6 @@ modules:
 - megaraid
 - meson-canvas
 - meson-drm
-- meson-gx-mmc
 - meson-gxl
 - meson-ir
 - meson_dw_hdmi
@@ -2454,7 +2431,6 @@ modules:
 - meson_wdt
 - mi0283qt
 - mma7660
-- mmc_spi
 - mmcc-msm8996
 - mms114
 - mpu3050
@@ -2484,7 +2460,6 @@ modules:
 - nvidia_cspmu
 - nvmem-bcm-ocotp
 - nxp-ptn3460
-- of_mmc_spi
 - of_pmem
 - ofpart
 - ohci-exynos
@@ -2549,7 +2524,6 @@ modules:
 - pwm_bl
 - pwrseq-core
 - pwrseq-qcom-wcn
-- pwrseq_sd8787
 - qca8k
 - qcom-emac
 - qcom-spmi-iadc
@@ -2580,8 +2554,6 @@ modules:
 - rcar_lvds
 - rcar_mipi_dsi
 - regmap-spmi
-- renesas_sdhi_core
-- renesas_sdhi_internal_dmac
 - renesas_wdt
 - rockchip_saradc
 - rockchip_thermal
@@ -2626,13 +2598,6 @@ modules:
 - scpi-hwmon
 - scpi_pm_domain
 - scsi_dh_hp_sw
-- sdhci-brcmstb
-- sdhci-cadence
-- sdhci-iproc
-- sdhci-msm
-- sdhci-of-arasan
-- sdhci-tegra
-- sdhci-xenon-driver
 - serport
 - sh-sci
 - shark2
@@ -2687,7 +2652,6 @@ modules:
 - st_sensors_i2c
 - st_sensors_spi
 - stk3310
-- sunxi-mmc
 - tc358767
 - tc654
 - tc74
@@ -2700,13 +2664,11 @@ modules:
 - tegra20-cpufreq
 - thunder_bgx
 - thunder_xcv
-- thunderx-mmc
 - thunderx2_pmu
 - thunderx_edac
 - ti-ads1015
 - ti-tfp410
 - tm2-touchkey
-- tmio_mmc_core
 - tmp006
 - tmp108
 - tpm_tis_spi
@@ -3005,7 +2967,6 @@ modules:
 - mena21_wdt
 - metro-usb
 - mlx-platform
-- mmc_core
 - mptlan
 - mptspi
 - msi-laptop
@@ -3214,7 +3175,6 @@ modules:
 - uio_hv_generic
 - uio_pdrv_genirq
 - uli526x
-- usdhi6rol0
 - usnic_verbs
 - uss720
 - uv_mmtimer
@@ -3235,7 +3195,6 @@ modules:
 - w83877f_wdt
 - w83977f_wdt
 - wafer5823wdt
-- wbsd
 - winbond-840
 - winbond-cir
 - wireless-hotkey
@@ -3452,10 +3411,21 @@ modules-desktop:
 - btrtl
 - btsdio
 - btusb
+- cb710-mmc
+- cqhci
 - hci_uart
 - hci_vhci
 - hidp
+- mmc_block
 - rfcomm
+- rtsx_pci_sdmmc
+- rtsx_usb_sdmmc
+- sdhci
+- sdhci-acpi
+- sdhci-pci
+- sdhci-pltfm
+- sdio_uart
+- smssdio
 - snd-soc-core
 - snd-soc-cs42l42
 - snd-soc-cs42l42-i2c
@@ -3478,13 +3448,37 @@ modules-desktop:
 - soundwire-cadence
 - soundwire-generic-allocation
 - soundwire-intel
+- tifm_sd
+- ushc
+- via-sdmmc
+- vub300
 
 /* modules-desktop: */
 #ifdef Arch_aarch64
 - acp_audio_dma
+- armmmci
 - btrsi
 - designware_i2s
+- dw_mmc
+- dw_mmc-exynos
+- dw_mmc-k3
+- dw_mmc-pci
+- dw_mmc-pltfm
+- dw_mmc-rockchip
 - hi6210-i2s
+- meson-gx-mmc
+- mmc_spi
+- of_mmc_spi
+- pwrseq_sd8787
+- renesas_sdhi_core
+- renesas_sdhi_internal_dmac
+- sdhci-brcmstb
+- sdhci-cadence
+- sdhci-iproc
+- sdhci-msm
+- sdhci-of-arasan
+- sdhci-tegra
+- sdhci-xenon-driver
 - snd-soc-ac97
 - snd-soc-adau-utils
 - snd-soc-adau1761
@@ -3516,10 +3510,14 @@ modules-desktop:
 - snd-soc-tpa6130a2
 - snd-soc-wm8524
 - snd-soc-wm8804-spi
+- sunxi-mmc
+- thunderx-mmc
+- tmio_mmc_core
 #endif /* Arch_aarch64 */
 
 /* modules-desktop: */
 #ifdef Arch_x86_64
+- mmc_core
 - snd-acp-config
 - snd-acp3x-pdm-dma
 - snd-acp5x-i2s
@@ -3606,6 +3604,8 @@ modules-desktop:
 - snd-sof-utils
 - snd-sof-xtensa-dsp
 - toshiba_bluetooth
+- usdhi6rol0
+- wbsd
 #endif /* Arch_x86_64 */
 
 modules-extra-netfilter:
