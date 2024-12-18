@@ -845,6 +845,11 @@ Provides: kernel-ueknano = %{KVERREL}%{?1:.%{1}}\
 %{expand:%%kernel_modules_package %{-o:%{-o}} %{?1:%{1}}}\
 %{expand:%%kernel_modules_core_package %{-o:%{-o}} %{?1:%{1}}}\
 %{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s extra %{?1:%{1}}}\
+%{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s desktop %{?1:%{1}}}\
+%{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s deprecated %{?1:%{1}}}\
+%{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s extra-netfilter  %{?1:%{1}}}\
+%{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s usb %{?1:%{1}}}\
+%{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s wireless %{?1:%{1}}}\
 %{expand:%%kernel_debuginfo_package %{-o:-o} %{?1:%{1}}}\
 %{nil}
 
@@ -1344,13 +1349,14 @@ BuildKernel() {
     mkdir restore
     cp -r lib/modules/$KernelVer/* restore/.
 
-    # don't include anything going into kernel%{?variant}-modules-extra in the file lists
-    sed 's/^\///' ${modlistVariant}-modules-extra.list | xargs rm -rf
+    # don't include anything going into kernel%{?variant}-modules-(extra|deprecated) in the file lists
+    grep '^/lib/modules' ${modlistVariant}-modules-extra.list | sed 's/^\///' | xargs rm -rf
+    grep '^/lib/modules' ${modlistVariant}-modules-deprecated.list | sed 's/^\///' | xargs rm -rf
 
     # Run depmod on the resulting module tree and make sure it isn't broken
     depmod -b . -aeF ./System.map $KernelVer &> depmod.out
     if [ -s depmod.out ]; then
-        echo "Depmod failure. Modules from modules-extra list may be needed"
+        echo "Depmod failure. Modules from modules-extra or modules-deprecated list may be needed"
         cat depmod.out
         exit 1
     else
@@ -1358,6 +1364,26 @@ BuildKernel() {
     fi
 
     remove_depmod_files
+
+    # don't include anything going into kernel%{?variant}-modules-(desktop|usb|wireless|netfilter) in the file lists
+    grep '^/lib/modules' ${modlistVariant}-modules-desktop.list | sed 's/^\///' | xargs rm -rf
+    grep '^/lib/modules' ${modlistVariant}-modules-extra-netfilter.list | sed 's/^\///' | xargs rm -rf
+    grep '^/lib/modules' ${modlistVariant}-modules-usb.list | sed 's/^\///' | xargs rm -rf
+    grep '^/lib/modules' ${modlistVariant}-modules-wireless.list | sed 's/^\///' | xargs rm -rf
+
+    depmod -b . -aeF ./System.map $KernelVer &> depmod.out
+    # Run depmod on the resulting module tree and make sure it isn't broken
+    if [ -s depmod.out ]; then
+	echo "Depmod failure. Modules from modules-(desktop|usb|wireless|netfilter) list may be needed"
+	cat depmod.out
+	exit 1
+    else
+	rm depmod.out
+    fi
+
+    remove_depmod_files
+
+    grep '^/lib/modules' ${modlistVariant}-modules.list | sed 's/^\///' | xargs rm -rf
 
     # Run depmod on the resulting module tree and make sure it isn't broken
     depmod -b . -aeF ./System.map $KernelVer &> depmod.out
@@ -1766,6 +1792,11 @@ fi\
 %{expand:%%kernel_modules_post %{-o:-o} %{?-v:%{?-v*}}}\
 %{expand:%%kernel_modules_core_post %{-o:-o} %{?-v:%{?-v*}}}\
 %{expand:%%kernel_modules_extra_post %{-o:-o} -s extra %{?-v:%{?-v*}}}\
+%{expand:%%kernel_modules_extra_post %{-o:-o} -s desktop %{?-v:%{?-v*}}}\
+%{expand:%%kernel_modules_extra_post %{-o:-o} -s deprecated %{?-v:%{?-v*}}}\
+%{expand:%%kernel_modules_extra_post %{-o:-o} -s extra-netfilter %{?-v:%{?-v*}}}\
+%{expand:%%kernel_modules_extra_post %{-o:-o} -s usb %{?-v:%{?-v*}}}\
+%{expand:%%kernel_modules_extra_post %{-o:-o} -s wireless %{?-v:%{?-v*}}}\
 %{expand:%%kernel_variant_posttrans %{-o:-o} %{?-v:%{?-v*}}}\
 %{expand:%%post -n kernel%{?variant}%{?-v*:%{!-o:-}%{-v*}}-core}\
 %{-r:\
@@ -2017,6 +2048,11 @@ fi
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.networking\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.order\
 %{expand:%%files -f %{variant_name}-modules.list -n %{variant_name}-modules}\
+%{expand:%%files -f %{variant_name}-modules-desktop.list -n %{variant_name}-modules-desktop}\
+%{expand:%%files -f %{variant_name}-modules-deprecated.list -n %{variant_name}-modules-deprecated}\
+%{expand:%%files -f %{variant_name}-modules-extra-netfilter.list -n %{variant_name}-modules-extra-netfilter}\
+%{expand:%%files -f %{variant_name}-modules-usb.list -n %{variant_name}-modules-usb}\
+%{expand:%%files -f %{variant_name}-modules-wireless.list -n %{variant_name}-modules-wireless}\
 %{expand:%%files -f %{variant_name}-modules-extra.list -n %{variant_name}-modules-extra}\
 %config(noreplace) /etc/modprobe.d/*-blacklist.conf\
 %{expand:%%files -n %{variant_name}-devel}\
