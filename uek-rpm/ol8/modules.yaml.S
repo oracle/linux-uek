@@ -712,7 +712,6 @@ modules:
 - atl2
 - atlantic
 - atm
-- atmel_mxt_ts
 - atxp1
 - ax88179_178a
 - ax88796b
@@ -814,16 +813,13 @@ modules:
 - dst_ca
 - dw_dmac
 - dwmac-generic
-- dynapro
 - e100
 - e1000
 - e1000e
 - ecryptfs
 - eeprom_93cx6
-- eeti_ts
 - efa
 - elan_i2c
-- elo
 - emc1403
 - emc6w201
 - emi26
@@ -841,7 +837,6 @@ modules:
 - fjes
 - fm10k
 - forcedeth
-- fujitsu_ts
 - fusb302
 - g760a
 - g762
@@ -864,7 +859,6 @@ modules:
 - gpu-sched
 - gs_usb
 - gud
-- gunze
 - hanwang
 - hid-alps
 - hid-appleir
@@ -974,7 +968,6 @@ modules:
 - ina209
 - ina2xx
 - industrialio
-- inexio
 - initio
 - int51x1
 - intel-xway
@@ -1120,7 +1113,6 @@ modules:
 - mtd_blkdevs
 - mtdblock
 - mtip32xx
-- mtouch
 - mv88e6060
 - mv88e6xxx
 - mvmdio
@@ -1213,7 +1205,6 @@ modules:
 - peak_pciefd
 - peak_usb
 - pegasus
-- penmount
 - phy-generic
 - physmap
 - pi3usb30532
@@ -1503,9 +1494,6 @@ modules:
 - tmp103
 - tmp401
 - tmp421
-- touchit213
-- touchright
-- touchwin
 - tpm_i2c_atmel
 - tpm_i2c_infineon
 - tpm_i2c_nuvoton
@@ -1513,7 +1501,6 @@ modules:
 - tpm_st33zp24_i2c
 - tps40422
 - tps6598x
-- tsc2007
 - tsl2550
 - ttpci-eeprom
 - ttusb_dec
@@ -1560,7 +1547,6 @@ modules:
 - usblp
 - usbsevseg
 - usbtmc
-- usbtouchscreen
 - userspace-consumer
 - uvc
 - v4l2-dv-timings
@@ -1593,9 +1579,7 @@ modules:
 - w83l785ts
 - w83l786ng
 - wacom
-- wacom_i2c
 - wacom_serial4
-- wacom_w8001
 - wdat_wdt
 - wdt_pci
 - whiteheat
@@ -1645,7 +1629,6 @@ modules:
 - at25
 - at86rf230
 - atusb
-- auo-pixcir-ts
 - axp20x-pek
 - axp20x-regulator
 - axp20x-rsb
@@ -1742,12 +1725,8 @@ modules:
 - dwmac-sun8i
 - dwmac-sunxi
 - echo
-- edt-ft5x06
-- egalax_ts
-- egalax_ts_serial
 - ehci-exynos
 - ehci-platform
-- elants_i2c
 - envelope-detector
 - esas2r
 - esp_scsi
@@ -1847,7 +1826,6 @@ modules:
 - iio-trig-loop
 - iio-trig-sysfs
 - iio_hwmon
-- ili210x
 - ina3221
 - industrialio-buffer-cb
 - industrialio-configfs
@@ -1919,7 +1897,6 @@ modules:
 - mi0283qt
 - mma7660
 - mmcc-msm8996
-- mms114
 - mpu3050
 - mrf24j40
 - msm
@@ -1989,7 +1966,6 @@ modules:
 - pinctrl-single
 - pinctrl-spmi-gpio
 - pinctrl-spmi-mpp
-- pixcir_i2c_ts
 - pl111_drm
 - pl172
 - pl330
@@ -2028,7 +2004,6 @@ modules:
 - radio-si470x-usb
 - radio-tea5764
 - radio-wl1273
-- raydium_i2c_ts
 - rcar-dmac
 - rcar-du-drm
 - rcar_cmm
@@ -2080,8 +2055,6 @@ modules:
 - shark2
 - sht3x
 - sil-sii8620
-- silead
-- sis_i2c
 - smc91x
 - smd-rpm
 - smsc911x
@@ -2109,7 +2082,6 @@ modules:
 - spi-xlp
 - spidev
 - ssd1307fb
-- st1232
 - st_accel
 - st_accel_i2c
 - st_accel_spi
@@ -2144,7 +2116,6 @@ modules:
 - tmp108
 - tpm_tis_spi
 - tps53679
-- tsc40
 - uleds
 - ulpi
 - usb-conn-gpio
@@ -2186,8 +2157,6 @@ modules:
 - xillybus_pcie
 - yellowfin
 - yurex
-- zet6223
-- zforce_ts
 #endif /* Arch_aarch64 */
 
 /* modules: */
@@ -2204,8 +2173,6 @@ modules:
 - acquirewdt
 - ad525x_dpot
 - ad525x_dpot-i2c
-- ad7879
-- ad7879-i2c
 - advantechwdt
 - aic79xx
 - aic7xxx
@@ -2239,7 +2206,6 @@ modules:
 - bfa
 - block2mtd
 - bna
-- bu21013_ts
 - cassini
 - cfag12864b
 - cfag12864bfb
@@ -2249,7 +2215,6 @@ modules:
 - cmdlinepart
 - compal-laptop
 - cpu5wdt
-- cy8ctmg110_ts
 - dax_cxl
 - dcdbas
 - de2104x
@@ -2300,7 +2265,6 @@ modules:
 - gpio-ich
 - gpio_mouse
 - gru
-- hampshire
 - hangcheck-timer
 - hdaps
 - hdlc
@@ -2861,6 +2825,7 @@ modules-desktop:
 - atbm8830
 - ath3k
 - ati_remote
+- atmel_mxt_ts
 - au0828
 - au8522_common
 - au8522_decoder
@@ -2972,9 +2937,12 @@ modules-desktop:
 - dvb-usb-vp7045
 - dvb_dummy_fe
 - dvb_usb_v2
+- dynapro
 - e4000
 - earth-pt1
 - ec100
+- eeti_ts
+- elo
 - em28xx
 - em28xx-alsa
 - em28xx-dvb
@@ -2985,6 +2953,7 @@ modules-desktop:
 - fc0013
 - fc2580
 - fintek-cir
+- fujitsu_ts
 - gp8psk-fe
 - gspca_benq
 - gspca_conex
@@ -3035,6 +3004,7 @@ modules-desktop:
 - gspca_vicam
 - gspca_xirlink_cit
 - gspca_zc3xx
+- gunze
 - hci_uart
 - hci_vhci
 - hdpvr
@@ -3045,6 +3015,7 @@ modules-desktop:
 - iguanair
 - imon
 - imon_raw
+- inexio
 - ir-imon-decoder
 - ir-jvc-decoder
 - ir-kbd-i2c
@@ -3095,6 +3066,7 @@ modules-desktop:
 - mt2266
 - mt312
 - mt352
+- mtouch
 - mxl111sf-demod
 - mxl111sf-tuner
 - mxl5005s
@@ -3107,6 +3079,7 @@ modules-desktop:
 - nxt6000
 - or51132
 - or51211
+- penmount
 - pluto2
 - pvrusb2
 - pwc
@@ -3350,7 +3323,11 @@ modules-desktop:
 - tea5761
 - tea5767
 - tifm_sd
+- touchit213
+- touchright
+- touchwin
 - ts2020
+- tsc2007
 - ttusbdecfe
 - ttusbir
 - tua6100
@@ -3361,6 +3338,7 @@ modules-desktop:
 - tveeprom
 - upd64031a
 - upd64083
+- usbtouchscreen
 - ushc
 - uvcvideo
 - v4l2-async
@@ -3377,6 +3355,8 @@ modules-desktop:
 - videodev
 - vp27smpx
 - vub300
+- wacom_i2c
+- wacom_w8001
 - wm8739
 - wm8775
 - xc2028
@@ -3392,6 +3372,7 @@ modules-desktop:
 - armmmci
 - as102_fe
 - ascot2e
+- auo-pixcir-ts
 - axp20x_ac_power
 - axp20x_battery
 - axp20x_usb_power
@@ -3420,6 +3401,10 @@ modules-desktop:
 - dw_mmc-pci
 - dw_mmc-pltfm
 - dw_mmc-rockchip
+- edt-ft5x06
+- egalax_ts
+- egalax_ts_serial
+- elants_i2c
 - em28xx-v4l
 - exynos-gsc
 - ff-memless
@@ -3434,17 +3419,21 @@ modules-desktop:
 - hi6210-i2s
 - horus3a
 - igorplugusb
+- ili210x
 - ir-hix5hd2
 - meson-gx-mmc
 - meson-ir
 - mmc_spi
+- mms114
 - mt9v011
 - mxb
 - netup-unidvb
 - of_mmc_spi
 - ov2640
 - ov7640
+- pixcir_i2c_ts
 - pwrseq_sd8787
+- raydium_i2c_ts
 - rcar-fcp
 - renesas_sdhi_core
 - renesas_sdhi_internal_dmac
@@ -3459,6 +3448,8 @@ modules-desktop:
 - sdhci-of-arasan
 - sdhci-tegra
 - sdhci-xenon-driver
+- silead
+- sis_i2c
 - smipcie
 - snd-soc-ac97
 - snd-soc-adau-utils
@@ -3493,12 +3484,14 @@ modules-desktop:
 - snd-soc-wm8804-spi
 - solo6x10
 - sony-btf-mpx
+- st1232
 - sunxi-mmc
 - tda9840
 - tea6415c
 - tea6420
 - thunderx-mmc
 - tmio_mmc_core
+- tsc40
 - tvp5150
 - tw2804
 - tw686x
@@ -3509,20 +3502,27 @@ modules-desktop:
 - vsp1
 - zd1301
 - zd1301_demod
+- zet6223
+- zforce_ts
 #endif /* Arch_aarch64 */
 
 /* modules-desktop: */
 #ifdef Arch_x86_64
+- ad7879
+- ad7879-i2c
 - b2c2-flexcop-usb
 - bq2415x_charger
 - bq24190_charger
 - bq24735-charger
+- bu21013_ts
 - chromeos_laptop
 - chromeos_pstore
+- cy8ctmg110_ts
 - ds2780_battery
 - ds2781_battery
 - ds2782_battery
 - gpio-charger
+- hampshire
 - intel-ipu6
 - isp1704_charger
 - lp8727_charger
