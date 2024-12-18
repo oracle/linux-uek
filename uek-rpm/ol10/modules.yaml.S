@@ -191,7 +191,6 @@ modules-core:
 - libcurve25519
 - libcurve25519-generic
 - libcxgb
-- libcxgbi
 - libdes
 - libie
 - libiscsi
@@ -801,7 +800,6 @@ modules:
 - gs_usb
 - hpilo
 - hpsa
-- hptiop
 - hpwdt
 - hso
 - huawei_cdc_ncm
@@ -835,7 +833,6 @@ modules:
 - igc
 - ina209
 - ina2xx
-- initio
 - int51x1
 - intel-xway
 - intel_qat
@@ -936,8 +933,6 @@ modules:
 - mdio-cavium
 - mdio-mscc-miim
 - mdio-thunder
-- megaraid_mbox
-- megaraid_mm
 - mhi_net
 - mhi_pci_generic
 - micrel
@@ -954,7 +949,6 @@ modules:
 - mv88e6060
 - mv88e6xxx
 - mvmdio
-- mvumi
 - myri10ge
 - n5pf
 - n_gsm
@@ -1044,7 +1038,6 @@ modules:
 - plusb
 - pmbus
 - pmbus_core
-- pmcraid
 - powr1220
 - ppp_async
 - ppp_deflate
@@ -1251,7 +1244,6 @@ modules:
 - snd-vx-lib
 - snd-vx222
 - snd-ymfpci
-- snic
 - softdog
 - soundcore
 - sr9700
@@ -1263,7 +1255,6 @@ modules:
 - stmmac
 - stmmac-platform
 - sundance
-- sym53c8xx
 - tcm_fc
 - team
 - team_mode_activebackup
@@ -1670,8 +1661,6 @@ modules:
 /* modules: */
 #ifdef Arch_x86_64
 - 3c59x
-- 3w-9xxx
-- 3w-sas
 - abituguru
 - abituguru3
 - acer-wmi
@@ -1682,8 +1671,6 @@ modules:
 - ad525x_dpot
 - ad525x_dpot-i2c
 - advantechwdt
-- aic79xx
-- aic7xxx
 - alienware-wmi
 - alim1535_wdt
 - altera_jtaguart
@@ -1707,7 +1694,6 @@ modules:
 - asus_atk0110
 - aty128fb
 - atyfb
-- bfa
 - block2mtd
 - bna
 - cassini
@@ -1817,7 +1803,6 @@ modules:
 - ie31200_edac
 - ie6xx_wdt
 - igen6_edac
-- imm
 - inftl
 - int3400_thermal
 - int3401_thermal
@@ -1842,7 +1827,6 @@ modules:
 - intel_tpmi_power_domains
 - intel_vsec
 - intel_vsec_tpmi
-- ips
 - isst_tpmi
 - isst_tpmi_core
 - it87
@@ -1941,7 +1925,6 @@ modules:
 - pmt_telemetry
 - pnd2_edac
 - powernow-k8
-- ppa
 - ppdev
 - pps_parport
 - processor_thermal_device
@@ -2085,7 +2068,6 @@ modules:
 - xen-fbfront
 - xen-front-pgdir-shbuf
 - xen-scsiback
-- xen-scsifront
 - xen_wdt
 - xircom_cb
 - xp
@@ -2140,7 +2122,9 @@ modules-extra:
 - ems_pci
 - ems_usb
 - gve
+- hptiop
 - ifcvf
+- initio
 - kvaser_pci
 - l2tp_core
 - l2tp_debugfs
@@ -2151,9 +2135,14 @@ modules-extra:
 - l2tp_ppp
 - lec
 - leds-lt3593
+- libcxgbi
 - mcp251xfd
+- megaraid_mbox
+- megaraid_mm
+- mvumi
 - mxl-gpy
 - plx_pci
+- pmcraid
 - pppoatm
 - sch_cake
 - sch_cbs
@@ -2185,9 +2174,11 @@ modules-extra:
 - sja1000_platform
 - slcan
 - slip
+- snic
 - softing
 - spi-amd
 - spi_ks8995
+- sym53c8xx
 - tcp_bic
 - tcp_highspeed
 - tcp_htcp
@@ -2222,11 +2213,19 @@ modules-extra:
 
 /* modules-extra: */
 #ifdef Arch_x86_64
+- 3w-9xxx
+- 3w-sas
 - acer-wireless
+- aic79xx
+- aic7xxx
+- bfa
 - counter
+- imm
 - intel_th
+- ips
 - mptfc
 - ntb_hw_intel
+- ppa
 - ptdma
 - ptp_vmw
 - rtc-pcf50633
@@ -2238,6 +2237,7 @@ modules-extra:
 - stm_heartbeat
 - think-lmi
 - wire
+- xen-scsifront
 #endif /* Arch_x86_64 */
 
 modules-deprecated:
