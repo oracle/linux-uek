@@ -734,24 +734,24 @@ against the %{variant_name} kernel package.\
 %{nil}
 
 #
-# This macro creates a kernel%%{?variant}-<subpackage>-modules-extra package.
-#       %%kernel_modules_extra_package [-o] <subpackage>
+# This macro creates a kernel%%{?variant}-<subpackage>-modules-<modules_subpackage> package.
+#       %%kernel_modules_extra_package [-o] [subpackage] -s <modules_subpackage>
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_modules_extra_package(o) \
+%define kernel_modules_extra_package(os:) \
 %define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
-%package -n %{variant_name}-modules-extra\
+%package -n %{variant_name}-modules-%{-s*}\
 Summary: Extra kernel modules to match the %{variant_name}-core kernel\
 Group: System Environment/Kernel\
-Provides: %{variant_name}-modules-extra-%{_target_cpu} = %{version}-%{release}%{?1:.%{1}}\
-Provides: %{variant_name}-modules-extra = %{version}-%{release}%{?1:.%{1}}\
+Provides: %{variant_name}-modules-%{-s*}-%{_target_cpu} = %{version}-%{release}%{?1:.%{1}}\
+Provides: %{variant_name}-modules-%{-s*} = %{version}-%{release}%{?1:.%{1}}\
 Provides: installonlypkg(%{installonly_variant_name}-modules)\
-Provides: %{variant_name}-modules-extra-uname-r = %{KVERREL}%{?1:.%{1}}\
+Provides: %{variant_name}-modules-%{-s*}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-modules-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
 AutoReq: no\
 AutoProv: yes\
-%description -n %{variant_name}-modules-extra\
+%description -n %{variant_name}-modules-%{-s*}\
 This package provides less commonly used kernel modules for the %{variant_name}-core kernel package.\
 %{nil}
 
@@ -844,7 +844,7 @@ Provides: kernel-ueknano = %{KVERREL}%{?1:.%{1}}\
 %{expand:%%kernel_devel_package %{-o:%{-o}} %{?1:%{1}}}\
 %{expand:%%kernel_modules_package %{-o:%{-o}} %{?1:%{1}}}\
 %{expand:%%kernel_modules_core_package %{-o:%{-o}} %{?1:%{1}}}\
-%{expand:%%kernel_modules_extra_package %{-o:%{-o}} %{?1:%{1}}}\
+%{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s extra %{?1:%{1}}}\
 %{expand:%%kernel_debuginfo_package %{-o:-o} %{?1:%{1}}}\
 %{nil}
 
@@ -1707,11 +1707,11 @@ fi\
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #       %%kernel_modules_extra_post [-o] [<subpackage>]
 #
-%define kernel_modules_extra_post(o) \
-%{expand:%%post -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-modules-extra}\
+%define kernel_modules_extra_post(os:) \
+%{expand:%%post -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-modules-%{-s*}}\
 /sbin/depmod -a %{KVERREL}%{?1:.%{1}}\
 %{nil}\
-%{expand:%%postun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-modules-extra}\
+%{expand:%%postun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-modules-%{-s*}}\
 /sbin/depmod -a %{KVERREL}%{?1:.%{1}}\
 %{nil}
 
@@ -1783,7 +1783,7 @@ fi\
 %{expand:%%kernel_devel_post %{-o:-o} %{?-v:%{?-v*}}}\
 %{expand:%%kernel_modules_post %{-o:-o} %{?-v:%{?-v*}}}\
 %{expand:%%kernel_modules_core_post %{-o:-o} %{?-v:%{?-v*}}}\
-%{expand:%%kernel_modules_extra_post %{-o:-o} %{?-v:%{?-v*}}}\
+%{expand:%%kernel_modules_extra_post %{-o:-o} -s extra %{?-v:%{?-v*}}}\
 %{expand:%%kernel_variant_posttrans %{-o:-o} %{?-v:%{?-v*}}}\
 %{expand:%%post -n kernel%{?variant}%{?-v*:%{!-o:-}%{-v*}}-core}\
 %{-r:\
