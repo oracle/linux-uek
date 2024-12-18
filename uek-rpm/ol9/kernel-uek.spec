@@ -2054,7 +2054,6 @@ fi
 %{expand:%%files -f %{variant_name}-modules-usb.list -n %{variant_name}-modules-usb}\
 %{expand:%%files -f %{variant_name}-modules-wireless.list -n %{variant_name}-modules-wireless}\
 %{expand:%%files -f %{variant_name}-modules-extra.list -n %{variant_name}-modules-extra}\
-%config(noreplace) /etc/modprobe.d/*-blacklist.conf\
 %{expand:%%files -n %{variant_name}-devel}\
 %defattr(-,root,root)\
 %dir /usr/src/kernels\

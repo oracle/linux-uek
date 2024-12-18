@@ -78,7 +78,7 @@ cpp = subprocess.run(['cpp'] + [f'-D{arg}' for arg in args.D] +
 denylist = set(cpp.stdout.splitlines())
 
 #
-# Write out denylists
+# Write out .list files (for use with %files -f)
 #
 
 DENYLIST_TEMPLATE="""\
@@ -90,18 +90,6 @@ DENYLIST_TEMPLATE="""\
 # Remove the blacklist by adding a comment # at the start of the line.
 blacklist {modname}
 """
-
-for modname in denylist:
-    denylist_path = f'etc/modprobe.d/{modname}-blacklist.conf'
-
-    with open(denylist_path, 'w') as f:
-        f.write(DENYLIST_TEMPLATE.format(modname=modname))
-
-    print(f"Wrote {os.path.abspath(denylist_path)}")
-
-#
-# Write out .list files (for use with %files -f)
-#
 
 paths_seen = set()
 
@@ -116,6 +104,16 @@ for subpackage, modnames in modules_by_subpackage.items():
 
         paths_seen.add(path)
         lines.append((path + args.ko_suffix, ''))
+
+        if modname in denylist:
+            denylist_path = f'etc/modprobe.d/{modname}-blacklist.conf'
+
+            with open(denylist_path, 'w') as f:
+                f.write(DENYLIST_TEMPLATE.format(modname=modname))
+
+            print(f"Wrote {os.path.abspath(denylist_path)}")
+
+            lines.append((denylist_path, '%config(noreplace)'))
 
     # modules-core is special and includes _all_ the modules directories
     # as well (but not their contents)
