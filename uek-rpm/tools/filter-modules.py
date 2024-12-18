@@ -83,11 +83,11 @@ denylist = set(cpp.stdout.splitlines())
 
 DENYLIST_TEMPLATE="""\
 # This kernel module can be automatically loaded by non-root users. To
-# enhance system security, the module is blacklisted by default to ensure
+# enhance system security, the module is denylisted by default to ensure
 # system administrators make the module available for use as needed.
 # See https://access.redhat.com/articles/3760101 for more details.
 #
-# Remove the blacklist by adding a comment # at the start of the line.
+# Remove the denylist entry by adding a comment # at the start of the line.
 blacklist {modname}
 """
 
@@ -106,7 +106,7 @@ for subpackage, modnames in modules_by_subpackage.items():
         lines.append((path + args.ko_suffix, ''))
 
         if modname in denylist:
-            denylist_path = f'etc/modprobe.d/{modname}-blacklist.conf'
+            denylist_path = f'etc/modprobe.d/{modname}-denylist.conf'
 
             with open(denylist_path, 'w') as f:
                 f.write(DENYLIST_TEMPLATE.format(modname=modname))
