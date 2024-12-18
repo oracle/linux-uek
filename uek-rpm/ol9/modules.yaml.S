@@ -658,7 +658,6 @@ modules:
 - aacraid
 - ac97_bus
 - acard-ahci
-- acecad
 - acenic
 - acpi_power_meter
 - ad7414
@@ -679,7 +678,6 @@ modules:
 - adt7x10
 - adutux
 - ahci_platform
-- aiptek
 - aircable
 - alim7101_wdt
 - altera-ci
@@ -859,7 +857,6 @@ modules:
 - gpu-sched
 - gs_usb
 - gud
-- hanwang
 - hid-alps
 - hid-appleir
 - hid-asus
@@ -993,7 +990,6 @@ modules:
 - jsm
 - kalmia
 - kaweth
-- kbtab
 - keyspan
 - keyspan_pda
 - keyspan_remote
@@ -1578,7 +1574,6 @@ modules:
 - w83l785ts
 - w83l786ng
 - wacom
-- wacom_serial4
 - wdat_wdt
 - wdt_pci
 - whiteheat
@@ -2805,8 +2800,10 @@ modules-deprecated:
 
 modules-desktop:
 - a8293
+- acecad
 - af9013
 - af9033
+- aiptek
 - atbm8830
 - ath3k
 - ati_remote
@@ -2990,6 +2987,7 @@ modules-desktop:
 - gspca_xirlink_cit
 - gspca_zc3xx
 - gunze
+- hanwang
 - hci_uart
 - hci_vhci
 - hdpvr
@@ -3022,6 +3020,7 @@ modules-desktop:
 - ivtvfb
 - ix2505v
 - joydev
+- kbtab
 - l64781
 - lg2160
 - lgdt3305
@@ -3341,6 +3340,7 @@ modules-desktop:
 - vp27smpx
 - vub300
 - wacom_i2c
+- wacom_serial4
 - wacom_w8001
 - wm8739
 - wm8775
