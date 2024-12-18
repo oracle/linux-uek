@@ -106,7 +106,7 @@ for subpackage, modnames in modules_by_subpackage.items():
         lines.append((path + args.ko_suffix, ''))
 
         if modname in denylist:
-            denylist_path = f'etc/modprobe.d/{modname}-denylist.conf'
+            denylist_path = f'etc/modprobe.d/{args.version}-{modname}-denylist.conf'
 
             with open(denylist_path, 'w') as f:
                 f.write(DENYLIST_TEMPLATE.format(modname=modname))
