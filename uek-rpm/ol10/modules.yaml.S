@@ -393,7 +393,6 @@ modules-core:
 - scsi_transport_sas
 - scsi_transport_srp
 - seed
-- serio_raw
 - serpent_generic
 - ses
 - sit
@@ -498,7 +497,6 @@ modules-core:
 - chacha-neon
 - cppc_cpufreq
 - crct10dif-ce
-- e3x0-button
 - ecdh_generic
 - ghash-ce
 - poly1305-neon
@@ -682,7 +680,6 @@ modules:
 - alim7101_wdt
 - altera-ci
 - altera-stapl
-- altera_ps2
 - alx
 - amc6821
 - amd
@@ -694,16 +691,13 @@ modules:
 - apds9802als
 - apds990x
 - appledisplay
-- appletouch
 - aquantia
-- arc_ps2
 - arc_uart
 - ark3116
 - asc7621
 - asix
 - at24
 - at803x
-- ati_remote2
 - atl1
 - atl1c
 - atl1e
@@ -716,7 +710,6 @@ modules:
 - b44
 - bcm-phy-lib
 - bcm-phy-ptp
-- bcm5974
 - bcm7xxx
 - bcm87xx
 - bcma
@@ -769,7 +762,6 @@ modules:
 - chipreg
 - cicada
 - cirrus
-- cm109
 - cortina
 - cp210x
 - cramfs
@@ -782,7 +774,6 @@ modules:
 - cxgbit
 - cxl_mem
 - cxl_pmu
-- cyapatp
 - cyberjack
 - cypress_firmware
 - cypress_m8
@@ -817,7 +808,6 @@ modules:
 - ecryptfs
 - eeprom_93cx6
 - efa
-- elan_i2c
 - emc1403
 - emc6w201
 - emi26
@@ -852,8 +842,6 @@ modules:
 - governor_simpleondemand
 - gpio-amdpt
 - gpio-viperboard
-- gpio_keys
-- gpio_keys_polled
 - gpu-sched
 - gs_usb
 - gud
@@ -921,7 +909,6 @@ modules:
 - kaweth
 - keyspan
 - keyspan_pda
-- keyspan_remote
 - kheaders
 - kl5kusb105
 - kobil_sct
@@ -995,7 +982,6 @@ modules:
 - mantis_core
 - marvell
 - marvell10g
-- matrix-keymap
 - max16064
 - max16065
 - max1619
@@ -1139,7 +1125,6 @@ modules:
 - pmbus
 - pmbus_core
 - pmcraid
-- powermate
 - powr1220
 - ppp_async
 - ppp_deflate
@@ -1169,7 +1154,6 @@ modules:
 - qmi_helpers
 - qmi_wwan
 - qsemi
-- qt1070
 - quatech2
 - r592
 - r6040
@@ -1186,14 +1170,9 @@ modules:
 - regmap-sdw-mbq
 - regmap-spi
 - ring_buffer_benchmark
-- rmi_core
-- rmi_i2c
-- rmi_smbus
-- rmi_spi
 - rndis_host
 - rockchip
 - rocker
-- rotary_encoder
 - rtc-bq32k
 - rtc-ds1286
 - rtc-ds1307
@@ -1238,7 +1217,6 @@ modules:
 - sc92031
 - scsi_debug
 - scsi_transport_spi
-- sermouse
 - sht15
 - sht21
 - shtc1
@@ -1374,7 +1352,6 @@ modules:
 - snic
 - softdog
 - soundcore
-- sparse-keymap
 - spcp8x5
 - sr9700
 - sr9800
@@ -1389,8 +1366,6 @@ modules:
 - sundance
 - sym53c8xx
 - symbolserial
-- synaptics_i2c
-- synaptics_usb
 - tcm_fc
 - tcpci
 - tcpm
@@ -1441,7 +1416,6 @@ modules:
 - ueagle-atm
 - ufshcd-core
 - ufshcd-pci
-- uinput
 - uio_aec
 - uio_cif
 - uio_pci_generic
@@ -1490,7 +1464,6 @@ modules:
 - vport-gre
 - vport-vxlan
 - vsockmon
-- vsxxxaa
 - vt8231
 - vx855
 - vxcan
@@ -1508,7 +1481,6 @@ modules:
 - xilinx_gmii2rgmii
 - xsens_mt
 - xusbatm
-- yealink
 - zaurus
 - zl6100
 - zram
@@ -1521,7 +1493,6 @@ modules:
 - acpi_configfs
 - act8865-regulator
 - ad7314
-- adc-keys
 - adcxx
 - adf7242
 - ads7871
@@ -1533,7 +1504,6 @@ modules:
 - altera-msgdma
 - altera_tse
 - am53c974
-- ambakmi
 - amlogic-gxl-crypto
 - ampere_cspmu
 - analogix-anx78xx
@@ -1546,7 +1516,6 @@ modules:
 - at25
 - at86rf230
 - atusb
-- axp20x-pek
 - axp20x-regulator
 - axp20x-rsb
 - b53_common
@@ -1580,15 +1549,12 @@ modules:
 - clk-s2mps11
 - clk-scpi
 - clk-smd-rpm
-- cma3000_d0x
-- cma3000_d0x_i2c
 - cptpf
 - cptvf
 - cpufreq-dt
 - cpufreq-dt-platdev
 - cros_ec_dev
 - cros_ec_hwmon
-- cros_ec_keyb
 - dc395x
 - display-connector
 - dmx3191d
@@ -1666,7 +1632,6 @@ modules:
 - hi655x-pmic
 - hi655x-regulator
 - hibmc-drm
-- hisi_powerkey
 - hisi_sas_main
 - hisi_sas_v1_hw
 - hisi_sas_v2_hw
@@ -1703,7 +1668,6 @@ modules:
 - k3dma
 - kirin-drm
 - ksz884x
-- kxtj9
 - lan9303-core
 - lan9303_i2c
 - lan9303_mdio
@@ -1823,10 +1787,8 @@ modules:
 - pl172
 - pl330
 - platform_mhu
-- pm8941-pwrkey
 - ptp_dte
 - pwm-bcm2835
-- pwm-beeper
 - pwm-cros-ec
 - pwm-fan
 - pwm-meson
@@ -1898,7 +1860,6 @@ modules:
 - scpi-hwmon
 - scpi_pm_domain
 - scsi_dh_hp_sw
-- serport
 - sh-sci
 - shark2
 - sht3x
@@ -1909,7 +1870,6 @@ modules:
 - snd-cs4281
 - snd-pcm-dmaengine
 - snd-serial-u16550
-- soc_button_array
 - sp805_wdt
 - spi-bcm2835
 - spi-bcm2835aux
@@ -1941,7 +1901,6 @@ modules:
 - thunderx2_pmu
 - thunderx_edac
 - ti-tfp410
-- tm2-touchkey
 - tmp108
 - tpm_tis_spi
 - tps53679
@@ -2017,7 +1976,6 @@ modules:
 - amd_hsmp
 - amdtee
 - amilo-rfkill
-- apanel
 - apple-gmux
 - apple_bl
 - applesmc
@@ -2026,7 +1984,6 @@ modules:
 - asus-nb-wmi
 - asus-wmi
 - asus_atk0110
-- atlas_btns
 - aty128fb
 - atyfb
 - bfa
@@ -2089,7 +2046,6 @@ modules:
 - gma500_gfx
 - gpio-generic
 - gpio-ich
-- gpio_mouse
 - gru
 - hangcheck-timer
 - hdaps
@@ -2196,7 +2152,6 @@ modules:
 - map_funcs
 - map_ram
 - map_rom
-- matrix_keypad
 - max1586
 - mdev
 - mdio-bcm-unimac
@@ -2300,7 +2255,6 @@ modules:
 - processor_thermal_rfim
 - processor_thermal_wt_hint
 - processor_thermal_wt_req
-- ps2mult
 - qat_4xxx
 - qat_c3xxx
 - qat_c3xxxvf
@@ -2310,7 +2264,6 @@ modules:
 - qat_dh895xccvf
 - qat_vfio_pci
 - qinfo_probe
-- qt2160
 - radeonfb
 - rdc321x-southbridge
 - rdmavt
@@ -2392,7 +2345,6 @@ modules:
 - sungem
 - sungem_phy
 - sunhme
-- tca6416-keypad
 - tdx-guest
 - thinkpad_acpi
 - tlan
@@ -2437,7 +2389,6 @@ modules:
 - x38_edac
 - xen-fbfront
 - xen-front-pgdir-shbuf
-- xen-kbdfront
 - xen-scsiback
 - xen-scsifront
 - xen_wdt
@@ -2621,9 +2572,13 @@ modules-desktop:
 - af9013
 - af9033
 - aiptek
+- altera_ps2
+- appletouch
+- arc_ps2
 - atbm8830
 - ath3k
 - ati_remote
+- ati_remote2
 - atmel_mxt_ts
 - au0828
 - au8522_common
@@ -2633,6 +2588,7 @@ modules-desktop:
 - b2c2-flexcop-pci
 - bcm203x
 - bcm3510
+- bcm5974
 - bfusb
 - bluetooth
 - bnep
@@ -2649,6 +2605,7 @@ modules-desktop:
 - budget-ci
 - budget-core
 - cb710-mmc
+- cm109
 - cqhci
 - cs3308
 - cs5345
@@ -2678,6 +2635,7 @@ modules-desktop:
 - cxd2099
 - cxd2820r
 - cxd2841er
+- cyapatp
 - ddbridge
 - dib0070
 - dib0090
@@ -2741,6 +2699,7 @@ modules-desktop:
 - earth-pt1
 - ec100
 - eeti_ts
+- elan_i2c
 - elo
 - em28xx
 - em28xx-alsa
@@ -2754,6 +2713,8 @@ modules-desktop:
 - fintek-cir
 - fujitsu_ts
 - gp8psk-fe
+- gpio_keys
+- gpio_keys_polled
 - gspca_benq
 - gspca_conex
 - gspca_cpia1
@@ -2920,6 +2881,7 @@ modules-desktop:
 - ix2505v
 - joydev
 - kbtab
+- keyspan_remote
 - kfifo_buf
 - l64781
 - lg2160
@@ -2935,6 +2897,7 @@ modules-desktop:
 - m88rs2000
 - m88rs6000t
 - mantis
+- matrix-keymap
 - max2165
 - mb86a16
 - mb86a20s
@@ -2965,11 +2928,13 @@ modules-desktop:
 - or51211
 - penmount
 - pluto2
+- powermate
 - pvrusb2
 - pwc
 - qm1d1b0004
 - qm1d1c0042
 - qt1010
+- qt1070
 - r820t
 - rc-adstech-dvb-t-pci
 - rc-alink-dtu-m
@@ -3112,6 +3077,11 @@ modules-desktop:
 - rc-zx-irdec
 - redrat3
 - rfcomm
+- rmi_core
+- rmi_i2c
+- rmi_smbus
+- rmi_spi
+- rotary_encoder
 - rtl2830
 - rtl2832
 - rtl2832_sdr
@@ -3139,6 +3109,8 @@ modules-desktop:
 - sdhci-pltfm
 - sdio_uart
 - serial_ir
+- serio_raw
+- sermouse
 - si2157
 - si2165
 - si2168
@@ -3169,6 +3141,7 @@ modules-desktop:
 - soundwire-intel
 - sp2
 - sp887x
+- sparse-keymap
 - stb0899
 - stb6000
 - stb6100
@@ -3184,6 +3157,8 @@ modules-desktop:
 - stv6110
 - stv6110x
 - stv6111
+- synaptics_i2c
+- synaptics_usb
 - tc90522
 - tda10021
 - tda10023
@@ -3221,6 +3196,7 @@ modules-desktop:
 - tvaudio
 - tveeprom
 - uhid
+- uinput
 - upd64031a
 - upd64083
 - usbtouchscreen
@@ -3239,6 +3215,7 @@ modules-desktop:
 - videobuf2-vmalloc
 - videodev
 - vp27smpx
+- vsxxxaa
 - vub300
 - wacom
 - wacom_i2c
@@ -3249,6 +3226,7 @@ modules-desktop:
 - xc2028
 - xc4000
 - xc5000
+- yealink
 - zl10036
 - zl10039
 - zl10353
@@ -3259,11 +3237,14 @@ modules-desktop:
 - acp_audio_dma
 - acpi-als
 - ad7766
+- adc-keys
 - ak8975
+- ambakmi
 - armmmci
 - as102_fe
 - ascot2e
 - auo-pixcir-ts
+- axp20x-pek
 - axp20x_ac_power
 - axp20x_adc
 - axp20x_battery
@@ -3282,6 +3263,8 @@ modules-desktop:
 - btrsi
 - cm32181
 - cm3605
+- cma3000_d0x
+- cma3000_d0x_i2c
 - cros-ec-sensorhub
 - cros-ec-typec
 - cros_charge-control
@@ -3289,6 +3272,7 @@ modules-desktop:
 - cros_ec_baro
 - cros_ec_chardev
 - cros_ec_debugfs
+- cros_ec_keyb
 - cros_ec_light_prox
 - cros_ec_lightbar
 - cros_ec_sensors
@@ -3312,6 +3296,7 @@ modules-desktop:
 - dw_mmc-pci
 - dw_mmc-pltfm
 - dw_mmc-rockchip
+- e3x0-button
 - edt-ft5x06
 - egalax_ts
 - egalax_ts_serial
@@ -3347,6 +3332,7 @@ modules-desktop:
 - hid-plantronics
 - hid-retrode
 - hid-udraw-ps3
+- hisi_powerkey
 - horus3a
 - hts221
 - hts221_i2c
@@ -3366,6 +3352,7 @@ modules-desktop:
 - kxsd9
 - kxsd9-i2c
 - kxsd9-spi
+- kxtj9
 - lmp91000
 - max1363
 - max30100
@@ -3385,6 +3372,8 @@ modules-desktop:
 - ov7640
 - pa12203001
 - pixcir_i2c_ts
+- pm8941-pwrkey
+- pwm-beeper
 - pwrseq_sd8787
 - qcom-spmi-iadc
 - qcom-spmi-vadc
@@ -3406,6 +3395,7 @@ modules-desktop:
 - sdhci-of-arasan
 - sdhci-tegra
 - sdhci-xenon-driver
+- serport
 - silead
 - sis_i2c
 - smipcie
@@ -3440,6 +3430,7 @@ modules-desktop:
 - snd-soc-tpa6130a2
 - snd-soc-wm8524
 - snd-soc-wm8804-spi
+- soc_button_array
 - solo6x10
 - sony-btf-mpx
 - st1232
@@ -3466,6 +3457,7 @@ modules-desktop:
 - tea6420
 - thunderx-mmc
 - ti-ads1015
+- tm2-touchkey
 - tmio_mmc_core
 - tmp006
 - tsc40
@@ -3489,6 +3481,8 @@ modules-desktop:
 - ad7879
 - ad7879-i2c
 - amd_sfh
+- apanel
+- atlas_btns
 - b2c2-flexcop-usb
 - bq2415x_charger
 - bq24190_charger
@@ -3501,6 +3495,7 @@ modules-desktop:
 - ds2781_battery
 - ds2782_battery
 - gpio-charger
+- gpio_mouse
 - hampshire
 - hid-cp2112
 - hid-sensor-custom
@@ -3509,11 +3504,14 @@ modules-desktop:
 - intel-ipu6
 - isp1704_charger
 - lp8727_charger
+- matrix_keypad
 - max17040_battery
 - max17042_battery
 - max8903_charger
 - mmc_core
 - mt9m111
+- ps2mult
+- qt2160
 - sbs-battery
 - snd-acp-config
 - snd-acp3x-pdm-dma
@@ -3600,10 +3598,12 @@ modules-desktop:
 - snd-sof-probes
 - snd-sof-utils
 - snd-sof-xtensa-dsp
+- tca6416-keypad
 - toshiba_bluetooth
 - usdhi6rol0
 - wbsd
 - winbond-cir
+- xen-kbdfront
 #endif /* Arch_x86_64 */
 
 modules-extra-netfilter:
