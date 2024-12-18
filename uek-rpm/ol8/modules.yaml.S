@@ -173,7 +173,6 @@ modules-core:
 - garp
 - geneve
 - gf128mul
-- gnss
 - grace
 - gre
 - hid-hyperv
@@ -1189,6 +1188,7 @@ modules:
 - gl520sm
 - gl620a
 - gm12u320
+- gnss
 - governor_simpleondemand
 - gp8psk-fe
 - gpio-amdpt
