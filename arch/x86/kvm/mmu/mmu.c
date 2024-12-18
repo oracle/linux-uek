@@ -1383,7 +1383,8 @@ void kvm_arch_mmu_enable_log_dirty_pt_masked(struct kvm *kvm,
 	 * of memslot has no such restriction, so the range can cross two large
 	 * pages.
 	 */
-	if (kvm_dirty_log_manual_protect_and_init_set(kvm)) {
+	if (kvm_dirty_log_manual_protect_and_init_set(kvm) &&
+	    !kvm_dirty_log_pgtable(kvm)) {
 		gfn_t start = slot->base_gfn + gfn_offset + __ffs(mask);
 		gfn_t end = slot->base_gfn + gfn_offset + __fls(mask);
 
@@ -1394,6 +1395,11 @@ void kvm_arch_mmu_enable_log_dirty_pt_masked(struct kvm *kvm,
 		    ALIGN(end << PAGE_SHIFT, PMD_SIZE))
 			kvm_mmu_slot_gfn_write_protect(kvm, slot, end,
 						       PG_LEVEL_2M);
+	}
+
+	if (kvm_dirty_log_pgtable(kvm) &&
+	    !is_tdp_mmu_enabled(kvm)) {
+		return;
 	}
 
 	/* Now handle 4K PTEs.  */
@@ -5798,6 +5804,128 @@ void kvm_mmu_slot_remove_write_access(struct kvm *kvm,
 	 * PT_WRITABLE_MASK, that means it does not depend on PT_WRITABLE_MASK
 	 * anymore.
 	 */
+	if (flush)
+		kvm_arch_flush_remote_tlbs_memslot(kvm, memslot);
+}
+
+/* Get an SPTE's index into its parent's page table (and the spt array). */
+static inline int spte_index(u64 *sptep)
+{
+	return ((unsigned long)sptep / sizeof(*sptep)) & (PT64_ENT_PER_PAGE - 1);
+}
+
+/* The return value indicates if tlb flush on all vcpus is needed. */
+typedef bool (*present_map_handler) (struct kvm *kvm,
+				     struct kvm_rmap_head *rmap_head,
+				     const struct kvm_memory_slot *slot);
+
+static bool kvm_rmap_walk_masked(struct kvm *kvm,
+				 const struct kvm_memory_slot *slot,
+				 int start_level, gfn_t gfn_offset,
+				 unsigned long dirty_mask,
+				 unsigned long present_mask,
+				 present_map_handler fn)
+{
+	unsigned long mask = dirty_mask & present_mask;
+	gfn_t start = slot->base_gfn + gfn_offset + __ffs(mask);
+	gfn_t end = slot->base_gfn + gfn_offset + __fls(mask);
+	struct kvm_rmap_head *rmap_head;
+	unsigned long rmap_val, index;
+	bool flush = false;
+	gfn_t gfn;
+	int level;
+
+	for (gfn = start;
+	     gfn <= end;
+	     gfn += KVM_PAGES_PER_HPAGE(level)) {
+		for (level = start_level; level >= PG_LEVEL_4K; level--) {
+			rmap_head = gfn_to_rmap(gfn, level, slot);
+			rmap_val = rmap_head->val;
+			if (rmap_val)
+				break;
+		}
+
+		if (!rmap_val) {
+			level = PG_LEVEL_4K;
+		} else {
+			index = 1UL << (gfn - (slot->base_gfn + gfn_offset));
+			if (index & dirty_mask)
+				flush |= fn(kvm, rmap_head, slot);
+		}
+
+		if (need_resched() || rwlock_needbreak(&kvm->mmu_lock)) {
+			cond_resched_rwlock_write(&kvm->mmu_lock);
+		}
+	}
+
+	return flush;
+}
+
+static bool kvm_rmap_walk_present(struct kvm *kvm,
+				  const struct kvm_memory_slot *slot,
+				  int start_level, unsigned long dirty_mask,
+				  present_map_handler fn)
+{
+	gfn_t offset;
+	unsigned long i, n;
+	bool flush = false;
+
+	for (offset = 0, i = offset / BITS_PER_LONG,
+		 n = DIV_ROUND_UP(slot->npages, BITS_PER_LONG); n--;
+	     i++, offset += BITS_PER_LONG) {
+		atomic_long_t *p = (atomic_long_t *) &slot->present_bitmap[i];
+		unsigned long mask = atomic_long_read(p);
+		if (!mask)
+			continue;
+
+		flush |= kvm_rmap_walk_masked(kvm, slot, start_level,
+					      offset, dirty_mask, mask, fn);
+	}
+
+	return flush;
+}
+
+static bool rmap_test_dirty(struct kvm *kvm,
+			    struct kvm_rmap_head *rmap_head,
+			    const struct kvm_memory_slot *slot)
+{
+	struct rmap_iterator iter;
+	struct kvm_mmu_page *sp;
+	bool flush = false, dirty;
+	u64 *sptep;
+
+	for_each_rmap_spte(rmap_head, &iter, sptep) {
+		gfn_t pfn;
+
+		dirty = test_and_clear_bit(shadow_dirty_shift,
+				           (unsigned long *)sptep);
+		if (!dirty)
+			continue;
+
+		flush = true;
+		sp = sptep_to_sp(sptep);
+		pfn = kvm_mmu_page_get_gfn(sp, spte_index(sptep));
+		mark_page_range_dirty_in_slot(kvm, slot, pfn,
+				KVM_PAGES_PER_HPAGE(sp->role.level));
+	}
+
+	return flush;
+}
+
+void kvm_mmu_slot_test_dirty(struct kvm *kvm,
+			     const struct kvm_memory_slot *memslot,
+			     int start_level)
+{
+	bool flush = false;
+
+	if (kvm_memslots_have_rmaps(kvm)) {
+		write_lock(&kvm->mmu_lock);
+		flush = kvm_rmap_walk_present(kvm, memslot,
+					      KVM_MAX_HUGEPAGE_LEVEL,
+					      ~0UL, rmap_test_dirty);
+		write_unlock(&kvm->mmu_lock);
+	}
+
 	if (flush)
 		kvm_arch_flush_remote_tlbs_memslot(kvm, memslot);
 }

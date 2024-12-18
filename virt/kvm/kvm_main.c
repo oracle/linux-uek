@@ -2232,7 +2232,8 @@ static int kvm_clear_dirty_log_protect(struct kvm *kvm,
 	    (log->num_pages < memslot->npages - log->first_page && (log->num_pages & 63)))
 	    return -EINVAL;
 
-	kvm_arch_sync_dirty_log(kvm, memslot);
+	if (!kvm_dirty_log_pgtable(kvm))
+		kvm_arch_sync_dirty_log(kvm, memslot);
 
 	flush = false;
 	dirty_bitmap_buffer = kvm_second_dirty_bitmap(memslot);
@@ -3333,6 +3334,21 @@ void mark_page_dirty_in_slot(struct kvm *kvm,
 	}
 }
 EXPORT_SYMBOL_GPL(mark_page_dirty_in_slot);
+
+void mark_page_range_dirty_in_slot(struct kvm *kvm,
+				   const struct kvm_memory_slot *memslot,
+				   gfn_t gfn, unsigned long npages)
+{
+	if (memslot &&
+	    kvm_slot_dirty_track_enabled((struct kvm_memory_slot *)memslot)) {
+		unsigned long rel_gfn = gfn - memslot->base_gfn;
+
+		if (memslot->dirty_bitmap) {
+			bitmap_set(memslot->dirty_bitmap, rel_gfn, npages);
+		}
+	}
+}
+EXPORT_SYMBOL_GPL(mark_page_range_dirty_in_slot);
 
 void mark_page_dirty(struct kvm *kvm, gfn_t gfn)
 {
@@ -4540,6 +4556,14 @@ static int kvm_vm_ioctl_enable_cap_generic(struct kvm *kvm,
 		return 0;
 	}
 #endif
+	case KVM_CAP_DIRTY_LOG_PGTABLE: {
+		u64 allowed_options = KVM_DIRTY_LOG_PGTABLE;
+
+		if (cap->flags || (cap->args[0] & ~allowed_options))
+			return -EINVAL;
+		kvm->dirty_log_pgtable = cap->args[0];
+		return 0;
+	}
 	case KVM_CAP_HALT_POLL: {
 		if (cap->flags || cap->args[0] != (unsigned int)cap->args[0])
 			return -EINVAL;

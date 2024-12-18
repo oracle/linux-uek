@@ -748,6 +748,7 @@ struct kvm {
 #endif
 	struct list_head devices;
 	u64 manual_dirty_log_protect;
+	u64 dirty_log_pgtable;
 	struct dentry *debugfs_dentry;
 	struct kvm_stat_data **debugfs_stat_data;
 	struct srcu_struct srcu;
@@ -824,6 +825,11 @@ static inline void kvm_vm_bugged(struct kvm *kvm)
 static inline bool kvm_dirty_log_manual_protect_and_init_set(struct kvm *kvm)
 {
 	return !!(kvm->manual_dirty_log_protect & KVM_DIRTY_LOG_INITIALLY_SET);
+}
+
+static inline bool kvm_dirty_log_pgtable(struct kvm *kvm)
+{
+	return !!(kvm->dirty_log_pgtable & KVM_DIRTY_LOG_PGTABLE);
 }
 
 static inline struct kvm_io_bus *kvm_get_bus(struct kvm *kvm, enum kvm_bus idx)
@@ -1191,6 +1197,9 @@ struct kvm_memory_slot *gfn_to_memslot(struct kvm *kvm, gfn_t gfn);
 bool kvm_is_visible_gfn(struct kvm *kvm, gfn_t gfn);
 bool kvm_vcpu_is_visible_gfn(struct kvm_vcpu *vcpu, gfn_t gfn);
 unsigned long kvm_host_page_size(struct kvm_vcpu *vcpu, gfn_t gfn);
+void mark_page_range_dirty_in_slot(struct kvm *kvm,
+				   const struct kvm_memory_slot *memslot,
+				   gfn_t gfn, unsigned long npages);
 void mark_page_dirty_in_slot(struct kvm *kvm, struct kvm_memory_slot *memslot, gfn_t gfn);
 void mark_page_dirty(struct kvm *kvm, gfn_t gfn);
 

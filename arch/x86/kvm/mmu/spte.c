@@ -28,6 +28,7 @@ u64 __read_mostly shadow_x_mask; /* mutual exclusive with nx_mask */
 u64 __read_mostly shadow_user_mask;
 u64 __read_mostly shadow_accessed_mask;
 u64 __read_mostly shadow_dirty_mask;
+u64 __read_mostly shadow_dirty_shift;
 u64 __read_mostly shadow_mmio_value;
 u64 __read_mostly shadow_mmio_mask;
 u64 __read_mostly shadow_mmio_access_mask;
@@ -304,6 +305,7 @@ void kvm_mmu_set_ept_masks(bool has_ad_bits, bool has_exec_only)
 	shadow_user_mask	= VMX_EPT_READABLE_MASK;
 	shadow_accessed_mask	= has_ad_bits ? VMX_EPT_ACCESS_BIT : 0ull;
 	shadow_dirty_mask	= has_ad_bits ? VMX_EPT_DIRTY_BIT : 0ull;
+	shadow_dirty_shift	= has_ad_bits ? VMX_EPT_DIRTY_SHIFT : 0ull;
 	shadow_nx_mask		= 0ull;
 	shadow_x_mask		= VMX_EPT_EXECUTABLE_MASK;
 	shadow_present_mask	= has_exec_only ? 0ull : VMX_EPT_READABLE_MASK;
@@ -356,6 +358,7 @@ void kvm_mmu_reset_all_pte_masks(void)
 	shadow_user_mask	= PT_USER_MASK;
 	shadow_accessed_mask	= PT_ACCESSED_MASK;
 	shadow_dirty_mask	= PT_DIRTY_MASK;
+	shadow_dirty_shift	= PT_DIRTY_SHIFT;
 	shadow_nx_mask		= PT64_NX_MASK;
 	shadow_x_mask		= 0;
 	shadow_present_mask	= PT_PRESENT_MASK;

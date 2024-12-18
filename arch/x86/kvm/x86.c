@@ -4222,6 +4222,7 @@ int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 	case KVM_CAP_SREGS2:
 	case KVM_CAP_EXIT_ON_EMULATION_FAILURE:
 	case KVM_CAP_SYS_ATTRIBUTES:
+	case KVM_CAP_DIRTY_LOG_PGTABLE:
 		r = 1;
 		break;
 	case KVM_CAP_EXIT_HYPERCALL:
@@ -5749,6 +5750,11 @@ void kvm_arch_sync_dirty_log(struct kvm *kvm, struct kvm_memory_slot *memslot)
 	 */
 	struct kvm_vcpu *vcpu;
 	int i;
+
+	if (kvm_dirty_log_pgtable(kvm)) {
+		kvm_mmu_slot_test_dirty(kvm, memslot, PG_LEVEL_4K);
+		return;
+	}
 
 	kvm_for_each_vcpu(i, vcpu, kvm)
 		kvm_vcpu_kick(vcpu);
