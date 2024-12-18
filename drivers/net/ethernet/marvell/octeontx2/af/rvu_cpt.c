@@ -65,16 +65,16 @@ static u16 cpt_max_engines_get(struct rvu *rvu)
 /* Number of flt interrupt vectors are depends on number of engines that the
  * chip has. Each flt vector represents 64 engines.
  */
-static int cpt_10k_flt_nvecs_get(struct rvu *rvu, u16 max_engs)
+static int cpt_cnxk_flt_nvecs_get(struct rvu *rvu, u16 max_engs)
 {
 	int flt_vecs;
 
 	flt_vecs = DIV_ROUND_UP(max_engs, 64);
 
-	if (flt_vecs > CPT_10K_AF_INT_VEC_FLT_MAX) {
+	if (flt_vecs > CPT_CNXK_AF_INT_VEC_FLT_MAX) {
 		dev_warn_once(rvu->dev, "flt_vecs:%d exceeds the max vectors:%d\n",
-			      flt_vecs, CPT_10K_AF_INT_VEC_FLT_MAX);
-		flt_vecs = CPT_10K_AF_INT_VEC_FLT_MAX;
+			      flt_vecs, CPT_CNXK_AF_INT_VEC_FLT_MAX);
+		flt_vecs = CPT_CNXK_AF_INT_VEC_FLT_MAX;
 	}
 
 	return flt_vecs;
@@ -139,7 +139,7 @@ static irqreturn_t rvu_cpt_af_flt1_intr_handler(int irq, void *ptr)
 
 static irqreturn_t rvu_cpt_af_flt2_intr_handler(int irq, void *ptr)
 {
-	return cpt_af_flt_intr_handler(CPT_10K_AF_INT_VEC_FLT2, ptr);
+	return cpt_af_flt_intr_handler(CPT_CNXK_AF_INT_VEC_FLT2, ptr);
 }
 
 static irqreturn_t rvu_cpt_af_rvu_intr_handler(int irq, void *ptr)
@@ -189,7 +189,7 @@ static int rvu_cpt_do_register_interrupt(struct rvu_block *block, int irq_offs,
 	return 0;
 }
 
-static void cpt_10k_unregister_interrupts(struct rvu_block *block, int off)
+static void cpt_cnxk_unregister_interrupts(struct rvu_block *block, int off)
 {
 	struct rvu *rvu = block->rvu;
 	int blkaddr = block->addr;
@@ -198,10 +198,10 @@ static void cpt_10k_unregister_interrupts(struct rvu_block *block, int off)
 	u8 nr;
 
 	max_engs = cpt_max_engines_get(rvu);
-	flt_vecs = cpt_10k_flt_nvecs_get(rvu, max_engs);
+	flt_vecs = cpt_cnxk_flt_nvecs_get(rvu, max_engs);
 
 	/* Disable all CPT AF interrupts */
-	for (i = CPT_10K_AF_INT_VEC_FLT0; i < flt_vecs; i++) {
+	for (i = CPT_CNXK_AF_INT_VEC_FLT0; i < flt_vecs; i++) {
 		nr = (max_engs > 64) ? 64 : max_engs;
 		max_engs -= nr;
 		rvu_write64(rvu, blkaddr, CPT_AF_FLTX_INT_ENA_W1C(i),
@@ -234,8 +234,9 @@ static void cpt_unregister_interrupts(struct rvu *rvu, int blkaddr)
 		return;
 	}
 	block = &hw->block[blkaddr];
+
 	if (!is_rvu_otx2(rvu))
-		return cpt_10k_unregister_interrupts(block, offs);
+		return cpt_cnxk_unregister_interrupts(block, offs);
 
 	/* Disable all CPT AF interrupts */
 	for (i = 0; i < CPT_AF_INT_VEC_RVU; i++)
@@ -256,30 +257,29 @@ void rvu_cpt_unregister_interrupts(struct rvu *rvu)
 	cpt_unregister_interrupts(rvu, BLKADDR_CPT1);
 }
 
-static int cpt_10k_register_interrupts(struct rvu_block *block, int off)
+static int cpt_cnxkflt_register_interrupts(struct rvu_block *block, int off,
+					   u32 max_engs)
 {
-	int rvu_intr_vec, ras_intr_vec;
 	struct rvu *rvu = block->rvu;
 	int blkaddr = block->addr;
 	irq_handler_t flt_fn;
-	int i, ret, flt_vecs;
-	u16 max_engs;
+	int i, ret = 0;
+	int flt_vecs;
 	u8 nr;
 
-	max_engs = cpt_max_engines_get(rvu);
-	flt_vecs = cpt_10k_flt_nvecs_get(rvu, max_engs);
+	flt_vecs = cpt_cnxk_flt_nvecs_get(rvu, max_engs);
 
-	for (i = CPT_10K_AF_INT_VEC_FLT0; i < flt_vecs; i++) {
+	for (i = CPT_CNXK_AF_INT_VEC_FLT0; i < flt_vecs; i++) {
 		sprintf(&rvu->irq_name[(off + i) * NAME_SIZE], "CPTAF FLT%d", i);
 
 		switch (i) {
-		case CPT_10K_AF_INT_VEC_FLT0:
+		case CPT_CNXK_AF_INT_VEC_FLT0:
 			flt_fn = rvu_cpt_af_flt0_intr_handler;
 			break;
-		case CPT_10K_AF_INT_VEC_FLT1:
+		case CPT_CNXK_AF_INT_VEC_FLT1:
 			flt_fn = rvu_cpt_af_flt1_intr_handler;
 			break;
-		case CPT_10K_AF_INT_VEC_FLT2:
+		case CPT_CNXK_AF_INT_VEC_FLT2:
 			flt_fn = rvu_cpt_af_flt2_intr_handler;
 			break;
 		default:
@@ -300,7 +300,25 @@ static int cpt_10k_register_interrupts(struct rvu_block *block, int off)
 			    INTR_MASK(nr));
 	}
 
-	rvu_intr_vec = flt_vecs;
+err:
+	return ret;
+}
+
+static int cpt_10k_register_interrupts(struct rvu_block *block, int off)
+{
+	int rvu_intr_vec, ras_intr_vec;
+	struct rvu *rvu = block->rvu;
+	int blkaddr = block->addr;
+	u32 max_engs;
+	int ret;
+
+	max_engs = cpt_max_engines_get(rvu);
+
+	ret = cpt_cnxkflt_register_interrupts(block, off, max_engs);
+	if (ret)
+		goto err;
+
+	rvu_intr_vec = cpt_cnxk_flt_nvecs_get(rvu, max_engs);
 	ras_intr_vec = rvu_intr_vec + 1;
 
 	ret = rvu_cpt_do_register_interrupt(block, off + rvu_intr_vec,
@@ -1010,7 +1028,7 @@ int rvu_mbox_handler_cpt_flt_eng_info(struct rvu *rvu, struct cpt_flt_eng_info_r
 
 	block = &rvu->hw->block[blkaddr];
 	max_engs = cpt_max_engines_get(rvu);
-	flt_vecs = cpt_10k_flt_nvecs_get(rvu, max_engs);
+	flt_vecs = cpt_cnxk_flt_nvecs_get(rvu, max_engs);
 	for (vec = 0; vec < flt_vecs; vec++) {
 		spin_lock_irqsave(&rvu->cpt_intr_lock, flags);
 		rsp->flt_eng_map[vec] = block->cpt_flt_eng_map[vec];
