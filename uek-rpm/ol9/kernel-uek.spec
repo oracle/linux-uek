@@ -435,8 +435,10 @@ BuildRequires: pesign >= 0.10-4
 %endif
 %endif
 
+BuildRequires: python3-pyyaml
+
 %if %{with_doc}
-BuildRequires: python3-sphinx >= 1.7.9, python3-pyyaml
+BuildRequires: python3-sphinx >= 1.7.9
 BuildRequires: fontconfig >= 2.13.0
 %endif
 
@@ -474,8 +476,6 @@ Source0: linux-%{kversion}.tar.bz2
 Source10: x509.genkey
 %endif
 
-Source11: mod-denylist.sh
-Source12: mod-extra.list
 Source13: mod-sign.sh
 %define modsign_cmd %{SOURCE13}
 
@@ -489,9 +489,9 @@ Source22: secureboot.cer
 Source23: turbostat
 source24: secureboot_aarch64.cer
 Source43: generate_bls_conf.sh
-Source44: modules-core-x86_64.list
-Source45: modules-core-aarch64.list
-Source46: filter-modules.sh
+Source44: filter-modules.py
+Source45: modules.yaml.S
+Source46: denylist.txt.S
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
@@ -955,7 +955,7 @@ gcc --version
 %endif
 
 %if %{with_compression}
-%define zipsed -e 's/\.ko$/\.ko.xz/'
+%define compression_suffix .xz
 %endif
 
 cp_vmlinux()
@@ -1055,20 +1055,20 @@ BuildKernel() {
 
     if [ "$Flavour" == "debug" ]; then
         cp configs/config-debug .config
-        modlistVariant=../kernel%{?variant}-debug
+        modlistVariant="$PWD/../kernel%{?variant}-debug"
     elif [ "$Flavour" == "64k" ]; then
         sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config
         echo 'CONFIG_ARM64_64K_PAGES=y' >> configs/config
         cp configs/config .config
-        modlistVariant=../kernel%{?variant}64k
+        modlistVariant="$PWD/../kernel%{?variant}64k"
     elif [ "$Flavour" == "64kdebug" ]; then
         sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config-debug
         echo 'CONFIG_ARM64_64K_PAGES=y' >> configs/config-debug
         cp configs/config-debug .config
-        modlistVariant=../kernel%{?variant}64kdebug
+        modlistVariant="$PWD/../kernel%{?variant}64kdebug"
     else
         cp configs/config .config
-        modlistVariant=../kernel%{?variant}${Flavour:+-${Flavour}}
+        modlistVariant="$PWD/../kernel%{?variant}${Flavour:+-${Flavour}}"
     fi
 
     echo USING ARCH=$Arch
@@ -1322,12 +1322,20 @@ BuildKernel() {
 
     remove_depmod_files
 
-    # Identify modules in the kernel%{?variant}-modules-extras package
-    %{SOURCE11} $RPM_BUILD_ROOT lib/modules/$KernelVer $RPM_SOURCE_DIR/mod-extra.list
+    #
+    # Generate the kernel%{?variant}-modules-* files lists
+    #
 
-    #
-    # Generate the kernel%{?variant}-modules-core and kernel%{?variant}-modules files lists
-    #
+    mkdir -p $RPM_BUILD_ROOT/etc/modprobe.d/
+
+    (cd $RPM_BUILD_ROOT && $RPM_SOURCE_DIR/filter-modules.py \
+        --version "$KernelVer" \
+        %{?compression_suffix:--ko-suffix %{compression_suffix}} \
+        --output ${modlistVariant} \
+        -D"Arch_%{_target_cpu}" \
+        -D"Flavour_${Flavour}" \
+        $RPM_SOURCE_DIR/modules.yaml.S \
+        $RPM_SOURCE_DIR/denylist.txt.S)
 
     # Copy the System.map file for depmod to use, and create a backup of the
     # full module tree so we can restore it after we're done filtering
@@ -1337,7 +1345,7 @@ BuildKernel() {
     cp -r lib/modules/$KernelVer/* restore/.
 
     # don't include anything going into kernel%{?variant}-modules-extra in the file lists
-    xargs rm -rf < mod-extra.list
+    sed 's/^\///' ${modlistVariant}-modules-extra.list | xargs rm -rf
 
     # Run depmod on the resulting module tree and make sure it isn't broken
     depmod -b . -aeF ./System.map $KernelVer &> depmod.out
@@ -1351,20 +1359,6 @@ BuildKernel() {
 
     remove_depmod_files
 
-    # Find all the module files and filter them out into the core and
-    # modules lists.  This actually removes anything going into -modules
-    # from the dir.
-    find lib/modules/$KernelVer/kernel -name *.ko | sort -n > modules.list
-
-    cp $RPM_SOURCE_DIR/filter-modules.sh .
-    cp $RPM_SOURCE_DIR/modules-core-%{_target_cpu}.list modules-core.list
-
-    # Append full path to the beginning of each line.
-    sed -i "s/^/lib\/modules\/$KernelVer\//" modules-core.list
-
-    ./filter-modules.sh modules-core.list modules.list
-    rm filter-modules.sh
-
     # Run depmod on the resulting module tree and make sure it isn't broken
     depmod -b . -aeF ./System.map $KernelVer &> depmod.out
     if [ -s depmod.out ]; then
@@ -1377,27 +1371,15 @@ BuildKernel() {
 
     remove_depmod_files
 
-    # Go back and find all of the various directories in the tree.  We use this
-    # for the dir lists in kernel-uek-modules-core
-    find lib/modules/$KernelVer/kernel -mindepth 1 -type d | sort -n > module-dirs.list
-
     # Cleanup
     rm System.map
     cp -r restore/* lib/modules/$KernelVer/.
     rm -rf restore
     popd
 
-    # Make sure the files lists start with absolute paths or rpmbuild fails.
-    # Also add in the dir entries
-    sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/modules.list > ${modlistVariant}-modules.list
-    sed -e 's/^lib*/%dir \/lib/' %{?zipsed} $RPM_BUILD_ROOT/module-dirs.list > ${modlistVariant}-modules-core.list
-    sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/modules-core.list >> ${modlistVariant}-modules-core.list
-    sed -e 's/^lib*/\/lib/' %{?zipsed} $RPM_BUILD_ROOT/mod-extra.list >> ${modlistVariant}-modules-extra.list
-
     # Cleanup
     rm -f $RPM_BUILD_ROOT/modules-core.list
     rm -f $RPM_BUILD_ROOT/modules.list
-    rm -f $RPM_BUILD_ROOT/module-dirs.list
     rm -f $RPM_BUILD_ROOT/mod-extra.list
 
 %if %{signmodules}
