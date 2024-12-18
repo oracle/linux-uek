@@ -175,7 +175,17 @@ modules-core:
 - gnss
 - grace
 - gre
+- hid-hyperv
+- hv_balloon
+- hv_netvsc
+- hv_sock
+- hv_storvsc
+- hv_utils
+- hv_vmbus
 - hwpoison-inject
+- hyperv-keyboard
+- hyperv_drm
+- hyperv_fb
 - i2c-algo-bit
 - i2c-designware-core
 - i2c-designware-platform
@@ -447,6 +457,7 @@ modules-core:
 - overlay
 - pata_acpi
 - pcbc
+- pci-hyperv
 - pci-hyperv-intf
 - pcrypt
 - pkcs8_key_parser
@@ -731,8 +742,6 @@ modules-core:
 - ext4
 - fwctl
 - ghash-clmulni-intel
-- hv_sock
-- hv_vmbus
 - i10nm_edac
 - i2c-i801
 - i2c-piix4
@@ -1256,7 +1265,6 @@ modules:
 - hid-holtek-kbd
 - hid-holtek-mouse
 - hid-holtekff
-- hid-hyperv
 - hid-icade
 - hid-ite
 - hid-jabra
@@ -1314,14 +1322,7 @@ modules:
 - hpwdt
 - hso
 - huawei_cdc_ncm
-- hv_balloon
-- hv_netvsc
-- hv_storvsc
-- hv_utils
 - hwmon-vid
-- hyperv-keyboard
-- hyperv_drm
-- hyperv_fb
 - i2c-algo-pca
 - i2c-ccgx-ucsi
 - i2c-designware-pci
@@ -1675,7 +1676,6 @@ modules:
 - p54usb
 - pata_marvell
 - pcf8591
-- pci-hyperv
 - pci-pf-stub
 - pcnet32
 - pcs_xpcs
@@ -2668,8 +2668,6 @@ modules:
 - hts221
 - hts221_i2c
 - hts221_spi
-- hv_sock
-- hv_vmbus
 - i2c-arb-gpio-challenge
 - i2c-bcm2835
 - i2c-cros-ec-tunnel
