@@ -25,6 +25,7 @@ modules-core:
 - ansi_cprng
 - anubis
 - arc4
+- arcmsr
 - arp_tables
 - arpt_mangle
 - arptable_filter
@@ -164,6 +165,7 @@ modules-core:
 - ext2
 - failover
 - fat
+- fcoe
 - fcrypt
 - fou
 - fou6
@@ -338,6 +340,7 @@ modules-core:
 - mpls_router
 - mpt3sas
 - mrp
+- mvsas
 - nbd
 - nd_btt
 - nd_pmem
@@ -462,6 +465,7 @@ modules-core:
 - pcrypt
 - pkcs8_key_parser
 - pktgen
+- pm80xx
 - poly1305_generic
 - polynomial
 - psample
@@ -527,6 +531,7 @@ modules-core:
 - target_core_pscsi
 - target_core_user
 - tcm_loop
+- tcm_qla2xxx
 - tcp_dctcp
 - tcp_nv
 - tcrypt
@@ -714,6 +719,7 @@ modules-core:
 - acpi_pad
 - aesni-intel
 - ahci
+- aic94xx
 - ata_piix
 - blowfish-x86_64
 - bnxt_re
@@ -755,6 +761,7 @@ modules-core:
 - intel_rapl_msr
 - ioatdma
 - ip_vs_sed
+- isci
 - isst_if_common
 - isst_if_mbox_msr
 - isst_if_mbox_pci
@@ -886,7 +893,6 @@ modules:
 - aquantia
 - arc_ps2
 - arc_uart
-- arcmsr
 - ark3116
 - asc7621
 - asix
@@ -1166,7 +1172,6 @@ modules:
 - fc0012
 - fc0013
 - fc2580
-- fcoe
 - fintek-cir
 - fjes
 - fm10k
@@ -1583,7 +1588,6 @@ modules:
 - mv88e6060
 - mv88e6xxx
 - mvmdio
-- mvsas
 - mvumi
 - mwifiex
 - mwifiex_pcie
@@ -1702,7 +1706,6 @@ modules:
 - platform_lcd
 - plusb
 - pluto2
-- pm80xx
 - pmbus
 - pmbus_core
 - pmcraid
@@ -2211,7 +2214,6 @@ modules:
 - synaptics_usb
 - tc90522
 - tcm_fc
-- tcm_qla2xxx
 - tcpci
 - tcpm
 - tda10021
@@ -3151,7 +3153,6 @@ modules:
 - advantechwdt
 - aic79xx
 - aic7xxx
-- aic94xx
 - alienware-wmi
 - alim1535_wdt
 - altera_jtaguart
@@ -3338,7 +3339,6 @@ modules:
 - ips
 - ipw2100
 - ipw2200
-- isci
 - isp1704_charger
 - isst_tpmi
 - isst_tpmi_core
