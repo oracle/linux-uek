@@ -710,7 +710,6 @@ modules:
 - at24
 - at803x
 - atbm8830
-- ath3k
 - ati_remote
 - ati_remote2
 - atl1
@@ -732,7 +731,6 @@ modules:
 - b44
 - bcm-phy-lib
 - bcm-phy-ptp
-- bcm203x
 - bcm3510
 - bcm5974
 - bcm7xxx
@@ -740,14 +738,10 @@ modules:
 - bcma
 - be2net
 - belkin_sa
-- bfusb
 - bh1770glc
-- bluetooth
-- bnep
 - bnx2
 - bnx2fc
 - bnx2x
-- bpa10x
 - brcmfmac-bca
 - brcmfmac-cyw
 - brcmfmac-wcc
@@ -755,14 +749,8 @@ modules:
 - broadcom
 - bsd_comp
 - bt878
-- btbcm
 - btintel
-- btmrvl
-- btmrvl_sdio
-- btrtl
-- btsdio
 - bttv
-- btusb
 - budget
 - budget-av
 - budget-ci
@@ -1047,8 +1035,6 @@ modules:
 - gud
 - gunze
 - hanwang
-- hci_uart
-- hci_vhci
 - hdpvr
 - hid-alps
 - hid-appleir
@@ -1120,7 +1106,6 @@ modules:
 - hid-xinmo
 - hid-zpff
 - hid-zydacron
-- hidp
 - hopper
 - hpilo
 - hpsa
@@ -1669,7 +1654,6 @@ modules:
 - regmap-sdw
 - regmap-sdw-mbq
 - regmap-spi
-- rfcomm
 - ring_buffer_benchmark
 - rmi_core
 - rmi_i2c
@@ -2188,7 +2172,6 @@ modules:
 - bq27xxx_battery
 - bq27xxx_battery_hdq
 - bq27xxx_battery_i2c
-- btrsi
 - capsule-loader
 - cc2520
 - chaoskey
@@ -3234,7 +3217,6 @@ modules:
 - tlclk
 - topstar-laptop
 - toshiba_acpi
-- toshiba_bluetooth
 - tpm_atmel
 - tpm_infineon
 - tpm_nsc
@@ -3473,6 +3455,22 @@ modules-deprecated:
 #endif /* Arch_x86_64 */
 
 modules-desktop:
+- ath3k
+- bcm203x
+- bfusb
+- bluetooth
+- bnep
+- bpa10x
+- btbcm
+- btmrvl
+- btmrvl_sdio
+- btrtl
+- btsdio
+- btusb
+- hci_uart
+- hci_vhci
+- hidp
+- rfcomm
 - snd-soc-core
 - snd-soc-cs42l42
 - snd-soc-cs42l42-i2c
@@ -3499,6 +3497,7 @@ modules-desktop:
 /* modules-desktop: */
 #ifdef Arch_aarch64
 - acp_audio_dma
+- btrsi
 - designware_i2s
 - hi6210-i2s
 - snd-soc-ac97
@@ -3621,6 +3620,7 @@ modules-desktop:
 - snd-sof-probes
 - snd-sof-utils
 - snd-sof-xtensa-dsp
+- toshiba_bluetooth
 #endif /* Arch_x86_64 */
 
 modules-extra-netfilter:
