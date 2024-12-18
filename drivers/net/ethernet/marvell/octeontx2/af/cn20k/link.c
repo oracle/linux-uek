@@ -46,6 +46,8 @@
 #define NIX_CHAN_RPM_BASE		BIT_ULL(10)
 #define NIX_CHAN_CPT_BASE		(0x00ULL)
 
+#define RPM_TYPES			BIT_ULL(63)
+
 int rvu_cn20k_set_channels_base(struct rvu *rvu)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
@@ -58,12 +60,23 @@ int rvu_cn20k_set_channels_base(struct rvu *rvu)
 
 	nix_const = rvu_read64(rvu, blkaddr, NIX_AF_CONST);
 
-	/* Setting number of cgx_links needs to be revisited after
-	 * new CONST csrs are defined in hardware.
-	 */
 	hw->cgx = (nix_const >> 12) & 0xFULL;
 	hw->lmac_per_cgx = (nix_const >> 8) & 0xFULL;
 	hw->cgx_links = hw->cgx * hw->lmac_per_cgx;
+
+	/* CN20K supports RPM_USX along with RPM200 */
+	if (nix_const & RPM_TYPES) {
+		u64 nix_const3 = rvu_read64(rvu, blkaddr, NIX_AF_CONST3);
+		int rpm_usx_cnt = (nix_const3 >> 44) & 0xFULL;
+
+		/* lmac_per_cgx is used for the PF to (CGX,LMAC) mapping
+		 * and vice versa. Though the CN20k supports RPM200(with 4 lmacs)
+		 * it is enumerated last. Update lmac_per_cgx with RPM_USX info.
+		 */
+		hw->lmac_per_cgx = (nix_const3 >> 40) & 0xFULL;
+		hw->cgx_links += rpm_usx_cnt * hw->lmac_per_cgx;
+	}
+
 	hw->lbk_links = (nix_const >> 24) & 0xFULL;
 	hw->sdp_links = (nix_const >> 28) & 0xFULL;
 	hw->cpt_links = (nix_const >> 44) & 0xFULL;
