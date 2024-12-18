@@ -488,6 +488,7 @@ modules-core:
 - sch_htb
 - sch_ingress
 - sch_mqprio_lib
+- sch_netem
 - sch_pie
 - sch_plug
 - sch_prio
@@ -3754,7 +3755,6 @@ modules-extra:
 - sch_gred
 - sch_mqprio
 - sch_multiq
-- sch_netem
 - sch_qfq
 - sch_red
 - sch_sfb
