@@ -187,7 +187,6 @@ modules-core:
 - iw_cm
 - ixgbe
 - ixgbevf
-- joydev
 - khazad
 - lib80211
 - libarc4
@@ -872,14 +871,12 @@ modules:
 - hid-asus
 - hid-aureal
 - hid-axff
-- hid-betopff
 - hid-cmedia
 - hid-corsair
 - hid-dr
 - hid-elan
 - hid-elecom
 - hid-elo
-- hid-emsff
 - hid-gaff
 - hid-gembird
 - hid-gfrm
@@ -1784,7 +1781,6 @@ modules:
 - exynosdrm
 - fan
 - fealnx
-- ff-memless
 - ftsteutates
 - gcc-ipq8074
 - gcc-msm8916
@@ -3077,6 +3073,8 @@ modules-desktop:
 - hci_uart
 - hci_vhci
 - hdpvr
+- hid-betopff
+- hid-emsff
 - hidp
 - hopper
 - iguanair
@@ -3102,6 +3100,7 @@ modules-desktop:
 - ivtv
 - ivtvfb
 - ix2505v
+- joydev
 - l64781
 - lg2160
 - lgdt3305
@@ -3438,6 +3437,7 @@ modules-desktop:
 - dw_mmc-rockchip
 - em28xx-v4l
 - exynos-gsc
+- ff-memless
 - go7007
 - go7007-loader
 - go7007-usb
