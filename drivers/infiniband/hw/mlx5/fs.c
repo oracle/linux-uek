@@ -960,7 +960,7 @@ int mlx5_ib_fs_add_op_fc(struct mlx5_ib_dev *dev, u32 port_num,
 	}
 
 	dst.type = MLX5_FLOW_DESTINATION_TYPE_COUNTER;
-	dst.counter_id = mlx5_fc_id(opfc->fc);
+	dst.counter = opfc->fc;
 
 	flow_act.action =
 		MLX5_FLOW_CONTEXT_ACTION_COUNT | MLX5_FLOW_CONTEXT_ACTION_ALLOW;
@@ -1130,8 +1130,8 @@ static struct mlx5_ib_flow_handler *_create_flow_rule(struct mlx5_ib_dev *dev,
 		handler->ibcounters = flow_act.counters;
 		dest_arr[dest_num].type =
 			MLX5_FLOW_DESTINATION_TYPE_COUNTER;
-		dest_arr[dest_num].counter_id =
-			mlx5_fc_id(mcounters->hw_cntrs_hndl);
+		dest_arr[dest_num].counter =
+			mcounters->hw_cntrs_hndl;
 		dest_num++;
 	}
 
@@ -1657,7 +1657,7 @@ static bool raw_fs_is_multicast(struct mlx5_ib_flow_matcher *fs_matcher,
 static struct mlx5_ib_flow_handler *raw_fs_rule_add(
 	struct mlx5_ib_dev *dev, struct mlx5_ib_flow_matcher *fs_matcher,
 	struct mlx5_flow_context *flow_context, struct mlx5_flow_act *flow_act,
-	u32 counter_id, void *cmd_in, int inlen, int dest_id, int dest_type)
+	struct mlx5_fc *counter, void *cmd_in, int inlen, int dest_id, int dest_type)
 {
 	struct mlx5_flow_destination *dst;
 	struct mlx5_ib_flow_prio *ft_prio;
@@ -1706,8 +1706,12 @@ static struct mlx5_ib_flow_handler *raw_fs_rule_add(
 	}
 
 	if (flow_act->action & MLX5_FLOW_CONTEXT_ACTION_COUNT) {
+		if (WARN_ON(!counter)) {
+			err = -EINVAL;
+			goto unlock;
+		}
 		dst[dst_num].type = MLX5_FLOW_DESTINATION_TYPE_COUNTER;
-		dst[dst_num].counter_id = counter_id;
+		dst[dst_num].counter = counter;
 		dst_num++;
 	}
 
@@ -1932,7 +1936,8 @@ static int get_dests(struct uverbs_attr_bundle *attrs,
 	return 0;
 }
 
-static bool is_flow_counter(void *obj, u32 offset, u32 *counter_id)
+static bool
+is_flow_counter(void *obj, u32 offset, u32 *counter_id, u32 *fc_bulk_size)
 {
 	struct devx_obj *devx_obj = obj;
 	u16 opcode = MLX5_GET(general_obj_in_cmd_hdr, devx_obj->dinbox, opcode);
@@ -1942,6 +1947,7 @@ static bool is_flow_counter(void *obj, u32 offset, u32 *counter_id)
 		if (offset && offset >= devx_obj->flow_counter_bulk_size)
 			return false;
 
+		*fc_bulk_size = devx_obj->flow_counter_bulk_size;
 		*counter_id = MLX5_GET(dealloc_flow_counter_in,
 				       devx_obj->dinbox,
 				       flow_counter_id);
@@ -1958,13 +1964,13 @@ static int UVERBS_HANDLER(MLX5_IB_METHOD_CREATE_FLOW)(
 {
 	struct mlx5_flow_context flow_context = {.flow_tag =
 		MLX5_FS_DEFAULT_FLOW_TAG};
-	u32 *offset_attr, offset = 0, counter_id = 0;
 	int dest_id, dest_type = -1, inlen, len, ret, i;
 	struct mlx5_ib_flow_handler *flow_handler;
 	struct mlx5_ib_flow_matcher *fs_matcher;
 	struct ib_uobject **arr_flow_actions;
 	struct ib_uflow_resources *uflow_res;
 	struct mlx5_flow_act flow_act = {};
+	struct mlx5_fc *counter = NULL;
 	struct ib_qp *qp = NULL;
 	void *devx_obj, *cmd_in;
 	struct ib_uobject *uobj;
@@ -1991,6 +1997,7 @@ static int UVERBS_HANDLER(MLX5_IB_METHOD_CREATE_FLOW)(
 	len = uverbs_attr_get_uobjs_arr(attrs,
 		MLX5_IB_ATTR_CREATE_FLOW_ARR_COUNTERS_DEVX, &arr_flow_actions);
 	if (len) {
+		u32 *offset_attr, fc_bulk_size, offset = 0, counter_id = 0;
 		devx_obj = arr_flow_actions[0]->object;
 
 		if (uverbs_attr_is_valid(attrs,
@@ -2010,8 +2017,11 @@ static int UVERBS_HANDLER(MLX5_IB_METHOD_CREATE_FLOW)(
 			offset = *offset_attr;
 		}
 
-		if (!is_flow_counter(devx_obj, offset, &counter_id))
+		if (!is_flow_counter(devx_obj, offset, &counter_id, &fc_bulk_size))
 			return -EINVAL;
+		counter = mlx5_fc_local_create(counter_id, offset, fc_bulk_size);
+		if (IS_ERR(counter))
+			return PTR_ERR(counter);
 
 		flow_act.action |= MLX5_FLOW_CONTEXT_ACTION_COUNT;
 	}
@@ -2022,8 +2032,10 @@ static int UVERBS_HANDLER(MLX5_IB_METHOD_CREATE_FLOW)(
 				    MLX5_IB_ATTR_CREATE_FLOW_MATCH_VALUE);
 
 	uflow_res = flow_resources_alloc(MLX5_IB_CREATE_FLOW_MAX_FLOW_ACTIONS);
-	if (!uflow_res)
-		return -ENOMEM;
+	if (!uflow_res) {
+		ret = -ENOMEM;
+		goto destroy_counter;
+	}
 
 	len = uverbs_attr_get_uobjs_arr(attrs,
 		MLX5_IB_ATTR_CREATE_FLOW_ARR_FLOW_ACTIONS, &arr_flow_actions);
@@ -2050,7 +2062,7 @@ static int UVERBS_HANDLER(MLX5_IB_METHOD_CREATE_FLOW)(
 
 	flow_handler =
 		raw_fs_rule_add(dev, fs_matcher, &flow_context, &flow_act,
-				counter_id, cmd_in, inlen, dest_id, dest_type);
+				counter, cmd_in, inlen, dest_id, dest_type);
 	if (IS_ERR(flow_handler)) {
 		ret = PTR_ERR(flow_handler);
 		goto err_out;
@@ -2061,6 +2073,9 @@ static int UVERBS_HANDLER(MLX5_IB_METHOD_CREATE_FLOW)(
 	return 0;
 err_out:
 	ib_uverbs_flow_resources_free(uflow_res);
+destroy_counter:
+	if (counter)
+		mlx5_fc_local_destroy(counter);
 	return ret;
 }
 
