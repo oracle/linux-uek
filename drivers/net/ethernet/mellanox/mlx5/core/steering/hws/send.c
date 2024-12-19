@@ -897,6 +897,9 @@ close_cq:
 
 static void mlx5hws_send_queue_close(struct mlx5hws_send_engine *queue)
 {
+	if (!queue->num_entries)
+		return; /* this queue wasn't initialized */
+
 	hws_send_ring_close(queue);
 	kfree(queue->completed.entries);
 }
@@ -1004,7 +1007,7 @@ int mlx5hws_send_queues_open(struct mlx5hws_context *ctx,
 			     u16 queue_size)
 {
 	int err = 0;
-	u32 i;
+	int i = 0;
 
 	/* Open one extra queue for control path */
 	ctx->queues = queues + 1;
@@ -1020,7 +1023,13 @@ int mlx5hws_send_queues_open(struct mlx5hws_context *ctx,
 		goto free_bwc_locks;
 	}
 
-	for (i = 0; i < ctx->queues; i++) {
+	/* If native API isn't supported, skip the unused native queues:
+	 * initialize BWC queues and control queue only.
+	 */
+	if (!mlx5hws_context_native_supported(ctx))
+		i = mlx5hws_bwc_get_queue_id(ctx, 0);
+
+	for (; i < ctx->queues; i++) {
 		err = mlx5hws_send_queue_open(ctx, &ctx->send_queue[i], queue_size);
 		if (err)
 			goto close_send_queues;
