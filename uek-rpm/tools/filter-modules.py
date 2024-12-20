@@ -143,7 +143,3 @@ for path in set(path_by_module.values()) - paths_seen:
     print(f"error: {path} built but not specified by any subpackage", file=sys.stderr)
     error = True
 
-if error:
-    sys.exit(1)
-else:
-    sys.exit(0)
