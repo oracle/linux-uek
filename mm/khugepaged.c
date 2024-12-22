@@ -18,6 +18,7 @@
 #include <linux/page_idle.h>
 #include <linux/swapops.h>
 #include <linux/shmem_fs.h>
+#include <linux/dax.h>
 
 #include <asm/tlb.h>
 #include <asm/pgalloc.h>
@@ -1712,6 +1713,8 @@ static void collapse_file(struct mm_struct *mm,
 		goto out;
 	}
 	count_memcg_page_event(new_page, THP_COLLAPSE_ALLOC);
+
+	mapping_set_update(&xas, mapping);
 
 	/* This will be less messy when we use multi-index entries */
 	do {
