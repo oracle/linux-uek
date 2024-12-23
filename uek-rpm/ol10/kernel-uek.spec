@@ -306,7 +306,6 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define hdrarch arm64
 %define make_target Image
 %define kernel_image arch/arm64/boot/Image
-%define with_tools 0
 %if %{with_64konly}
 %define with_64k_ps 1
 %define with_up 0
@@ -314,6 +313,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define with_debug 0
 %define with_headers 0
 %define with_bpftool 0
+%define with_tools 0
 %else
 %define with_headers 1
 %define with_bpftool 1
@@ -1477,13 +1477,25 @@ pushd tools/bpf/bpftool
 popd
 %endif
 
+%global perf_make \
+    %{__make} %{?make_opts} \
+        EXTRA_CFLAGS="${RPM_OPT_FLAGS}" \
+        EXTRA_CXXFLAGS="${RPM_OPT_FLAGS}" \
+        DESTDIR=$RPM_BUILD_ROOT \
+        LDFLAGS="%{__global_ldflags} -Wl,-E" %{?cross_opts} \
+        V=1 \
+        NO_PERF_READ_VDSO32=1 NO_PERF_READ_VDSOX32=1 \
+        WERROR=0 \
+        NO_LIBUNWIND=1 HAVE_CPLUS_DEMANGLE=1 NO_GTK2=1 NO_STRLCPY=1 NO_BIONIC=1 \
+        LIBBPF_DYNAMIC=1 LIBTRACEEVENT_DYNAMIC=1 \
+        prefix=%{_prefix} PYTHON=%{__python3}
+
 %if %{with_tools}
 %ifarch %{vdso_arches}
 %ifnarch noarch
-    # build tools/perf:
     if [ -d tools/perf ]; then
 	pushd tools/perf
-	%{make} %{?_smp_mflags} NO_LIBPERL=1 EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow" all
+        %{perf_make}
 	popd
     fi
 %endif
