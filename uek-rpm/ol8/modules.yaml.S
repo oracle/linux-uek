@@ -534,6 +534,7 @@ modules-core:
 - camellia-x86_64
 - cast5-avx-x86_64
 - cast6-avx-x86_64
+- cdrom
 - chacha-x86_64
 - coretemp
 - crc32-pclmul
@@ -3341,7 +3342,6 @@ modules-desktop:
 - bq24190_charger
 - bq24735-charger
 - bu21013_ts
-- cdrom
 - cfag12864b
 - cfag12864bfb
 - chromeos_laptop
