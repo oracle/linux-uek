@@ -467,9 +467,12 @@ modules-core:
 - xfrm_ipcomp
 - xfs
 - xor
+- xt_MASQUERADE
 - xt_NFLOG
+- xt_addrtype
 - xt_comment
 - xt_conntrack
+- xt_mark
 - xt_owner
 - zstd
 - zstd_compress
@@ -3558,7 +3561,6 @@ modules-extra-netfilter:
 - xt_IDLETIMER
 - xt_LED
 - xt_LOG
-- xt_MASQUERADE
 - xt_NETMAP
 - xt_NFQUEUE
 - xt_RATEEST
@@ -3569,7 +3571,6 @@ modules-extra-netfilter:
 - xt_TEE
 - xt_TPROXY
 - xt_TRACE
-- xt_addrtype
 - xt_bpf
 - xt_cgroup
 - xt_cluster
@@ -3593,7 +3594,6 @@ modules-extra-netfilter:
 - xt_length
 - xt_limit
 - xt_mac
-- xt_mark
 - xt_multiport
 - xt_nat
 - xt_nfacct
