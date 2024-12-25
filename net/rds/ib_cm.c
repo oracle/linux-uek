@@ -783,6 +783,11 @@ static void rds_ib_cq_comp_handler_fastreg_w(struct work_struct *work)
 static void rds_ib_tx(struct rds_ib_connection *ic)
 {
 	spin_lock_bh(&ic->i_tx_lock);
+	/* scq is being destroyed, skip polling scq */
+	if (!ic->i_scq) {
+		spin_unlock_bh(&ic->i_tx_lock);
+		return;
+	}
 	poll_scq(ic, ic->i_scq, ic->i_send_wc);
 	ib_req_notify_cq(ic->i_scq, IB_CQ_NEXT_COMP);
 	poll_scq(ic, ic->i_scq, ic->i_send_wc);
@@ -794,10 +799,6 @@ static void rds_ib_send_cb(struct rds_ib_connection *ic)
 	struct rds_connection *conn = ic->conn;
 
 	rds_ib_stats_inc(s_ib_tasklet_call);
-
-	/* if send cq has been destroyed, ignore incoming cq event */
-	if (!ic->i_scq)
-		return;
 
 	rds_ib_tx(ic);
 
@@ -835,6 +836,10 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 	struct rds_ib_ack_state ack_state;
 
 	rds_ib_stats_inc(s_ib_tasklet_call);
+
+	/* rcq is being destroyed, skip polling rcq */
+	if (!ic->i_rcq)
+		return;
 
 	memset(&ack_state, 0, sizeof(ack_state));
 
@@ -1141,15 +1146,19 @@ static void __rds_rdma_free_cq(struct rds_ib_connection *ic,
 {
 	struct ib_cq *rcq, *scq;
 
+	spin_lock_bh(&ic->i_rx_lock);
 	rcq = ic->i_rcq;
 	ic->i_rcq = NULL;
+	spin_unlock_bh(&ic->i_rx_lock);
 	if (rcq) {
 		ibdev_put_vector(rds_ibdev, ic->i_rcq_vector, ic->conn->c_tos);
 		ib_destroy_cq(rcq);
 	}
 
+	spin_lock_bh(&ic->i_tx_lock);
 	scq = ic->i_scq;
 	ic->i_scq = NULL;
+	spin_unlock_bh(&ic->i_tx_lock);
 	if (scq) {
 		ibdev_put_vector(rds_ibdev, ic->i_scq_vector, ic->conn->c_tos);
 		ib_destroy_cq(scq);
