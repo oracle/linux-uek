@@ -467,6 +467,7 @@ modules-core:
 - xfrm_ipcomp
 - xfs
 - xor
+- xt_CHECKSUM
 - xt_MASQUERADE
 - xt_NFLOG
 - xt_addrtype
@@ -3552,7 +3553,6 @@ modules-extra-netfilter:
 - nf_conntrack_bridge
 - nf_log_syslog
 - xt_AUDIT
-- xt_CHECKSUM
 - xt_CLASSIFY
 - xt_CONNSECMARK
 - xt_CT
