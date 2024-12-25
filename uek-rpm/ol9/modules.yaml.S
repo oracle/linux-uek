@@ -473,6 +473,7 @@ modules-core:
 - xt_comment
 - xt_conntrack
 - xt_mark
+- xt_nat
 - xt_owner
 - zstd
 - zstd_compress
@@ -3595,7 +3596,6 @@ modules-extra-netfilter:
 - xt_limit
 - xt_mac
 - xt_multiport
-- xt_nat
 - xt_nfacct
 - xt_osf
 - xt_physdev
