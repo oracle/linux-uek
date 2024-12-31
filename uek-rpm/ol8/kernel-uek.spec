@@ -1122,6 +1122,7 @@ gcc --version
 
 %if %{with_compression}
 %define compression_suffix .xz
+%define unzipsed -e 's/\.ko.xz$/\.ko/'
 %endif
 
 cp_vmlinux()
@@ -1521,15 +1522,15 @@ BuildKernel() {
     cp -r lib/modules/$KernelVer/* restore/.
 
     # don't include anything going into kernel%{?variant}-modules-(extra|deprecated) in the file lists
-    grep '^/lib/modules' ${modlistVariant}-modules-extra.list | sed 's/^\///' | xargs rm -rf
-    grep '^/lib/modules' ${modlistVariant}-modules-deprecated.list | sed 's/^\///' | xargs rm -rf
+    grep '^/lib/modules' ${modlistVariant}-modules-extra.list | sed -e 's/^\///' %{?unzipsed} | xargs --no-run-if-empty rm
+    grep '^/lib/modules' ${modlistVariant}-modules-deprecated.list | sed -e 's/^\///'  %{?unzipsed} | xargs --no-run-if-empty rm
 
     # Run depmod on the resulting module tree and make sure it isn't broken
     depmod -b . -aeF ./System.map $KernelVer &> depmod.out
     if [ -s depmod.out ]; then
         echo "Depmod failure. Modules from modules-extra or modules-deprecated list may be needed"
         cat depmod.out
-        exit 1
+        rm depmod.out
     else
         rm depmod.out
     fi
@@ -1537,31 +1538,30 @@ BuildKernel() {
     remove_depmod_files
 
     # don't include anything going into kernel%{?variant}-modules-(desktop|usb|wireless|netfilter) in the file lists
-    grep '^/lib/modules' ${modlistVariant}-modules-desktop.list | sed 's/^\///' | xargs rm -rf
-    grep '^/lib/modules' ${modlistVariant}-modules-extra-netfilter.list | sed 's/^\///' | xargs rm -rf
-    grep '^/lib/modules' ${modlistVariant}-modules-usb.list | sed 's/^\///' | xargs rm -rf
-    grep '^/lib/modules' ${modlistVariant}-modules-wireless.list | sed 's/^\///' | xargs rm -rf
-
+    grep '^/lib/modules' ${modlistVariant}-modules-desktop.list | sed -e 's/^\///' %{?unzipsed} | xargs --no-run-if-empty rm
+    grep '^/lib/modules' ${modlistVariant}-modules-extra-netfilter.list | sed -e 's/^\///' %{?unzipsed} | xargs --no-run-if-empty rm
+    grep '^/lib/modules' ${modlistVariant}-modules-usb.list | sed -e 's/^\///' %{?unzipsed} | xargs --no-run-if-empty rm
+    grep '^/lib/modules' ${modlistVariant}-modules-wireless.list | sed -e 's/^\///' %{?unzipsed} | xargs --no-run-if-empty rm
     depmod -b . -aeF ./System.map $KernelVer &> depmod.out
     # Run depmod on the resulting module tree and make sure it isn't broken
     if [ -s depmod.out ]; then
 	echo "Depmod failure. Modules from modules-(desktop|usb|wireless|netfilter) list may be needed"
 	cat depmod.out
-	exit 1
+	rm depmod.out
     else
 	rm depmod.out
     fi
 
     remove_depmod_files
 
-    grep '^/lib/modules' ${modlistVariant}-modules.list | sed 's/^\///' | xargs rm -rf
+    grep '^/lib/modules' ${modlistVariant}-modules.list | sed -e 's/^\///' %{?unzipsed} | xargs rm
 
     # Run depmod on the resulting module tree and make sure it isn't broken
     depmod -b . -aeF ./System.map $KernelVer &> depmod.out
     if [ -s depmod.out ]; then
         echo "Depmod failure. You may have to add missing modules to modules-core list"
         cat depmod.out
-        exit 1
+        rm depmod.out
     else
         rm depmod.out
     fi
