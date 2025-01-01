@@ -99,6 +99,9 @@ modules-core:
 - dns_resolver
 - drm
 - drm_kms_helper
+- drm_shmem_helper
+- drm_ttm_helper
+- drm_vram_helper
 - dummy
 - ebtables
 - einj
@@ -121,6 +124,7 @@ modules-core:
 - garp
 - geneve
 - gf128mul
+- gnss
 - grace
 - gre
 - hid-hyperv
@@ -191,12 +195,16 @@ modules-core:
 - libcurve25519
 - libcurve25519-generic
 - libcxgb
+- libcxgbi
 - libdes
+- libfc
+- libfcoe
 - libie
 - libiscsi
 - libiscsi_tcp
 - libnvdimm
 - libpoly1305
+- libsas
 - lockd
 - loop
 - lrw
@@ -799,7 +807,6 @@ modules:
 - gl518sm
 - gl520sm
 - gl620a
-- gnss
 - governor_simpleondemand
 - gpio-amdpt
 - gpio-viperboard
@@ -871,9 +878,6 @@ modules:
 - lg-vl600
 - libahci_platform
 - libeth
-- libfc
-- libfcoe
-- libsas
 - lineage-pem
 - lis3lv02d
 - lis3lv02d_i2c
@@ -2141,7 +2145,6 @@ modules-extra:
 - l2tp_ppp
 - lec
 - leds-lt3593
-- libcxgbi
 - mcp251xfd
 - megaraid_mbox
 - megaraid_mm
@@ -2352,10 +2355,7 @@ modules-desktop:
 - drm_display_helper
 - drm_exec
 - drm_gpuvm
-- drm_shmem_helper
 - drm_suballoc_helper
-- drm_ttm_helper
-- drm_vram_helper
 - drx39xyj
 - drxd
 - drxk
