@@ -2010,7 +2010,6 @@ modules:
 - snd-maestro3
 - snd-mtpav
 - snd-pcsp
-- snd-sof-pci-intel-ptl
 - snd-sonicvibes
 - snd-trident
 - snd-usb-us122l
@@ -3449,6 +3448,7 @@ modules-desktop:
 - snd-sof-pci-intel-icl
 - snd-sof-pci-intel-lnl
 - snd-sof-pci-intel-mtl
+- snd-sof-pci-intel-ptl
 - snd-sof-pci-intel-skl
 - snd-sof-pci-intel-tgl
 - snd-sof-pci-intel-tng
