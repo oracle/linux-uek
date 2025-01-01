@@ -736,7 +736,6 @@ modules:
 - cc770_platform
 - ccp-crypto
 - cdc_eem
-- cdc_mbim
 - cdc_ncm
 - cdc_subset
 - ceph
@@ -811,7 +810,6 @@ modules:
 - hpsa
 - hpwdt
 - hso
-- huawei_cdc_ncm
 - hwmon-vid
 - i2c-algo-pca
 - i2c-ccgx-ucsi
@@ -1067,7 +1065,6 @@ modules:
 - qedr
 - qla3xxx
 - qlcnic
-- qmi_wwan
 - qsemi
 - r6040
 - r8152
@@ -3621,6 +3618,7 @@ modules-usb:
 - belkin_sa
 - cdc-acm
 - cdc-wdm
+- cdc_mbim
 - ch341
 - cp210x
 - cxacru
@@ -3634,6 +3632,7 @@ modules-usb:
 - f81534
 - fusb302
 - garmin_gps
+- huawei_cdc_ncm
 - idmouse
 - io_edgeport
 - io_ti
@@ -3665,6 +3664,7 @@ modules-usb:
 - pl2303
 - qcaux
 - qcserial
+- qmi_wwan
 - quatech2
 - safe_serial
 - sierra
