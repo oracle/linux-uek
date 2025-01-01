@@ -1012,7 +1012,6 @@ modules:
 - nls_koi8-ru
 - nls_koi8-u
 - nozomi
-- ntc_thermistor
 - null_blk
 - nvme-fcloop
 - nvme-loop
@@ -1463,7 +1462,6 @@ modules:
 - i2c-xlp9xx
 - icc-clk
 - idt_89hpesx
-- iio_hwmon
 - ina3221
 - ipr
 - k3dma
@@ -1550,7 +1548,6 @@ modules:
 - qca8k
 - qcom-emac
 - qcom-spmi-pmic
-- qcom-spmi-temp-alarm
 - qcom_glink
 - qcom_glink_rpm
 - qcom_smd-regulator
@@ -2036,7 +2033,6 @@ modules:
 - tlan
 - tlclk
 - topstar-laptop
-- toshiba_acpi
 - tpm_atmel
 - tpm_infineon
 - tpm_nsc
@@ -2638,6 +2634,7 @@ modules-desktop:
 - mxl692
 - ngene
 - nouveau
+- ntc_thermistor
 - nuvoton-cir
 - nxt200x
 - nxt6000
@@ -3106,6 +3103,7 @@ modules-desktop:
 - iio-trig-interrupt
 - iio-trig-loop
 - iio-trig-sysfs
+- iio_hwmon
 - ili210x
 - industrialio-buffer-cb
 - industrialio-configfs
@@ -3187,6 +3185,7 @@ modules-desktop:
 - pwm-tegra
 - pwrseq_sd8787
 - qcom-spmi-iadc
+- qcom-spmi-temp-alarm
 - qcom-spmi-vadc
 - qcom-vadc-common
 - radio-keene
@@ -3457,6 +3456,7 @@ modules-desktop:
 - snd-sof-utils
 - snd-sof-xtensa-dsp
 - tca6416-keypad
+- toshiba_acpi
 - toshiba_bluetooth
 - usdhi6rol0
 - wbsd
