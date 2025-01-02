@@ -1025,13 +1025,28 @@ int rvu_mbox_handler_cpt_sts(struct rvu *rvu, struct cpt_sts_req *req,
 	get_eng_sts(rvu, rsp, blkaddr);
 
 	/* Read CPT instruction PC registers */
-	rsp->inst_req_pc = rvu_read64(rvu, blkaddr, CPT_AF_INST_REQ_PC);
-	rsp->inst_lat_pc = rvu_read64(rvu, blkaddr, CPT_AF_INST_LATENCY_PC);
-	rsp->rd_req_pc = rvu_read64(rvu, blkaddr, CPT_AF_RD_REQ_PC);
-	rsp->rd_lat_pc = rvu_read64(rvu, blkaddr, CPT_AF_RD_LATENCY_PC);
-	rsp->rd_uc_pc = rvu_read64(rvu, blkaddr, CPT_AF_RD_UC_PC);
-	rsp->active_cycles_pc = rvu_read64(rvu, blkaddr,
-					   CPT_AF_ACTIVE_CYCLES_PC);
+	if (is_cn20k(rvu->pdev)) {
+		rsp->inst_req_pc = rvu_read64(rvu, blkaddr,
+					      CPT_AF_CN20K_INST_REQ_PC);
+		rsp->inst_lat_pc = rvu_read64(rvu, blkaddr,
+					      CPT_AF_CN20K_INST_LATENCY_PC);
+		rsp->rd_req_pc = rvu_read64(rvu, blkaddr,
+					    CPT_AF_CN20K_RD_REQ_PC);
+		rsp->rd_lat_pc = rvu_read64(rvu, blkaddr,
+					    CPT_AF_CN20K_RD_LATENCY_PC);
+		rsp->rd_uc_pc = rvu_read64(rvu, blkaddr, CPT_AF_CN20K_RD_UC_PC);
+		rsp->active_cycles_pc = rvu_read64(rvu, blkaddr,
+						   CPT_AF_CN20K_ACTIVE_CYCLES_PC);
+	} else {
+		rsp->inst_req_pc = rvu_read64(rvu, blkaddr, CPT_AF_INST_REQ_PC);
+		rsp->inst_lat_pc = rvu_read64(rvu, blkaddr,
+					      CPT_AF_INST_LATENCY_PC);
+		rsp->rd_req_pc = rvu_read64(rvu, blkaddr, CPT_AF_RD_REQ_PC);
+		rsp->rd_lat_pc = rvu_read64(rvu, blkaddr, CPT_AF_RD_LATENCY_PC);
+		rsp->rd_uc_pc = rvu_read64(rvu, blkaddr, CPT_AF_RD_UC_PC);
+		rsp->active_cycles_pc = rvu_read64(rvu, blkaddr,
+						   CPT_AF_ACTIVE_CYCLES_PC);
+	}
 	rsp->exe_err_info = rvu_read64(rvu, blkaddr, CPT_AF_EXE_ERR_INFO);
 	rsp->cptclk_cnt = rvu_read64(rvu, blkaddr, CPT_AF_CPTCLK_CNT);
 	rsp->diag = rvu_read64(rvu, blkaddr, CPT_AF_DIAG);
