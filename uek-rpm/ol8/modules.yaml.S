@@ -1591,6 +1591,7 @@ modules:
 - sh-sci
 - sht3x
 - smc91x
+- smd-rpm
 - smsc911x
 - snd-cs4281
 - snd-pcm-dmaengine
@@ -3240,7 +3241,6 @@ modules-desktop:
 - sil-sii8620
 - silead
 - sis_i2c
-- smd-rpm
 - smipcie
 - snd-soc-ac97
 - snd-soc-adau-utils
