@@ -2208,8 +2208,6 @@ modules-extra:
 - ubifs
 - vcan
 - vrf
-- w1_ds2780
-- w1_ds2781
 - wwan
 - xsk_diag
 
@@ -2251,7 +2249,6 @@ modules-extra:
 - stm_ftrace
 - stm_heartbeat
 - think-lmi
-- wire
 - xen-scsifront
 #endif /* Arch_x86_64 */
 
@@ -2969,6 +2966,8 @@ modules-desktop:
 - vp27smpx
 - vsxxxaa
 - vub300
+- w1_ds2780
+- w1_ds2781
 - wacom
 - wacom_i2c
 - wacom_serial4
@@ -3476,6 +3475,7 @@ modules-desktop:
 - usdhi6rol0
 - wbsd
 - winbond-cir
+- wire
 - xen-kbdfront
 - yenta_socket
 #endif /* Arch_x86_64 */
