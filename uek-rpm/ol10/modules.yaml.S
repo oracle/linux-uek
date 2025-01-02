@@ -1162,7 +1162,6 @@ modules:
 - snd-echo3g
 - snd-ens1370
 - snd-ens1371
-- snd-fm801
 - snd-gina20
 - snd-gina24
 - snd-hda-codec
@@ -1230,7 +1229,6 @@ modules:
 - snd-timer
 - snd-ua101
 - snd-usb-6fire
-- snd-usb-audio
 - snd-usb-caiaq
 - snd-usb-hiface
 - snd-usb-line6
@@ -2001,7 +1999,6 @@ modules:
 - snd-emu10k1x
 - snd-emux-synth
 - snd-es1938
-- snd-es1968
 - snd-hda-ext-core
 - snd-hdmi-lpe-audio
 - snd-ice1712
@@ -2840,6 +2837,7 @@ modules-desktop:
 - smsmdtv
 - smssdio
 - smsusb
+- snd-fm801
 - snd-soc-core
 - snd-soc-cs42l42
 - snd-soc-cs42l42-i2c
@@ -2858,6 +2856,7 @@ modules-desktop:
 - snd-soc-ts3a227e
 - snd-soc-wm8804
 - snd-soc-wm8804-i2c
+- snd-usb-audio
 - soundwire-bus
 - soundwire-cadence
 - soundwire-generic-allocation
@@ -3372,6 +3371,7 @@ modules-desktop:
 - snd-acp3x-pdm-dma
 - snd-acp5x-i2s
 - snd-acp5x-pcm-dma
+- snd-es1968
 - snd-intel-sst-acpi
 - snd-intel-sst-core
 - snd-pci-acp5x
