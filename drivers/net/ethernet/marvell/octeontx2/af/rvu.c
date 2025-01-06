@@ -3919,11 +3919,12 @@ static void rvu_enable_afvf_intr(struct rvu *rvu)
 	rvupf_write64(rvu, RVU_PF_VFME_INT_ENA_W1SX(1), INTR_MASK(vfs - 64));
 }
 
-int rvu_get_num_lbk_chans(void)
+int rvu_get_num_lbk_chans(struct rvu *rvu)
 {
 	struct pci_dev *pdev;
 	void __iomem *base;
 	int ret = -EIO;
+	u64 lbk_const;
 
 	pdev = pci_get_device(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_OCTEONTX2_LBK,
 			      NULL);
@@ -3935,7 +3936,12 @@ int rvu_get_num_lbk_chans(void)
 		goto err_put;
 
 	/* Read number of available LBK channels from LBK(0)_CONST register. */
-	ret = (readq(base + 0x10) >> 32) & 0xffff;
+	if (is_cn20k(rvu->pdev)) {
+		lbk_const = readq(base + 0x10);
+		ret = FIELD_GET(CN20K_LBK_CONST_CHANS, lbk_const);
+	} else {
+		ret = (readq(base + 0x10) >> 32) & 0xffff;
+	}
 	iounmap(base);
 err_put:
 	pci_dev_put(pdev);
@@ -3973,7 +3979,7 @@ static int rvu_enable_sriov(struct rvu *rvu)
 		return 0;
 
 	if (rvu->vf_devid == PCI_DEVID_OCTEONTX2_RVU_AFVF) {
-		chans = rvu_get_num_lbk_chans();
+		chans = rvu_get_num_lbk_chans(rvu);
 		if (chans < 0)
 			return chans;
 
