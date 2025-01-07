@@ -1077,8 +1077,6 @@ modules:
 - rbd
 - rdma_rxe
 - realtek
-- regmap-sdw
-- regmap-sdw-mbq
 - regmap-spi
 - ring_buffer_benchmark
 - rndis_host
@@ -2803,6 +2801,8 @@ modules-desktop:
 - rc-xbox-dvd
 - rc-zx-irdec
 - redrat3
+- regmap-sdw
+- regmap-sdw-mbq
 - rfcomm
 - rmi_core
 - rmi_i2c
