@@ -723,7 +723,6 @@ modules:
 - brd
 - broadcom
 - bsd_comp
-- btintel
 - c_can
 - c_can_pci
 - cachefiles
@@ -2314,6 +2313,7 @@ modules-desktop:
 - bpa10x
 - bt878
 - btbcm
+- btintel
 - btmrvl
 - btmrvl_sdio
 - btrtl
