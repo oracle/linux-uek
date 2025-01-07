@@ -1016,7 +1016,6 @@ modules:
 - nls_koi8-r
 - nls_koi8-ru
 - nls_koi8-u
-- nouveau
 - nozomi
 - ntc_thermistor
 - null_blk
@@ -2646,6 +2645,7 @@ modules-desktop:
 - mxl5xx
 - mxl692
 - ngene
+- nouveau
 - nuvoton-cir
 - nxt200x
 - nxt6000
