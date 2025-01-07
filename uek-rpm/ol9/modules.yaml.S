@@ -717,9 +717,6 @@ modules:
 - bnx2
 - bnx2fc
 - bnx2x
-- brcmfmac-bca
-- brcmfmac-cyw
-- brcmfmac-wcc
 - brd
 - broadcom
 - bsd_comp
@@ -3781,6 +3778,9 @@ modules-wireless:
 - b43
 - b43legacy
 - brcmfmac
+- brcmfmac-bca
+- brcmfmac-cyw
+- brcmfmac-wcc
 - brcmsmac
 - brcmutil
 - btcoexist
