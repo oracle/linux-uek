@@ -952,6 +952,7 @@ modules:
 - mscc
 - msdos
 - mt76
+- mt76-connac-lib
 - mtd
 - mtd_blkdevs
 - mtdblock
@@ -1256,8 +1257,10 @@ modules:
 - snd-ymfpci
 - softdog
 - soundcore
+- sparse-keymap
 - sr9700
 - sr9800
+- ssb
 - ste10Xp
 - stm_core
 - stm_p_basic
@@ -1692,6 +1695,7 @@ modules:
 - amd_atl
 - amd_freq_sensitivity
 - amd_hsmp
+- amd_sfh
 - amdtee
 - amilo-rfkill
 - apple-gmux
@@ -1866,6 +1870,7 @@ modules:
 - mei_wdt
 - mena21_wdt
 - mlx-platform
+- mmc_core
 - mptlan
 - mptspi
 - msi-laptop
@@ -1896,6 +1901,7 @@ modules:
 - padlock-aes
 - padlock-sha
 - panasonic-laptop
+- parport
 - pata_ali
 - pata_amd
 - pata_artop
@@ -2255,7 +2261,6 @@ modules-deprecated:
 /* modules-deprecated: */
 #ifdef Arch_x86_64
 - atmtcp
-- parport
 - parport_pc
 - parport_serial
 #endif /* Arch_x86_64 */
@@ -2872,8 +2877,6 @@ modules-desktop:
 - soundwire-intel
 - sp2
 - sp887x
-- sparse-keymap
-- ssb
 - stb0899
 - stb6000
 - stb6100
@@ -3320,7 +3323,6 @@ modules-desktop:
 #ifdef Arch_x86_64
 - ad7879
 - ad7879-i2c
-- amd_sfh
 - apanel
 - atlas_btns
 - b2c2-flexcop-usb
@@ -3355,7 +3357,6 @@ modules-desktop:
 - max17040_battery
 - max17042_battery
 - max8903_charger
-- mmc_core
 - mt9m111
 - pinctrl-alderlake
 - pinctrl-broxton
@@ -3792,7 +3793,6 @@ modules-wireless:
 - libertas
 - libertas_sdio
 - mac80211_hwsim
-- mt76-connac-lib
 - mt76-usb
 - mt7601u
 - mt76x0-common
