@@ -61,7 +61,9 @@ void __init native_pv_lock_init(void)
 
 static void native_tlb_remove_table(struct mmu_gather *tlb, void *table)
 {
-	tlb_remove_page(tlb, table);
+	struct ptdesc *ptdesc = (struct ptdesc *)table;
+
+	tlb_remove_page(tlb, ptdesc_page(ptdesc));
 }
 
 struct static_key paravirt_steal_enabled;
