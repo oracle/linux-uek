@@ -1761,13 +1761,13 @@ call_refreshresult(struct rpc_task *task)
 		fallthrough;
 	case -EAGAIN:
 		status = -EACCES;
-		fallthrough;
-	case -EKEYEXPIRED:
 		if (!task->tk_cred_retry)
 			break;
 		task->tk_cred_retry--;
 		trace_rpc_retry_refresh_status(task);
 		return;
+	case -EKEYEXPIRED:
+		break;
 	}
 	trace_rpc_refresh_status(task);
 	rpc_call_rpcerror(task, status);
