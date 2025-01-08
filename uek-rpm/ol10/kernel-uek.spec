@@ -416,9 +416,13 @@ BuildRequires: slang-devel
 BuildRequires: sparse >= 0.4.1
 %endif
 
-%ifarch x86_64
+%ifarch x86_64 aarch64
 BuildRequires: libcap-devel
 %endif
+%ifarch aarch64
+BuildRequires: opencsd-devel >= 1.0.0
+%endif
+
 %if %{signkernel}%{signmodules}
 BuildRequires: openssl openssl-devel
 %if %{signkernel}
@@ -1459,20 +1463,26 @@ BuildKernel %make_target %kernel_image 64kdebug
 %global bpftool_make \
   %{make} EXTRA_CFLAGS="${RPM_OPT_FLAGS}" EXTRA_LDFLAGS="%{__global_ldflags}" DESTDIR=$RPM_BUILD_ROOT VMLINUX_H=$RPM_BUILD_ROOT/$BpfDevelDir/vmlinux.h
 %if %{with_bpftool}
-pushd tools/bpf/bpftool
-%{bpftool_make}
-popd
+%{bpftool_make} -C tools/bpf/bpftool
+%endif
+
+%ifarch aarch64
+%global perf_build_extra_opts CORESIGHT=1
 %endif
 
 %if %{with_tools}
 %ifarch %{vdso_arches}
 %ifnarch noarch
-    # build tools/perf:
-    if [ -d tools/perf ]; then
-	pushd tools/perf
-	%{make} %{?_smp_mflags} NO_LIBPERL=1 EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow" all
-	popd
-    fi
+  %{__make} %{?make_opts} %{?_smp_mflags} \
+    -C tools/perf \
+    VF=1 \
+    NO_PERF_READ_VDSO32=1 NO_PERF_READ_VDSOX32=1 \
+    WERROR=0 \
+    NO_LIBUNWIND=1 NO_STRLCPY=1 \
+    HAVE_CPLUS_DEMANGLE=1 NO_GTK2=1 \
+    LIBTRACEEVENT_DYNAMIC=1 \
+    %{?perf_build_extra_opts} \
+    DESTDIR=$RPM_BUILD_ROOT prefix=%{_prefix} PYTHON=%{__python3} all
 %endif
 %endif
 
@@ -1646,9 +1656,7 @@ rm -rf $RPM_BUILD_ROOT/usr/include/drm
 %endif
 
 %if %{with_bpftool}
-pushd tools/bpf/bpftool
-%{bpftool_make} prefix=%{_prefix} bash_compdir=%{_sysconfdir}/bash_completion.d/ mandir=%{_mandir} install doc-install
-popd
+%{bpftool_make} -C tools/bpf/bpftool prefix=%{_prefix} bash_compdir=%{_sysconfdir}/bash_completion.d/ mandir=%{_mandir} install doc-install
 %endif
 
 ###
