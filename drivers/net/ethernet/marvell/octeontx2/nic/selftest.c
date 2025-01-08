@@ -57,7 +57,7 @@ static int mbox_test_kernel(struct mbox *mbox, struct device *dev)
 	struct msg_req *req;
 	int err;
 
-	req = otx2_mbox_alloc_msg_ready(mbox);
+	req = otx2_mbox_alloc_msg_free_rsrc_cnt(mbox);
 	if (!req)
 		return -ENOMEM;
 
