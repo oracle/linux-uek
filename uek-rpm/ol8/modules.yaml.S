@@ -931,7 +931,6 @@ modules:
 - max6697
 - max6875
 - max8688
-- mceusb
 - mcp251x
 - mcp3021
 - mcs7830
@@ -2621,6 +2620,7 @@ modules-desktop:
 - mb86a20s
 - mc
 - mc44s803
+- mceusb
 - memstick
 - mmc_block
 - mn88472
