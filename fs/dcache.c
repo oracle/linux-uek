@@ -502,7 +502,6 @@ static struct ctl_table fs_dcache_neg_dentry_sysctls[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_neg_dentry_pc,
 	},
-	{ }
 };
 
 static int __init init_fs_dcache_neg_dentry_sysctls(void)
