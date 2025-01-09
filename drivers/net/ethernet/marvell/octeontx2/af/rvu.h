@@ -1430,5 +1430,7 @@ void rvu_update_rsrc_map(struct rvu *rvu, struct rvu_pfvf *pfvf,
 			 bool attach);
 void rvu_set_msix_offset(struct rvu *rvu, struct rvu_pfvf *pfvf,
 			 struct rvu_block *block, int lf);
+u16 rvu_get_msix_offset(struct rvu *rvu, struct rvu_pfvf *pfvf, int blkaddr,
+			int lf);
 void __rvu_flr_handler(struct rvu *rvu, u16 pcifunc);
 #endif /* RVU_H */

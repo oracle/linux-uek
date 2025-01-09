@@ -50,6 +50,22 @@ static unsigned long eng_fifo_buf = 0x101008080808;
 #define PSW_RL_BURST_TH 64
 #define PSW_RL_TOKEN 8
 
+#define PSW_PKT_ERR BIT_ULL(7)
+#define BPHY_PKT_ERR BIT_ULL(6)
+#define SDP_PKT_ERR BIT_ULL(5)
+#define DMAPF_ERR BIT_ULL(4)
+#define UN_WI BIT_ULL(3)
+#define UN_B0 BIT_ULL(2)
+#define UP_WI BIT_ULL(1)
+#define UP_B0 BIT_ULL(0)
+
+#define DPI_AF_EBI_DAT_PSN	BIT_ULL(0)
+#define DPI_AF_NCB_DAT_PSN	BIT_ULL(1)
+#define DPI_AF_NCB_CMD_PSN	BIT_ULL(2)
+#define DPI_AF_NCB_CHAN_PSN	BIT_ULL(3)
+
+#define VF_GRP_INT 0x0F
+
 #define DPI_DMA_CONTROL_O_MODE			(0x1ULL << 14)
 #define DPI_DMA_CONTROL_O_NS			(0x1ULL << 17)
 #define DPI_DMA_CONTROL_O_RO			(0x1ULL << 18)
@@ -77,6 +93,7 @@ struct dpi_rsrc {
 
 struct dpi_drvdata {
 	struct dpi_rsrc	rsrc;
+	struct dpi_irq_data *dpi_irq_devid[32];
 	int res_idx;
 };
 
@@ -207,6 +224,35 @@ int rvu_mbox_handler_dpi_lf_free(struct rvu *rvu, struct msg_req *req,
 		ret = dpi_lf_free(rvu, req, BLKADDR_DPI1);
 
 	return ret;
+}
+
+int rvu_mbox_handler_dpi_msix_offset(struct rvu *rvu, struct msg_req *req,
+				     struct dpi_msix_offset_rsp *rsp)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	u16 pcifunc = req->hdr.pcifunc;
+	struct rvu_pfvf *pfvf;
+	int lf, slot;
+
+	pfvf = rvu_get_pfvf(rvu, pcifunc);
+	if (!pfvf->msix.bmap)
+		return 0;
+
+	rsp->dpilfs = pfvf->dpilfs;
+	for (slot = 0; slot < rsp->dpilfs; slot++) {
+		lf = rvu_get_lf(rvu, &hw->block[BLKADDR_DPI0], pcifunc, slot);
+		rsp->dpilf_msixoff[slot] =
+			rvu_get_msix_offset(rvu, pfvf, BLKADDR_DPI0, lf);
+	}
+
+	rsp->dpi1_lfs = pfvf->dpi1_lfs;
+	for (slot = 0; slot < rsp->dpi1_lfs; slot++) {
+		lf = rvu_get_lf(rvu, &hw->block[BLKADDR_DPI1], pcifunc, slot);
+		rsp->dpi1_lf_msixoff[slot] =
+			rvu_get_msix_offset(rvu, pfvf, BLKADDR_DPI1, lf);
+	}
+
+	return 0;
 }
 
 int rvu_mbox_handler_dpi_free_rsrc_cnt(struct rvu *rvu,
@@ -640,20 +686,375 @@ int rvu_mbox_handler_dpi_lf_pf_func_cfg(struct rvu *rvu,
 	return 0;
 }
 
+static void dpi_unregister_interrupts(struct rvu *rvu,
+				      struct dpi_drvdata *data, int blkaddr)
+{
+	struct dpi_drvdata *drvdata = data;
+	struct rvu_hwinfo *hw = rvu->hw;
+	struct rvu_block *block;
+	int i, offs;
+
+	if (!is_block_implemented(rvu->hw, blkaddr))
+		return;
+
+	offs = rvu_read64(rvu, blkaddr, DPI_PRIV_AF_INT_CFG) & 0x7FF;
+	if (!offs) {
+		dev_warn(rvu->dev,
+			 "Failed to get DPI_AF_INT vector offset\n");
+		return;
+	}
+	block = &hw->block[blkaddr];
+
+	/* Disable all DPI AF interrupts */
+	for (i = 0; i < DPI_AF_EPF0_VF_LINT; i++)
+		rvu_write64(rvu, blkaddr,
+			    DPI_AF_EPFX_MISC_LINT_ENA_W1C(i),
+			    ~0ULL);
+	for (i = 0; i < 16; i++)
+		rvu_write64(rvu, blkaddr,
+			    DPI_AF_EPFX_VF_LINT_ENA_W1C(i),
+			    ~0ULL);
+	rvu_write64(rvu, blkaddr, DPI_AF_RVU_INT_ENA_W1C, 0x1);
+	rvu_write64(rvu, blkaddr, DPI_AF_NCBO_ERR_INT_ENA_W1C, 0x1);
+	rvu_write64(rvu, blkaddr, DPI_AF_RAS_ENA_W1C, 0xf);
+
+	for (i = 0; i < DPI_AF_RAS; i++) {
+		if (rvu->irq_allocated[offs + i]) {
+			free_irq(pci_irq_vector(rvu->pdev, offs + i),
+				 drvdata->dpi_irq_devid[i]);
+			rvu->irq_allocated[offs + i] = false;
+		}
+	}
+
+	for (i = DPI_AF_RAS; i < DPI_AF_INT_VEC_CNT; i++) {
+		if (rvu->irq_allocated[offs + i]) {
+			free_irq(pci_irq_vector(rvu->pdev, offs + i), block);
+			rvu->irq_allocated[offs + i] = false;
+		}
+	}
+}
+
 static void rvu_dpi_unregister_interrupts_block(struct rvu_block *block,
 						void *data)
 {
-	(void)block;
-	(void)data;
+	struct dpi_drvdata *drvdata = data;
+	struct rvu *rvu = block->rvu;
+	int blkid, blkaddr;
+
+	blkid = drvdata->res_idx;
+	blkaddr = blkid ? BLKADDR_DPI1 : BLKADDR_DPI0;
+
+	return dpi_unregister_interrupts(rvu, data, blkaddr);
+}
+
+static irqreturn_t rvu_dpi_af_epfx_misc_lint_intr_handler(int irq, void *ptr)
+{
+	struct dpi_irq_data *irq_data = (struct dpi_irq_data *)(ptr);
+	struct rvu *rvu = irq_data->rvu;
+	int blkaddr = irq_data->blkaddr;
+	int blkid;
+	u64 reg;
+
+	if (blkaddr < 0)
+		return IRQ_NONE;
+
+	blkid = (blkaddr == BLKADDR_DPI1);
+	reg = rvu_read64(rvu, blkaddr, irq_data->intr_status);
+
+	if (reg & PSW_PKT_ERR)
+		dev_err_ratelimited(rvu->dev,
+				    "DPI%d: Err resp PSWx PKT read\n", blkid);
+	if (reg & BPHY_PKT_ERR)
+		dev_err_ratelimited(rvu->dev,
+				    "DPI%d: Err resp BPHYx PKT read\n", blkid);
+	if (reg & SDP_PKT_ERR)
+		dev_err_ratelimited(rvu->dev,
+				    "DPI%d: Err resp on SDP PKT read\n", blkid);
+	if (reg & DMAPF_ERR)
+		dev_err_ratelimited(rvu->dev,
+				    "DPI%d: Err resp on PF DMA read\n", blkid);
+	if (reg & UN_WI)
+		dev_err_ratelimited(rvu->dev, "DPI%d: Unsupported N-TLP for "
+				    "window register from MAC\n", blkid);
+	if (reg & UN_B0)
+		dev_err_ratelimited(rvu->dev, "DPI%d: Unsupported N-TLP for "
+				    "Bar 0 from corresponding MAC\n", blkid);
+	if (reg & UP_WI)
+		dev_err_ratelimited(rvu->dev, "DPI%d: Unsupported P-TLP for "
+				    "window register from MAC\n", blkid);
+	if (reg & UP_B0)
+		dev_err_ratelimited(rvu->dev, "DPI%d: Unsupported P-TLP for "
+				    "Bar 0 from MAC\n", blkid);
+
+	/* Clear interrupts */
+	rvu_write64(rvu, blkaddr, irq_data->intr_status, reg);
+
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t rvu_dpi_af_epfx_vf_lint_intr_handler(int irq, void *ptr)
+{
+	struct dpi_irq_data *irq_data = (struct dpi_irq_data *)(ptr);
+	struct rvu *rvu = irq_data->rvu;
+	int blkaddr = irq_data->blkaddr;
+	int blkid;
+	u64 reg;
+
+	if (blkaddr < 0)
+		return IRQ_NONE;
+
+	blkid = (blkaddr == BLKADDR_DPI1);
+	reg = rvu_read64(rvu, blkaddr, irq_data->intr_status);
+
+	if (reg & VF_GRP_INT)
+		dev_err_ratelimited(rvu->dev, "DPI%d: Error response received "
+				    "for a VF DMA transaction read\n", blkid);
+
+	/* Clear interrupts */
+	rvu_write64(rvu, blkaddr, irq_data->intr_status, reg);
+
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t rvu_dpi_af_rvu_intr_handler(int irq, void *ptr)
+{
+	struct rvu_block *block = ptr;
+	struct rvu *rvu = block->rvu;
+	int blkaddr = block->addr;
+	u64 reg;
+
+	reg = rvu_read64(rvu, blkaddr, DPIX_AF_RVU_INT);
+	dev_err_ratelimited(rvu->dev, "Received DPIAF RVU irq : 0x%llx", reg);
+
+	rvu_write64(rvu, blkaddr, DPIX_AF_RVU_INT, reg);
+
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t rvu_dpi_af_ncbo_err_intr_handler(int irq, void *ptr)
+{
+	struct rvu_block *block = ptr;
+	struct rvu *rvu = block->rvu;
+	int blkaddr = block->addr;
+	u64 reg;
+
+	reg = rvu_read64(rvu, blkaddr, DPIX_AF_NCBO_ERR_INT);
+	dev_err_ratelimited(rvu->dev, "Received DPIAF NCBO err irq : "
+			    "0x%llx", reg);
+
+	rvu_write64(rvu, blkaddr, DPIX_AF_NCBO_ERR_INT, reg);
+
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t rvu_dpi_af_ras_intr_handler(int irq, void *ptr)
+{
+	struct rvu_block *block = ptr;
+	struct rvu *rvu = block->rvu;
+	int blkaddr = block->addr;
+	u64 reg;
+
+	if (blkaddr < 0)
+		return IRQ_NONE;
+
+	reg = rvu_read64(rvu, blkaddr, DPIX_AF_RAS);
+
+	if (reg & DPI_AF_EBI_DAT_PSN)
+		dev_err_ratelimited(rvu->dev, "DPI: Poison received on a "
+				    "EBI data response\n");
+	if (reg & DPI_AF_NCB_DAT_PSN)
+		dev_err_ratelimited(rvu->dev, "DPI: Poison received on a "
+				    "NCB data response\n");
+	if (reg & DPI_AF_NCB_CMD_PSN)
+		dev_err_ratelimited(rvu->dev, "DPI: Poison received on a "
+				    "NCB instruction response\n");
+	if (reg & DPI_AF_NCB_CHAN_PSN)
+		dev_err_ratelimited(rvu->dev, "DPI: Poison received on a "
+				    "NCB channel table response\n");
+
+	/* Clear interrupts */
+	rvu_write64(rvu, blkaddr, DPIX_AF_RAS, reg);
+
+	return IRQ_HANDLED;
+}
+
+static int rvu_dpi_do_register_interrupt(struct rvu_block *block, int irq_offs,
+					 irq_handler_t handler,
+					 const char *name)
+{
+	struct rvu *rvu = block->rvu;
+	int ret;
+
+	ret = request_irq(pci_irq_vector(rvu->pdev, irq_offs), handler, 0,
+			  name, block);
+	if (ret) {
+		dev_err(rvu->dev, "RVUAF: %s irq registration failed", name);
+		return ret;
+	}
+
+	WARN_ON(rvu->irq_allocated[irq_offs]);
+	rvu->irq_allocated[irq_offs] = true;
+	return 0;
+}
+
+static int dpi_register_interrupts(struct rvu_block *block,
+				   struct dpi_drvdata *data, int blkaddr)
+{
+	int intr_vec, lint_vec = 0, vf_vec = 0, blkid;
+	struct dpi_drvdata *drvdata = data;
+	struct rvu *rvu = block->rvu;
+	struct dpi_irq_data *irq_data;
+	irq_handler_t epfx_lint;
+	int offs, ret = 0;
+	int err, cnt;
+
+	if (!is_block_implemented(rvu->hw, blkaddr))
+		return 0;
+
+	blkid = drvdata->res_idx;
+
+	offs = rvu_read64(rvu, blkaddr, DPI_PRIV_AF_INT_CFG) & 0x7FF;
+	if (!offs) {
+		dev_warn(rvu->dev,
+			 "Failed to get DPI_AF_INT vector offsets\n");
+		return 0;
+	}
+
+	/* irq data for MISC, VF intr vectors */
+	irq_data = devm_kcalloc(rvu->dev, 32,
+				sizeof(struct dpi_irq_data), GFP_KERNEL);
+	if (!irq_data)
+		return -ENOMEM;
+
+	for (intr_vec = DPI_AF_EPF0_MISC_LINT; intr_vec <= DPI_AF_EPF15_VF_LINT;
+							intr_vec++) {
+		switch (intr_vec) {
+		case DPI_AF_EPF0_MISC_LINT:
+		case DPI_AF_EPF1_MISC_LINT:
+		case DPI_AF_EPF2_MISC_LINT:
+		case DPI_AF_EPF3_MISC_LINT:
+		case DPI_AF_EPF4_MISC_LINT:
+		case DPI_AF_EPF5_MISC_LINT:
+		case DPI_AF_EPF6_MISC_LINT:
+		case DPI_AF_EPF7_MISC_LINT:
+		case DPI_AF_EPF8_MISC_LINT:
+		case DPI_AF_EPF9_MISC_LINT:
+		case DPI_AF_EPF10_MISC_LINT:
+		case DPI_AF_EPF11_MISC_LINT:
+		case DPI_AF_EPF12_MISC_LINT:
+		case DPI_AF_EPF13_MISC_LINT:
+		case DPI_AF_EPF14_MISC_LINT:
+		case DPI_AF_EPF15_MISC_LINT:
+			epfx_lint = rvu_dpi_af_epfx_misc_lint_intr_handler;
+			irq_data[intr_vec].intr_status =
+				DPI_AF_EPFX_MISC_LINT(intr_vec);
+			sprintf(&rvu->irq_name[(offs + intr_vec) * NAME_SIZE],
+				"DPI%dAF MISC LINT%d", blkid, lint_vec);
+			irq_data[intr_vec].vec_num = offs + intr_vec;
+			irq_data[intr_vec].rvu = rvu;
+			irq_data[intr_vec].blkaddr = blkaddr;
+			lint_vec++;
+			break;
+		case DPI_AF_EPF0_VF_LINT:
+		case DPI_AF_EPF1_VF_LINT:
+		case DPI_AF_EPF2_VF_LINT:
+		case DPI_AF_EPF3_VF_LINT:
+		case DPI_AF_EPF4_VF_LINT:
+		case DPI_AF_EPF5_VF_LINT:
+		case DPI_AF_EPF6_VF_LINT:
+		case DPI_AF_EPF7_VF_LINT:
+		case DPI_AF_EPF8_VF_LINT:
+		case DPI_AF_EPF9_VF_LINT:
+		case DPI_AF_EPF10_VF_LINT:
+		case DPI_AF_EPF11_VF_LINT:
+		case DPI_AF_EPF12_VF_LINT:
+		case DPI_AF_EPF13_VF_LINT:
+		case DPI_AF_EPF14_VF_LINT:
+		case DPI_AF_EPF15_VF_LINT:
+			epfx_lint = rvu_dpi_af_epfx_vf_lint_intr_handler;
+			irq_data[intr_vec].intr_status =
+					DPI_AF_EPFX_VF_LINT(intr_vec);
+			sprintf(&rvu->irq_name[(offs + intr_vec) * NAME_SIZE],
+				"DPI%dAF VF LINT%d", blkid, vf_vec);
+			irq_data[intr_vec].vec_num = offs + intr_vec;
+			irq_data[intr_vec].rvu = rvu;
+			irq_data[intr_vec].blkaddr = blkaddr;
+			vf_vec++;
+			break;
+		}
+		err = request_irq(pci_irq_vector(rvu->pdev, offs + intr_vec),
+				  epfx_lint, 0,
+				  &rvu->irq_name[(offs + intr_vec) * NAME_SIZE],
+				  &irq_data[intr_vec]);
+		if (err) {
+			dev_err(rvu->dev, "RVUAF: IRQ registration failed "
+				"for DPI AF irq %d\n", err);
+			return err;
+		}
+		drvdata->dpi_irq_devid[intr_vec] = &irq_data[intr_vec];
+		rvu->irq_allocated[offs + intr_vec] = true;
+	}
+
+	/* Enable all DPI AF interrupts */
+	for (cnt = 0; cnt < DPI_AF_EPF0_VF_LINT; cnt++)
+		rvu_write64(rvu, blkaddr,
+			    DPI_AF_EPFX_MISC_LINT_ENA_W1S(cnt),
+			    0xffULL);
+
+	for (cnt = 0; cnt < 16; cnt++)
+		rvu_write64(rvu, blkaddr,
+			    DPI_AF_EPFX_VF_LINT_ENA_W1S(cnt),
+			    0xfULL);
+
+	sprintf(&rvu->irq_name[(offs + DPI_AF_RAS) * NAME_SIZE],
+		"DPI%dAF RAS", blkid);
+	ret = rvu_dpi_do_register_interrupt(block, offs + DPI_AF_RAS,
+					    rvu_dpi_af_ras_intr_handler,
+					    &rvu->irq_name[(offs + intr_vec) *
+					    NAME_SIZE]);
+	if (ret)
+		goto err;
+	rvu_write64(rvu, blkaddr, DPI_AF_RAS_ENA_W1S, 0xf);
+
+	sprintf(&rvu->irq_name[(offs + DPI_AF_NCBO_ERR_INT) * NAME_SIZE],
+		"DPI%dAF NCBO ERR", blkid);
+	ret = rvu_dpi_do_register_interrupt(block, offs + DPI_AF_NCBO_ERR_INT,
+					    rvu_dpi_af_ncbo_err_intr_handler,
+					    &rvu->irq_name[(offs + DPI_AF_NCBO_ERR_INT) *
+					    NAME_SIZE]);
+	if (ret)
+		goto err;
+	rvu_write64(rvu, blkaddr, DPI_AF_NCBO_ERR_INT_ENA_W1S, 0x1);
+
+	sprintf(&rvu->irq_name[(offs + DPI_AF_RVU_INT) * NAME_SIZE],
+		"DPI%dAF RVU", blkid);
+	ret = rvu_dpi_do_register_interrupt(block, offs + DPI_AF_RVU_INT,
+					    rvu_dpi_af_rvu_intr_handler,
+					    &rvu->irq_name[(offs + DPI_AF_RVU_INT) *
+					    NAME_SIZE]);
+	if (ret)
+		goto err;
+	rvu_write64(rvu, blkaddr, DPI_AF_RVU_INT_ENA_W1S, 0x1);
+
+	return 0;
+err:
+	dpi_unregister_interrupts(rvu, data, blkaddr);
+	return ret;
 }
 
 static int rvu_dpi_register_interrupts_block(struct rvu_block *block,
 					     void *data)
 {
-	(void)block;
-	(void)data;
+	struct dpi_drvdata *drvdata = data;
+	struct rvu *rvu = block->rvu;
+	struct rvu_hwinfo *hw = rvu->hw;
+	int blkid, blkaddr;
 
-	return 0;
+	blkid = drvdata->res_idx;
+	blkaddr = blkid ? BLKADDR_DPI1 : BLKADDR_DPI0;
+	block = &hw->block[blkaddr];
+
+	return dpi_register_interrupts(block, data, blkaddr);
 }
 
 static int dpi_exit(struct rvu *rvu)

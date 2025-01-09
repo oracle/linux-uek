@@ -59,6 +59,27 @@
 #define DPI_NCB_MAX_MOLR		511
 #define DPI_EBUS_MAX_MOLR		512
 
+#define DPIX_AF_NCBO_ERR_INT			(0x690ull)
+#define DPI_AF_NCBO_ERR_INT_ENA_W1C		(0x6a0ull)
+#define DPI_AF_NCBO_ERR_INT_ENA_W1S		(0x6a8ull)
+#define DPI_AF_NCBO_ERR_INT_W1S			(0x698ull)
+#define DPIX_AF_RVU_INT				(0x700ull)
+#define DPI_AF_RVU_INT_ENA_W1C			(0x710ull)
+#define DPI_AF_RVU_INT_ENA_W1S			(0x718ull)
+#define DPI_AF_RVU_INT_W1S			(0x708ull)
+#define DPIX_AF_RAS				(0x720ull)
+#define DPI_AF_RAS_ENA_W1S			(0x738ull)
+#define DPI_AF_RAS_ENA_W1C			(0x730ull)
+#define DPI_AF_RAS_W1S				(0x728ull)
+#define DPI_AF_EPFX_MISC_LINT(a)		(0x800ull | (0x20 * (a)))
+#define DPI_AF_EPFX_MISC_LINT_ENA_W1S(a)	(0x818ull | (0x20 * (a)))
+#define DPI_AF_EPFX_MISC_LINT_ENA_W1C(a)	(0x810ull | (0x20 * (a)))
+#define DPI_AF_EPFX_MISC_LINT_W1S(a)		(0x808ull | (0x20 * (a)))
+#define DPI_AF_EPFX_VF_LINT(a)			(0xe00ull | (0x20 * (a)))
+#define DPI_AF_EPFX_VF_LINT_ENA_W1S(a)		(0xe18ull | (0x20 * (a)))
+#define DPI_AF_EPFX_VF_LINT_ENA_W1C(a)		(0xe10ull | (0x20 * (a)))
+#define DPI_AF_EPFX_VF_LINT_W1S(a)		(0xe08ull | (0x20 * (a)))
+
 #define DPI_AF_EPFX_VF_STATX(a, b)	(0xc00ull | (0x20 * (a)) | ((b) << 3))
 
 #define DPI_LF_RINGX_CFG(a, b)		\
@@ -157,12 +178,65 @@ struct dpi_dma_ptr_s {
 	u64 ptr_h		: 64;
 };
 
+/* RVU DPI Admin function Interrupt Vector Enumeration */
+enum DPI_AF_INT_VEC_E {
+	DPI_AF_EPF0_MISC_LINT			= 0x0,
+	DPI_AF_EPF1_MISC_LINT			= 0x1,
+	DPI_AF_EPF2_MISC_LINT			= 0x2,
+	DPI_AF_EPF3_MISC_LINT			= 0x3,
+	DPI_AF_EPF4_MISC_LINT			= 0x4,
+	DPI_AF_EPF5_MISC_LINT			= 0x5,
+	DPI_AF_EPF6_MISC_LINT			= 0x6,
+	DPI_AF_EPF7_MISC_LINT			= 0x7,
+	DPI_AF_EPF8_MISC_LINT			= 0x8,
+	DPI_AF_EPF9_MISC_LINT			= 0x9,
+	DPI_AF_EPF10_MISC_LINT			= 0xa,
+	DPI_AF_EPF11_MISC_LINT			= 0xb,
+	DPI_AF_EPF12_MISC_LINT			= 0xc,
+	DPI_AF_EPF13_MISC_LINT			= 0xd,
+	DPI_AF_EPF14_MISC_LINT			= 0xe,
+	DPI_AF_EPF15_MISC_LINT			= 0xf,
+	DPI_AF_EPF0_VF_LINT			= 0x10,
+	DPI_AF_EPF1_VF_LINT			= 0x11,
+	DPI_AF_EPF2_VF_LINT			= 0x12,
+	DPI_AF_EPF3_VF_LINT			= 0x13,
+	DPI_AF_EPF4_VF_LINT			= 0x14,
+	DPI_AF_EPF5_VF_LINT			= 0x15,
+	DPI_AF_EPF6_VF_LINT			= 0x16,
+	DPI_AF_EPF7_VF_LINT			= 0x17,
+	DPI_AF_EPF8_VF_LINT			= 0x18,
+	DPI_AF_EPF9_VF_LINT			= 0x19,
+	DPI_AF_EPF10_VF_LINT			= 0x1a,
+	DPI_AF_EPF11_VF_LINT			= 0x1b,
+	DPI_AF_EPF12_VF_LINT			= 0x1c,
+	DPI_AF_EPF13_VF_LINT			= 0x1d,
+	DPI_AF_EPF14_VF_LINT			= 0x1e,
+	DPI_AF_EPF15_VF_LINT			= 0x1f,
+	DPI_AF_RAS				= 0x20,
+	DPI_AF_NCBO_ERR_INT			= 0x21,
+	DPI_AF_RVU_INT				= 0x22,
+	DPI_AF_INT_VEC_CNT			= 0x23,
+};
+
+/* DPI MSI-X Vector Enumeration */
+enum DPI_LF_INT_VEC_E {
+	DPI_LF_RING_INT =	0x0,
+	DPI_LF_RING_ERR =	0x1,
+};
+
 /* DPI Transfer Type Enumeration */
 enum DPI_LF_XTYPE_E {
 	OUTBOUND	=	0x0,
 	INBOUND		=	0x1,
 	INTERNAL	=	0x2,
 	EXTERNAL	=	0x3,
+};
+
+struct dpi_irq_data {
+	struct rvu *rvu;
+	u64 intr_status;
+	int vec_num;
+	int blkaddr;
 };
 
 /* DPI mbox IDs (range 0xC000 - 0xCFFF) */
@@ -190,7 +264,9 @@ M(DPI_LF_CHAN_TBL_SEL,	0xc009, dpi_lf_chan_tbl_sel,			\
 M(DPI_LF_CHAN_TBL_ENA_DIS, 0xc00a, dpi_lf_chan_tbl_ena_dis,		\
 				dpi_lf_chan_tbl_ena_dis_req, msg_rsp)	\
 M(DPI_LF_CHAN_TBL_UPDATE, 0xc00b, dpi_lf_chan_tbl_update,		\
-				dpi_lf_chan_tbl_update_req, msg_rsp)
+				dpi_lf_chan_tbl_update_req, msg_rsp)	\
+M(DPI_MSIX_OFFSET,	0xc00c, dpi_msix_offset, msg_req,		\
+				dpi_msix_offset_rsp)
 
 enum {
 #define M(_name, _id, _1, _2, _3) MBOX_MSG_ ## _name = _id,
@@ -299,6 +375,14 @@ struct dpi_lf_chan_tbl_update_req {
 	u16 idx_offset; /* Channel table off */
 	u16 num_entries; /* Num of valid indexes from tbl_offset */
 	u16 chan_tbl;
+};
+
+struct dpi_msix_offset_rsp {
+	struct mbox_msghdr hdr;
+	u16  dpilfs;
+	u16  dpilf_msixoff[MAX_RVU_BLKLF_CNT];
+	u16  dpi1_lfs;
+	u16  dpi1_lf_msixoff[MAX_RVU_BLKLF_CNT];
 };
 
 #define M(_name, _id, fn_name, req, rsp)				\
