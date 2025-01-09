@@ -63,7 +63,7 @@ struct xdp_rxq_info {
 	u32 queue_index;
 	u32 reg_state;
 	struct xdp_mem_info mem;
-	unsigned int napi_id;
+	UEK_KABI_DEPRECATE(unsigned int, napi_id)
 	u32 frag_size;
 	UEK_KABI_RESERVE(1)
 	UEK_KABI_RESERVE(2)
