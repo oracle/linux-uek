@@ -1997,19 +1997,15 @@ if [ $1 -eq 0 ] && \
     CUR_DEFAULT=$(grep '^DEFAULTKERNEL' /etc/sysconfig/kernel | cut -d= -f2);\
     THIS_KERNEL="kernel%{?variant}%{?-v:%{!-o:-}%{-v*}}-core";\
     NEW_DEFAULT="";\
-    if [ "%{?variant}" == "-uek" ] && \
-       [ "${CUR_DEFAULT}" == "${THIS_KERNEL}" ] && \
-       [ "$(uname -i)" == "x86_64" ]; then\
-        NEW_DEFAULT="kernel-core";\
-    elif [ "%{?variant}" != "-uek" ] && \
-         [ "${CUR_DEFAULT}" == "${THIS_KERNEL}" ]; then\
-        if rpm -q kernel-uek-core >& /dev/null; then\
+    if [ "${CUR_DEFAULT}" == "${THIS_KERNEL}" ]; then\
+        if [ "%{?variant}" != "-uek" ] && \
+          rpm -q kernel-uek-core >& /dev/null; then\
             NEW_DEFAULT="kernel-uek-core";\
         elif rpm -q kernel-ueknano >& /dev/null; then\
             NEW_DEFAULT="kernel-ueknano";\
         elif rpm -q kernel-uek >& /dev/null; then\
             NEW_DEFAULT="kernel-uek";\
-        else\
+        elif [ "$(uname -i)" == "x86_64" ]; then\
             NEW_DEFAULT="kernel-core";\
         fi\
     fi;\
