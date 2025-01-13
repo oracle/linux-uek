@@ -56,3 +56,17 @@ spinlock_t *rfoe_common_get_psm_queue_lock(u8 psm_queue_id)
 
 	return NULL;
 }
+
+__be16 rfoe_common_get_protocol(struct sk_buff *skb)
+{
+	__be16 proto;
+	int network_depth = 0;
+	struct ethhdr *eth;
+
+	eth = (struct ethhdr *)skb->data;
+	proto = eth->h_proto;
+	if (eth_type_vlan(eth->h_proto))
+		proto = __vlan_get_protocol(skb, eth->h_proto, &network_depth);
+
+	return htons(proto);
+}

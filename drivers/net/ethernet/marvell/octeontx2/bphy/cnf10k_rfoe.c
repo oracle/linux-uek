@@ -1074,16 +1074,16 @@ static netdev_tx_t cnf10k_rfoe_ptp_xmit(struct sk_buff *skb,
 	struct netdev_queue *txq;
 	unsigned int pkt_len = 0;
 	unsigned long flags;
-	struct ethhdr *eth;
 	int psm_queue_id;
+	__be16 proto;
 
 	job_cfg = &priv->tx_ptp_job_cfg;
 	memset(&tx_mem, 0, sizeof(tx_mem));
 
 	txq = netdev_get_tx_queue(netdev, skb_get_queue_mapping(skb));
 
-	eth = (struct ethhdr *)skb->data;
-	if (htons(eth->h_proto) == ETH_P_ECPRI)
+	proto = rfoe_common_get_protocol(skb);
+	if (proto == ETH_P_ECPRI)
 		pkt_stats_type = PACKET_TYPE_ECPRI;
 
 	spin_lock_irqsave(&job_cfg->lock, flags);
@@ -1209,15 +1209,15 @@ static netdev_tx_t cnf10k_rfoe_eth_start_xmit(struct sk_buff *skb,
 	struct netdev_queue *txq;
 	unsigned int pkt_len = 0;
 	unsigned long flags;
-	struct ethhdr *eth;
+	__be16 proto;
 
 	if (skb_get_queue_mapping(skb) == PTP_QUEUE_ID)
 		return cnf10k_rfoe_ptp_xmit(skb, netdev);
 
-	eth = (struct ethhdr *)skb->data;
+	proto = rfoe_common_get_protocol(skb);
 	job_cfg = &priv->rfoe_common->tx_oth_job_cfg;
 	pkt_type = PACKET_TYPE_OTHER;
-	if (htons(eth->h_proto) == ETH_P_ECPRI)
+	if (proto == ETH_P_ECPRI)
 		pkt_type = PACKET_TYPE_ECPRI;
 
 	txq = netdev_get_tx_queue(netdev, qidx);

@@ -109,6 +109,37 @@ static size_t otx2_rfoe_debugfs_get_buffer_size(void);
 static void otx2_rfoe_debugfs_create(struct otx2_rfoe_drv_ctx *ctx);
 static void otx2_rfoe_debugfs_remove(struct otx2_rfoe_drv_ctx *ctx);
 
+static void otx2_rfoe_update_tx_drop_stats(struct otx2_rfoe_ndev_priv *priv,
+					   int pkt_type)
+{
+	if (pkt_type == PACKET_TYPE_ECPRI) {
+		priv->stats.ecpri_tx_dropped++;
+		priv->last_tx_dropped_jiffies = jiffies;
+	} else if (pkt_type == PACKET_TYPE_PTP) {
+		priv->stats.ptp_tx_dropped++;
+		priv->last_tx_ptp_dropped_jiffies = jiffies;
+	} else {
+		priv->stats.tx_dropped++;
+		priv->last_tx_dropped_jiffies = jiffies;
+	}
+}
+
+static void otx2_rfoe_update_tx_stats(struct otx2_rfoe_ndev_priv *priv,
+				      int pkt_type, int len)
+{
+	if (pkt_type == PACKET_TYPE_ECPRI) {
+		priv->stats.ecpri_tx_packets++;
+		priv->last_tx_jiffies = jiffies;
+	} else if (pkt_type == PACKET_TYPE_PTP) {
+		priv->stats.ptp_tx_packets++;
+		priv->last_tx_ptp_jiffies = jiffies;
+	} else {
+		priv->stats.tx_packets++;
+		priv->last_tx_jiffies = jiffies;
+	}
+	priv->stats.tx_bytes += len;
+}
+
 static void otx2_rfoe_set_rx_state(struct otx2_rfoe_ndev_priv *priv,
 				   bool enabled)
 {
@@ -953,6 +984,8 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 	unsigned long flags;
 	struct ethhdr *eth;
 	bool psm_queue_ena;
+	int pkt_stats_type;
+	__be16 proto = rfoe_common_get_protocol(skb);
 
 	if (unlikely(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP)) {
 		if (!priv->tx_hw_tstamp_en) {
@@ -966,12 +999,18 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 		}
 	} else {
 		job_cfg = &priv->rfoe_common->tx_oth_job_cfg;
-		eth = (struct ethhdr *)skb->data;
-		if (ntohs(eth->h_proto) == ETH_P_ECPRI)
+		if (proto == ETH_P_ECPRI)
 			pkt_type = PACKET_TYPE_ECPRI;
 		else
 			pkt_type = PACKET_TYPE_OTHER;
 	}
+
+	if (proto == ETH_P_1588)
+		pkt_stats_type = PACKET_TYPE_PTP;
+	else if (proto == ETH_P_ECPRI)
+		pkt_stats_type = PACKET_TYPE_ECPRI;
+	else
+		pkt_stats_type = PACKET_TYPE_OTHER;
 
 	spin_lock_irqsave(&job_cfg->lock, flags);
 
@@ -980,8 +1019,7 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 			  "%s {rfoe%d lmac%d} invalid intf mode, drop pkt\n",
 			  netdev->name, priv->rfoe_num, priv->lmac_id);
 		/* update stats */
-		priv->stats.tx_dropped++;
-		priv->last_tx_dropped_jiffies = jiffies;
+		otx2_rfoe_update_tx_drop_stats(priv, pkt_stats_type);
 		goto exit;
 	}
 
@@ -991,17 +1029,7 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 			  netdev->name, priv->rfoe_num,
 			  priv->lmac_id);
 		/* update stats */
-		if (pkt_type == PACKET_TYPE_ECPRI) {
-			priv->stats.ecpri_tx_dropped++;
-			priv->last_tx_dropped_jiffies = jiffies;
-		} else if (pkt_type == PACKET_TYPE_PTP) {
-			priv->stats.ptp_tx_dropped++;
-			priv->last_tx_ptp_dropped_jiffies = jiffies;
-		} else {
-			priv->stats.tx_dropped++;
-			priv->last_tx_dropped_jiffies = jiffies;
-		}
-
+		otx2_rfoe_update_tx_drop_stats(priv, pkt_stats_type);
 		goto exit;
 	}
 
@@ -1011,17 +1039,7 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 			  netdev->name, priv->rfoe_num,
 			  priv->lmac_id);
 		/* update stats */
-		if (pkt_type == PACKET_TYPE_ECPRI) {
-			priv->stats.ecpri_tx_dropped++;
-			priv->last_tx_dropped_jiffies = jiffies;
-		} else if (pkt_type == PACKET_TYPE_PTP) {
-			priv->stats.ptp_tx_dropped++;
-			priv->last_tx_ptp_dropped_jiffies = jiffies;
-		} else {
-			priv->stats.tx_dropped++;
-			priv->last_tx_dropped_jiffies = jiffies;
-		}
-
+		otx2_rfoe_update_tx_drop_stats(priv, pkt_stats_type);
 		goto exit;
 	}
 
@@ -1046,12 +1064,7 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 		netif_stop_queue(netdev);
 		dev_kfree_skb_any(skb);
 		/* update stats */
-		if (pkt_type == PACKET_TYPE_ECPRI)
-			priv->stats.ecpri_tx_dropped++;
-		else
-			priv->stats.tx_dropped++;
-
-		priv->last_tx_dropped_jiffies = jiffies;
+		otx2_rfoe_update_tx_drop_stats(priv, pkt_stats_type);
 
 		mod_timer(&priv->tx_timer, jiffies + msecs_to_jiffies(100));
 		spin_unlock_irqrestore(&job_cfg->lock, flags);
@@ -1068,12 +1081,7 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 		netif_stop_queue(netdev);
 		dev_kfree_skb_any(skb);
 		/* update stats */
-		if (pkt_type == PACKET_TYPE_ECPRI)
-			priv->stats.ecpri_tx_dropped++;
-		else
-			priv->stats.tx_dropped++;
-
-		priv->last_tx_dropped_jiffies = jiffies;
+		otx2_rfoe_update_tx_drop_stats(priv, pkt_stats_type);
 
 		mod_timer(&priv->tx_timer, jiffies + msecs_to_jiffies(100));
 		spin_unlock_irqrestore(&job_cfg->lock, flags);
@@ -1105,23 +1113,20 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 			if (priv->ptp_skb_list.count >= max_ptp_req) {
 				netif_err(priv, tx_err, netdev,
 					  "ptp list full, dropping pkt\n");
-				priv->stats.ptp_tx_dropped++;
-				priv->last_tx_ptp_dropped_jiffies = jiffies;
+				otx2_rfoe_update_tx_drop_stats(priv, pkt_stats_type);
 				goto exit;
 			}
 			/* allocate and add ptp req to queue */
 			ts_skb = kmalloc(sizeof(*ts_skb), GFP_ATOMIC);
 			if (!ts_skb) {
-				priv->stats.ptp_tx_dropped++;
-				priv->last_tx_ptp_dropped_jiffies = jiffies;
+				otx2_rfoe_update_tx_drop_stats(priv, pkt_stats_type);
 				goto exit;
 			}
 			ts_skb->skb = skb;
 			list_add_tail(&ts_skb->list, &priv->ptp_skb_list.list);
 			priv->ptp_skb_list.count++;
 			skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
-			priv->stats.ptp_tx_packets++;
-			priv->stats.tx_bytes += skb->len;
+			otx2_rfoe_update_tx_stats(priv, pkt_stats_type, skb->len);
 			/* sw timestamp */
 			skb_tx_timestamp(skb);
 			goto exit;	/* submit the packet later */
@@ -1167,17 +1172,7 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 	otx2_rfoe_submit_job_to_psm(priv, job_cfg, job_entry);
 
 	/* update stats */
-	if (pkt_type == PACKET_TYPE_ECPRI) {
-		priv->stats.ecpri_tx_packets++;
-		priv->last_tx_jiffies = jiffies;
-	} else if (pkt_type == PACKET_TYPE_PTP) {
-		priv->stats.ptp_tx_packets++;
-		priv->last_tx_ptp_jiffies = jiffies;
-	} else {
-		priv->stats.tx_packets++;
-		priv->last_tx_jiffies = jiffies;
-	}
-	priv->stats.tx_bytes += skb->len;
+	otx2_rfoe_update_tx_stats(priv, pkt_stats_type, skb->len);
 
 	/* increment queue index */
 	job_cfg->q_idx++;

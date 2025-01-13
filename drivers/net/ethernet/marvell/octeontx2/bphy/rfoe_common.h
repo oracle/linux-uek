@@ -270,4 +270,5 @@ struct bcn_ptp_cfg {
 
 spinlock_t *rfoe_common_get_psm_queue_lock(u8 psm_queue_id);
 
+__be16 rfoe_common_get_protocol(struct sk_buff *skb);
 #endif
