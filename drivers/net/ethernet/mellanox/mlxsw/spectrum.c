@@ -3892,7 +3892,6 @@ static struct mlxsw_driver mlxsw_sp1_driver = {
 	.resources_register		= mlxsw_sp1_resources_register,
 	.kvd_sizes_get			= mlxsw_sp_kvd_sizes_get,
 	.ptp_transmitted		= mlxsw_sp_ptp_transmitted,
-	.txhdr_len			= MLXSW_TXHDR_LEN,
 	.profile			= &mlxsw_sp1_config_profile,
 	.sdq_supports_cqe_v2		= false,
 };
@@ -3928,7 +3927,6 @@ static struct mlxsw_driver mlxsw_sp2_driver = {
 	.trap_policer_counter_get	= mlxsw_sp_trap_policer_counter_get,
 	.resources_register		= mlxsw_sp2_resources_register,
 	.ptp_transmitted		= mlxsw_sp_ptp_transmitted,
-	.txhdr_len			= MLXSW_TXHDR_LEN,
 	.profile			= &mlxsw_sp2_config_profile,
 	.sdq_supports_cqe_v2		= true,
 };
@@ -3964,7 +3962,6 @@ static struct mlxsw_driver mlxsw_sp3_driver = {
 	.trap_policer_counter_get	= mlxsw_sp_trap_policer_counter_get,
 	.resources_register		= mlxsw_sp2_resources_register,
 	.ptp_transmitted		= mlxsw_sp_ptp_transmitted,
-	.txhdr_len			= MLXSW_TXHDR_LEN,
 	.profile			= &mlxsw_sp2_config_profile,
 	.sdq_supports_cqe_v2		= true,
 };
@@ -3998,7 +3995,6 @@ static struct mlxsw_driver mlxsw_sp4_driver = {
 	.trap_policer_counter_get	= mlxsw_sp_trap_policer_counter_get,
 	.resources_register		= mlxsw_sp2_resources_register,
 	.ptp_transmitted		= mlxsw_sp_ptp_transmitted,
-	.txhdr_len			= MLXSW_TXHDR_LEN,
 	.profile			= &mlxsw_sp4_config_profile,
 	.sdq_supports_cqe_v2		= true,
 };
