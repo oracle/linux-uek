@@ -92,6 +92,7 @@ kernel/drivers/input/keyboard/gpio_keys.ko
 kernel/drivers/input/matrix-keymap.ko
 kernel/drivers/input/serio/ambakmi.ko
 kernel/drivers/mailbox/arm_mhu.ko
+kernel/drivers/mailbox/mvl_mhu.ko
 kernel/drivers/mailbox/arm_mhu_db.ko
 kernel/drivers/mailbox/platform_mhu.ko
 kernel/drivers/md/dm-crypt.ko
