@@ -754,6 +754,7 @@ static int sriov_init(struct pci_dev *dev, int pos)
 	struct pci_sriov *iov;
 	struct resource *res;
 	struct pci_dev *pdev;
+	u32 sriovbars[PCI_SRIOV_NUM_BARS];
 
 	pci_read_config_word(dev, pos + PCI_SRIOV_CTRL, &ctrl);
 	if (ctrl & PCI_SRIOV_CTRL_VFE) {
@@ -790,6 +791,10 @@ found:
 	if (!iov)
 		return -ENOMEM;
 
+	/* Sizing SR-IOV BARs with VF Enable cleared - no decode */
+	__pci_size_stdbars(dev, PCI_SRIOV_NUM_BARS,
+			   pos + PCI_SRIOV_BAR, sriovbars);
+
 	nres = 0;
 	for (i = 0; i < PCI_SRIOV_NUM_BARS; i++) {
 		res = &dev->resource[i + PCI_IOV_RESOURCES];
@@ -801,7 +806,8 @@ found:
 			bar64 = (res->flags & IORESOURCE_MEM_64) ? 1 : 0;
 		else
 			bar64 = __pci_read_base(dev, pci_bar_unknown, res,
-						pos + PCI_SRIOV_BAR + i * 4);
+						pos + PCI_SRIOV_BAR + i * 4,
+						&sriovbars[i]);
 		if (!res->flags)
 			continue;
 		if (resource_size(res) & (PAGE_SIZE - 1)) {
