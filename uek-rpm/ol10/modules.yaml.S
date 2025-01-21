@@ -187,7 +187,6 @@ modules-core:
 - ixgbe
 - ixgbevf
 - khazad
-- lib80211
 - libarc4
 - libceph
 - libchacha
@@ -1837,9 +1836,6 @@ modules:
 - k8temp
 - leds-mlxcpld
 - leds-ss4200
-- lib80211_crypt_ccmp
-- lib80211_crypt_tkip
-- lib80211_crypt_wep
 - lp
 - lp3971
 - lpc_sch
