@@ -1054,7 +1054,17 @@ struct perf_output_handle {
 	struct perf_buffer		*rb;
 	unsigned long			wakeup;
 	unsigned long			size;
-	u64				aux_flags;
+#ifdef __GENKSYMS__
+	u64			aux_flags;	/* perf_aux_output*() */
+#else
+	union {
+		u64			flags;		/* perf_output*() */
+		u64			aux_flags;	/* perf_aux_output*() */
+		struct {
+			u64		skip_read : 1;
+		};
+	};
+#endif
 	union {
 		void			*addr;
 		unsigned long		head;
