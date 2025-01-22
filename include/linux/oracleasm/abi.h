@@ -77,6 +77,7 @@
  * Defines
  */
 
+#define ASM_ABI_VERSION_V2_1		3UL
 #define ASM_ABI_VERSION_V2		2UL
 #define ASM_ABI_VERSION			ASM_ABI_VERSION_V2
 
@@ -189,6 +190,7 @@ enum oracleasm_feature_integrity {
 	ASM_IFMT_DISK                   = 8,    /* Supports DIF */
 	ASM_IFMT_ATO                    = 16,   /* Supports app tag */
 	ASM_INTEGRITY_QDF_MASK		= 0xff, /* Querydisk feature mask */
+	ASM_FEATURE_LOGICAL		= 0x100,/* Per-IOC block size */
 };
 
 enum oracleasm_feature_blk_size {

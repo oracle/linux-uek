@@ -1200,7 +1200,16 @@ static int asm_submit_io(struct file *file,
 
 	bdev = d->d_bdev;
 
-	r->r_count = ioc->rcount_asm_ioc * asm_block_size(bdev);
+	/*
+	 * Determine I/O size in bytes.
+	 *
+	 * If ASM_IOC_LOGICAL is set, use logical block size. Otherwise, the
+	 * size depends on the 'use_logical_block_size' module option.
+	 */
+	if (ioc->flags_asm_ioc & ASM_IOC_LOGICAL)
+		r->r_count = ioc->rcount_asm_ioc * bdev_logical_block_size(bdev);
+	else
+		r->r_count = ioc->rcount_asm_ioc * asm_block_size(bdev);
 
 	if (!ioc->buffer_asm_ioc ||
 	    (ioc->buffer_asm_ioc != (unsigned long)ioc->buffer_asm_ioc) ||
@@ -1276,11 +1285,16 @@ static int asm_submit_io(struct file *file,
 
 	trace_bio(r->r_bio, "map");
 
-	/* Block layer always uses 512-byte sector addressing,
-	 * regardless of logical and physical block size.
+	/*
+	 * Block layer always uses 512-byte sector addressing, regardless of
+	 * logical and physical block size.
 	 */
-	r->r_bio->bi_iter.bi_sector =
-		ioc->first_asm_ioc * (asm_block_size(bdev) >> 9);
+	if (ioc->flags_asm_ioc & ASM_IOC_LOGICAL)
+		r->r_bio->bi_iter.bi_sector =
+			ioc->first_asm_ioc * (bdev_logical_block_size(bdev) >> 9);
+	else
+		r->r_bio->bi_iter.bi_sector =
+			ioc->first_asm_ioc * (asm_block_size(bdev) >> 9);
 
 	if (integrity) {
 		ret = asm_integrity_map(&it, r, rw == READ);
@@ -2024,6 +2038,9 @@ static ssize_t asmfs_svc_query_version(struct file *file, char *buf, size_t size
 	if (abi_info->ai_type != ASMOP_QUERY_VERSION)
 		goto out;
 
+	/* Driver supports ASM_IO_LOGICAL */
+	abi_info->ai_version = ASM_ABI_VERSION_V2_1;
+
 	ret = 0;
 
 out:
@@ -2148,6 +2165,7 @@ static ssize_t asmfs_svc_query_disk(struct file *file, char *buf, size_t size)
 		lsecsz = ilog2(bdev_logical_block_size(bdev));
 		qd_info->qd_feature |= lsecsz << ASM_LSECSZ_SHIFT
 			& ASM_LSECSZ_MASK;
+		qd_info->qd_feature |= ASM_FEATURE_LOGICAL;
 	}
 
 	trace_querydisk(bdev, qd_info);

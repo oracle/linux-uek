@@ -82,7 +82,8 @@
 #define ASM_GETKEY      0x04    /* get value of one or more disk keys */
 #define ASM_SETKEY      0x05    /* set value of one or more disk keys */
 
-
+/* Flags */
+#define ASM_IOC_LOGICAL 0x1000
 
 /*
  * Disk/Fence Keys - (unused as yet)
