@@ -82,6 +82,7 @@
 #define NIX_GINT_INT_W1S                       (0x208)
 #define ALTAF_RDY				BIT_ULL(1)
 
+#define ALTAF_FLR				BIT_ULL(0)
 /* NPC registers */
 #define NPC_AF_INTFX_EXTRACTORX_CFG(a, b) \
 	(0x20c000ull | (a) << 16 | (b) << 8)

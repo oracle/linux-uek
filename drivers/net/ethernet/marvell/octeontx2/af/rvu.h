@@ -615,6 +615,13 @@ struct channel_fwdata {
 	u8 reserved[RVU_CHANL_INFO_RESERVED];
 };
 
+/**
+ * @flr_pf_bmap	: Bitmap to represent PF for which interrupt is triggered.
+ *			Set by kernel and cleared by firmware.
+ * @flr_vf_bmap	: Bitmap to represent VF for which interrupt is triggered.
+ *			Set by kernel and cleared by firmware.
+ * @reserved	: Reserved for future use.
+ */
 struct altaf_intr_notify {
 	unsigned long flr_pf_bmap[2];
 	unsigned long flr_vf_bmap[2];
