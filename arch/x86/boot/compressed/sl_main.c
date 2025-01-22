@@ -455,6 +455,7 @@ asmlinkage __visible void sl_main(void *bootparams)
 	void *txt_heap;
 	struct efi_info efi_temp;
 	u32 cmdline_len, data_count;
+	u32 cmd_line_ptr;
 
 	/*
 	 * Ensure loadflags do not indicate a secure launch was done
@@ -497,6 +498,10 @@ asmlinkage __visible void sl_main(void *bootparams)
 	memcpy(&e820_temp[0], &bp->e820_table[0], E820_ARRAY_SIZE);
 	memset(&bp->e820_table[0], 0, E820_ARRAY_SIZE);
 
+	/* Custom step to skip the measurement of hdr.cmd_line_prt, part 1 */
+	cmd_line_ptr = boot_params->hdr.cmd_line_ptr;
+	boot_params->hdr.cmd_line_ptr = 0;
+
 	/*
 	 * In case the command line length in the boot params is the actual
 	 * size, zero it temporarily.
@@ -517,6 +522,8 @@ asmlinkage __visible void sl_main(void *bootparams)
 	bp->hdr.cmdline_size = cmdline_len;
 	memcpy(&bp->e820_table[0], &e820_temp[0], E820_ARRAY_SIZE);
 	bp->efi_info = efi_temp;
+
+	boot_params->hdr.cmd_line_ptr = cmd_line_ptr;
 
 	/* Routine to locate and ignore special uroot parameter */
 	cmdline_len =
