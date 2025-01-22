@@ -1708,7 +1708,7 @@ enum {
 	Opt_discard, Opt_nodiscard, Opt_init_itable, Opt_noinit_itable,
 	Opt_max_dir_size_kb, Opt_nojournal_checksum, Opt_nombcache,
 	Opt_no_prefetch_block_bitmaps, Opt_mb_optimize_scan,
-	Opt_emergency_ro,
+	Opt_emergency_ro, Opt_shutdown,
 #ifdef CONFIG_EXT4_DEBUG
 	Opt_fc_debug_max_replay, Opt_fc_debug_force
 #endif
@@ -1812,6 +1812,7 @@ static const match_table_t tokens = {
 	{Opt_no_prefetch_block_bitmaps, "no_prefetch_block_bitmaps"},
 	{Opt_mb_optimize_scan, "mb_optimize_scan=%d"},
 	{Opt_emergency_ro, "emergency_ro"},
+	{Opt_shutdown, "shutdown"},
 	{Opt_removed, "check=none"},	/* mount option from ext2/3 */
 	{Opt_removed, "nocheck"},	/* mount option from ext2/3 */
 	{Opt_removed, "reservation"},	/* mount option from ext2/3 */
@@ -2172,6 +2173,7 @@ static int handle_mount_opt(struct super_block *sb, char *opt, int token,
 		sb->s_flags &= ~SB_LAZYTIME;
 		return 1;
 	case Opt_emergency_ro:
+	case Opt_shutdown:
 		return 1;
 	case Opt_inlinecrypt:
 #ifdef CONFIG_FS_ENCRYPTION_INLINE_CRYPT
@@ -2671,6 +2673,9 @@ static int _ext4_show_options(struct seq_file *seq, struct super_block *sb,
 
 	if (ext4_emergency_ro(sb))
 		SEQ_OPTS_PUTS("emergency_ro");
+
+	if (ext4_forced_shutdown(sb))
+		SEQ_OPTS_PUTS("shutdown");
 
 	ext4_show_quota_options(seq, sb);
 	return 0;
