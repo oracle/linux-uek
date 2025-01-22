@@ -2707,12 +2707,7 @@ static int ext4_writepages(struct address_space *mapping,
 	/*
 	 * If the filesystem has aborted, it is read-only, so return
 	 * right away instead of dumping stack traces later on that
-	 * will obscure the real source of the problem.  We test
-	 * EXT4_MF_FS_ABORTED instead of sb->s_flag's SB_RDONLY because
-	 * the latter could be true if the filesystem is mounted
-	 * read-only, and in that case, ext4_writepages should
-	 * *never* be called, so if that ever happens, we would want
-	 * the stack trace.
+	 * will obscure the real source of the problem.
 	 */
 	ret = ext4_emergency_state(mapping->host->i_sb);
 	if (unlikely(ret))
