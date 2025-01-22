@@ -98,6 +98,7 @@ modules-core:
 - dm-zero
 - dns_resolver
 - drm
+- drm_client_lib
 - drm_kms_helper
 - drm_shmem_helper
 - drm_ttm_helper
@@ -221,6 +222,7 @@ modules-core:
 - mgag200
 - mhi
 - michael_mic
+- mii
 - mip6
 - mlx4_core
 - mlx4_en
@@ -593,7 +595,6 @@ modules-core:
 - mce-inject
 - md-cluster
 - mei-me
-- mii
 - mlx5_fwctl
 - mptbase
 - mptctl
@@ -611,6 +612,7 @@ modules-core:
 - poly1305-x86_64
 - power
 - ptp_kvm
+- ptp_vmclock
 - sb_edac
 - sd_mod
 - serpent-avx-x86_64
@@ -1500,7 +1502,6 @@ modules:
 - mdio-regmap
 - mdio-xgene
 - mediatek-cpufreq-hw
-- mediatek-ge
 - megaraid
 - meson-gxl
 - meson_gxbb_wdt
@@ -1510,6 +1511,8 @@ modules:
 - mt7530
 - mt7530-mdio
 - mt7530-mmio
+- mtk-ge
+- mtk-phy-lib
 - mux-adg792a
 - mux-core
 - mux-gpio
@@ -1530,8 +1533,8 @@ modules:
 - ofpart
 - optee
 - optee-rng
-- pci-pwrctl-core
-- pci-pwrctl-pwrseq
+- pci-pwrctrl-core
+- pci-pwrctrl-pwrseq
 - pcie-brcmstb
 - pcs-lynx
 - pcs-mtk-lynxi
@@ -1767,6 +1770,8 @@ modules:
 - hp-bioscfg
 - hp-wmi
 - hp_accel
+- hsmp_acpi
+- hsmp_common
 - i2c-amd756
 - i2c-amd8111
 - i2c-cbus-gpio
@@ -1811,23 +1816,23 @@ modules:
 - int3403_thermal
 - int340x_thermal_zone
 - intel-hid
+- intel-oaktrail
 - intel-rng
 - intel-rst
 - intel-smartconnect
+- intel-tpmi_power_domains
 - intel-uncore-frequency
 - intel-uncore-frequency-common
 - intel-uncore-frequency-tpmi
 - intel-vbtn
+- intel-vsec
+- intel-vsec_tpmi
 - intel-wmi-thunderbolt
 - intel_ips
-- intel_oaktrail
 - intel_pmc_core
 - intel_pmc_core_pltdrv
 - intel_rapl_tpmi
 - intel_soc_dts_iosf
-- intel_tpmi_power_domains
-- intel_vsec
-- intel_vsec_tpmi
 - isdnhdlc
 - isst_tpmi
 - isst_tpmi_core
@@ -1839,6 +1844,7 @@ modules:
 - l1oip
 - leds-mlxcpld
 - leds-ss4200
+- libaesgcm
 - lp
 - lp3971
 - lpc_sch
@@ -2486,6 +2492,7 @@ modules-desktop:
 - hid-betopff
 - hid-cmedia
 - hid-corsair
+- hid-corsair-void
 - hid-dr
 - hid-elan
 - hid-elecom
@@ -2832,6 +2839,7 @@ modules-desktop:
 - sdhci-acpi
 - sdhci-pci
 - sdhci-pltfm
+- sdhci-uhs2
 - sdio_uart
 - serial_ir
 - serio_raw
@@ -3309,6 +3317,7 @@ modules-desktop:
 - usbtv
 - v4l2-mem2mem
 - vc4
+- videobuf2-dma-contig
 - vl6180
 - vsp1
 - zd1301
@@ -3386,6 +3395,7 @@ modules-desktop:
 - snd-rn-pci-acp3x
 - snd-soc-acpi
 - snd-soc-acpi-intel-match
+- snd-soc-acpi-intel-sdca-quirks
 - snd-soc-avs
 - snd-soc-bdw-rt286
 - snd-soc-catpt
@@ -3423,6 +3433,7 @@ modules-desktop:
 - snd-soc-rt700
 - snd-soc-rt711
 - snd-soc-rt715
+- snd-soc-sdca
 - snd-soc-sof_rt5682
 - snd-soc-ssm4567
 - snd-soc-sst-atom-hifi2-platform
