@@ -778,7 +778,6 @@ modules:
 - e1000
 - e1000e
 - ecryptfs
-- eeprom_93cx6
 - efa
 - emc1403
 - emc6w201
@@ -1254,7 +1253,6 @@ modules:
 - stm_p_sys-t
 - stmmac
 - stmmac-platform
-- sundance
 - tcm_fc
 - team
 - team_mode_activebackup
@@ -1400,6 +1398,7 @@ modules:
 - dwmac-sun8i
 - dwmac-sunxi
 - echo
+- eeprom_93cx6
 - esas2r
 - esp_scsi
 - et131x
@@ -1702,7 +1701,6 @@ modules:
 - classmate-laptop
 - cmdlinepart
 - compal-laptop
-- cpu5wdt
 - dax_cxl
 - dcdbas
 - de2104x
@@ -1765,13 +1763,11 @@ modules:
 - hp-wmi
 - hp_accel
 - i2c-amd756
-- i2c-amd756-s4882
 - i2c-amd8111
 - i2c-cbus-gpio
 - i2c-isch
 - i2c-ismt
 - i2c-mlxcpld
-- i2c-nforce2-s4985
 - i2c-ocores
 - i2c-parport
 - i2c-robotfuzz-osif
