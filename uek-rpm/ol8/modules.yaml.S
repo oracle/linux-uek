@@ -455,6 +455,7 @@ modules-core:
 - virtio_pci
 - virtio_pci_legacy_dev
 - virtio_pci_modern_dev
+- virtio-vfio-pci
 - virtio_pmem
 - virtio_scsi
 - virtio_vdpa
@@ -631,7 +632,6 @@ modules-core:
 - vboxguest
 - vboxsf
 - vboxvideo
-- virtio-vfio-pci
 - vmd
 - vmw_balloon
 - vmw_pvrdma
