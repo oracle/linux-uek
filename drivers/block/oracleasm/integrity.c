@@ -46,7 +46,7 @@
 #include "integrity.h"
 #include "trace.h"
 
-u32 asm_integrity_format(struct block_device *bdev)
+u32 asm_integrity_format(struct block_device *bdev, bool use_logical)
 {
 	struct blk_integrity *bi = bdev_get_integrity(bdev);
 	unsigned int lbs = bdev_logical_block_size(bdev);
@@ -56,14 +56,23 @@ u32 asm_integrity_format(struct block_device *bdev)
 	if (!bi)
 		return 0;
 
-	if (lbs == 512 && pbs == 512)
-		format = ASM_IMODE_512_512;
-	else if (lbs == 512 && pbs == 4096)
-		format = ASM_IMODE_512_4K;
-	else if (lbs == 4096 && pbs == 4096)
-		format = ASM_IMODE_4K_4K;
-	else
-		return 0;
+	if (use_logical) {
+		if (lbs == 512)
+			format = ASM_IMODE_512_512;
+		else if (lbs == 4096)
+			format = ASM_IMODE_4K_4K;
+		else
+			return 0;
+	} else {
+		if (lbs == 512 && pbs == 512)
+			format = ASM_IMODE_512_512;
+		else if (lbs == 512 && pbs == 4096)
+			format = ASM_IMODE_512_4K;
+		else if (lbs == 4096 && pbs == 4096)
+			format = ASM_IMODE_4K_4K;
+		else
+			return 0;
+	}
 
 	if (bi->flags & BLK_INTEGRITY_DEVICE_CAPABLE)
 		format |= ASM_IFMT_DISK;
@@ -81,7 +90,8 @@ u32 asm_integrity_format(struct block_device *bdev)
 } /* asm_integrity_format */
 
 
-int asm_integrity_check(struct oracleasm_integrity_v2 *it, struct block_device *bdev)
+int asm_integrity_check(struct oracleasm_integrity_v2 *it, struct block_device *bdev,
+	bool use_logical)
 {
 	unsigned int dev_format;
 
@@ -103,7 +113,8 @@ int asm_integrity_check(struct oracleasm_integrity_v2 *it, struct block_device *
 	if (it->it_flags & ASM_IFLAG_FORMAT_NOCHECK)
 		return 0;
 
-	dev_format = asm_integrity_format(bdev) & ASM_INTEGRITY_HANDLE_MASK;
+	dev_format = asm_integrity_format(bdev, use_logical)
+		& ASM_INTEGRITY_HANDLE_MASK;
 
 	if (!dev_format)
 		return -EINVAL;

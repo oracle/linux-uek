@@ -1232,7 +1232,7 @@ static int asm_submit_io(struct file *file,
 			goto out_error;
 		}
 
-		if (asm_integrity_check(&it, bdev) < 0) {
+		if (asm_integrity_check(&it, bdev, use_logical_block_size) < 0) {
 			ret = -EINVAL;
 			goto out_error;
 		}
@@ -2159,8 +2159,8 @@ static ssize_t asmfs_svc_query_disk(struct file *file, char *buf, size_t size)
 
 	qd_info->qd_max_sectors = compute_max_sectors(bdev);
 	qd_info->qd_hardsect_size = asm_block_size(bdev);
-	qd_info->qd_feature = asm_integrity_format(bdev) &
-		ASM_INTEGRITY_QDF_MASK;
+	qd_info->qd_feature = asm_integrity_format(bdev, use_logical_block_size)
+		& ASM_INTEGRITY_QDF_MASK;
 	if (use_logical_block_size == false) {
 		lsecsz = ilog2(bdev_logical_block_size(bdev));
 		qd_info->qd_feature |= lsecsz << ASM_LSECSZ_SHIFT
@@ -2400,7 +2400,8 @@ static ssize_t asmfs_svc_query_handle(struct file *file, char *buf, size_t size)
 
 	qh_info->qh_max_sectors = compute_max_sectors(bdev);
 	qh_info->qh_hardsect_size = asm_block_size(bdev);
-	qh_info->qh_feature = asm_integrity_format(bdev) & ASM_INTEGRITY_QDF_MASK;
+	qh_info->qh_feature = asm_integrity_format(bdev, use_logical_block_size)
+		& ASM_INTEGRITY_QDF_MASK;
 	if (use_logical_block_size == false) {
 		lsecsz = ilog2(bdev_logical_block_size(bdev));
 		qh_info->qh_feature |= lsecsz << ASM_LSECSZ_SHIFT
