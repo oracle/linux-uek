@@ -18,3 +18,4 @@ rvu_nicpf-$(CONFIG_MACSEC) += cn10k_macsec.o
 rvu_nicpf-$(CONFIG_XFRM_OFFLOAD) += cn10k_ipsec.o
 
 ccflags-y += -I$(srctree)/drivers/net/ethernet/marvell/octeontx2/af
+ccflags-y += -I$(srctree)/drivers/soc/marvell/rvu_af_extn

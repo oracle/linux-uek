@@ -114,6 +114,27 @@ static void otx2vf_vfaf_mbox_handler(struct work_struct *work)
 	}
 }
 
+static int otx2_mbox_up_handler_sdp_rings_update(struct otx2_nic *vf,
+						 struct sdp_rings_cfg *msg,
+						 struct msg_rsp *rsp)
+{
+	struct net_device *netdev = vf->netdev;
+	struct sdp_vf_cfg *cfg = &vf->sdp_cfg;
+
+	if (msg->flags & SDP_RING_F_FREE) {
+		netif_carrier_off(netdev);
+		netif_tx_stop_all_queues(netdev);
+		return 0;
+	}
+
+	cfg->nr_rings = msg->nr_rings;
+	memcpy(cfg->sq2chan_map, msg->sq2chan_map, sizeof(cfg->sq2chan_map));
+
+	schedule_work(&vf->reset_task);
+
+	return 0;
+}
+
 static int otx2vf_process_mbox_msg_up(struct otx2_nic *vf,
 				      struct mbox_msghdr *req)
 {
@@ -154,6 +175,20 @@ static int otx2vf_process_mbox_msg_up(struct otx2_nic *vf,
 		err = otx2_mbox_up_handler_cgx_ptp_rx_info(vf,
 							   (struct cgx_ptp_rx_info_msg *)req
 							   , rsp);
+		return err;
+	case MBOX_MSG_SDP_RINGS_UPDATE:
+		rsp = (struct msg_rsp *)otx2_mbox_alloc_msg(&vf->mbox.mbox_up,
+						0, sizeof(struct msg_rsp));
+		if (!rsp)
+			return -ENOMEM;
+
+		rsp->hdr.id = MBOX_MSG_SDP_RINGS_UPDATE;
+		rsp->hdr.sig = OTX2_MBOX_RSP_SIG;
+		rsp->hdr.pcifunc = req->pcifunc;
+		rsp->hdr.rc = 0;
+		err = otx2_mbox_up_handler_sdp_rings_update(vf,
+							    (struct sdp_rings_cfg *)req
+							    , rsp);
 		return err;
 	default:
 		otx2_reply_invalid_msg(&vf->mbox.mbox_up, 0, 0, req->id);
@@ -414,7 +449,8 @@ static int otx2vf_open(struct net_device *netdev)
 
 	/* LBKs do not receive link events so tell everyone we are up here */
 	vf = netdev_priv(netdev);
-	if (is_otx2_lbkvf(vf->pdev) || is_otx2_sdpvf(vf->pdev)) {
+	if (is_otx2_lbkvf(vf->pdev) ||
+	    (is_otx2_sdpvf(vf->pdev) && !is_cn20k(vf->pdev))) {
 		pr_info("%s NIC Link is UP\n", netdev->name);
 		netif_carrier_on(netdev);
 		netif_tx_start_all_queues(netdev);
@@ -524,9 +560,15 @@ static void otx2vf_reset_task(struct work_struct *work)
 	rtnl_lock();
 
 	if (netif_running(vf->netdev)) {
+		netif_carrier_off(vf->netdev);
+		netif_tx_stop_all_queues(vf->netdev);
+
 		otx2vf_stop(vf->netdev);
 		vf->reset_count++;
 		otx2vf_open(vf->netdev);
+
+		netif_carrier_on(vf->netdev);
+		netif_tx_start_all_queues(vf->netdev);
 	}
 
 	rtnl_unlock();

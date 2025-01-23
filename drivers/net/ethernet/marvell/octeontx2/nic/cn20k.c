@@ -663,6 +663,9 @@ static int cn20k_sq_aq_init(void *dev, u16 qidx, u8 chan_offset, u16 sqb_aura)
 {
 	struct nix_cn20k_aq_enq_req *aq;
 	struct otx2_nic *pfvf = dev;
+	struct sdp_vf_cfg *cfg;
+
+	cfg = &pfvf->sdp_cfg;
 
 	/* Get memory to put this msg */
 	aq = otx2_mbox_alloc_msg_nix_cn20k_aq_enq(&pfvf->mbox);
@@ -676,6 +679,10 @@ static int cn20k_sq_aq_init(void *dev, u16 qidx, u8 chan_offset, u16 sqb_aura)
 	aq->sq.smq = otx2_get_smq_idx(pfvf, qidx);
 	aq->sq.smq_rr_weight = mtu_to_dwrr_weight(pfvf, pfvf->tx_max_pktlen);
 	aq->sq.default_chan = pfvf->hw.tx_chan_base + chan_offset;
+	/* For SDP, transmit channel to use is informed by AF via mailbox message */
+	if (is_otx2_sdpvf(pfvf->pdev))
+		aq->sq.default_chan = cfg->sq2chan_map[qidx % cfg->nr_rings];
+
 	aq->sq.sqe_stype = NIX_STYPE_STF; /* Cache SQB */
 	aq->sq.sqb_aura = sqb_aura;
 	aq->sq.sq_int_ena = NIX_SQINT_BITS;
