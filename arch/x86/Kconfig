@@ -1334,6 +1334,7 @@ config MICROCODE_INTEL
 config MICROCODE_AMD
 	bool "AMD microcode loading support"
 	depends on MICROCODE
+	select CRYPTO_LIB_SHA256
 	select FW_LOADER
 	---help---
 	  If you select this option, microcode patch loading support for AMD
