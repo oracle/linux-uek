@@ -1171,7 +1171,9 @@ void page_pool_disable_direct_recycling(struct page_pool *pool)
 
 	napi_assert_will_not_race(pool->p.napi);
 
+	mutex_lock(&page_pools_lock);
 	WRITE_ONCE(pool->p.napi, NULL);
+	mutex_unlock(&page_pools_lock);
 }
 EXPORT_SYMBOL(page_pool_disable_direct_recycling);
 
