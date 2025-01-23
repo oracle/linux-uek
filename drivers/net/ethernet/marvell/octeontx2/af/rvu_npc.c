@@ -1920,8 +1920,8 @@ void npc_load_kpu_profile(struct rvu *rvu)
 
 		ret = npc_apply_custom_kpu(rvu, profile, true);
 		kfree(rvu->kpu_fwdata);
-		rvu->kpu_fwdata_sz = 0;
 		if (ret) {
+			rvu->kpu_fwdata_sz = 0;
 			npc_prepare_default_kpu(rvu, profile);
 			goto load_image_fwdb;
 		}
