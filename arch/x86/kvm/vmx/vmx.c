@@ -7661,6 +7661,9 @@ int vmx_vm_init(struct kvm *kvm)
 			break;
 		}
 	}
+
+	if (enable_pml)
+		kvm->arch.cpu_dirty_log_size = PML_LOG_NR_ENTRIES;
 	return 0;
 }
 
@@ -8513,9 +8516,6 @@ __init int vmx_hardware_setup(void)
 	 */
 	if (!enable_ept || !enable_ept_ad_bits || !cpu_has_vmx_pml())
 		enable_pml = 0;
-
-	if (!enable_pml)
-		vt_x86_ops.cpu_dirty_log_size = 0;
 
 	if (!cpu_has_vmx_preemption_timer())
 		enable_preemption_timer = false;
