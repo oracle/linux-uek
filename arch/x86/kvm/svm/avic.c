@@ -1213,6 +1213,21 @@ bool avic_hardware_setup(void)
 	}
 
 	if (boot_cpu_has(X86_FEATURE_AVIC)) {
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		if (!boot_cpu_has(X86_FEATURE_X2AVIC) &&
+		    static_key_enabled(&on_oci)) {
+			/*
+			 * For certain platforms with known errata, avoid
+			 * enabling the AVIC feature even if firmware advertises
+			 * the capability.
+			 * As a proxy for a platform identifier, use the fact
+			 * that only Zen4 and newer platforms have X2AVIC
+			 * capability, and avoid enabling AVIC on earlier ones.
+			 */
+			pr_notice("Disabling AVIC on pre-Zen4 processors\n");
+			return false;
+		}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 		pr_info("AVIC enabled\n");
 	} else if (force_avic) {
 		/*
