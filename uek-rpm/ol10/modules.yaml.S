@@ -2615,6 +2615,7 @@ modules-desktop:
 - mt312
 - mt352
 - mtouch
+- mxc4005
 - mxl111sf-demod
 - mxl111sf-tuner
 - mxl5005s
