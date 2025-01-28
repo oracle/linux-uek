@@ -118,6 +118,7 @@ kernel/net/bridge/netfilter/nft_meta_bridge.ko
 kernel/net/bridge/netfilter/nft_reject_bridge.ko
 kernel/net/ceph/libceph.ko
 kernel/net/core/failover.ko
+kernel/net/core/pktgen.ko
 kernel/net/dns_resolver/dns_resolver.ko
 kernel/net/ipv4/gre.ko
 kernel/net/ipv4/ip_gre.ko
