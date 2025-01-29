@@ -122,7 +122,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define with_64k_ps %{?_with_64k_ps: %{_with_64k_ps}} %{?!_with_64k_ps: 0}
 %define with_64k_ps_debug %{?_with_64k_ps_debug: %{_with_64k_ps_debug}} %{?!_with_64k_ps_debug: 0}
 # build embedded/bluefield3 kernel
-%define with_embedded %{?_without_embedded: 0} %{?!_without_embedded: 1}
+%define with_embedded %{?_with_embedded: 1} %{?!_with_embedded: 0}
 %define with_embedded_debug 0
 %if %{with_embedded}
 %define with_embedded_debug %{with_debug}
