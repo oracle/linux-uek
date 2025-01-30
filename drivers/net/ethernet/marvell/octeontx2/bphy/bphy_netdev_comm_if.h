@@ -47,4 +47,9 @@ struct bphy_psm_queue_mask {
 	u64 mask[MAX_PSM_QUEUE_MASKS];
 };
 
+struct ts_force_steps_cfg {
+	u8	ecpri_ts_steps; /* 0: default, 1: 1-step, 2: 2-steps */
+	u8	other_ts_steps; /* 0: default, 1: 1-step, 2: 2-steps */
+};
+
 #endif

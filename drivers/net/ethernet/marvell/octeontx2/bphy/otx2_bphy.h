@@ -54,6 +54,10 @@
 					_IOW(OTX2_RFOE_IOCTL_BASE, 0x0E, \
 						struct bphy_psm_queue_mask)
 
+#define OTX2_IOCTL_TS_FORCE_STEPS_CFG \
+					_IOW(OTX2_RFOE_IOCTL_BASE, 0x0F, \
+						struct ts_force_steps_cfg)
+
 //#define ASIM		/* ASIM environment */
 
 #define OTX2_BPHY_MHAB_INST		3
@@ -84,6 +88,7 @@ struct otx2_bphy_cdev_priv {
 #define ODP_INTF_CFG_CPRI		BIT(1)
 	u32				flags;
 	struct bphy_psm_queue_mask	psm_queue_masks;
+	struct ts_force_steps_cfg	ts_force_steps;
 };
 
 #endif

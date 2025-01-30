@@ -867,6 +867,20 @@ static long otx2_bphy_cdev_ioctl(struct file *filp, unsigned int cmd,
 		ret = 0;
 		goto out;
 	}
+	case OTX2_IOCTL_TS_FORCE_STEPS_CFG:
+	{
+		if (copy_from_user(&cdev->ts_force_steps, (void __user *)arg,
+				   sizeof(struct ts_force_steps_cfg))) {
+			dev_err(cdev->dev, "copy from user fault\n");
+			ret = -EFAULT;
+			goto out;
+		}
+		dev_info(cdev->dev, "ecpri-ts-steps = %u, other-ts-steps = %u\n",
+			 cdev->ts_force_steps.ecpri_ts_steps,
+			 cdev->ts_force_steps.other_ts_steps);
+		ret = 0;
+		goto out;
+	}
 	default:
 	{
 		dev_info(cdev->dev, "ioctl: no match\n");

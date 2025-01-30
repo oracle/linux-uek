@@ -1075,6 +1075,7 @@ static netdev_tx_t cnf10k_rfoe_ptp_xmit(struct sk_buff *skb,
 	unsigned int pkt_len = 0;
 	unsigned long flags;
 	int psm_queue_id;
+	u8 ts_steps_count = priv->cdev_priv->ts_force_steps.other_ts_steps;
 	__be16 proto;
 
 	job_cfg = &priv->tx_ptp_job_cfg;
@@ -1083,8 +1084,13 @@ static netdev_tx_t cnf10k_rfoe_ptp_xmit(struct sk_buff *skb,
 	txq = netdev_get_tx_queue(netdev, skb_get_queue_mapping(skb));
 
 	proto = rfoe_common_get_protocol(skb);
-	if (proto == ETH_P_ECPRI)
+	if (proto == ETH_P_ECPRI) {
+		ts_steps_count = priv->cdev_priv->ts_force_steps.ecpri_ts_steps;
 		pkt_stats_type = PACKET_TYPE_ECPRI;
+	}
+
+	if (!ts_steps_count)
+		ts_steps_count = (priv->ptp_onestep_sync ? 1 : 2);
 
 	spin_lock_irqsave(&job_cfg->lock, flags);
 
@@ -1133,7 +1139,7 @@ static netdev_tx_t cnf10k_rfoe_ptp_xmit(struct sk_buff *skb,
 	}
 
 	/* check if one-step is enabled */
-	if (priv->ptp_onestep_sync) {
+	if (ts_steps_count == 1) {
 		bool read_tx_ts = false;
 
 		if (cnf10k_is_ptp_sync_ecpri_req(skb, &proto_data_offset,
