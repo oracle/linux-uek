@@ -1150,8 +1150,11 @@ const char *get_link(struct nameidata *nd)
 	if (!res) {
 		const char * (*get)(struct dentry *, struct inode *,
 				struct delayed_call *);
-		get = inode->i_op->get_link;
+		get = READ_ONCE(inode->i_op->get_link);
 		if (nd->flags & LOOKUP_RCU) {
+			/* Does the inode still match the associated dentry? */
+			if (unlikely(read_seqcount_retry(&dentry->d_seq, last->seq)))
+				return ERR_PTR(-ECHILD);
 			res = get(NULL, inode, &last->done);
 			if (res == ERR_PTR(-ECHILD)) {
 				if (unlikely(unlazy_walk(nd)))
