@@ -112,6 +112,28 @@ void rds_queue_work(struct rds_conn_path *cp,
 }
 EXPORT_SYMBOL_GPL(rds_queue_work);
 
+void __rds_queue_delayed_work_on(int cpu, struct workqueue_struct *wq,
+				 struct delayed_work *dwork,
+				 unsigned long delay)
+{
+	if (!delay || cpu == WORK_CPU_UNBOUND) {
+		queue_delayed_work_on(cpu, wq, dwork, delay);
+		return;
+	}
+
+	if (cpus_read_trylock()) {
+		if (cpu_online(cpu)) {
+			queue_delayed_work_on(cpu, wq, dwork, delay);
+			cpus_read_unlock();
+			return;
+		}
+		cpus_read_unlock();
+	}
+
+	queue_delayed_work(wq, dwork, delay);
+}
+EXPORT_SYMBOL_GPL(__rds_queue_delayed_work_on);
+
 void rds_queue_delayed_work(struct rds_conn_path *cp,
 			    struct workqueue_struct *wq,
 			    struct delayed_work *dwork,
@@ -125,7 +147,7 @@ void rds_queue_delayed_work(struct rds_conn_path *cp,
 
 	if (cp && cp->cp_conn->c_trans->conn_preferred_cpu) {
 		cpu = cp->cp_conn->c_trans->conn_preferred_cpu(cp->cp_conn, false);
-		queue_delayed_work_on(cpu, wq, dwork, delay);
+		__rds_queue_delayed_work_on(cpu, wq, dwork, delay);
 	} else
 		queue_delayed_work(wq, dwork, delay);
 }
@@ -140,7 +162,7 @@ void rds_queue_delayed_work_on(struct rds_conn_path *cp,
 {
 	trace_rds_queue_work(cp ? cp->cp_conn : NULL, cp, wq, &dwork->work,
 			     delay, reason);
-	queue_delayed_work_on(cpu, wq, dwork, delay);
+	__rds_queue_delayed_work_on(cpu, wq, dwork, delay);
 }
 EXPORT_SYMBOL_GPL(rds_queue_delayed_work_on);
 
