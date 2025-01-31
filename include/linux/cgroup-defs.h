@@ -72,9 +72,6 @@ enum {
 
 	/* Cgroup is frozen. */
 	CGRP_FROZEN,
-
-	/* Control group has to be killed. */
-	CGRP_KILL,
 };
 
 /* cgroup_root->flags */
@@ -487,6 +484,9 @@ struct cgroup {
 
 	/* Used to store internal freezer state */
 	struct cgroup_freezer_state freezer;
+
+	/* sequence number for cgroup.kill, serialized by css_set_lock. */
+	UEK_KABI_FILL_HOLE(unsigned int kill_seq)
 
 	UEK_KABI_RESERVE(1)
 	UEK_KABI_RESERVE(2)
