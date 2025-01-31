@@ -1183,6 +1183,10 @@ void rds_queue_delayed_work_on(struct rds_conn_path *cp, int cpu,
 			       struct workqueue_struct *wq,
 			       struct delayed_work *dwork,
 			       unsigned long delay, char *reason);
+void __rds_queue_delayed_work_on(int cpu, struct workqueue_struct *wq,
+				 struct delayed_work *dwork,
+				 unsigned long delay);
+
 void rds_mod_delayed_work(struct rds_conn_path *cp,
 			  struct workqueue_struct *wq,
 			  struct delayed_work *dwork,
