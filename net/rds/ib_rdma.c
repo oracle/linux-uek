@@ -645,7 +645,7 @@ static void rds_ib_queue_delayed_work_on(struct rds_ib_device *rds_ibdev,
 					 char *reason)
 {
 	trace_rds_ib_queue_work(rds_ibdev, wq, &dwork->work, delay, reason);
-	queue_delayed_work_on(cpu, wq, dwork, delay);
+	__rds_queue_delayed_work_on(cpu, wq, dwork, delay);
 }
 
 static void rds_ib_queue_cancel_work(struct rds_ib_device *rds_ibdev,
