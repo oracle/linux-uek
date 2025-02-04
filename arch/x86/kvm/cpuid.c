@@ -1168,6 +1168,7 @@ void kvm_set_cpu_caps(void)
 		SYNTHESIZED_F(SBPB),
 		SYNTHESIZED_F(IBPB_BRTYPE),
 		SYNTHESIZED_F(SRSO_NO),
+		F(SRSO_USER_KERNEL_NO),
 	);
 
 	kvm_cpu_cap_init(CPUID_8000_0021_ECX,
