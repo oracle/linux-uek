@@ -4060,6 +4060,14 @@ int rvu_mbox_handler_npc_cn20k_mcam_alloc_and_write_entry(struct rvu *rvu,
 	return 0;
 }
 
+static int rvu_npc_get_base_steer_rule_type(struct rvu *rvu, u16 pcifunc)
+{
+	if (is_lbk_vf(rvu, pcifunc))
+		return NIXLF_PROMISC_ENTRY;
+
+	return NIXLF_UCAST_ENTRY;
+}
+
 int rvu_mbox_handler_npc_cn20k_read_base_steer_rule(struct rvu *rvu,
 						    struct msg_req *req,
 						    struct npc_cn20k_mcam_read_base_rule_rsp *rsp)
@@ -4069,6 +4077,7 @@ int rvu_mbox_handler_npc_cn20k_read_base_steer_rule(struct rvu *rvu,
 	u16 pcifunc = req->hdr.pcifunc;
 	u8 intf, enable, hw_prio;
 	struct rvu_pfvf *pfvf;
+	int rl_type;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0)
@@ -4094,9 +4103,11 @@ int rvu_mbox_handler_npc_cn20k_read_base_steer_rule(struct rvu *rvu,
 		mutex_unlock(&mcam->lock);
 		goto out;
 	}
+
+	rl_type = rvu_npc_get_base_steer_rule_type(rvu, pcifunc);
+
 	/* Read the default ucast entry if there is no pkt steering rule */
-	index = npc_get_nixlf_mcam_index(rvu, mcam, pcifunc, nixlf,
-					 NIXLF_UCAST_ENTRY);
+	index = npc_get_nixlf_mcam_index(rvu, mcam, pcifunc, nixlf, rl_type);
 read_entry:
 	/* Read the mcam entry */
 	npc_cn20k_read_mcam_entry(rvu, blkaddr, index,
