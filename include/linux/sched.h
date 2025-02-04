@@ -327,6 +327,7 @@ extern void io_schedule_finish(int token);
 extern long io_schedule_timeout(long timeout);
 extern void io_schedule(void);
 extern void hrtick_local_start(u64 delay);
+extern void update_stat_preempt_delayed(struct task_struct *t);
 
 /**
  * struct prev_cputime - snapshot of system and user cputime
@@ -538,6 +539,7 @@ struct sched_statistics {
 	u64				nr_wakeups_affine_attempts;
 	u64				nr_wakeups_passive;
 	u64				nr_wakeups_idle;
+	u64				nr_preempt_delay_granted;
 
 #ifdef CONFIG_SCHED_CORE
 	u64				core_forceidle_sum;
