@@ -385,9 +385,7 @@ static bool req_need_defer(struct io_kiocb *req, u32 seq)
 static void io_clean_op(struct io_kiocb *req)
 {
 	if (req->flags & REQ_F_BUFFER_SELECTED) {
-		spin_lock(&req->ctx->completion_lock);
 		io_kbuf_drop(req);
-		spin_unlock(&req->ctx->completion_lock);
 	}
 
 	if (req->flags & REQ_F_NEED_CLEANUP) {
