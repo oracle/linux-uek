@@ -341,7 +341,7 @@ struct io_ring_ctx {
 
 	spinlock_t		completion_lock;
 
-	struct list_head	io_buffers_comp;
+	UEK_KABI_DEPRECATE(struct list_head, io_buffers_comp)
 	struct list_head	cq_overflow_list;
 	struct io_hash_table	cancel_table;
 
@@ -361,7 +361,7 @@ struct io_ring_ctx {
 	unsigned int		file_alloc_start;
 	unsigned int		file_alloc_end;
 
-	struct list_head	io_buffers_cache;
+	UEK_KABI_DEPRECATE(struct list_head, io_buffers_cache)
 
 	/* Keep this last, we don't need it for the fast path */
 	struct wait_queue_head		poll_wq;
