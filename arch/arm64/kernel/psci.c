@@ -14,12 +14,14 @@
 #include <linux/delay.h>
 #include <linux/psci.h>
 #include <linux/mm.h>
+#include <linux/mmu_context.h>
 
 #include <uapi/linux/psci.h>
 
 #include <asm/cpu_ops.h>
 #include <asm/errno.h>
 #include <asm/smp_plat.h>
+#include "cpu-reset.h"
 
 static int __init cpu_psci_cpu_init(unsigned int cpu)
 {
@@ -74,6 +76,18 @@ static void cpu_psci_cpu_die(unsigned int cpu)
 	u32 state = PSCI_POWER_STATE_TYPE_POWER_DOWN <<
 		    PSCI_0_2_POWER_STATE_TYPE_SHIFT;
 
+#if defined(CONFIG_PENSANDO_SOC_PCIE)
+	unsigned long entry, kpcimgr_get_entry(unsigned long, unsigned int);
+	/*
+	 * Ask kpcimgr if it would like to borrow a cpu.
+	 * It will return its polling function
+	 * address for the cpu it's borrowing, and for
+	 * all the others, it will return 0.
+	 */
+	entry = kpcimgr_get_entry(0, cpu);
+	if (entry)
+		cpu_soft_restart(entry, 0, 0, cpu);
+#endif
 	psci_ops.cpu_off(state);
 }
 

@@ -38,6 +38,8 @@
 #define K_ENTRY_CMD_READ 8
 #define K_ENTRY_CMD_WRITE 9
 #define K_ENTRY_GET_VERSION 10
+#define K_ENTRY_FEATURES 11
+#define K_ENTRY_REBOOT 12
 #define K_NUM_ENTRIES 16
 
 struct kpcimgr_entry_points_t {
@@ -47,6 +49,14 @@ struct kpcimgr_entry_points_t {
 	void *code_end;
 	void *entry_point[K_NUM_ENTRIES];
 };
+
+/* feature bits */
+#define FLAG_PSCI_CPU_RELEASE	BIT_ULL(0)
+#define FLAG_PSCI		BIT_ULL(1)
+#define FLAG_GUEST		BIT_ULL(2)
+#define FLAG_PSCI_CPU_RELEASED	BIT_ULL(3)
+#define FLAG_KEXEC		BIT_ULL(4)
+#define FLAG_FUTURE_FEATURE	BIT_ULL(15)
 
 /* upcalls */
 #define WAKE_UP_EVENT_QUEUE 1
@@ -63,6 +73,19 @@ struct kpcimgr_entry_points_t {
 /* max number of memory ranges from device tree */
 #define NUM_MEMRANGES 32
 
+/* trace_data[] elements */
+#define FIRST_CALL_TIME 0
+#define FIRST_SEQNUM 1
+#define LAST_SEQNUM 2
+#define TAG 3
+#define PA_BAD_CNT 4
+#define NUM_CHECKS 5
+#define NUM_CALLS 6
+#define NUM_PENDINGS 7
+#define LAST_CALL_TIME 8
+#define EARLY_POLL 9
+#define MAX_DATA 10
+
 struct kpcimgr_state_t {
 	/* essential state */
 	int valid;
@@ -76,7 +99,16 @@ struct kpcimgr_state_t {
 	/* timestamps and general trace data */
 	long kexec_time;
 	long driver_start_time;
-	unsigned long trace_data[NUM_PHASES][DATA_SIZE];
+	union {
+		unsigned long reserved_trace_data[NUM_PHASES][DATA_SIZE];
+		struct {
+			unsigned long trace_data[NUM_PHASES][MAX_DATA];
+			long kstate_paddr;
+			long uart_paddr;
+			int features;
+			int features_valid;
+		};
+	};
 
 	/* virtual addresses */
 	void *uart_addr;
@@ -124,19 +156,6 @@ struct kpcimgr_state_t {
 typedef struct kpcimgr_state_t kstate_t;
 _Static_assert(sizeof(kstate_t) < SHMEM_KSTATE_SIZE,
 	       "kstate size insufficient");
-
-/* trace_data[] elements */
-#define FIRST_CALL_TIME 0
-#define FIRST_SEQNUM 1
-#define LAST_SEQNUM 2
-#define TAG 3
-#define PA_BAD_CNT 4
-#define NUM_CHECKS 5
-#define NUM_CALLS 6
-#define NUM_PENDINGS 7
-#define LAST_CALL_TIME 8
-#define EARLY_POLL 9
-#define MAX_DATA 10
 
 #define KPCIMGR_DEV "/dev/kpcimgr"
 #define KPCIMGR_NAME "kpcimgr"

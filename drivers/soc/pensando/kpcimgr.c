@@ -15,12 +15,62 @@
 
 #include "kpcimgr_api.h"
 #include "penpcie_dev.h"
+#include <linux/of_fdt.h>
+#include <linux/delay.h>
+#include <asm/cpu_ops.h>
 
 MODULE_LICENSE("GPL");
 
 kstate_t *kstate;
 DEFINE_SPINLOCK(kpcimgr_lock);
 static DECLARE_WAIT_QUEUE_HEAD(event_queue);
+
+/*
+ * get_uart_addr
+ *
+ * The uart physical address changes if we're booted as a virtual machine,
+ * so we must dig it out of the device tree
+ */
+static long get_uart_addr(void)
+{
+	struct device_node *dn;
+	struct resource res;
+	int err;
+
+	dn = of_find_node_by_path("/soc/serial@4800");
+	if (!dn)
+		dn = of_find_node_by_path("/sbsa-uart@5000");
+	if (!dn) {
+		pr_info("KPCIMGR: found no uarts\n");
+		return 0;
+	}
+	err = of_address_to_resource(dn, 0, &res);
+	if (err) {
+		pr_info("KPCIMGR: could not read uart resource\n");
+		return 0;
+	}
+	pr_info("KPCIMGR: uart found at %llx/%llx\n", res.start, resource_size(&res));
+	return (long)res.start;
+}
+
+/*
+ * Simple function to tell us if we're booted as a virtual machine.
+ * There is probably a nicer way, but this method is simple: check for
+ * the existence of a "passthrough" node in the device tree.
+ */
+static void *booted_as_guest(void)
+{
+	return of_find_node_by_path("/passthrough");
+}
+
+/*
+ * Simple check for PSCI is to just look for a "psci" node in the
+ * device tree.
+ */
+static void *booted_with_psci(void)
+{
+	return of_find_node_by_path("/psci");
+}
 
 void wake_up_event_queue(void)
 {
@@ -32,7 +82,7 @@ void wake_up_event_queue(void)
  * any arm instructions that affect the memory cache.
  * The memory used for kstate/code/etc is uncached.
  */
-void *kpci_memset(void *s, int c, size_t n)
+static void *kpci_memset(void *s, int c, size_t n)
 {
 	if (((uintptr_t)s & 0x3) == 0 && (n & 0x3) == 0) {
 		u32 *p;
@@ -71,7 +121,7 @@ void *kpci_memcpy(void *dst, const void *src, size_t n)
 /*
  * Normal poll
  */
-void kpcimgr_normal_poll(void)
+static void kpcimgr_normal_poll(void)
 {
 	void (*poll_fn)(kstate_t *, int, int);
 	kstate_t *ks = get_kstate();
@@ -268,8 +318,8 @@ int contains_external_refs(struct module *mod, void *code_end)
 
 			sprint_symbol(code_loc, insn_addr);
 			sprint_symbol(target_ref, target);
-			pr_err("Found call to %s at %s\n",
-			       target_ref, code_loc);
+			pr_err("Found call to %s at %s (offset 0x%lx)\n",
+			       target_ref, code_loc, insn_addr - start);
 
 			call_count++;
 		}
@@ -285,7 +335,8 @@ int contains_external_refs(struct module *mod, void *code_end)
 			sprint_symbol(target_ref, target);
 			pr_err("Found approximate reference to %s at %s\n",
 			       target_ref, code_loc);
-			pr_err(" (Please check object file for exact reference)\n");
+			pr_err(" (Please check object file offset 0x%lx for exact reference)\n",
+				insn_addr - start);
 			adrp_count++;
 		}
 	}
@@ -296,6 +347,40 @@ int contains_external_refs(struct module *mod, void *code_end)
 		return 1;
 	else
 		return 0;
+}
+
+/*
+ * feature_check
+ *
+ * Ensure pciesvc library supports features we need. Currently we
+ * only are concerned with PSCI and GUEST, and in both cases we need
+ * to disallow kexec if the library doesn't know about these, otherwise
+ * it will either crash quickly or never return.
+ */
+static int feature_check(long features)
+{
+	kstate_t *ks = get_kstate();
+
+	if (!ks->have_persistent_mem)
+		return 0;
+
+	ks->features |= FLAG_KEXEC;
+	if ((ks->features & FLAG_PSCI) && (features & FLAG_PSCI) == 0) {
+		pr_err("KPCIMGR: module does not provide required PSCI support\n");
+		pr_err("KPCIMGR: kexec capability is disabled\n");
+		ks->features &= ~FLAG_KEXEC;
+	}
+
+	if ((ks->features & FLAG_GUEST) && (features & FLAG_GUEST) == 0) {
+		pr_err("KPCIMGR: module does not provide required GUEST support\n");
+		pr_err("KPCIMGR: kexec capability is disabled\n");
+		ks->features &= ~FLAG_KEXEC;
+	}
+
+	if (ks->features & FLAG_KEXEC)
+		pr_err("KPCIMGR: kexec capability enabled\n");
+
+	return 0;
 }
 
 /*
@@ -325,9 +410,10 @@ int contains_external_refs(struct module *mod, void *code_end)
 int kpcimgr_module_register(struct module *mod,
 			    struct kpcimgr_entry_points_t *ep, int relocate)
 {
+	unsigned long start_addr, iflags, module_cap;
+	void (*features)(long *modcap, long resv1, long resv2, long resv3);
 	void *code_end = ep->code_end;
 	kstate_t *ks = get_kstate();
-	unsigned long start_addr, iflags;
 	void (*init_fn)(kstate_t *ks);
 	void (*version_fn)(char **);
 	char *mod_buildtime;
@@ -355,6 +441,21 @@ int kpcimgr_module_register(struct module *mod,
 		pr_err("KPCIMGR: module '%s' too large\n", mod->name);
 		return -EFBIG;
 	}
+
+	init_fn = ep->entry_point[K_ENTRY_INIT_FN];
+	init_fn(ks);
+
+	version_fn = ep->entry_point[K_ENTRY_GET_VERSION];
+	mod_buildtime = "";
+	version_fn(&mod_buildtime);
+
+	/* Ensure the module supports PSCI if we are booted with it */
+	features = ep->entry_point[K_ENTRY_FEATURES];
+	module_cap = 0;
+	features(&module_cap, 0, 0, 0);
+
+	if (feature_check(module_cap))
+		return -EINVAL;
 
 	was_running = ks->running;
 	if (was_running) {
@@ -397,13 +498,6 @@ int kpcimgr_module_register(struct module *mod,
 		ks->code_offsets[i] = (unsigned long)ep->entry_point[i]
 			- start_addr;
 
-	init_fn = ks->code_base + ks->code_offsets[K_ENTRY_INIT_FN];
-	init_fn(ks);
-
-	version_fn = ks->code_base + ks->code_offsets[K_ENTRY_GET_VERSION];
-	mod_buildtime = "";
-	version_fn(&mod_buildtime);
-
 	pr_info("KPCIMGR: module '%s: %s', start=%lx, end=%lx, size=%d\n",
 		mod->name, mod_buildtime, start_addr,
 		start_addr + mod->core_layout.size, mod->core_layout.size);
@@ -425,6 +519,71 @@ int kpcimgr_module_register(struct module *mod,
 }
 EXPORT_SYMBOL(kpcimgr_module_register);
 
+/*
+ * check_borrowed_cpu()
+ *
+ * When we're booting up after a kexec, we might have "borrowed"
+ * a cpu to run pciesvc during the reboot. In spin table mode,
+ * the borrowed cpu monitors the spin table release address,
+ * which tells it to return to the system.
+ *
+ * In PSCI mode, we have to signal the borrowed cpu to stop
+ * executing the pciesvc code. We do this by setting
+ * FLAG_PSCI_CPU_RELEASE in ks->features, and the cpu
+ * responds by setting FLAG_PSCI_CPU_RELEASED and then
+ * executing the psci cpu_die() firmware call. In this case
+ * the system won't be able to activate the borrowed cpu
+ * during secondary cpu activation, so we do this here.
+ */
+
+void check_borrowed_cpu(kstate_t *ks)
+{
+	const struct cpu_operations *cpu_ops;
+	unsigned long start, end;
+
+	/* if not booted with psci, then nothing to do here */
+	if (!(ks->features & FLAG_PSCI))
+		return;
+
+	/* if pciesvc not running, then nothing to do here */
+	if (!ks->running)
+		return;
+
+	/* if cpu already released, then nothing to do here */
+	if (ks->features & FLAG_PSCI_CPU_RELEASED)
+		return;
+
+	cpu_ops = get_cpu_ops(ks->running);
+	pr_info("KPCIMGR: releasing borrowed CPU#%d\n", ks->running);
+
+	/* send the release signal */
+	ks->features |= FLAG_PSCI_CPU_RELEASE;
+
+	/* wait for pciesvc to respond */
+	start = jiffies;
+	end = start + msecs_to_jiffies(50);
+	do {
+		if (ks->features & FLAG_PSCI_CPU_RELEASED)
+			break;
+		cpu_relax();
+	} while (time_before(jiffies, end));
+
+	pr_info("KPCIMGR: %s response from CPU#%d after %dms\n",
+		(ks->features & FLAG_PSCI_CPU_RELEASED) ? "got" : "no",
+		ks->running, jiffies_to_msecs(jiffies - start));
+
+	/* wait until cpu makes it to the off state */
+	pr_info("KPCIMGR: returning CPU#%d to system\n", ks->running);
+	if (cpu_ops && cpu_ops->cpu_kill)
+		cpu_ops->cpu_kill(ks->running);  /* this could poll for 100ms */
+	else
+		mdelay(5);	/* 3ms consistently fails, while 4 works */
+
+	/* finally, activate the borrowed cpu */
+	add_cpu(ks->running);
+	pr_info("KPCIMGR: return of CPU#%d complete\n", ks->running);
+}
+
 static void unmap_resources(void)
 {
 	kstate_t *ks = get_kstate();
@@ -439,6 +598,9 @@ static void unmap_resources(void)
 	if (ks->uart_addr)
 		iounmap(ks->uart_addr);
 
+	if (ks->code_base && !ks->mod)
+		module_memfree(ks->code_base);
+
 	if (ks->have_persistent_mem) {
 		if (ks->persistent_base)
 			iounmap(ks->persistent_base);
@@ -451,13 +613,11 @@ static void unmap_resources(void)
 	}
 }
 
-static struct resource kstate_res;
-
 static int map_resources(struct platform_device *pfdev)
 {
 	struct device_node *dn = pfdev->dev.of_node;
-	u32 shmem_idx, hwmem_idx, kstate_idx;
-	struct resource res;
+	u32 shmem_idx, hwmem_idx, kstate_idx = -1;
+	struct resource res, kstate_res;
 	kstate_t *ks;
 	void *shmem;
 	int i, err;
@@ -528,13 +688,14 @@ static int map_resources(struct platform_device *pfdev)
 			ks->active_port = -1;
 		}
 
+		ks->kstate_paddr = kstate_res.start;
 		ks->have_persistent_mem = 1;
 		ks->shmembase = res.start;
 		ks->shmem_size = resource_size(&res);
 		pr_info("KPCIMGR: kstate mapped %llx at %lx\n",
 			kstate_res.start, (long)ks);
 
-		ks->persistent_base = ioremap(kstate_res.start + KSTATE_CODE_OFFSET,
+		ks->persistent_base = ioremap(ks->kstate_paddr + KSTATE_CODE_OFFSET,
 					      KSTATE_CODE_SIZE);
 		if (ks->persistent_base == NULL) {
 			pr_err("KPCIMGR: failed to map shmem code space\n");
@@ -542,14 +703,26 @@ static int map_resources(struct platform_device *pfdev)
 		}
 
 		if (ks->valid == KSTATE_MAGIC) {
+			check_borrowed_cpu(ks);
 			ks->code_base = module_alloc(ks->code_size);
 			if (ks->code_base == NULL) {
 				pr_err("KPCIMGR: module_alloc(%lx) failed\n",
 				       ks->code_size);
 				goto errout;
 			}
-			kpci_memcpy(ks->code_base, ks->persistent_base,
-				    ks->code_size);
+			if (ks->features_valid == KSTATE_MAGIC) {
+				kpci_memcpy(ks->code_base, ks->persistent_base, ks->code_size);
+			} else {
+				/* we were kexec'd from an old kernel, so code is at old address */
+				void *old_code = ioremap(ks->kstate_paddr + SHMEM_KSTATE_SIZE_OLD,
+							 ks->code_size);
+				if (old_code == NULL) {
+					pr_err("KPCIMGR: failed to map old code area\n");
+					goto errout;
+				}
+				kpci_memcpy(ks->code_base, old_code, ks->code_size);
+				iounmap(old_code);
+			}
 			flush_icache_range((long)ks->code_base, (long)ks->code_base + ks->code_size);
 			set_memory_x((unsigned long)ks->code_base,
 				     ks->code_size >> PAGE_SHIFT);
@@ -559,11 +732,14 @@ static int map_resources(struct platform_device *pfdev)
 	kstate = ks;
 	ks->shmemva = shmem;
 
-	ks->uart_addr = ioremap(PEN_UART, 0x1000);
+	ks->uart_paddr = get_uart_addr();
+	if (ks->uart_paddr)
+		ks->uart_addr = ioremap(ks->uart_paddr, 0x1000);
 	if (ks->uart_addr == NULL) {
-		pr_err("KPCIMGR: failed to map elba uart\n");
+		pr_err("KPCIMGR: failed to map uart@%lx\n", ks->uart_paddr);
 		goto errout;
 	}
+
 	ks->driver_start_time = read_sysreg(cntvct_el0);
 
 	ks->nranges = 0;
@@ -588,6 +764,16 @@ static int map_resources(struct platform_device *pfdev)
 			ks->hwmem_idx = ks->nranges;
 		ks->nranges++;
 	}
+
+	if (booted_as_guest())
+		ks->features |= FLAG_GUEST;
+	if (booted_with_psci())
+		ks->features |= FLAG_PSCI;
+	ks->features_valid = KSTATE_MAGIC;
+	pr_info("KPCIMGR: features guest=%s, psci=%s\n",
+		(ks->features & FLAG_GUEST)  ? "yes" : "no",
+		(ks->features & FLAG_PSCI) ? "yes" : "no");
+
 	return 0;
 
  errout:
@@ -737,12 +923,22 @@ static int kpcimgr_notify_reboot(struct notifier_block *this,
 				 void *unused)
 {
 	kstate_t *ks = get_kstate();
-	int was_running = ks->running;
+	void (*reboot_fn)(long resv0, long resv1, long resv2, long resv3);
 
 	/* stop running regardless of why a reboot is happening */
 	free_intrs(ks->pfdev);
-	if (was_running)
-		kpcimgr_stop_running();
+	if (ks->valid != KSTATE_MAGIC) {
+		pr_err("KPCIMGR: halting due to invalid kstate\n");
+		ks->valid = 0;
+		return NOTIFY_DONE;
+	}
+
+	if (!ks->running) {
+		pr_err("KPCIMGR: halting since kpcimgr not running\n");
+		ks->valid = 0;
+		return NOTIFY_DONE;
+	}
+	kpcimgr_stop_running();
 
 	if (!ks->code_base) {
 		pr_err("KPCIMGR: halting since no code is loaded\n");
@@ -756,6 +952,19 @@ static int kpcimgr_notify_reboot(struct notifier_block *this,
 		return NOTIFY_DONE;
 	}
 
+	if (!(ks->features & FLAG_KEXEC)) {
+		pr_err("KPCIMGR: halting since kexec not allowed for loaded library\n");
+		ks->valid = 0;
+		return NOTIFY_DONE;
+	}
+
+	if (ks->uart_paddr == 0) {
+		pr_err("KPCIMGR: no uart so service cannot persist\n");
+		return NOTIFY_DONE;
+	}
+	reboot_fn = (void *)ks->code_base + ks->code_offsets[K_ENTRY_REBOOT];
+	reboot_fn(0, 0, 0, 0); /* must be done before memcpy below */
+
 	/* relocate code to "persistent" memory */
 	kpci_memcpy(ks->persistent_base, ks->code_base, ks->code_size);
 
@@ -763,12 +972,12 @@ static int kpcimgr_notify_reboot(struct notifier_block *this,
 		pr_err("KPCIMGR: going down at tick %lld\n",
 		       read_sysreg(cntvct_el0));
 
-		if (was_running)
-			ks->running = 1;
+		ks->running = 1;
 
 		reset_stats(ks);
 		ks->ncalls = 0;
 		ks->kexec_time = read_sysreg(cntvct_el0);
+		ks->features &= ~(FLAG_PSCI_CPU_RELEASE | FLAG_PSCI_CPU_RELEASED);
 	}
 	return NOTIFY_DONE;
 }
@@ -863,13 +1072,23 @@ builtin_platform_driver(kpcimgr_driver);
 
 /*
  * Get entry point for pciesvc specific secondary cpu holding pen.
- * Called from arch/arm64/kernel/smp_spin_table.c
+ * Called from arch/arm64/kernel/smp_spin_table.c and
+ * arch/arm64/kernel/psci.c
+ *
  * We choose the first cpu to arrive here. They will all try
  * concurrently, but only one will be hijacked and the rest
  * will go to their default holding pens. Since the physical
  * address of kstate can no longer be derived from the physical
  * address of shmem, we need to convey kstate_paddr directly
- * to the holding pen function.
+ * to the holding pen function. This method must be kept
+ * to retain compatibility with old pciesvc library code.
+ * For newer library code, we pass the kstate paddr in via
+ * the feature() call which always occurs before the code
+ * is copied out to persistent memory. This means that kstate_paddr
+ * is part of the module's data at the time of the copy, so
+ * no further work is necessary. n.b. kpcimgr_get_entry() is called
+ * after the copy to persistent memory, so any change to the module's
+ * data won't affect the data in persistent memory.
  */
 unsigned long kpcimgr_get_entry(unsigned long old_entry, unsigned int cpu)
 {
@@ -886,7 +1105,7 @@ unsigned long kpcimgr_get_entry(unsigned long old_entry, unsigned int cpu)
 	entry_fn = ks->code_base + ks->code_offsets[K_ENTRY_HOLDING_PEN];
 
 	spin_lock(&choose_cpu_lock);
-	entry = entry_fn(old_entry, cpu, kstate_res.start);
+	entry = entry_fn(old_entry, cpu, ks->kstate_paddr);
 	spin_unlock(&choose_cpu_lock);
 
 	return entry;
