@@ -56,6 +56,7 @@ modules-core:
 - cordic
 - crc-itu-t
 - crc32_generic
+- crc32c_generic
 - crc7
 - cryptd
 - crypto_engine
