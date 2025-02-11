@@ -22,3 +22,5 @@
  */
 
 #define RDS_FEATURE(feature, date) ELFNOTE64("rds.feature-" #feature, 0, date)
+
+RDS_FEATURE(cmsg_tos, "2025-05-01");
