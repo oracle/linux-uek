@@ -1310,6 +1310,10 @@ static int rds_rm_size(struct msghdr *msg, int data_len, struct rds_iov_vector_a
 			size += sizeof(struct scatterlist);
 			break;
 
+		case RDS_CMSG_TOS:
+			/* handled by rds_get_cmsg_tos_override */
+			break;
+
 		default:
 			return -EINVAL;
 		}
@@ -1337,7 +1341,8 @@ static int rds_cmsg_send(struct rds_connection *conn, struct rds_sock *rs,
 		if (!CMSG_OK(msg, cmsg))
 			return -EINVAL;
 
-		if (cmsg->cmsg_level != SOL_RDS)
+		if (cmsg->cmsg_level != SOL_RDS ||
+		    cmsg->cmsg_type == RDS_CMSG_TOS)
 			continue;
 
 		/* Non-transport specific ancillary data should be handled
@@ -1352,6 +1357,28 @@ static int rds_cmsg_send(struct rds_connection *conn, struct rds_sock *rs,
 	}
 
 	return ret;
+}
+
+static int rds_get_cmsg_tos_override(struct msghdr *msg, int default_tos)
+{
+	int tos = default_tos;
+	struct cmsghdr *cmsg;
+
+	for_each_cmsghdr(cmsg, msg) {
+		if (!CMSG_OK(msg, cmsg))
+			return -EINVAL;
+
+		if (cmsg->cmsg_level != SOL_RDS ||
+		    cmsg->cmsg_type != RDS_CMSG_TOS)
+			continue;
+
+		if (cmsg->cmsg_len != CMSG_LEN(sizeof(u8)))
+			return -EINVAL;
+
+		tos = *(u8 *)CMSG_DATA(cmsg);
+	}
+
+	return tos;
 }
 
 static inline int rds_rdma_bytes(struct msghdr *msg, size_t *rdma_bytes)
@@ -1400,7 +1427,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	struct rds_net *rns;
 	struct in6_addr daddr;
 	__u32 scope_id = 0;
-	int namelen;
+	int namelen, tos;
 	bool no_space;
 	unsigned long flags;
 	struct rds_iov_vector_arr iov_arr = {};
@@ -1616,7 +1643,33 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	 */
 	total_payload_len += rdma_payload_len;
 
-	if (rds_check_qos_threshold(rs->rs_stats, rs->rs_tos,
+	tos = rds_get_cmsg_tos_override(msg, rs->rs_tos);
+	if (tos < 0) {
+		ret = tos;
+		reason = "CMSG parsing of TOS failed";
+		goto out;
+	}
+
+	/* This is bogus, but it's what rds_ioctl() already does:
+	 * For "RDS_TRANS_TCP" it forces "tos = 0" with "SIOCRDSSETTOS".
+	 *
+	 * But:
+	 * a) "SIOCRDSSETTOS" can be used prior to bind.
+	 *    In which case "rs_transport == NULL", and thus
+	 *    there's no forcing of "tos = 0", allowing
+	 *    for non-zero values still to be used with "RDS_TRANS_TCP".
+	 * b) Weirdly specifically calls out for "RDS_TRANS_TCP"
+	 *    (i.e. a layer violation), instead of something
+	 *    like "rs_transport->tos_supported".
+	 *
+	 * In the name of consistency, we use the same "tos = 0" hack
+	 * here for the "RDS_CMSG_TOS" override as well.
+	 */
+	if (rs->rs_transport &&
+	    rs->rs_transport->t_type == RDS_TRANS_TCP)
+		tos = 0;
+
+	if (rds_check_qos_threshold(rs->rs_stats, tos,
 				    total_payload_len)) {
 		ret = -EINVAL;
 		reason = "exceeded qos threshold";
@@ -1626,13 +1679,13 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	/* rds_conn_create has a spinlock that runs with IRQ off.
 	 * Caching the conn in the socket helps a lot. */
 	if (rs->rs_conn && ipv6_addr_equal(&rs->rs_conn->c_faddr, &daddr) &&
-	    rs->rs_tos == rs->rs_conn->c_tos) {
+	    tos == rs->rs_conn->c_tos) {
 		conn = rs->rs_conn;
 		cpath = rs->rs_conn_path;
 	} else {
 		conn = rds_conn_create_outgoing(sock_net(sock->sk),
 						&rs->rs_bound_addr, &daddr,
-						rs->rs_transport, rs->rs_tos,
+						rs->rs_transport, tos,
 						sock->sk->sk_allocation,
 						scope_id);
 		if (IS_ERR(conn)) {
