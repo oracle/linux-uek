@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2024 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2025, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -939,8 +939,8 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 		iinfo->max_send_sge = rds_ibdev->max_sge;
 		rds_ib_get_mr_info(rds_ibdev, iinfo);
 
-		iinfo->scq_irq = ib_get_vector_irqn(rds_ibdev->dev, ic->i_scq_vector);
-		iinfo->rcq_irq = ib_get_vector_irqn(rds_ibdev->dev, ic->i_rcq_vector);
+		iinfo->scq_irq = ic->i_cq_last_seen_send_irqn;
+		iinfo->rcq_irq = ic->i_cq_last_seen_recv_irqn;
 	}
 
 	iinfo->tos = conn->c_tos;
@@ -1012,8 +1012,8 @@ static int rds6_ib_conn_info_visitor(struct rds_connection *conn,
 		iinfo6->max_send_sge = rds_ibdev->max_sge;
 		rds6_ib_get_mr_info(rds_ibdev, iinfo6);
 
-		iinfo6->scq_irq = ib_get_vector_irqn(rds_ibdev->dev, ic->i_scq_vector);
-		iinfo6->rcq_irq = ib_get_vector_irqn(rds_ibdev->dev, ic->i_rcq_vector);
+		iinfo6->scq_irq = ic->i_cq_last_seen_send_irqn;
+		iinfo6->rcq_irq = ic->i_cq_last_seen_recv_irqn;
 	}
 
 	iinfo6->tos = conn->c_tos;

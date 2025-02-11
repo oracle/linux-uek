@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2021 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2025, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -576,17 +576,24 @@ static void rds_ib_cq_follow_affinity(struct rds_ib_connection *ic,
 	struct cpumask preferred_cpu_mask;
 	unsigned long flags;
 
+	/* Update i_cq_last_seen_{recv,send}_irqn before potential early return */
+	cq_vector = in_send_path ? ic->i_scq_vector : ic->i_rcq_vector;
+	irqn = ib_get_vector_irqn(ic->rds_ibdev->dev, cq_vector);
+
+	if (in_send_path)
+		ic->i_cq_last_seen_send_irqn = irqn;
+	else
+		ic->i_cq_last_seen_recv_irqn = irqn;
+
 	if (!(rds_ib_preferred_cpu & RDS_IB_PREFER_CPU_CQ))
 		return;
 
 	if (in_send_path) {
 		preferred_cpu_p = &ic->i_preferred_send_cpu;
-		cq_vector = ic->i_scq_vector;
 		cq_isolate_warned_p = &ic->i_scq_isolate_warned;
 		preferred_cpu_name = "i_preferred_send_cpu";
 	} else {
 		preferred_cpu_p = &ic->i_preferred_recv_cpu;
-		cq_vector = ic->i_rcq_vector;
 		cq_isolate_warned_p = &ic->i_rcq_isolate_warned;
 		preferred_cpu_name = "i_preferred_recv_cpu";
 	}
@@ -596,7 +603,6 @@ static void rds_ib_cq_follow_affinity(struct rds_ib_connection *ic,
 	    preferred_cpu == smp_processor_id())
 		return;
 
-	irqn = ib_get_vector_irqn(ic->rds_ibdev->dev, cq_vector);
 	if (irqn < 0)
 		return;
 
@@ -1473,6 +1479,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		ic->i_scq = NULL;
 		goto out;
 	}
+	ic->i_cq_last_seen_send_irqn = ib_get_vector_irqn(dev, ic->i_scq_vector);
 
 	rds_ib_check_cq(dev, rds_ibdev,
 			&ic->i_rcq_vector, ic->i_scq_vector,
@@ -1487,6 +1494,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		ic->i_rcq = NULL;
 		goto out;
 	}
+	ic->i_cq_last_seen_recv_irqn = ib_get_vector_irqn(dev, ic->i_rcq_vector);
 
 	ret = ib_req_notify_cq(ic->i_scq, IB_CQ_NEXT_COMP);
 	if (ret) {

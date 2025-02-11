@@ -413,6 +413,9 @@ struct rds_ib_connection {
 
 	struct delayed_work	i_cq_follow_send_affinity_w;
 	struct delayed_work	i_cq_follow_recv_affinity_w;
+
+	int			i_cq_last_seen_send_irqn;
+	int			i_cq_last_seen_recv_irqn;
 };
 
 /* This assumes that atomic_t is at least 32 bits */
