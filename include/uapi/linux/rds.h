@@ -137,6 +137,9 @@ struct rds_cmsg_rx_trace {
  * RDS_CMSG_INQ
  *	When enabled from socket options, this control message returns
  *	the pending bytes yet to be read from this receive queue.
+ * RDS_CMSG_TOS
+ *	Allows a single sender socket to be used with distinct,
+ *      per-message TOS values.
  */
 #define RDS_CMSG_RDMA_ARGS		1
 #define RDS_CMSG_RDMA_DEST		2
@@ -150,6 +153,7 @@ struct rds_cmsg_rx_trace {
 #define RDS_CMSG_ASYNC_SEND		10
 #define RDS_CMSG_RXPATH_LATENCY		11
 #define RDS_CMSG_INQ			12
+#define RDS_CMSG_TOS			14
 
 #define RDS_INFO_FIRST			10000
 #define RDS_INFO_COUNTERS		10000
