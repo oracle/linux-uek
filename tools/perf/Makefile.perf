@@ -125,8 +125,6 @@ include ../scripts/utilities.mak
 #
 # Define NO_LIBPFM4 to disable libpfm4 events extension.
 #
-# Define NO_LIBDEBUGINFOD if you do not want support debuginfod
-#
 # Set BUILD_BPF_SKEL to 0 to override BUILD_BPF_SKEL and not build BPF skeletons
 #
 # Define BUILD_NONDISTRO to enable building an linking against libbfd and
