@@ -101,12 +101,12 @@ static bool try_read_write_buf(char *ptr)
 	return try_read_buf(ptr) && try_write_buf(ptr);
 }
 
-FIXTURE(guard_pages)
+FIXTURE(guard_regions)
 {
 	unsigned long page_size;
 };
 
-FIXTURE_SETUP(guard_pages)
+FIXTURE_SETUP(guard_regions)
 {
 	struct sigaction act = {
 		.sa_handler = &handle_fatal,
@@ -120,7 +120,7 @@ FIXTURE_SETUP(guard_pages)
 	self->page_size = (unsigned long)sysconf(_SC_PAGESIZE);
 };
 
-FIXTURE_TEARDOWN(guard_pages)
+FIXTURE_TEARDOWN(guard_regions)
 {
 	struct sigaction act = {
 		.sa_handler = SIG_DFL,
@@ -131,7 +131,7 @@ FIXTURE_TEARDOWN(guard_pages)
 	sigaction(SIGSEGV, &act, NULL);
 }
 
-TEST_F(guard_pages, basic)
+TEST_F(guard_regions, basic)
 {
 	const unsigned long NUM_PAGES = 10;
 	const unsigned long page_size = self->page_size;
@@ -225,7 +225,7 @@ TEST_F(guard_pages, basic)
 }
 
 /* Assert that operations applied across multiple VMAs work as expected. */
-TEST_F(guard_pages, multi_vma)
+TEST_F(guard_regions, multi_vma)
 {
 	const unsigned long page_size = self->page_size;
 	char *ptr_region, *ptr, *ptr1, *ptr2, *ptr3;
@@ -358,7 +358,7 @@ TEST_F(guard_pages, multi_vma)
 }
 
 /* Assert that unmapping ranges does not leave guard markers behind. */
-TEST_F(guard_pages, munmap)
+TEST_F(guard_regions, munmap)
 {
 	const unsigned long page_size = self->page_size;
 	char *ptr, *ptr_new1, *ptr_new2;
@@ -396,7 +396,7 @@ TEST_F(guard_pages, munmap)
 }
 
 /* Assert that mprotect() operations have no bearing on guard markers. */
-TEST_F(guard_pages, mprotect)
+TEST_F(guard_regions, mprotect)
 {
 	const unsigned long page_size = self->page_size;
 	char *ptr;
@@ -444,7 +444,7 @@ TEST_F(guard_pages, mprotect)
 }
 
 /* Split and merge VMAs and make sure guard pages still behave. */
-TEST_F(guard_pages, split_merge)
+TEST_F(guard_regions, split_merge)
 {
 	const unsigned long page_size = self->page_size;
 	char *ptr, *ptr_new;
@@ -575,7 +575,7 @@ TEST_F(guard_pages, split_merge)
 }
 
 /* Assert that MADV_DONTNEED does not remove guard markers. */
-TEST_F(guard_pages, dontneed)
+TEST_F(guard_regions, dontneed)
 {
 	const unsigned long page_size = self->page_size;
 	char *ptr;
@@ -628,7 +628,7 @@ TEST_F(guard_pages, dontneed)
 }
 
 /* Assert that mlock()'ed pages work correctly with guard markers. */
-TEST_F(guard_pages, mlock)
+TEST_F(guard_regions, mlock)
 {
 	const unsigned long page_size = self->page_size;
 	char *ptr;
@@ -701,7 +701,7 @@ TEST_F(guard_pages, mlock)
  *
  * - Moving a mapping alone should retain markers as they are.
  */
-TEST_F(guard_pages, mremap_move)
+TEST_F(guard_regions, mremap_move)
 {
 	const unsigned long page_size = self->page_size;
 	char *ptr, *ptr_new;
@@ -748,7 +748,7 @@ TEST_F(guard_pages, mremap_move)
  * will have to remove guard pages manually to fix up (they'd have to do the
  * same if it were a PROT_NONE mapping).
  */
-TEST_F(guard_pages, mremap_expand)
+TEST_F(guard_regions, mremap_expand)
 {
 	const unsigned long page_size = self->page_size;
 	char *ptr, *ptr_new;
@@ -811,7 +811,7 @@ TEST_F(guard_pages, mremap_expand)
  * if the user were using a PROT_NONE mapping they'd have to manually fix this
  * up also so this is OK.
  */
-TEST_F(guard_pages, mremap_shrink)
+TEST_F(guard_regions, mremap_shrink)
 {
 	const unsigned long page_size = self->page_size;
 	char *ptr;
@@ -875,7 +875,7 @@ TEST_F(guard_pages, mremap_shrink)
  * Assert that forking a process with VMAs that do not have VM_WIPEONFORK set
  * retain guard pages.
  */
-TEST_F(guard_pages, fork)
+TEST_F(guard_regions, fork)
 {
 	const unsigned long page_size = self->page_size;
 	char *ptr;
@@ -930,7 +930,7 @@ TEST_F(guard_pages, fork)
  * Assert expected behaviour after we fork populated ranges of anonymous memory
  * and then guard and unguard the range.
  */
-TEST_F(guard_pages, fork_cow)
+TEST_F(guard_regions, fork_cow)
 {
 	const unsigned long page_size = self->page_size;
 	char *ptr;
@@ -1001,7 +1001,7 @@ TEST_F(guard_pages, fork_cow)
  * Assert that forking a process with VMAs that do have VM_WIPEONFORK set
  * behave as expected.
  */
-TEST_F(guard_pages, fork_wipeonfork)
+TEST_F(guard_regions, fork_wipeonfork)
 {
 	const unsigned long page_size = self->page_size;
 	char *ptr;
@@ -1051,7 +1051,7 @@ TEST_F(guard_pages, fork_wipeonfork)
 }
 
 /* Ensure that MADV_FREE retains guard entries as expected. */
-TEST_F(guard_pages, lazyfree)
+TEST_F(guard_regions, lazyfree)
 {
 	const unsigned long page_size = self->page_size;
 	char *ptr;
@@ -1087,7 +1087,7 @@ TEST_F(guard_pages, lazyfree)
 }
 
 /* Ensure that MADV_POPULATE_READ, MADV_POPULATE_WRITE behave as expected. */
-TEST_F(guard_pages, populate)
+TEST_F(guard_regions, populate)
 {
 	const unsigned long page_size = self->page_size;
 	char *ptr;
@@ -1113,7 +1113,7 @@ TEST_F(guard_pages, populate)
 }
 
 /* Ensure that MADV_COLD, MADV_PAGEOUT do not remove guard markers. */
-TEST_F(guard_pages, cold_pageout)
+TEST_F(guard_regions, cold_pageout)
 {
 	const unsigned long page_size = self->page_size;
 	char *ptr;
@@ -1159,7 +1159,7 @@ TEST_F(guard_pages, cold_pageout)
 }
 
 /* Ensure that guard pages do not break userfaultd. */
-TEST_F(guard_pages, uffd)
+TEST_F(guard_regions, uffd)
 {
 	const unsigned long page_size = self->page_size;
 	int uffd;
