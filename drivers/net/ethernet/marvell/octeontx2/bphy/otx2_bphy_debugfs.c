@@ -35,9 +35,9 @@
 #define RPMX_EXT_MTI_PORTX_STATUS_MAC_RES_SPEED		GENMASK_ULL(12, 5)
 
 /* FEC stats */
-#define RPMX_MTI_STAT_STATN_CONTROL			0x10018
+#define RPMX_MTI_RSFEC_STAT_STATN_CONTROL		0x40018
 #define RPMX_MTI_STAT_DATA_HI_CDC			0x10038
-#define RPMX_RSFEC_RX_CAPTURE				BIT_ULL(27)
+#define RPMX_RSFEC_RX_CAPTURE				BIT_ULL(28)
 #define RPMX_MTI_RSFEC_STAT_COUNTER_CAPTURE_2		0x40050
 #define RPMX_MTI_RSFEC_STAT_COUNTER_CAPTURE_3		0x40058
 #define RPMX_MTI_RSFEC_STAT_FAST_DATA_HI_CDC		0x40000
@@ -326,10 +326,9 @@ static void rfoe_dbg_rpm_get_fec_stats(void __iomem *reg_base, int lmac_id,
 			*fec_uncorr_blks += (val_hi << 16 | val_lo);
 		}
 	} else {
-		/* enable RS-FEC capture */
-		cfg = ioread64(reg_base + RPMX_MTI_STAT_STATN_CONTROL);
-		cfg |= RPMX_RSFEC_RX_CAPTURE | BIT(lmac_id);
-		iowrite64(cfg, reg_base + RPMX_MTI_STAT_STATN_CONTROL);
+		/* enable RS-FEC capture, don't clear stats after capture */
+		cfg = RPMX_RSFEC_RX_CAPTURE | BIT(lmac_id);
+		iowrite64(cfg, reg_base + RPMX_MTI_RSFEC_STAT_STATN_CONTROL);
 
 		val_lo = ioread64(reg_base + RPMX_MTI_RSFEC_STAT_COUNTER_CAPTURE_2);
 		val_hi = ioread64(reg_base + RPMX_MTI_RSFEC_STAT_FAST_DATA_HI_CDC);
