@@ -684,10 +684,10 @@ struct dev_pm_info {
 	bool			wakeup_path:1;
 	bool			syscore:1;
 	bool			no_pm_callbacks:1;	/* Owned by the PM core */
-	bool			async_in_progress:1;	/* Owned by the PM core */
+	bool			async_in_progress:1;	/* Owned by the PM core */	
 	bool			must_resume:1;		/* Owned by the PM core */
-	bool			set_active:1;		/* Owned by the PM core */
 	bool			may_skip_resume:1;	/* Set by subsystems */
+	UEK_KABI_FILL_HOLE(bool smart_suspend:1) /* Owned by the PM core */
 #else
 	bool			should_wakeup:1;
 #endif
