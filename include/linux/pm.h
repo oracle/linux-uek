@@ -600,6 +600,9 @@ enum rpm_status {
 	RPM_RESUMING,
 	RPM_SUSPENDED,
 	RPM_SUSPENDING,
+#ifndef __GENKSYMS__
+	RPM_BLOCKED,
+#endif
 };
 
 /*
