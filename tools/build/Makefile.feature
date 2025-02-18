@@ -109,7 +109,8 @@ FEATURE_TESTS_EXTRA :=                  \
          libbpf-bpf_program__set_insns  \
          libbpf-bpf_create_map		\
          libpfm4                        \
-         clang-bpf-co-re
+         clang-bpf-co-re		\
+         bpftool-skeletons
 
 FEATURE_TESTS ?= $(FEATURE_TESTS_BASIC)
 
