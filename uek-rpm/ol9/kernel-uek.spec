@@ -961,7 +961,7 @@ gcc --version
 
 %if %{with_compression}
 %define compression_suffix .xz
-%define unzipsed -e 's/\.ko.xz$/\.ko/'
+%define unzipsed -e 's/\.ko.xz$/.ko/'
 %endif
 
 cp_vmlinux()
