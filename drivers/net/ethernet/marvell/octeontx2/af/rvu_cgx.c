@@ -902,18 +902,19 @@ int rvu_mbox_handler_cgx_promisc_disable(struct rvu *rvu, struct msg_req *req,
 static void cgx_notify_up_ptp_info(struct rvu *rvu, int pf, bool enable)
 {
 	struct cgx_ptp_rx_info_msg *msg;
-	int err;
 
 	/* Send mbox message to PF */
 	msg = otx2_mbox_alloc_msg_cgx_ptp_rx_info(rvu, pf);
-	if (!msg)
+	if (!msg) {
 		dev_err(rvu->dev, "failed to alloc message\n");
+		return;
+	}
 
 	msg->ptp_en = enable;
-	otx2_mbox_msg_send(&rvu->afpf_wq_info.mbox_up, pf);
-	err = otx2_mbox_wait_for_rsp(&rvu->afpf_wq_info.mbox_up, pf);
-	if (err)
-		dev_err(rvu->dev, "ptp notification to pf %d failed\n", pf);
+
+	otx2_mbox_wait_for_zero(&rvu->afpf_wq_info.mbox_up, pf);
+
+	otx2_mbox_msg_send_up(&rvu->afpf_wq_info.mbox_up, pf);
 }
 
 static int rvu_cgx_ptp_rx_cfg(struct rvu *rvu, u16 pcifunc, bool enable)
