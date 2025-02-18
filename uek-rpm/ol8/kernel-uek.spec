@@ -1521,9 +1521,17 @@ BuildKernel() {
     mkdir restore
     cp -r lib/modules/$KernelVer/* restore/.
 
+    remove_modules()
+    {
+	subpackage_name=$1
+	file_name="${modlistVariant}-${subpackage_name}.list"
+
+	grep '^/lib/modules' "$file_name" | sed -e 's/^\///' %{?unzipsed} | xargs --no-run-if-empty rm
+    }
+
     # don't include anything going into kernel%{?variant}-modules-(extra|deprecated) in the file lists
-    grep '^/lib/modules' ${modlistVariant}-modules-extra.list | sed -e 's/^\///' %{?unzipsed} | xargs --no-run-if-empty rm
-    grep '^/lib/modules' ${modlistVariant}-modules-deprecated.list | sed -e 's/^\///'  %{?unzipsed} | xargs --no-run-if-empty rm
+    remove_modules modules-extra
+    remove_modules modules-deprecated
 
     # Run depmod on the resulting module tree and make sure it isn't broken
     depmod -b . -aeF ./System.map $KernelVer &> depmod.out
@@ -1538,10 +1546,11 @@ BuildKernel() {
     remove_depmod_files
 
     # don't include anything going into kernel%{?variant}-modules-(desktop|usb|wireless|netfilter) in the file lists
-    grep '^/lib/modules' ${modlistVariant}-modules-desktop.list | sed -e 's/^\///' %{?unzipsed} | xargs --no-run-if-empty rm
-    grep '^/lib/modules' ${modlistVariant}-modules-extra-netfilter.list | sed -e 's/^\///' %{?unzipsed} | xargs --no-run-if-empty rm
-    grep '^/lib/modules' ${modlistVariant}-modules-usb.list | sed -e 's/^\///' %{?unzipsed} | xargs --no-run-if-empty rm
-    grep '^/lib/modules' ${modlistVariant}-modules-wireless.list | sed -e 's/^\///' %{?unzipsed} | xargs --no-run-if-empty rm
+    remove_modules modules-desktop
+    remove_modules modules-extra-netfilter
+    remove_modules modules-usb
+    remove_modules modules-wireless
+
     depmod -b . -aeF ./System.map $KernelVer &> depmod.out
     # Run depmod on the resulting module tree and make sure it isn't broken
     if [ -s depmod.out ]; then
@@ -1554,7 +1563,7 @@ BuildKernel() {
 
     remove_depmod_files
 
-    grep '^/lib/modules' ${modlistVariant}-modules.list | sed -e 's/^\///' %{?unzipsed} | xargs rm
+    remove_modules modules
 
     # Run depmod on the resulting module tree and make sure it isn't broken
     depmod -b . -aeF ./System.map $KernelVer &> depmod.out
