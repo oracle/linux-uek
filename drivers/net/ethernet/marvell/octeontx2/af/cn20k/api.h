@@ -37,4 +37,5 @@ void npa_cn20k_dpc_free_all(struct rvu *rvu, u16 pcifunc);
 
 int rvu_cn20k_set_channels_base(struct rvu *rvu);
 void rvu_cn20k_cpt_chan_cfg(struct rvu *rvu);
+void rvu_cn20k_lbk_set_channels(struct rvu *rvu);
 #endif /* CN20K_API_H */

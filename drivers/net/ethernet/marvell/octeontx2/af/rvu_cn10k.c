@@ -556,9 +556,13 @@ void rvu_program_channels(struct rvu *rvu)
 		return;
 
 	rvu_nix_set_channels(rvu);
-	rvu_lbk_set_channels(rvu);
 	rvu_rpm_set_channels(rvu);
-	rvu_cn20k_cpt_chan_cfg(rvu);
+	if (is_cn20k(rvu->pdev)) {
+		rvu_cn20k_cpt_chan_cfg(rvu);
+		rvu_cn20k_lbk_set_channels(rvu);
+		return;
+	}
+	rvu_lbk_set_channels(rvu);
 }
 
 void rvu_nix_block_cn10k_init(struct rvu *rvu, struct nix_hw *nix_hw)

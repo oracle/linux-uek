@@ -120,3 +120,41 @@ void rvu_cn20k_cpt_chan_cfg(struct rvu *rvu)
 	rvu_write64(rvu, nix_blkaddr,
 		    NIX_AF_RX_CPT_CHAN_CFG, (0x7FFULL << 12) | 0x800);
 }
+
+void rvu_cn20k_lbk_set_channels(struct rvu *rvu)
+{
+	struct pci_dev *pdev = NULL;
+	void __iomem *base;
+	u64 lbk_const, cfg;
+	u16 chans;
+
+	pdev = pci_get_device(PCI_VENDOR_ID_CAVIUM,
+			      PCI_DEVID_OCTEONTX2_LBK, pdev);
+	if (!pdev)
+		return;
+
+	base = pci_ioremap_bar(pdev, 0);
+	if (!base)
+		goto err_put;
+
+	lbk_const = readq(base + LBK_CONST);
+	chans = FIELD_GET(CN20K_LBK_CONST_CHANS, lbk_const);
+	chans =	(chans > CN20K_MAX_LBK_CHANS) ? CN20K_MAX_LBK_CHANS : chans;
+
+	cfg = readq(base + CN20K_LBKX_LINK_CFG_P2X);
+	cfg &= ~(CN20K_LBK_LINK_CFG_RANGE_MASK | CN20K_LBK_LINK_CFG_BASE_MASK);
+	cfg |=	FIELD_PREP(CN20K_LBK_LINK_CFG_RANGE_MASK, ilog2(chans));
+	cfg |=	FIELD_PREP(CN20K_LBK_LINK_CFG_BASE_MASK, rvu->hw->lbk_chan_base);
+	writeq(cfg, base + CN20K_LBKX_LINK_CFG_P2X);
+
+	cfg = readq(base + CN20K_LBKX_LINK_CFG_X2P);
+	cfg &= ~(CN20K_LBK_LINK_CFG_RANGE_MASK | CN20K_LBK_LINK_CFG_BASE_MASK);
+	cfg |=	FIELD_PREP(CN20K_LBK_LINK_CFG_RANGE_MASK, ilog2(chans));
+	cfg |=	FIELD_PREP(CN20K_LBK_LINK_CFG_BASE_MASK, rvu->hw->lbk_chan_base);
+	writeq(cfg, base + CN20K_LBKX_LINK_CFG_X2P);
+
+	iounmap(base);
+
+err_put:
+	pci_dev_put(pdev);
+}
