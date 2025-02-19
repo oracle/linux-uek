@@ -3024,6 +3024,9 @@ int otx2_check_pf_usable(struct otx2_nic *nic)
 {
 	u64 rev;
 
+	if (is_cn20k(nic->hw.pdev))
+		return cn20k_check_pf_usable(nic);
+
 	rev = otx2_read64(nic, RVU_PF_BLOCK_ADDRX_DISC(BLKADDR_RVUM));
 	rev = (rev >> 12) & 0xFF;
 	/* Check if AF has setup revision for RVUM block,

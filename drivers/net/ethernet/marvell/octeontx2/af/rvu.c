@@ -24,6 +24,7 @@
 #include "rvu_eblock.h"
 #include "cn20k/reg.h"
 #include "cn20k/api.h"
+#include "cn20k/rvum.h"
 
 #define DRV_NAME	"rvu_af"
 #define DRV_STRING      "Marvell OcteonTX2 RVU Admin Function Driver"
@@ -325,6 +326,13 @@ int rvu_get_blkaddr(struct rvu *rvu, int blktype, u16 pcifunc)
 	/* Check if the 'pcifunc' has a NIX LF from 'BLKADDR_NIX0' or
 	 * 'BLKADDR_NIX1'.
 	 */
+	if (is_cn20k(rvu->pdev)) {
+		blkaddr = rvu_cn20k_get_blk_addr(rvu, blktype, devnum, is_pf);
+		if (blkaddr < 0)
+			return -ENODEV;
+		goto exit;
+	}
+
 	if (blktype == BLKTYPE_NIX) {
 		reg = is_pf ? RVU_PRIV_PFX_NIXX_CFG(0) :
 			RVU_PRIV_HWVFX_NIXX_CFG(0);
@@ -449,6 +457,10 @@ static void rvu_update_rsrc_map(struct rvu *rvu, struct rvu_pfvf *pfvf,
 		break;
 	}
 
+	if (is_cn20k(rvu->pdev)) {
+		rvu_cn20k_set_blk_bit(rvu, block, devnum, is_pf, attach);
+		return;
+	}
 	reg = is_pf ? block->pf_lfcnt_reg : block->vf_lfcnt_reg;
 	rvu_write64(rvu, BLKADDR_RVUM, reg | (devnum << 16), num_lfs);
 }
@@ -528,6 +540,11 @@ static void rvu_check_block_implemented(struct rvu *rvu)
 	int blkid;
 	u64 cfg;
 
+	if (is_cn20k(rvu->pdev)) {
+		rvu_cn20k_check_block_implemented(rvu);
+		return;
+	}
+
 	/* For each block check if 'implemented' bit is set */
 	for (blkid = 0; blkid < BLK_COUNT; blkid++) {
 		block = &hw->block[blkid];
@@ -541,6 +558,10 @@ static void rvu_check_block_implemented(struct rvu *rvu)
 
 static void rvu_setup_rvum_blk_revid(struct rvu *rvu)
 {
+	if (is_cn20k(rvu->pdev)) {
+		rvu_cn20k_set_af_ready_bit(rvu, true);
+		return;
+	}
 	rvu_write64(rvu, BLKADDR_RVUM,
 		    RVU_PRIV_BLOCK_TYPEX_REV(BLKTYPE_RVUM),
 		    RVU_BLK_RVUM_REVID);
@@ -548,6 +569,10 @@ static void rvu_setup_rvum_blk_revid(struct rvu *rvu)
 
 static void rvu_clear_rvum_blk_revid(struct rvu *rvu)
 {
+	if (is_cn20k(rvu->pdev)) {
+		rvu_cn20k_set_af_ready_bit(rvu, false);
+		return;
+	}
 	rvu_write64(rvu, BLKADDR_RVUM,
 		    RVU_PRIV_BLOCK_TYPEX_REV(BLKTYPE_RVUM), 0x00);
 }
@@ -601,6 +626,16 @@ static void rvu_reset_all_blocks(struct rvu *rvu)
 	rvu_block_reset(rvu, BLKADDR_REE0, REE_AF_BLK_RST);
 	rvu_block_reset(rvu, BLKADDR_REE1, REE_AF_BLK_RST);
 	rvu_block_reset(rvu, BLKADDR_SDP, SDP_AF_BLK_RST);
+}
+
+static void rvu_reset_blk_lfcfg(struct rvu *rvu, struct rvu_block *block)
+{
+	int lf;
+
+	for (lf = 0; lf < block->lf.max; lf++)
+		rvu_write64(rvu, block->addr,
+			    block->lfcfg_reg | (lf << block->lfshift),
+			    0x0ULL);
 }
 
 static void rvu_scan_block(struct rvu *rvu, struct rvu_block *block)
@@ -659,9 +694,9 @@ static int rvu_setup_msix_resources(struct rvu *rvu)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
 	int pf, vf, numvfs, hwvf, err;
-	int nvecs, offset, max_msix;
+	u64 cfg, phy_addr, reg;
 	struct rvu_pfvf *pfvf;
-	u64 cfg, phy_addr;
+	int nvecs, offset;
 	dma_addr_t iova;
 
 	for (pf = 0; pf < hw->total_pfs; pf++) {
@@ -730,8 +765,10 @@ setup_vfmsix:
 			 * These are allocated on driver init and never freed,
 			 * so no need to set 'msix_lfmap' for these.
 			 */
-			cfg = rvu_read64(rvu, BLKADDR_RVUM,
-					 RVU_PRIV_HWVFX_INT_CFG(hwvf + vf));
+			reg = is_cn20k(rvu->pdev) ?
+			      RVU_CN20K_PRIV_HWVFX_INT_CFG(hwvf + vf) :
+			      RVU_PRIV_HWVFX_INT_CFG(hwvf + vf);
+			cfg = rvu_read64(rvu, BLKADDR_RVUM, reg);
 			nvecs = (cfg >> 12) & 0xFF;
 			cfg &= ~0x7FFULL;
 			offset = rvu_alloc_rsrc_contig(&pfvf->msix, nvecs);
@@ -745,14 +782,12 @@ setup_vfmsix:
 	 * create an IOMMU mapping for the physical address configured by
 	 * firmware and reconfig RVU_AF_MSIXTR_BASE with IOVA.
 	 */
-	cfg = rvu_read64(rvu, BLKADDR_RVUM, RVU_PRIV_CONST);
-	max_msix = cfg & 0xFFFFF;
 	if (rvu->fwdata && rvu->fwdata->msixtr_base)
 		phy_addr = rvu->fwdata->msixtr_base;
 	else
 		phy_addr = rvu_read64(rvu, BLKADDR_RVUM, RVU_AF_MSIXTR_BASE);
 	iova = dma_map_resource(rvu->dev, phy_addr,
-				max_msix * PCI_MSIX_ENTRY_SIZE,
+				hw->max_msix * PCI_MSIX_ENTRY_SIZE,
 				DMA_BIDIRECTIONAL, 0);
 
 	if (dma_mapping_error(rvu->dev, iova))
@@ -777,8 +812,7 @@ static void rvu_free_hw_resources(struct rvu *rvu)
 	struct rvu_hwinfo *hw = rvu->hw;
 	struct rvu_block *block;
 	struct rvu_pfvf  *pfvf;
-	int id, max_msix;
-	u64 cfg;
+	int id;
 
 	rvu_npa_freemem(rvu);
 	rvu_npc_freemem(rvu);
@@ -805,10 +839,8 @@ static void rvu_free_hw_resources(struct rvu *rvu)
 	/* Unmap MSIX vector base IOVA mapping */
 	if (!rvu->msix_base_iova)
 		return;
-	cfg = rvu_read64(rvu, BLKADDR_RVUM, RVU_PRIV_CONST);
-	max_msix = cfg & 0xFFFFF;
 	dma_unmap_resource(rvu->dev, rvu->msix_base_iova,
-			   max_msix * PCI_MSIX_ENTRY_SIZE,
+			   hw->max_msix * PCI_MSIX_ENTRY_SIZE,
 			   DMA_BIDIRECTIONAL, 0);
 
 	rvu_reset_msix(rvu);
@@ -995,6 +1027,24 @@ err_put:
 	pci_dev_put(pdev);
 }
 
+static void rvu_set_pfvf_cnt(struct rvu *rvu)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	u64 cfg;
+
+	if (is_cn20k(rvu->pdev)) {
+		rvu_cn20k_set_pfvf_cnt(rvu);
+		return;
+	}
+
+	/* Get HW supported max RVU PF & VF count */
+	cfg = rvu_read64(rvu, BLKADDR_RVUM, RVU_PRIV_CONST);
+	hw->max_msix = cfg & 0xFFFFF;
+	hw->total_pfs = (cfg >> 32) & 0xFF;
+	hw->total_vfs = (cfg >> 20) & 0xFFF;
+	hw->max_vfs_per_pf = (cfg >> 40) & 0xFF;
+}
+
 static int rvu_setup_hw_resources(struct rvu *rvu)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
@@ -1002,13 +1052,10 @@ static int rvu_setup_hw_resources(struct rvu *rvu)
 	int blkid, err;
 	u64 cfg;
 
-	/* Get HW supported max RVU PF & VF count */
-	cfg = rvu_read64(rvu, BLKADDR_RVUM, RVU_PRIV_CONST);
-	hw->total_pfs = (cfg >> 32) & 0xFF;
-	hw->total_vfs = (cfg >> 20) & 0xFFF;
-	hw->max_vfs_per_pf = (cfg >> 40) & 0xFF;
+	rvu_set_pfvf_cnt(rvu);
 
-	if (!is_rvu_otx2(rvu))
+	block = &hw->block[BLKADDR_APR];
+	if (block->implemented)
 		rvu_apr_block_cn10k_init(rvu);
 
 	/* Init NPA LF's bitmap */
@@ -1182,6 +1229,7 @@ cpt:
 			goto msix_err;
 		}
 
+		rvu_reset_blk_lfcfg(rvu, block);
 		/* Scan all blocks to check if low level firmware has
 		 * already provisioned any of the resources to a PF/VF.
 		 */

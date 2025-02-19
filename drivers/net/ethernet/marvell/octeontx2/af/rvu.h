@@ -22,6 +22,7 @@
 #include "rvu_reg.h"
 #include "cn20k/nix.h"
 #include "ptp.h"
+#include "cn20k/reg.h"
 #include "mcs_fips_mbox.h"
 
 /* PCI device IDs */
@@ -535,6 +536,7 @@ struct rvu_hwinfo {
 	u8	total_pfs;   /* MAX RVU PFs HW supports */
 	u16	total_vfs;   /* Max RVU VFs HW supports */
 	u16	max_vfs_per_pf; /* Max VFs that can be attached to a PF */
+	u32	max_msix;	/* Max msix vec HW support */
 	u8	cgx;
 	u8	lmac_per_cgx;
 	u16	cgx_chan_base;	/* CGX base channel number */

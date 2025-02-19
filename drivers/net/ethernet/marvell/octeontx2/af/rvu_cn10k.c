@@ -85,8 +85,12 @@ static int rvu_get_lmtaddr(struct rvu *rvu, u16 pcifunc,
 	mutex_lock(&rvu->rsrc_lock);
 	rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_SMMU_ADDR_REQ, iova);
 	pf = rvu_get_pf(rvu->pdev, pcifunc) & RVU_OTX2_PFVF_PF_MASK;
-	val = BIT_ULL(63) | BIT_ULL(14) | BIT_ULL(13) | pf << 8 |
-	      ((pcifunc & RVU_PFVF_FUNC_MASK) & 0xFF);
+	val = pf << 8 | ((pcifunc & RVU_PFVF_FUNC_MASK) & 0xFF);
+
+	if (is_cn20k(rvu->pdev))
+		val |= BIT_ULL(63) | BIT_ULL(23) | BIT_ULL(22);
+	else
+		val |= BIT_ULL(63) | BIT_ULL(14) | BIT_ULL(13);
 	rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_SMMU_TXN_REQ, val);
 
 	err = rvu_poll_reg(rvu, BLKADDR_RVUM, RVU_AF_SMMU_ADDR_RSP_STS, BIT_ULL(0), false);
