@@ -128,6 +128,7 @@ struct mlx5e_ipsec_hw_stats {
 	u64 ipsec_rx_bytes;
 	u64 ipsec_rx_drop_pkts;
 	u64 ipsec_rx_drop_bytes;
+	u64 ipsec_rx_drop_mismatch_sa_sel;
 	u64 ipsec_tx_pkts;
 	u64 ipsec_tx_bytes;
 	u64 ipsec_tx_drop_pkts;
@@ -185,6 +186,7 @@ struct mlx5e_ipsec_ft {
 	struct mutex mutex; /* Protect changes to this struct */
 	struct mlx5_flow_table *pol;
 	struct mlx5_flow_table *sa;
+	struct mlx5_flow_table *sa_sel;
 	struct mlx5_flow_table *status;
 	u32 refcnt;
 };
@@ -196,6 +198,8 @@ struct mlx5e_ipsec_drop {
 
 struct mlx5e_ipsec_rule {
 	struct mlx5_flow_handle *rule;
+	struct mlx5_flow_handle *status_pass;
+	struct mlx5_flow_handle *sa_sel;
 	struct mlx5_modify_hdr *modify_hdr;
 	struct mlx5_pkt_reformat *pkt_reformat;
 	struct mlx5_fc *fc;
@@ -207,6 +211,7 @@ struct mlx5e_ipsec_rule {
 struct mlx5e_ipsec_miss {
 	struct mlx5_flow_group *group;
 	struct mlx5_flow_handle *rule;
+	struct mlx5_fc *fc;
 };
 
 struct mlx5e_ipsec_tx_create_attr {
