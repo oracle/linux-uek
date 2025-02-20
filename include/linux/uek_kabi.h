@@ -27,6 +27,9 @@
 #include <linux/kconfig.h>
 #include <linux/stringify.h>
 
+#undef linux
+#define linux linux
+
 /*
  * UEK_KABI_CONST
  *   Adds a new const modifier to a function parameter preserving the old
