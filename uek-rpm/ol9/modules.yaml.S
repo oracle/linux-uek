@@ -1382,6 +1382,7 @@ modules:
 - clk-smd-rpm
 - cptpf
 - cptvf
+- cpufreq-dt
 - cros_ec_dev
 - cros_ec_hwmon
 - dc395x
@@ -1617,6 +1618,7 @@ modules:
 - tc654
 - tc74
 - tee_bnxt_fw
+- tegra20-cpufreq
 - thunder_bgx
 - thunder_xcv
 - thunderx2_pmu
