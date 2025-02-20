@@ -1137,7 +1137,7 @@ static __init int pensando_efi_get_fdt_params(void)
 	return ret;
 }
 
-void pensando_efi_mem_reserve(void)
+void __init pensando_efi_mem_reserve(void)
 {
 	unsigned long prsv;
 
