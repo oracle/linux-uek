@@ -66,6 +66,7 @@
 #include <linux/u64_stats_sync_api.h>
 #include <linux/uaccess.h>
 #include <linux/uek.h>
+#include <linux/uek_kabi.h>
 #include <linux/wait_api.h>
 #include <linux/wait_bit.h>
 #include <linux/workqueue_api.h>
@@ -493,6 +494,8 @@ struct task_group {
 	struct uclamp_se	uclamp[UCLAMP_CNT];
 #endif
 
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 #ifdef CONFIG_GROUP_SCHED_WEIGHT
@@ -746,6 +749,9 @@ struct cfs_rq {
 	struct list_head	throttled_csd_list;
 #endif /* CONFIG_CFS_BANDWIDTH */
 #endif /* CONFIG_FAIR_GROUP_SCHED */
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 #ifdef CONFIG_SCHED_CLASS_EXT
@@ -1028,6 +1034,11 @@ struct root_domain {
 	 * CPUs of the rd. Protected by RCU.
 	 */
 	struct perf_domain __rcu *pd;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 extern void init_defrootdomain(void);
@@ -1309,6 +1320,9 @@ struct rq {
 	call_single_data_t	cfsb_csd;
 	struct list_head	cfsb_csd_list;
 #endif
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
@@ -2052,6 +2066,9 @@ struct sched_group {
 	int			asym_prefer_cpu;	/* CPU of highest priority in group */
 	int			flags;
 
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+
 	/*
 	 * The CPUs this group covers.
 	 *
@@ -2430,6 +2447,9 @@ struct sched_class {
 #ifdef CONFIG_SCHED_CORE
 	int (*task_is_throttled)(struct task_struct *p, int cpu);
 #endif
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 static inline void put_prev_task(struct rq *rq, struct task_struct *prev)
