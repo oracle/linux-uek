@@ -13,6 +13,7 @@
 
 #include <linux/llist.h>
 #include <linux/rhashtable-types.h>
+#include <linux/uek_kabi.h>
 
 enum scx_public_consts {
 	SCX_OPS_NAME_LEN	= 128,
@@ -66,6 +67,11 @@ struct scx_dispatch_q {
 	struct rhash_head	hash_node;
 	struct llist_node	free_node;
 	struct rcu_head		rcu;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 /* scx_entity.flags */
@@ -200,6 +206,12 @@ struct sched_ext_entity {
 	struct cgroup		*cgrp_moving_from;
 #endif
 	struct list_head	tasks_node;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
 };
 
 void sched_ext_free(struct task_struct *p);
