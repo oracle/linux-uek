@@ -393,7 +393,6 @@ int rvu_mbox_handler_ml_pid_lf_map(struct rvu *rvu,
 				   struct msg_rsp *rsp)
 {
 	u64 regval;
-	u16 pid;
 
 	if (!is_block_implemented(rvu->hw, BLKADDR_ML))
 		return ML_AF_ERR_BLOCK_NOT_IMPLEMENTED;
@@ -403,13 +402,13 @@ int rvu_mbox_handler_ml_pid_lf_map(struct rvu *rvu,
 	    !is_ml_vf(rvu, req->hdr.pcifunc))
 		return ML_AF_ERR_ACCESS_DENIED;
 
-	regval = rvu_read64(rvu, BLKADDR_ML, ML_AF_PIDX_LF_ALLOW(pid));
+	regval = rvu_read64(rvu, BLKADDR_ML, ML_AF_PIDX_LF_ALLOW(req->pid));
 	if (req->enable)
 		regval |= BIT(req->lf_id);
 	else
 		regval &= ~BIT(req->lf_id);
 
-	rvu_write64(rvu, BLKADDR_ML, ML_AF_PIDX_LF_ALLOW(pid), regval);
+	rvu_write64(rvu, BLKADDR_ML, ML_AF_PIDX_LF_ALLOW(req->pid), regval);
 
 	return 0;
 }
