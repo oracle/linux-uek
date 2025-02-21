@@ -35,6 +35,7 @@ modules-core:
 - bnx2i
 - bnxt_en
 - bonding
+- br_netfilter
 - btrfs
 - camellia_generic
 - cast5_generic
@@ -103,6 +104,7 @@ modules-core:
 - drm_ttm_helper
 - drm_vram_helper
 - dummy
+- ebtable_broute
 - ebtables
 - einj
 - ena
@@ -3464,7 +3466,6 @@ modules-desktop:
 modules-extra-netfilter:
 - arpt_mangle
 - arptable_filter
-- br_netfilter
 - ebt_802_3
 - ebt_among
 - ebt_arp
@@ -3482,7 +3483,6 @@ modules-extra-netfilter:
 - ebt_snat
 - ebt_stp
 - ebt_vlan
-- ebtable_broute
 - ebtable_filter
 - ebtable_nat
 - ip6t_NPT
