@@ -108,7 +108,9 @@ static bool check_pte(struct page_vma_mapped_walk *pvmw)
 		pfn = pte_pfn(*pvmw->pte);
 	}
 
-	return pfn_in_hpage(pvmw->page, pfn);
+	if (unlikely(PageHuge(pvmw->page)))
+		return pfn_in_hpage(compound_head(pvmw->page), pfn);
+	return pfn_in_hpage((pvmw->page), pfn);
 }
 
 static void step_forward(struct page_vma_mapped_walk *pvmw, unsigned long size)
