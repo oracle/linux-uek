@@ -476,11 +476,22 @@ int module_kallsyms_on_each_symbol(const char *modname,
 				   int (*fn)(void *, const char *, unsigned long),
 				   void *data)
 {
+	int ret;
+	mutex_lock(&module_mutex);
+	ret = module_kallsyms_on_each_symbol_locked(modname, fn, data);
+	mutex_unlock(&module_mutex);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(module_kallsyms_on_each_symbol);
+
+int module_kallsyms_on_each_symbol_locked(const char *modname,
+					  int (*fn)(void *, const char *, unsigned long),
+					  void *data)
+{
 	struct module *mod;
 	unsigned int i;
 	int ret = 0;
 
-	mutex_lock(&module_mutex);
 	list_for_each_entry(mod, &modules, list) {
 		struct mod_kallsyms *kallsyms;
 
@@ -515,7 +526,6 @@ int module_kallsyms_on_each_symbol(const char *modname,
 			break;
 	}
 out:
-	mutex_unlock(&module_mutex);
 	return ret;
 }
-EXPORT_SYMBOL_GPL(module_kallsyms_on_each_symbol);
+EXPORT_SYMBOL_GPL(module_kallsyms_on_each_symbol_locked);
