@@ -880,10 +880,19 @@ static inline bool module_sig_ok(struct module *module)
 int module_kallsyms_on_each_symbol(int (*fn)(void *, const char *,
 					     struct module *, unsigned long),
 				   void *data);
+int module_kallsyms_on_each_symbol_locked(int (*fn)(void *, const char *,
+						    struct module *, unsigned long),
+					  void *data);
 #else
 static inline int module_kallsyms_on_each_symbol(int (*fn)(void *, const char *,
 						 struct module *, unsigned long),
 						 void *data)
+{
+	return -EOPNOTSUPP;
+}
+static inline int module_kallsyms_on_each_symbol_locked(int (*fn)(void *, const char *,
+							struct module *, unsigned long),
+							void *data)
 {
 	return -EOPNOTSUPP;
 }
