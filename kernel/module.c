@@ -4477,11 +4477,22 @@ int module_kallsyms_on_each_symbol(int (*fn)(void *, const char *,
 					     struct module *, unsigned long),
 				   void *data)
 {
+	int ret;
+	mutex_lock(&module_mutex);
+	ret = module_kallsyms_on_each_symbol_locked(fn, data);
+	mutex_unlock(&module_mutex);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(module_kallsyms_on_each_symbol);
+
+int module_kallsyms_on_each_symbol_locked(int (*fn)(void *, const char *,
+						    struct module *, unsigned long),
+					  void *data)
+{
 	struct module *mod;
 	unsigned int i;
 	int ret = 0;
 
-	mutex_lock(&module_mutex);
 	list_for_each_entry(mod, &modules, list) {
 		/* We hold module_mutex: no need for rcu_dereference_sched */
 		struct mod_kallsyms *kallsyms = mod->kallsyms;
@@ -4501,10 +4512,9 @@ int module_kallsyms_on_each_symbol(int (*fn)(void *, const char *,
 		}
 	}
 out:
-	mutex_unlock(&module_mutex);
 	return ret;
 }
-EXPORT_SYMBOL_GPL(module_kallsyms_on_each_symbol);
+EXPORT_SYMBOL_GPL(module_kallsyms_on_each_symbol_locked);
 #endif /* CONFIG_KALLSYMS */
 
 /* Maximum number of characters written by module_flags() */

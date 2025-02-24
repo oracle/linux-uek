@@ -594,6 +594,10 @@ int module_kallsyms_on_each_symbol(int (*fn)(void *, const char *,
 					     struct module *, unsigned long),
 				   void *data);
 
+int module_kallsyms_on_each_symbol_locked(int (*fn)(void *, const char *,
+						    struct module *, unsigned long),
+					  void *data);
+
 extern void __noreturn __module_put_and_exit(struct module *mod,
 			long code);
 #define module_put_and_exit(code) __module_put_and_exit(THIS_MODULE, code)
@@ -781,6 +785,14 @@ static inline int module_kallsyms_on_each_symbol(int (*fn)(void *, const char *,
 							   struct module *,
 							   unsigned long),
 						 void *data)
+{
+	return 0;
+}
+
+static inline int module_kallsyms_on_each_symbol_locked(int (*fn)(void *, const char *,
+								  struct module *,
+								  unsigned long),
+							void *data)
 {
 	return 0;
 }
