@@ -936,6 +936,9 @@ static inline bool module_sig_ok(struct module *module)
 int module_kallsyms_on_each_symbol(const char *modname,
 				   int (*fn)(void *, const char *, unsigned long),
 				   void *data);
+int module_kallsyms_on_each_symbol_locked(const char *modname,
+					  int (*fn)(void *, const char *, unsigned long),
+					  void *data);
 
 /* For kallsyms to ask for address resolution.  namebuf should be at
  * least KSYM_NAME_LEN long: a pointer to namebuf is returned if
