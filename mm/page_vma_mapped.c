@@ -116,7 +116,9 @@ static bool check_pte(struct page_vma_mapped_walk *pvmw)
 		pfn = pte_pfn(*pvmw->pte);
 	}
 
-	return pfn_is_match(pvmw->page, pfn);
+	if (unlikely(PageHuge(pvmw->page)))
+		return pfn_is_match(compound_head(pvmw->page), pfn);
+	return pfn_is_match((pvmw->page), pfn);
 }
 
 static void step_forward(struct page_vma_mapped_walk *pvmw, unsigned long size)
