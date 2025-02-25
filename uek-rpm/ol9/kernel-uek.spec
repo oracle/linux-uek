@@ -386,6 +386,10 @@ ExclusiveOS: Linux
 Requires: %{name}-core-uname-r = %{KVERREL}
 Requires: %{name}-modules-uname-r = %{KVERREL}
 Requires: %{name}-modules-core-uname-r = %{KVERREL}
+Requires: %{name}-modules-desktop-uname-r = %{KVERREL}
+Requires: %{name}-modules-extra-netfilter-uname-r = %{KVERREL}
+Requires: %{name}-modules-usb-uname-r = %{KVERREL}
+Requires: %{name}-modules-wireless-uname-r = %{KVERREL}
 %endif
 
 #
@@ -748,7 +752,6 @@ Provides: %{variant_name}-modules-%{-s*} = %{version}-%{release}%{?1:.%{1}}\
 Provides: installonlypkg(%{installonly_variant_name}-modules)\
 Provides: %{variant_name}-modules-%{-s*}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-modules-uname-r = %{KVERREL}%{?1:.%{1}}\
-Requires: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
 AutoReq: no\
 AutoProv: yes\
 %description -n %{variant_name}-modules-%{-s*}\
@@ -769,7 +772,6 @@ Provides: %{variant_name}-modules-%{_target_cpu} = %{version}-%{release}%{?1:.%{
 Provides: %{variant_name}-modules = %{version}-%{release}%{?1:.%{1}}\
 Provides: installonlypkg(%{installonly_variant_name}-modules)\
 Provides: %{variant_name}-modules-uname-r = %{KVERREL}%{?1:.%{1}}\
-Requires: %{variant_name}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: linux-firmware >= 999:20230516-999.26.git6c9e0ed5\
 AutoReq: no\
@@ -814,6 +816,10 @@ Group: System Environment/Kernel\
 Requires: %{variant_name}-core-uname-r = %{KVERREL}.%{1}\
 Requires: %{variant_name}-modules-uname-r = %{KVERREL}.%{1}\
 Requires: %{variant_name}-modules-core-uname-r = %{KVERREL}.%{1}\
+Requires: %{variant_name}-modules-desktop-uname-r = %{KVERREL}.%{1}\
+Requires: %{variant_name}-modules-extra-netfilter-uname-r = %{KVERREL}.%{1}\
+Requires: %{variant_name}-modules-usb-uname-r = %{KVERREL}.%{1}\
+Requires: %{variant_name}-modules-wireless-uname-r = %{KVERREL}.%{1}\
 Provides: installonlypkg(%{installonly_variant_name})\
 %description -n %{variant_name}\
 The meta-package for the %{1} kernel.\
