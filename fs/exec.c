@@ -787,6 +787,7 @@ int setup_arg_pages(struct linux_binprm *bprm,
 	vma_iter_init(&vmi, mm, vma->vm_start);
 
 	prev = vma_prev(&vmi);
+	vma_next(&vmi);
 	tlb_gather_mmu(&tlb, mm);
 	ret = mprotect_fixup(&vmi, &tlb, vma, &prev, vma->vm_start, vma->vm_end,
 			vm_flags);
