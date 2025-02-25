@@ -4622,6 +4622,7 @@ out:
 	mutex_unlock(&module_mutex);
 	return ret;
 }
+EXPORT_SYMBOL_GPL(module_kallsyms_on_each_symbol);
 #endif /* CONFIG_KALLSYMS */
 
 static void cfi_init(struct module *mod)
