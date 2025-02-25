@@ -494,3 +494,4 @@ out:
 	mutex_unlock(&module_mutex);
 	return ret;
 }
+EXPORT_SYMBOL_GPL(module_kallsyms_on_each_symbol);
