@@ -4504,6 +4504,7 @@ out:
 	mutex_unlock(&module_mutex);
 	return ret;
 }
+EXPORT_SYMBOL_GPL(module_kallsyms_on_each_symbol);
 #endif /* CONFIG_KALLSYMS */
 
 /* Maximum number of characters written by module_flags() */
