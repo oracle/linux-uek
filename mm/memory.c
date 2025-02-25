@@ -1480,10 +1480,16 @@ int copy_page_range_mt(struct vm_area_struct *dst_vma, struct vm_area_struct *sr
 		.min_chunk   = max(1ul << 27, PMD_SIZE),
 		.max_threads = 16,
 	};
+	int ret;
 
 	BUG_ON(!(src_vma->vm_flags & VM_EXEC_KEEP));
 
-	return padata_do_multithreaded(&job);
+	mmap_assert_locked(src_vma->vm_mm);
+	raw_write_seqcount_begin(&src_vma->vm_mm->write_protect_seq);
+	ret = padata_do_multithreaded(&job);
+	raw_write_seqcount_end(&src_vma->vm_mm->write_protect_seq);
+
+	return ret;
 }
 #endif /* CONFIG_PADATA */
 
