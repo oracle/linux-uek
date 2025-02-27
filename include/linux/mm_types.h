@@ -19,6 +19,7 @@
 #include <linux/workqueue.h>
 #include <linux/seqlock.h>
 #include <linux/percpu_counter.h>
+#include <linux/uek_kabi.h>
 
 #include <asm/mmu.h>
 
@@ -1061,6 +1062,15 @@ struct mm_struct {
 		} lru_gen;
 #endif /* CONFIG_LRU_GEN_WALKS_MMU */
 	} __randomize_layout;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
 
 	/*
 	 * The mm_cpumask needs to be at the end of mm_struct, because it
