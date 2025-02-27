@@ -113,6 +113,8 @@ const struct hw_csr_lookup_tbl lkp_tbl[] = {
 	{ 0x87E0F0000000, 0x100000,  3,  24, 1,   0,  0xFFFFF },
 	/* LMC */
 	{ 0x87E088000000, 0x10000,   6,  24, 1,   0,  0xFFFF },
+	/* TAD Common */
+	{ 0x87E053000000, 0x10000, 127, 3, 1, 0, 0xFFF },
 };
 
 #define HW_ACCESS_TYPE			120
