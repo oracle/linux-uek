@@ -127,9 +127,11 @@ struct pv_irq_ops {
 	struct paravirt_callee_save save_fl;
 	struct paravirt_callee_save irq_disable;
 	struct paravirt_callee_save irq_enable;
-
+#endif
 	void (*safe_halt)(void);
 	void (*halt)(void);
+
+#ifdef CONFIG_PARAVIRT_XXL
 	UEK_KABI_RESERVE(1)
 	UEK_KABI_RESERVE(2)
 #endif
