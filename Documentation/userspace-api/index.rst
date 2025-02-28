@@ -23,6 +23,7 @@ place where this information is gathered.
    spec_ctrl
    accelerators/ocxl
    ebpf/index
+   fwctl/index
    ioctl/index
    iommu
    media/index
