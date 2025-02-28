@@ -1114,6 +1114,8 @@ int vma_is_stack_for_current(struct vm_area_struct *vma);
 struct mmu_gather;
 struct inode;
 
+extern void prep_compound_page(struct page *page, unsigned int order);
+
 /*
  * compound_order() can be called without holding a reference, which means
  * that niceties like page_folio() don't work.  These callers should be
@@ -1437,6 +1439,13 @@ vm_fault_t finish_fault(struct vm_fault *vmf);
  *   back into memory.
  */
 
+/*
+ * In order to avoid kABI breakage, keep below symbols as is -
+ * devmap_managed_key, __put_devmap_managed_folio_refs,
+ * put_devmap_managed_folio_refs.
+ * But in mm/memremap.c, change __put_devmap_managed_folio_refs()
+ * to return false.
+ */
 #if defined(CONFIG_ZONE_DEVICE) && defined(CONFIG_FS_DAX)
 DECLARE_STATIC_KEY_FALSE(devmap_managed_key);
 
@@ -1579,6 +1588,10 @@ static inline void put_page(struct page *page)
 	/*
 	 * For some devmap managed pages we need to catch refcount transition
 	 * from 2 to 1:
+	 *
+	 * kABI: dax refcounting is now 0-based, put_devmap_managed_folio_refs()
+	 * is hacked to always return false, but keeping the call around since
+	 * put_page is inlined.
 	 */
 	if (put_devmap_managed_folio_refs(folio, 1))
 		return;

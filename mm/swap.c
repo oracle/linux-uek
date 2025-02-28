@@ -960,8 +960,6 @@ void folios_put_refs(struct folio_batch *folios, unsigned int *refs)
 				lruvec_unlock_irqrestore(lruvec, flags);
 				lruvec = NULL;
 			}
-			if (put_devmap_managed_folio_refs(folio, nr_refs))
-				continue;
 			if (folio_ref_sub_and_test(folio, nr_refs))
 				free_zone_device_folio(folio);
 			continue;
