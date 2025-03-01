@@ -234,6 +234,9 @@ unsigned long kallsyms_lookup_name(const char *name)
 
 	return module_kallsyms_lookup_name(name);
 }
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+EXPORT_SYMBOL_GPL(kallsyms_lookup_name);
+#endif
 
 /*
  * Iterate over all symbols in vmlinux.  For symbols from modules use
