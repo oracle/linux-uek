@@ -2428,6 +2428,9 @@ int memslot_rmap_alloc(struct kvm_memory_slot *slot, unsigned long npages);
 	 KVM_X86_QUIRK_MWAIT_NEVER_UD_FAULTS |	\
 	 KVM_X86_QUIRK_SLOT_ZAP_ALL)
 
+#define KVM_X86_CONDITIONAL_QUIRKS		\
+	 KVM_X86_QUIRK_CD_NW_CLEARED
+
 /*
  * KVM previously used a u32 field in kvm_run to indicate the hypercall was
  * initiated from long mode. KVM now sets bit 0 to indicate long mode, but the
