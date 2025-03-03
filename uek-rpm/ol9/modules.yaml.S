@@ -920,6 +920,7 @@ modules:
 - mac-romanian
 - mac-turkish
 - mac80211
+- mana
 - marvell
 - marvell10g
 - max16064
@@ -1847,7 +1848,6 @@ modules:
 - lpddr_cmds
 - machzwd
 - macmodes
-- mana
 - map_absent
 - map_funcs
 - map_ram
