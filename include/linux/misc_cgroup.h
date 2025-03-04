@@ -27,6 +27,7 @@ struct misc_cg;
 #ifdef CONFIG_CGROUP_MISC
 
 #include <linux/cgroup.h>
+#include <linux/uek_kabi.h>
 
 /**
  * struct misc_res: Per cgroup per misc type resource
@@ -41,6 +42,9 @@ struct misc_res {
 	atomic64_t usage;
 	atomic64_t events;
 	atomic64_t events_local;
+
+	UEK_KABI_RESERVE(1);
+	UEK_KABI_RESERVE(2);
 };
 
 /**
@@ -58,6 +62,9 @@ struct misc_cg {
 	struct cgroup_file events_local_file;
 
 	struct misc_res res[MISC_CG_RES_TYPES];
+
+	UEK_KABI_RESERVE(1);
+	UEK_KABI_RESERVE(2);
 };
 
 u64 misc_cg_res_total_usage(enum misc_res_type type);
