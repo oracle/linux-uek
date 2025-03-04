@@ -23,6 +23,7 @@
 #include <linux/seq_file.h>
 #include <linux/mutex.h>
 #include <linux/cpu.h>
+#include <linux/uek_kabi.h>
 
 /*
  * A cgroup is freezing if any FREEZING flags are set.  FREEZING_SELF is
@@ -44,6 +45,9 @@ enum freezer_state_flags {
 struct freezer {
 	struct cgroup_subsys_state	css;
 	unsigned int			state;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 static DEFINE_MUTEX(freezer_mutex);
