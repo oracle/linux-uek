@@ -23,6 +23,7 @@ modules-core:
 - arc4
 - arcmsr
 - arp_tables
+- ast
 - async_memcpy
 - async_pq
 - async_raid6_recov
@@ -41,6 +42,7 @@ modules-core:
 - blowfish_generic
 - bnx2i
 - bnxt_en
+- bochs
 - bonding
 - br_netfilter
 - btrfs
@@ -180,6 +182,21 @@ modules-core:
 - ip_tables
 - ip_tunnel
 - ip_vs
+- ip_vs_dh
+- ip_vs_fo
+- ip_vs_ftp
+- ip_vs_lblc
+- ip_vs_lblcr
+- ip_vs_lc
+- ip_vs_mh
+- ip_vs_nq
+- ip_vs_ovf
+- ip_vs_pe_sip
+- ip_vs_rr
+- ip_vs_sed
+- ip_vs_sh
+- ip_vs_wlc
+- ip_vs_wrr
 - ip_vti
 - ipcomp
 - ipcomp6
@@ -260,6 +277,7 @@ modules-core:
 - nf_conncount
 - nf_conntrack
 - nf_conntrack_amanda
+- nf_conntrack_bridge
 - nf_conntrack_broadcast
 - nf_conntrack_ftp
 - nf_conntrack_h323
@@ -278,6 +296,7 @@ modules-core:
 - nf_dup_netdev
 - nf_flow_table
 - nf_flow_table_inet
+- nf_log_syslog
 - nf_nat
 - nf_nat_amanda
 - nf_nat_ftp
@@ -419,6 +438,7 @@ modules-core:
 - scsi_transport_sas
 - scsi_transport_srp
 - seed
+- serio_raw
 - serpent_generic
 - ses
 - sit
@@ -467,6 +487,7 @@ modules-core:
 - vhost_scsi
 - vhost_vdpa
 - vhost_vsock
+- virtio-gpu
 - virtio-rng
 - virtio_balloon
 - virtio_blk
@@ -2252,7 +2273,6 @@ modules-desktop:
 - amdxcp
 - appletouch
 - arc_ps2
-- ast
 - atbm8830
 - ath3k
 - ati_remote
@@ -2270,7 +2290,6 @@ modules-desktop:
 - bfusb
 - bluetooth
 - bnep
-- bochs
 - bpa10x
 - bt878
 - btbcm
@@ -2822,7 +2841,6 @@ modules-desktop:
 - sdhci-pltfm
 - sdio_uart
 - serial_ir
-- serio_raw
 - sermouse
 - si2157
 - si2165
@@ -2942,7 +2960,6 @@ modules-desktop:
 - videobuf2-v4l2
 - videobuf2-vmalloc
 - videodev
-- virtio-gpu
 - vkms
 - vp27smpx
 - vsxxxaa
@@ -3516,21 +3533,6 @@ modules-extra-netfilter:
 - ip_set_hash_netport
 - ip_set_hash_netportnet
 - ip_set_list_set
-- ip_vs_dh
-- ip_vs_fo
-- ip_vs_ftp
-- ip_vs_lblc
-- ip_vs_lblcr
-- ip_vs_lc
-- ip_vs_mh
-- ip_vs_nq
-- ip_vs_ovf
-- ip_vs_pe_sip
-- ip_vs_rr
-- ip_vs_sed
-- ip_vs_sh
-- ip_vs_wlc
-- ip_vs_wrr
 - ipt_ECN
 - ipt_SYNPROXY
 - ipt_ah
@@ -3540,8 +3542,6 @@ modules-extra-netfilter:
 - iptable_nat
 - iptable_raw
 - iptable_security
-- nf_conntrack_bridge
-- nf_log_syslog
 - xt_AUDIT
 - xt_CLASSIFY
 - xt_CONNSECMARK
