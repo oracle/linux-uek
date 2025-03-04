@@ -34,6 +34,7 @@
 #include <linux/cgroup.h>
 #include <linux/slab.h>
 #include <linux/sched/task.h>
+#include <linux/uek_kabi.h>
 
 #define PIDS_MAX (PID_MAX_LIMIT + 1ULL)
 #define PIDS_MAX_STR "max"
@@ -63,6 +64,11 @@ struct pids_cgroup {
 
 	atomic64_t			events[NR_PIDCG_EVENTS];
 	atomic64_t			events_local[NR_PIDCG_EVENTS];
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 static struct pids_cgroup *css_pids(struct cgroup_subsys_state *css)
