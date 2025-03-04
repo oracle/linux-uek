@@ -9,6 +9,7 @@
 #include <linux/cpuset.h>
 #include <linux/spinlock.h>
 #include <linux/union_find.h>
+#include <linux/uek_kabi.h>
 
 /* See "Frequency meter" comments, below. */
 
@@ -17,6 +18,9 @@ struct fmeter {
 	int val;		/* most recent output value */
 	time64_t time;		/* clock (secs) when val computed */
 	spinlock_t lock;	/* guards read or write of above */
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 /*
@@ -180,6 +184,11 @@ struct cpuset {
 
 	/* Used to merge intersecting subsets for generate_sched_domains */
 	struct uf_node node;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 static inline struct cpuset *css_cs(struct cgroup_subsys_state *css)
