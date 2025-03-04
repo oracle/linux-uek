@@ -26,6 +26,7 @@
 #include <linux/kernel_stat.h>
 
 #include <linux/cgroup-defs.h>
+#include <linux/uek_kabi.h>
 
 struct kernel_clone_args;
 
@@ -64,6 +65,9 @@ struct css_task_iter {
 	struct css_set			*cur_dcset;
 	struct task_struct		*cur_task;
 	struct list_head		iters_node;	/* css_set->task_iters */
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 extern struct file_system_type cgroup_fs_type;
@@ -771,6 +775,10 @@ struct cgroup_namespace {
 	struct user_namespace	*user_ns;
 	struct ucounts		*ucounts;
 	struct css_set          *root_cset;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+
 };
 
 extern struct cgroup_namespace init_cgroup_ns;

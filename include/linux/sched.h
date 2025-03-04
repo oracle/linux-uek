@@ -1588,6 +1588,10 @@ struct task_struct {
 	UEK_KABI_RESERVE(6)
 	UEK_KABI_RESERVE(7)
 	UEK_KABI_RESERVE(8)
+	/* Reserved for cgroups */
+	UEK_KABI_RESERVE(9)
+	UEK_KABI_RESERVE(10)
+
 
 #ifdef CONFIG_X86_MCE
 	void __user			*mce_vaddr;

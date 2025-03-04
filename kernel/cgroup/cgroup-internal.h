@@ -83,6 +83,9 @@ struct cgroup_file_ctx {
 	} procs1;
 
 	struct cgroup_of_peak peak;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 /*
@@ -103,6 +106,9 @@ struct cgrp_cset_link {
 
 	/* list of cgrp_cset_links anchored at css_set->cgrp_links */
 	struct list_head	cgrp_link;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 /* used to track tasks and csets during migration */
@@ -131,6 +137,11 @@ struct cgroup_taskset {
 	struct list_head	*csets;
 	struct css_set		*cur_cset;
 	struct task_struct	*cur_task;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 /* migration context also tracks preloading */
@@ -147,6 +158,9 @@ struct cgroup_mgctx {
 
 	/* subsystems affected by migration */
 	u16			ss_mask;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 #define CGROUP_TASKSET_INIT(tset)						\
