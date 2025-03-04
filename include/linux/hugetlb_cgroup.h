@@ -54,6 +54,9 @@ struct hugetlb_cgroup {
 	/* Handle for "hugetlb.events.local" */
 	struct cgroup_file events_local_file[HUGE_MAX_HSTATE];
 
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+
 	struct hugetlb_cgroup_per_node *nodeinfo[];
 };
 
