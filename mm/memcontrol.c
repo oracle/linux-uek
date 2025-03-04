@@ -72,6 +72,7 @@
 #include <linux/uaccess.h>
 
 #include <trace/events/vmscan.h>
+#include <linux/uek_kabi.h>
 
 struct cgroup_subsys memory_cgrp_subsys __read_mostly;
 EXPORT_SYMBOL(memory_cgrp_subsys);
@@ -491,6 +492,9 @@ struct memcg_vmstats_percpu {
 	/* Delta calculation for lockless upward propagation */
 	long			state_prev[MEMCG_VMSTAT_SIZE];
 	unsigned long		events_prev[NR_MEMCG_EVENTS];
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 } ____cacheline_aligned;
 
 struct memcg_vmstats {
@@ -508,6 +512,9 @@ struct memcg_vmstats {
 
 	/* Stats updates since the last flush */
 	atomic64_t		stats_updates;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 /*
@@ -1320,6 +1327,8 @@ static unsigned long mem_cgroup_margin(struct mem_cgroup *memcg)
 struct memory_stat {
 	const char *name;
 	unsigned int idx;
+
+	UEK_KABI_RESERVE(1)
 };
 
 static const struct memory_stat memory_stats[] = {
@@ -1712,6 +1721,9 @@ struct memcg_stock_pcp {
 
 	struct work_struct work;
 	unsigned long flags;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 #define FLUSHING_CACHED_CHARGE	0
 };
 static DEFINE_PER_CPU(struct memcg_stock_pcp, memcg_stock) = {
@@ -4605,6 +4617,9 @@ struct uncharge_gather {
 	unsigned long pgpgout;
 	unsigned long nr_kmem;
 	int nid;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 static inline void uncharge_gather_clear(struct uncharge_gather *ug)

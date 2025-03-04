@@ -23,6 +23,7 @@
 #include <linux/writeback.h>
 #include <linux/page-flags.h>
 #include <linux/shrinker.h>
+#include <linux/uek_kabi.h>
 
 struct mem_cgroup;
 struct obj_cgroup;
@@ -58,6 +59,9 @@ enum memcg_memory_event {
 struct mem_cgroup_reclaim_cookie {
 	pg_data_t *pgdat;
 	int generation;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 #ifdef CONFIG_MEMCG
@@ -113,6 +117,9 @@ struct mem_cgroup_per_node {
 	CACHELINE_PADDING(_pad2_);
 	unsigned long		lru_zone_size[MAX_NR_ZONES][NR_LRU_LISTS];
 	struct mem_cgroup_reclaim_iter	iter;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 struct mem_cgroup_threshold {
@@ -322,6 +329,11 @@ struct mem_cgroup {
 	struct list_head event_list;
 	spinlock_t event_list_lock;
 #endif /* CONFIG_MEMCG_V1 */
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 
 	struct mem_cgroup_per_node *nodeinfo[];
 };
