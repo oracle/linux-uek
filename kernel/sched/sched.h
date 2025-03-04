@@ -324,6 +324,10 @@ struct rt_bandwidth {
 	u64			rt_runtime;
 	struct hrtimer		rt_period_timer;
 	unsigned int		rt_period_active;
+
+	/* reserved for cgroups */
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 static inline int dl_bandwidth_enabled(void)
@@ -353,6 +357,10 @@ struct dl_bw {
 	raw_spinlock_t		lock;
 	u64			bw;
 	u64			total_bw;
+
+	/* reserved for cgroups */
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 extern void init_dl_bw(struct dl_bw *dl_b);
@@ -432,6 +440,10 @@ struct cfs_bandwidth {
 	int			nr_burst;
 	u64			throttled_time;
 	u64			burst_time;
+
+	/* reserved for cgroups */
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 #endif
 };
 
@@ -496,6 +508,10 @@ struct task_group {
 
 	UEK_KABI_RESERVE(1)
 	UEK_KABI_RESERVE(2)
+
+       /* reserved for cgroups */
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 #ifdef CONFIG_GROUP_SCHED_WEIGHT
@@ -1044,6 +1060,9 @@ struct root_domain {
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
+	/* reserved for cgroups */
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
 };
 
 extern void init_defrootdomain(void);
