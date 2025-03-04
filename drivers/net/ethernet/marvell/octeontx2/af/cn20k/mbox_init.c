@@ -317,20 +317,17 @@ static struct mbox_ops cn20k_mbox_ops = {
 
 int cn20k_rvu_mbox_init(struct rvu *rvu, int type, int ndevs)
 {
-	int dev;
-
 	if (!is_cn20k(rvu->pdev))
 		return 0;
 
 	rvu->ng_rvu->rvu_mbox_ops = &cn20k_mbox_ops;
 
-	if (type == TYPE_AFVF) {
-		rvu_write64(rvu, BLKADDR_RVUM, RVU_MBOX_PF_VF_CFG, ilog2(MBOX_SIZE));
-	} else {
-		for (dev = 0; dev < ndevs; dev++)
-			rvu_write64(rvu, BLKADDR_RVUM,
-				    RVU_MBOX_AF_PFX_CFG(dev), ilog2(MBOX_SIZE));
-	}
+	if (type == TYPE_AFVF)
+		rvu_write64(rvu, BLKADDR_RVUM, RVU_PF_PFVF_MBOX_CFG,
+			    RVU_MBOX_SZ_64K);
+	else
+		rvu_write64(rvu, BLKADDR_RVUM,
+			    RVU_AF_AFPF_MBOX_CFG, RVU_MBOX_SZ_64K);
 
 	return rvu_alloc_mbox_memory(rvu, type, ndevs, MBOX_SIZE);
 }

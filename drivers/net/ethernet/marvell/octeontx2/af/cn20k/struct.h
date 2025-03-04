@@ -21,8 +21,8 @@ enum rvu_mbox_pf_int_vec_e {
 	RVU_MBOX_PF_INT_VEC_VFPF_MBOX1	= 0x5,
 	RVU_MBOX_PF_INT_VEC_VFPF1_MBOX0	= 0x6,
 	RVU_MBOX_PF_INT_VEC_VFPF1_MBOX1	= 0x7,
-	RVU_MBOX_PF_INT_VEC_AFPF_MBOX	= 0x8,
-	RVU_MBOX_PF_INT_VEC_CNT		= 0x9,
+	RVU_MBOX_PF_INT_VEC_AFPF_MBOX	= 0x2e,
+	RVU_MBOX_PF_INT_VEC_CNT		= 0x2f,
 };
 
 /* RVU Admin function Interrupt Vector Enumeration */
@@ -454,6 +454,15 @@ struct npa_cn20k_halo_s {
 	u64 reserved_832_895            : 64;
 	u64 reserved_896_959            : 64;
 	u64 reserved_960_1023           : 64;
+};
+
+/* RVU supported mbox sizes */
+enum rvu_pfvf_mbox_size {
+	RVU_MBOX_SZ_16K		= 0x0,
+	RVU_MBOX_SZ_32K		= 0x1,
+	RVU_MBOX_SZ_64K		= 0x2,
+	RVU_MBOX_SZ_128K	= 0x3,
+	RVU_MBOX_SZ_256K	= 0x4,
 };
 
 #endif
