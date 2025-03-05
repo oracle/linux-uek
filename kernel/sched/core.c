@@ -817,7 +817,9 @@ void update_rq_clock(struct rq *rq)
 
 static void hrtick_clear(struct rq *rq)
 {
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 	rseq_delay_resched_tick();
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	if (hrtimer_active(&rq->hrtick_timer))
 		hrtimer_cancel(&rq->hrtick_timer);
 }
@@ -833,7 +835,9 @@ static enum hrtimer_restart hrtick(struct hrtimer *timer)
 
 	WARN_ON_ONCE(cpu_of(rq) != smp_processor_id());
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 	rseq_delay_resched_tick();
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	rq_lock(rq, &rf);
 	update_rq_clock(rq);
@@ -908,6 +912,7 @@ void hrtick_start(struct rq *rq, u64 delay)
 
 #endif /* CONFIG_SMP */
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 void hrtick_local_start(u64 delay)
 {
 	struct rq *rq = this_rq();
@@ -922,6 +927,7 @@ void update_stat_preempt_delayed(struct task_struct *t)
 {
 	schedstat_inc(t->stats.nr_preempt_delay_granted);
 }
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 static void hrtick_rq_init(struct rq *rq)
 {
@@ -6681,9 +6687,11 @@ static void __sched notrace __schedule(int sched_mode)
 picked:
 	clear_tsk_need_resched(prev);
 	clear_preempt_need_resched();
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 #ifdef CONFIG_RSEQ
 	prev->rseq_sched_delay = 0;
 #endif
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 #ifdef CONFIG_SCHED_DEBUG
 	rq->last_seen_need_resched_ns = 0;
 #endif

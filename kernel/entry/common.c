@@ -88,9 +88,14 @@ void __weak arch_do_signal_or_restart(struct pt_regs *regs) { }
  * @regs:	Pointer to pt_regs on entry stack
  * @ti_work:	TIF work flags as read by the caller
  */
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 __always_inline unsigned long exit_to_user_mode_loop(struct pt_regs *regs,
 						     unsigned long ti_work,
 						     bool irq)
+#else
+__always_inline unsigned long exit_to_user_mode_loop(struct pt_regs *regs,
+						     unsigned long ti_work)
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 {
 	/*
 	 * Before returning to user space ensure that all pending work
@@ -101,9 +106,11 @@ __always_inline unsigned long exit_to_user_mode_loop(struct pt_regs *regs,
 		local_irq_enable_exit_to_user(ti_work);
 
 		if (ti_work & _TIF_NEED_RESCHED) {
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 			if (irq && rseq_delay_resched())
 				clear_tsk_need_resched(current);
 			else
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 				schedule();
 		}
 
@@ -213,7 +220,12 @@ static __always_inline void __syscall_exit_to_user_mode_work(struct pt_regs *reg
 {
 	syscall_exit_to_user_mode_prepare(regs);
 	local_irq_disable_exit_to_user();
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 	exit_to_user_mode_prepare(regs, false);
+#else
+	exit_to_user_mode_prepare(regs);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 }
 
 void syscall_exit_to_user_mode_work(struct pt_regs *regs)
@@ -237,7 +249,11 @@ noinstr void irqentry_enter_from_user_mode(struct pt_regs *regs)
 noinstr void irqentry_exit_to_user_mode(struct pt_regs *regs)
 {
 	instrumentation_begin();
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 	exit_to_user_mode_prepare(regs, true);
+#else
+	exit_to_user_mode_prepare(regs);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	instrumentation_end();
 	exit_to_user_mode();
 }

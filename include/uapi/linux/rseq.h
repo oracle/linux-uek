@@ -26,7 +26,10 @@ enum rseq_cs_flags_bit {
 	RSEQ_CS_FLAG_NO_RESTART_ON_PREEMPT_BIT	= 0,
 	RSEQ_CS_FLAG_NO_RESTART_ON_SIGNAL_BIT	= 1,
 	RSEQ_CS_FLAG_NO_RESTART_ON_MIGRATE_BIT	= 2,
-	RSEQ_CS_FLAG_DELAY_RESCHED_BIT		= 3,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	RSEQ_CS_FLAG_DELAY_RESCHED_BIT		= 30,
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 };
 
 enum rseq_cs_flags {
@@ -36,8 +39,10 @@ enum rseq_cs_flags {
 		(1U << RSEQ_CS_FLAG_NO_RESTART_ON_SIGNAL_BIT),
 	RSEQ_CS_FLAG_NO_RESTART_ON_MIGRATE	=
 		(1U << RSEQ_CS_FLAG_NO_RESTART_ON_MIGRATE_BIT),
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 	RSEQ_CS_FLAG_DELAY_RESCHED		=
 		(1U << RSEQ_CS_FLAG_DELAY_RESCHED_BIT),
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 };
 
 /*
@@ -131,8 +136,10 @@ struct rseq {
 	 * - RSEQ_CS_FLAG_NO_RESTART_ON_MIGRATE
 	 *     Inhibit instruction sequence block restart on migration for
 	 *     this thread.
+	 * *** ifndef  WITHOUT_ORACLE_EXTENSIONS
 	 * - RSEQ_CS_DELAY_RESCHED
 	 *     Try delay resched...
+	 * *** endif  !WITHOUT_ORACLE_EXTENSIONS
 	 */
 	__u32 flags;
 
