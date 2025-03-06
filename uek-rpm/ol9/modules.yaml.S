@@ -2528,6 +2528,7 @@ modules-deprecated:
 - au8522_dig
 - b2c2-flexcop
 - b2c2-flexcop-pci
+- b43legacy
 - bcm3510
 - cx22700
 - cx22702
@@ -2613,6 +2614,7 @@ modules-deprecated:
 - lgdt3306a
 - lgdt330x
 - lgs8gxx
+- libertas_sdio
 - lnbh25
 - lnbp21
 - lnbp22
@@ -2646,9 +2648,13 @@ modules-deprecated:
 - qm1d1c0042
 - qt1010
 - r820t
+- rt2400pci
+- rt2500pci
+- rt61pci
 - rtl2830
 - rtl2832
 - rtl2832_sdr
+- rtl818x_pci
 - s5h1409
 - s5h1411
 - s5h1420
@@ -2700,6 +2706,8 @@ modules-deprecated:
 - tuner-types
 - ves1820
 - ves1x93
+- wl1251
+- wl1251_sdio
 - xc4000
 - xc5000
 - zl10036
@@ -2710,14 +2718,26 @@ modules-deprecated:
 #ifdef Arch_aarch64
 - as102_fe
 - ascot2e
+- ath10k_sdio
+- ath6kl_sdio
+- cw1200_wlan_sdio
+- cw1200_wlan_spi
 - helene
 - horus3a
+- rsi_sdio
+- wl1251_spi
+- wl12xx
+- wl18xx
+- wlcore
+- wlcore_sdio
+- wlcore_spi
 - zd1301
 - zd1301_demod
 #endif /* Arch_aarch64 */
 
 /* modules-deprecated: */
 #ifdef Arch_x86_64
+- adm8211
 - atmtcp
 - b2c2-flexcop-usb
 - parport_pc
@@ -3785,7 +3805,6 @@ modules-wireless:
 - ath9k_htc
 - ath9k_hw
 - b43
-- b43legacy
 - brcmfmac
 - brcmfmac-bca
 - brcmfmac-cyw
@@ -3801,7 +3820,6 @@ modules-wireless:
 - iwlmvm
 - iwlwifi
 - libertas
-- libertas_sdio
 - mac80211_hwsim
 - mt76-usb
 - mt7601u
@@ -3824,8 +3842,6 @@ modules-wireless:
 - p54common
 - p54pci
 - p54usb
-- rt2400pci
-- rt2500pci
 - rt2500usb
 - rt2800lib
 - rt2800mmio
@@ -3835,11 +3851,9 @@ modules-wireless:
 - rt2x00mmio
 - rt2x00pci
 - rt2x00usb
-- rt61pci
 - rt73usb
 - rtl8187
 - rtl8188ee
-- rtl818x_pci
 - rtl8192c-common
 - rtl8192ce
 - rtl8192cu
@@ -3868,37 +3882,23 @@ modules-wireless:
 - rtw88_pci
 - usb8xxx
 - wil6210
-- wl1251
-- wl1251_sdio
 - zd1211rw
 
 /* modules-wireless: */
 #ifdef Arch_aarch64
 - ar5523
-- ath10k_sdio
 - ath10k_usb
 - ath5k
 - ath6kl_core
-- ath6kl_sdio
 - ath6kl_usb
 - cw1200_core
-- cw1200_wlan_sdio
-- cw1200_wlan_spi
 - rsi_91x
-- rsi_sdio
 - rsi_usb
 - wcn36xx
-- wl1251_spi
-- wl12xx
-- wl18xx
-- wlcore
-- wlcore_sdio
-- wlcore_spi
 #endif /* Arch_aarch64 */
 
 /* modules-wireless: */
 #ifdef Arch_x86_64
-- adm8211
 - at76c50x-usb
 - ipw2100
 - ipw2200
