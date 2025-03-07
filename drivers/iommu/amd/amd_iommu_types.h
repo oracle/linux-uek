@@ -8,6 +8,7 @@
 #ifndef _ASM_X86_AMD_IOMMU_TYPES_H
 #define _ASM_X86_AMD_IOMMU_TYPES_H
 
+#include <linux/bitfield.h>
 #include <linux/types.h>
 #include <linux/mutex.h>
 #include <linux/msi.h>
@@ -111,6 +112,10 @@
 #define FEATURE_SNPAVICSUP_GAM(x) \
 	((x & FEATURE_SNPAVICSUP_MASK) >> FEATURE_SNPAVICSUP_SHIFT == 0x1)
 
+#define FEATURE_NUM_INT_REMAP_SUP	GENMASK_ULL(9, 8)
+#define FEATURE_NUM_INT_REMAP_SUP_2K(x) \
+	(FIELD_GET(FEATURE_NUM_INT_REMAP_SUP, x) == 0x1)
+
 /* Note:
  * The current driver only support 16-bit PASID.
  * Currently, hardware only implement upto 16-bit PASID
@@ -169,6 +174,9 @@
 #define CONTROL_GAM_EN          0x19ULL
 #define CONTROL_GALOG_EN        0x1CULL
 #define CONTROL_GAINT_EN        0x1DULL
+#define CONTROL_NUM_INT_REMAP_MODE	0x2BULL
+#define CONTROL_NUM_INT_REMAP_MODE_MASK 0x03ULL
+#define CONTROL_NUM_INT_REMAP_MODE_2K   0x01ULL
 #define CONTROL_XT_EN           0x32ULL
 #define CONTROL_INTCAPXT_EN     0x33ULL
 #define CONTROL_IRTCACHEDIS     0x3BULL
@@ -286,14 +294,13 @@
 #define DTE_IRQ_REMAP_INTCTL    (2ULL << 60)
 #define DTE_IRQ_REMAP_ENABLE    1ULL
 
-/*
- * AMD IOMMU hardware only support 512 IRTEs despite
- * the architectural limitation of 2048 entries.
- */
 #define DTE_INTTABLEN_MASK      (0xfULL << 1)
 #define DTE_INTTABLEN_VALUE_512 9ULL
 #define DTE_INTTABLEN_512       (DTE_INTTABLEN_VALUE_512 << 1)
 #define MAX_IRQS_PER_TABLE_512  BIT(DTE_INTTABLEN_VALUE_512)
+#define DTE_INTTABLEN_VALUE_2K	11ULL
+#define DTE_INTTABLEN_2K	(DTE_INTTABLEN_VALUE_2K << 1)
+#define MAX_IRQS_PER_TABLE_2K	BIT(DTE_INTTABLEN_VALUE_2K)
 
 #define PAGE_MODE_NONE    0x00
 #define PAGE_MODE_1_LEVEL 0x01
@@ -727,6 +734,7 @@ struct iommu_dev_data {
 	struct protection_domain *domain; /* Domain the device is bound to */
 	struct pci_dev *pdev;
 	u16 devid;			  /* PCI Device ID */
+	unsigned int max_irqs;		  /* Maximum IRQs supported by device */
 	bool iommu_v2;			  /* Device can make use of IOMMUv2 */
 	struct {
 		bool enabled;
