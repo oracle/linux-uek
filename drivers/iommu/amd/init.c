@@ -1048,7 +1048,7 @@ static bool copy_device_table(void)
 		int_tab_len = old_devtb[devid].data[2] & DTE_INTTABLEN_MASK;
 		if (irq_v && (int_ctl || int_tab_len)) {
 			if ((int_ctl != DTE_IRQ_REMAP_INTCTL) ||
-			    (int_tab_len != DTE_INTTABLEN)) {
+			    (int_tab_len != DTE_INTTABLEN_512)) {
 				pr_err("Wrong old irq remapping flag: %#x\n", devid);
 				return false;
 			}
