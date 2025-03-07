@@ -742,7 +742,9 @@ Provides: %{variant_name}-modules-%{-s*} = %{version}-%{release}%{?1:.%{1}}\
 Provides: installonlypkg(%{installonly_variant_name}-modules)\
 Provides: %{variant_name}-modules-%{-s*}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-modules-uname-r = %{KVERREL}%{?1:.%{1}}\
-Requires: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
+%if "%{-s*}" == "desktop"\
+Requires: %{variant_name}-modules-usb-uname-r = %{KVERREL}%{?1:.%{1}}\
+%endif\
 AutoReq: no\
 AutoProv: yes\
 %description -n %{variant_name}-modules-%{-s*}\
