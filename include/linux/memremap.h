@@ -2,6 +2,7 @@
 #ifndef _LINUX_MEMREMAP_H_
 #define _LINUX_MEMREMAP_H_
 
+#include <linux/uek_kabi.h>
 #include <linux/mmzone.h>
 #include <linux/range.h>
 #include <linux/ioport.h>
@@ -134,6 +135,10 @@ struct dev_pagemap {
 	const struct dev_pagemap_ops *ops;
 	void *owner;
 	int nr_range;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+
 	union {
 		struct range range;
 		DECLARE_FLEX_ARRAY(struct range, ranges);
