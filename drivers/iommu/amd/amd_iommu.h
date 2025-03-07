@@ -93,23 +93,26 @@ static inline bool iommu_feature(struct amd_iommu *iommu, u64 mask)
 	return !!(iommu->features & mask);
 }
 
-/* Generic functions to enable/disable certain features of the IOMMU. */
-static inline void iommu_feature_enable(struct amd_iommu *iommu, u8 bit)
+static void iommu_feature_set(struct amd_iommu *iommu, u64 val, u64 mask, u8 shift)
 {
 	u64 ctrl;
 
 	ctrl = readq(iommu->mmio_base + MMIO_CONTROL_OFFSET);
-	ctrl |= (1ULL << bit);
+	mask <<= shift;
+	ctrl &= ~mask;
+	ctrl |= (val << shift) & mask;
 	writeq(ctrl, iommu->mmio_base + MMIO_CONTROL_OFFSET);
+}
+
+/* Generic functions to enable/disable certain features of the IOMMU. */
+static inline void iommu_feature_enable(struct amd_iommu *iommu, u8 bit)
+{
+	iommu_feature_set(iommu, 1ULL, 1ULL, bit);
 }
 
 static inline void iommu_feature_disable(struct amd_iommu *iommu, u8 bit)
 {
-	u64 ctrl;
-
-	ctrl = readq(iommu->mmio_base + MMIO_CONTROL_OFFSET);
-	ctrl &= ~(1ULL << bit);
-	writeq(ctrl, iommu->mmio_base + MMIO_CONTROL_OFFSET);
+	iommu_feature_set(iommu, 0ULL, 1ULL, bit);
 }
 
 void iommu_poll_ga_log(struct amd_iommu *iommu);
