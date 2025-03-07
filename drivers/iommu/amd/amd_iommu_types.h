@@ -290,7 +290,6 @@
  * AMD IOMMU hardware only support 512 IRTEs despite
  * the architectural limitation of 2048 entries.
  */
-#define DTE_INTTAB_ALIGNMENT    128
 #define DTE_INTTABLEN_VALUE     9ULL
 #define DTE_INTTABLEN           (DTE_INTTABLEN_VALUE << 1)
 #define DTE_INTTABLEN_MASK      (0xfULL << 1)
@@ -470,9 +469,6 @@ extern bool amd_iommu_irq_remap;
 
 /* Dirty tracking feature supported? */
 extern bool amd_iommu_had_support;
-
-/* kmem_cache to get tables with 128 byte alignement */
-extern struct kmem_cache *amd_iommu_irq_cache;
 
 /* Make iterating over all pci segment easier */
 #define for_each_pci_segment(pci_seg) \
