@@ -801,6 +801,9 @@ struct vm_area_struct {
 	struct vma_numab_state *numab_state;	/* NUMA Balancing state */
 #endif
 	struct vm_userfaultfd_ctx vm_userfaultfd_ctx;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 } __randomize_layout;
 
 #ifdef CONFIG_NUMA
