@@ -3,6 +3,8 @@
 #define __NET_GENERIC_NETLINK_H
 
 #include <linux/net.h>
+#include <linux/uek_kabi.h>
+#include <linux/genetlink.h>
 #include <net/netlink.h>
 #include <net/net_namespace.h>
 #include <uapi/linux/genetlink.h>
@@ -113,6 +115,14 @@ struct genl_family {
 	unsigned int		mcgrp_offset;
 	/* list of per-socket privs */
 	struct xarray		*sock_privs;
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
 };
 
 /**
@@ -219,6 +229,14 @@ struct genl_ops {
 	u8			internal_flags;
 	u8			flags;
 	u8			validate;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
 };
 
 /**
