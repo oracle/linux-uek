@@ -2,6 +2,7 @@
 #ifndef _LINUX_USER_NAMESPACE_H
 #define _LINUX_USER_NAMESPACE_H
 
+#include <linux/uek_kabi.h>
 #include <linux/kref.h>
 #include <linux/nsproxy.h>
 #include <linux/ns_common.h>
@@ -112,6 +113,9 @@ struct user_namespace {
 #if IS_ENABLED(CONFIG_BINFMT_MISC)
 	struct binfmt_misc *binfmt_misc;
 #endif
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 } __randomize_layout;
 
 struct ucounts {
