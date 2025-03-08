@@ -35,6 +35,7 @@
 #ifndef _SOCK_H
 #define _SOCK_H
 
+#include <linux/uek_kabi.h>
 #include <linux/hardirq.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
@@ -549,6 +550,8 @@ struct sock {
 struct sock_bh_locked {
 	struct sock *sock;
 	local_lock_t bh_lock;
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 enum sk_pacing {
@@ -1333,6 +1336,15 @@ struct proto {
 
 	struct list_head	node;
 	int			(*diag_destroy)(struct sock *sk, int err);
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
 } __randomize_layout;
 
 int proto_register(struct proto *prot, int alloc_slab);
