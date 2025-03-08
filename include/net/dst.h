@@ -9,6 +9,7 @@
 #ifndef _NET_DST_H
 #define _NET_DST_H
 
+#include <linux/uek_kabi.h>
 #include <net/dst_ops.h>
 #include <linux/netdevice.h>
 #include <linux/rtnetlink.h>
@@ -92,6 +93,12 @@ struct dst_entry {
 #ifdef CONFIG_64BIT
 	struct lwtunnel_state   *lwtstate;
 #endif
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
 };
 
 struct dst_metrics {
