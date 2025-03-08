@@ -136,6 +136,8 @@ struct inet_bind_hashbucket {
 struct inet_listen_hashbucket {
 	spinlock_t		lock;
 	struct hlist_nulls_head	nulls_head;
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 /* This is for listening sockets, thus all sockets which possess wildcards. */
@@ -172,6 +174,10 @@ struct inet_hashinfo {
 	struct inet_listen_hashbucket	*lhash2;
 
 	bool				pernet;
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 } ____cacheline_aligned_in_smp;
 
 static inline struct inet_hashinfo *tcp_or_dccp_get_hashinfo(const struct sock *sk)
