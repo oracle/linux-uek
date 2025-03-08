@@ -27,6 +27,14 @@ struct netdev_rx_queue {
 	 */
 	struct napi_struct		*napi;
 	struct pp_memory_provider_params mp_params;
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
 } ____cacheline_aligned_in_smp;
 
 /*
