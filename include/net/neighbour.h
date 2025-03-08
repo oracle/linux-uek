@@ -2,6 +2,7 @@
 #ifndef _NET_NEIGHBOUR_H
 #define _NET_NEIGHBOUR_H
 
+#include <linux/uek_kabi.h>
 #include <linux/neighbour.h>
 
 /*
@@ -162,6 +163,8 @@ struct neighbour {
 	struct rcu_head		rcu;
 	struct net_device	*dev;
 	netdevice_tracker	dev_tracker;
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 	u8			primary_key[];
 } __randomize_layout;
 
@@ -234,6 +237,9 @@ struct neigh_table {
 	struct neigh_statistics	__percpu *stats;
 	struct neigh_hash_table __rcu *nht;
 	struct pneigh_entry	**phash_buckets;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 enum {
