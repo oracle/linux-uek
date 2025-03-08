@@ -8,6 +8,7 @@
 #ifndef __NET_DCBNL_H__
 #define __NET_DCBNL_H__
 
+#include <linux/uek_kabi.h>
 #include <linux/dcbnl.h>
 
 struct net_device;
@@ -131,6 +132,10 @@ struct dcbnl_rtnl_ops {
 	/* rewrite */
 	int (*dcbnl_setrewr)(struct net_device *dev, struct dcb_app *app);
 	int (*dcbnl_delrewr)(struct net_device *dev, struct dcb_app *app);
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 #endif /* __NET_DCBNL_H__ */
