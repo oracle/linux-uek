@@ -307,6 +307,14 @@ struct xfrm_state {
 	 * interpreted by xfrm_type methods. */
 	void			*data;
 	u8			dir;
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
 };
 
 static inline struct net *xs_net(struct xfrm_state *x)
@@ -366,6 +374,10 @@ struct xfrm_dst_lookup_params {
 	u32 mark;
 	__u8 ipproto;
 	union flowi_uli uli;
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 struct net_device;
@@ -537,6 +549,10 @@ struct xfrm_policy_queue {
 	struct sk_buff_head	hold_queue;
 	struct timer_list	hold_timer;
 	unsigned long		timeout;
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 /**
