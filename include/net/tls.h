@@ -34,6 +34,7 @@
 #ifndef _TLS_OFFLOAD_H
 #define _TLS_OFFLOAD_H
 
+#include <linux/uek_kabi.h>
 #include <linux/types.h>
 #include <asm/byteorder.h>
 #include <linux/crypto.h>
@@ -189,6 +190,10 @@ enum tls_context_flags {
 struct cipher_context {
 	char iv[TLS_MAX_IV_SIZE + TLS_MAX_SALT_SIZE];
 	char rec_seq[TLS_MAX_REC_SEQ_SIZE];
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 union tls_crypto_context {
