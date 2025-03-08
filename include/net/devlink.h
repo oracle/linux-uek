@@ -20,6 +20,7 @@
 #include <uapi/linux/devlink.h>
 #include <linux/xarray.h>
 #include <linux/firmware.h>
+#include <linux/uek_kabi.h>
 
 struct devlink;
 struct devlink_linecard;
@@ -42,6 +43,9 @@ struct devlink_port_pci_pf_attrs {
 	u32 controller;
 	u16 pf;
 	u8 external:1;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 /**
@@ -56,6 +60,9 @@ struct devlink_port_pci_vf_attrs {
 	u16 pf;
 	u16 vf;
 	u8 external:1;
+	
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 /**
@@ -96,6 +103,9 @@ struct devlink_port_attrs {
 		struct devlink_port_pci_vf_attrs pci_vf;
 		struct devlink_port_pci_sf_attrs pci_sf;
 	};
+
+        UEK_KABI_RESERVE(1)
+        UEK_KABI_RESERVE(2)
 };
 
 struct devlink_rate {
@@ -151,7 +161,8 @@ struct devlink_port {
 	struct devlink_rate *devlink_rate;
 	struct devlink_linecard *linecard;
 	u32 rel_index;
-	UEK_KABI_RESERVE(1)
+        UEK_KABI_RESERVE(1)
+        UEK_KABI_RESERVE(2)
 };
 
 struct devlink_port_new_attrs {
@@ -1512,6 +1523,7 @@ struct devlink_ops {
 	(*selftest_run)(struct devlink *devlink, unsigned int id,
 			struct netlink_ext_ack *extack);
 	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 void *devlink_priv(struct devlink *devlink);
