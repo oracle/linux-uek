@@ -2,6 +2,7 @@
 #ifndef _IPV6_H
 #define _IPV6_H
 
+#include <linux/uek_kabi.h>
 #include <uapi/linux/ipv6.h>
 #include <linux/cache.h>
 
@@ -92,6 +93,16 @@ struct ipv6_devconf {
 	__u8		ra_honor_pio_pflag;
 
 	struct ctl_table_header *sysctl_header;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+	UEK_KABI_RESERVE(5)
+	UEK_KABI_RESERVE(6)
+	UEK_KABI_RESERVE(7)
+	UEK_KABI_RESERVE(8)
+
 };
 
 struct ipv6_params {
