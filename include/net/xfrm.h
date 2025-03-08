@@ -2,6 +2,7 @@
 #ifndef _NET_XFRM_H
 #define _NET_XFRM_H
 
+#include <linux/uek_kabi.h>
 #include <linux/compiler.h>
 #include <linux/xfrm.h>
 #include <linux/spinlock.h>
@@ -126,6 +127,8 @@ struct xfrm_state_walk {
 	u8			proto;
 	u32			seq;
 	struct xfrm_address_filter *filter;
+
+	UEK_KABI_RESERVE(1)
 };
 
 enum {
@@ -152,6 +155,8 @@ struct xfrm_dev_offload {
 	u8			dir : 2;
 	u8			type : 2;
 	u8			flags : 2;
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 struct xfrm_mode {
@@ -600,6 +605,9 @@ struct xfrm_policy {
 
 	struct xfrm_dev_offload xdo;
 	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 static inline struct net *xp_net(const struct xfrm_policy *xp)
