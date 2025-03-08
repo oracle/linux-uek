@@ -21,6 +21,7 @@
 #include <net/fib_notifier.h>
 #include <linux/indirect_call_wrapper.h>
 #include <uapi/linux/bpf.h>
+#include <linux/uek_kabi.h>
 
 #ifdef CONFIG_IPV6_MULTIPLE_TABLES
 #define FIB6_TABLE_HASHSZ 256
@@ -216,6 +217,9 @@ struct rt6_info {
 
 	/* more non-fragment space at head required */
 	unsigned short			rt6i_nfheader_len;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 struct fib6_result {
