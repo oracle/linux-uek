@@ -20,6 +20,7 @@
 #include <net/rtnetlink.h>
 #include <net/flow_offload.h>
 #include <linux/xarray.h>
+#include <linux/uek_kabi.h>
 
 struct Qdisc_ops;
 struct qdisc_walker;
@@ -320,6 +321,9 @@ struct Qdisc_ops {
 	u32			(*egress_block_get)(struct Qdisc *sch);
 
 	struct module		*owner;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 struct tcf_result {
@@ -487,6 +491,9 @@ struct tcf_block {
 	struct rcu_head rcu;
 	DECLARE_HASHTABLE(proto_destroy_ht, 7);
 	struct mutex proto_destroy_lock; /* Lock for proto_destroy hashtable. */
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 struct tcf_block *tcf_block_lookup(struct net *net, u32 block_index);
