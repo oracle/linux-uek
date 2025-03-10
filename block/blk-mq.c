@@ -3309,6 +3309,7 @@ int blk_rq_prep_clone(struct request *rq, struct request *rq_src,
 		rq->special_vec = rq_src->special_vec;
 	}
 	rq->nr_phys_segments = rq_src->nr_phys_segments;
+	rq->nr_integrity_segments = rq_src->nr_integrity_segments;
 	rq->ioprio = rq_src->ioprio;
 	rq->write_hint = rq_src->write_hint;
 
