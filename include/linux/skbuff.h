@@ -10,6 +10,7 @@
 #ifndef _LINUX_SKBUFF_H
 #define _LINUX_SKBUFF_H
 
+#include <linux/uek_kabi.h>
 #include <linux/kernel.h>
 #include <linux/compiler.h>
 #include <linux/time.h>
@@ -615,6 +616,10 @@ struct skb_shared_info {
 
 	/* must be last field, see pskb_expand_head() */
 	skb_frag_t	frags[MAX_SKB_FRAGS];
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 /**
