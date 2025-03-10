@@ -47,6 +47,7 @@
 #include <linux/memcontrol.h>
 #include <linux/bpf-cgroup.h>
 #include <linux/siphash.h>
+#include <linux/uek_kabi.h>
 
 extern struct inet_hashinfo tcp_hashinfo;
 
@@ -1162,6 +1163,10 @@ struct rate_sample {
 	bool is_app_limited;	/* is sample from packet with bubble in pipe? */
 	bool is_retrans;	/* is sample from retransmission? */
 	bool is_ack_delayed;	/* is this (likely) a delayed ACK? */
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 struct tcp_congestion_ops {
