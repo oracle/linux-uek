@@ -543,7 +543,6 @@ modules-core:
 - aic94xx
 - ata_piix
 - blowfish-x86_64
-- bnxt_re
 - camellia-aesni-avx-x86_64
 - camellia-aesni-avx2
 - camellia-x86_64
