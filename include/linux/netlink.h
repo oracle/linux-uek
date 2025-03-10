@@ -87,6 +87,10 @@ struct netlink_ext_ack {
 	u8 cookie[NETLINK_MAX_COOKIE_LEN];
 	u8 cookie_len;
 	char _msg_buf[NETLINK_MAX_FMTMSG_LEN];
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 /* Always use this macro, this allows later putting the
