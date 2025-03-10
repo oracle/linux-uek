@@ -62,6 +62,20 @@ config OCTEONTX2_BPHY_RFOE_NETDEV
 	  BPHY RFOE MHAB such as eCPRI control, PTP and other ethernet packets
 	  in Linux kernel. The rest of packets are processed by ODP application.
 
+config OCTEONTX2_BPHY_PF
+	tristate "Marvell OcteonTX2 BPHY PF driver"
+	select OCTEONTX2_MBOX
+	select NET_DEVLINK
+	select PAGE_POOL
+	depends on (64BIT && COMPILE_TEST) || ARM64
+	depends on OCTEONTX2_PF
+	select DIMLIB
+	depends on PCI
+	depends on PTP_1588_CLOCK_OPTIONAL
+	depends on MACSEC || !MACSEC
+	help
+	  This driver supports Marvell's OcteonTX2 BPHY physical function.
+
 config OCTEONTX2_BPHY_CNF20K_CPRI_PF
        tristate "Marvell OcteonTX2 BPHY CNF20K CPRI PF driver"
        help

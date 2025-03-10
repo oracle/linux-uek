@@ -2916,6 +2916,7 @@ out:
 	mutex_unlock(&pf->mbox.lock);
 	return err;
 }
+EXPORT_SYMBOL(otx2_do_set_vf_vlan);
 
 static int otx2_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos,
 			    __be16 proto)
