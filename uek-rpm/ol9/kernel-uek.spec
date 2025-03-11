@@ -1369,14 +1369,37 @@ BuildKernel() {
 	grep '^/lib/modules' "$file_name" | sed -e 's/^\///' %{?unzipsed} | xargs --no-run-if-empty rm
     }
 
+    remove_all_subpackages_except_one()
+    {
+	subpackages=("modules-deprecated" "modules-desktop" "modules-extra" "modules-extra-netfilter" "modules-usb" "modules-wireless")
+	for subpackage in "${subpackages[@]}";
+	do
+	    if [ "$subpackage" == "$1" ]; then
+		continue
+	    fi
+	    remove_modules "$subpackage"
+	done
+    }
+
     # don't include anything going into kernel%{?variant}-modules-(extra|deprecated) in the file lists
     remove_modules modules-extra
     remove_modules modules-deprecated
-
     # Run depmod on the resulting module tree and make sure it isn't broken
     depmod -b . -aeF ./System.map $KernelVer &> depmod.out
     if [ -s depmod.out ]; then
-        echo "Depmod failure. Modules from modules-extra or modules-deprecated list may be needed"
+        echo "Depmod failure. Modules from modules-extra or modules-deprecated might be needed"
+        cat depmod.out
+        exit 1
+    else
+        rm depmod.out
+    fi
+
+    cp -r restore/* lib/modules/$KernelVer/.
+    remove_all_subpackages_except_one modules-desktop
+    # Run depmod on the resulting module tree and make sure it isn't broken
+    depmod -b . -aeF ./System.map $KernelVer &> depmod.out
+    if [ -s depmod.out ]; then
+        echo "Depmod failure. You may have to add missing modules-desktop list"
         cat depmod.out
         exit 1
     else
@@ -1385,23 +1408,50 @@ BuildKernel() {
 
     remove_depmod_files
 
-    # don't include anything going into kernel%{?variant}-modules-(desktop|usb|wireless|netfilter) in the file lists
-    remove_modules modules-desktop
-    remove_modules modules-extra-netfilter
-    remove_modules modules-usb
-    remove_modules modules-wireless
-
-    depmod -b . -aeF ./System.map $KernelVer &> depmod.out
+    cp -r restore/* lib/modules/$KernelVer/.
+    remove_all_subpackages_except_one modules-extra-netfilter
     # Run depmod on the resulting module tree and make sure it isn't broken
+    depmod -b . -aeF ./System.map $KernelVer &> depmod.out
     if [ -s depmod.out ]; then
-	echo "Depmod failure. Modules from modules-(desktop|usb|wireless|netfilter) list may be needed"
-	cat depmod.out
-	exit 1
+        echo "Depmod failure. You may have to add missing modules-extra-netfilter list"
+        cat depmod.out
+        exit 1
     else
-	rm depmod.out
+        rm depmod.out
     fi
 
     remove_depmod_files
+
+    cp -r restore/* lib/modules/$KernelVer/.
+    remove_all_subpackages_except_one modules-wireless
+    # Run depmod on the resulting module tree and make sure it isn't broken
+    depmod -b . -aeF ./System.map $KernelVer &> depmod.out
+    if [ -s depmod.out ]; then
+        echo "Depmod failure. You may have to add missing modules-wireless list"
+        cat depmod.out
+        exit 1
+    else
+        rm depmod.out
+    fi
+
+    remove_depmod_files
+
+    cp -r restore/* lib/modules/$KernelVer/.
+    remove_all_subpackages_except_one modules-usb
+    # Run depmod on the resulting module tree and make sure it isn't broken
+    depmod -b . -aeF ./System.map $KernelVer &> depmod.out
+    if [ -s depmod.out ]; then
+        echo "Depmod failure. You may have to add missing modules-usb list"
+        cat depmod.out
+        exit 1
+    else
+        rm depmod.out
+    fi
+
+    remove_depmod_files
+
+    # Remove modules-usb modules as well now
+    remove_modules modules-usb
 
     remove_modules modules
 
