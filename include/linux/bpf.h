@@ -181,6 +181,7 @@ struct bpf_map_ops {
 
 	/* bpf_iter info used to open a seq_file */
 	const struct bpf_iter_seq_info *iter_seq_info;
+	UEK_KABI_RESERVE(1)
 };
 
 enum {
@@ -306,6 +307,7 @@ struct bpf_map {
 	bool free_after_rcu_gp;
 	atomic64_t sleepable_refcnt;
 	s64 __percpu *elem_count;
+	UEK_KABI_RESERVE(1)
 };
 
 static inline const char *btf_field_type_name(enum btf_field_type type)
@@ -1565,6 +1567,8 @@ struct bpf_prog_aux {
 		struct work_struct work;
 		struct rcu_head	rcu;
 	};
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 struct bpf_prog {

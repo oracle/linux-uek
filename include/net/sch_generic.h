@@ -393,6 +393,7 @@ struct tcf_proto_ops {
 
 	struct module		*owner;
 	int			flags;
+	UEK_KABI_RESERVE(1)
 };
 
 /* Classifiers setting TCF_PROTO_OPS_DOIT_UNLOCKED in tcf_proto_ops->flags

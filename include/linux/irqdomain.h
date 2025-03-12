@@ -189,6 +189,10 @@ struct irq_domain {
 	const struct msi_parent_ops	*msi_parent_ops;
 #endif
 	void				(*exit)(struct irq_domain *d);
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 
 	/* reverse map data. The linear map gets appended to the irq_domain */
 	irq_hw_number_t			hwirq_max;

@@ -6,6 +6,7 @@
 #define _ASM_X86_FPU_TYPES_H
 
 #include <asm/page_types.h>
+#include <linux/uek_kabi.h>
 
 /*
  * The legacy x87 FPU state format, as saved by FSAVE and
@@ -498,7 +499,7 @@ struct fpu {
 	 * Permission related information for guest pseudo FPUs
 	 */
 	struct fpu_state_perm		guest_perm;
-
+	UEK_KABI_RESERVE(1)
 	/*
 	 * @__fpstate:
 	 *

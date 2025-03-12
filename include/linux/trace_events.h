@@ -130,6 +130,7 @@ struct trace_iterator {
 
 	loff_t			pos;
 	long			idx;
+	UEK_KABI_RESERVE(1)
 
 	/* All new field here will be zeroed out in pipe_read */
 };

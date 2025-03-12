@@ -151,6 +151,7 @@ struct devlink_port {
 	struct devlink_rate *devlink_rate;
 	struct devlink_linecard *linecard;
 	u32 rel_index;
+	UEK_KABI_RESERVE(1)
 };
 
 struct devlink_port_new_attrs {
@@ -1510,6 +1511,7 @@ struct devlink_ops {
 	enum devlink_selftest_status
 	(*selftest_run)(struct devlink *devlink, unsigned int id,
 			struct netlink_ext_ack *extack);
+	UEK_KABI_RESERVE(1)
 };
 
 void *devlink_priv(struct devlink *devlink);

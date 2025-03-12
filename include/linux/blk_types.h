@@ -79,6 +79,7 @@ struct block_device {
 	 * path
 	 */
 	struct device		bd_device;
+	UEK_KABI_RESERVE(1)
 } __randomize_layout;
 
 #define bdev_whole(_bdev) \

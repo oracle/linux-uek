@@ -599,6 +599,7 @@ struct xfrm_policy {
 	struct rcu_head		rcu;
 
 	struct xfrm_dev_offload xdo;
+	UEK_KABI_RESERVE(1)
 };
 
 static inline struct net *xp_net(const struct xfrm_policy *xp)

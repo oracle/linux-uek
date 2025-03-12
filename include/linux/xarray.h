@@ -1356,6 +1356,7 @@ struct xa_state {
 	struct xa_node *xa_alloc;
 	xa_update_node_t xa_update;
 	struct list_lru *xa_lru;
+	UEK_KABI_RESERVE(1)
 };
 
 /*

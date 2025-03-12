@@ -32,6 +32,7 @@ struct file_lease;
 struct file_lock_operations {
 	void (*fl_copy_lock)(struct file_lock *, struct file_lock *);
 	void (*fl_release_private)(struct file_lock *);
+	UEK_KABI_RESERVE(1)
 };
 
 struct lock_manager_operations {
@@ -42,6 +43,7 @@ struct lock_manager_operations {
 	int (*lm_grant)(struct file_lock *, int);
 	bool (*lm_lock_expirable)(struct file_lock *cfl);
 	void (*lm_expire_lock)(void);
+	UEK_KABI_RESERVE(1)
 };
 
 struct lease_manager_operations {
@@ -49,6 +51,7 @@ struct lease_manager_operations {
 	int (*lm_change)(struct file_lease *, int, struct list_head *);
 	void (*lm_setup)(struct file_lease *, void **);
 	bool (*lm_breaker_owns_lease)(struct file_lease *);
+	UEK_KABI_RESERVE(1)
 };
 
 struct lock_manager {

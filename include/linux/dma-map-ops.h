@@ -68,6 +68,7 @@ struct dma_map_ops {
 	size_t (*max_mapping_size)(struct device *dev);
 	size_t (*opt_mapping_size)(void);
 	unsigned long (*get_merge_boundary)(struct device *dev);
+	UEK_KABI_RESERVE(1)
 };
 
 #ifdef CONFIG_ARCH_HAS_DMA_OPS

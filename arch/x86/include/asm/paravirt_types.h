@@ -10,6 +10,7 @@
 #include <asm/desc_defs.h>
 #include <asm/pgtable_types.h>
 #include <asm/nospec-branch.h>
+#include <linux/uek_kabi.h>
 
 struct page;
 struct thread_struct;
@@ -46,6 +47,8 @@ struct pv_lazy_ops {
 	void (*enter)(void);
 	void (*leave)(void);
 	void (*flush)(void);
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 } __no_randomize_layout;
 #endif
 
@@ -108,6 +111,8 @@ struct pv_cpu_ops {
 	void (*start_context_switch)(struct task_struct *prev);
 	void (*end_context_switch)(struct task_struct *next);
 #endif
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 } __no_randomize_layout;
 
 struct pv_irq_ops {
@@ -125,6 +130,8 @@ struct pv_irq_ops {
 
 	void (*safe_halt)(void);
 	void (*halt)(void);
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 #endif
 } __no_randomize_layout;
 
@@ -210,6 +217,8 @@ struct pv_mmu_ops {
 	void (*set_fixmap)(unsigned /* enum fixed_addresses */ idx,
 			   phys_addr_t phys, pgprot_t flags);
 #endif
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 } __no_randomize_layout;
 
 struct arch_spinlock;
@@ -227,6 +236,8 @@ struct pv_lock_ops {
 	void (*kick)(int cpu);
 
 	struct paravirt_callee_save vcpu_is_preempted;
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 } __no_randomize_layout;
 
 /* This contains all the paravirt structures: we get a convenient

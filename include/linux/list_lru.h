@@ -36,6 +36,7 @@ struct list_lru_one {
 
 struct list_lru_memcg {
 	struct rcu_head		rcu;
+	UEK_KABI_RESERVE(1)
 	/* array of per cgroup per node lists, indexed by node id */
 	struct list_lru_one	node[];
 };

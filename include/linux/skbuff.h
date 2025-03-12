@@ -1081,6 +1081,7 @@ struct sk_buff {
 	/* only usable after checking ->active_extensions != 0 */
 	struct skb_ext		*extensions;
 #endif
+	UEK_KABI_RESERVE(1)
 };
 
 /* if you move pkt_type around you also must adapt those constants */

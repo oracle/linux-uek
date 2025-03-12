@@ -827,6 +827,7 @@ struct device {
 #ifdef CONFIG_IOMMU_DMA
 	bool			dma_iommu:1;
 #endif
+	UEK_KABI_RESERVE(1)
 };
 
 /**

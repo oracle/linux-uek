@@ -872,6 +872,7 @@ struct perf_event {
 	 * user.
 	 */
 	__u32				orig_type;
+	UEK_KABI_RESERVE(1)
 #endif /* CONFIG_PERF_EVENTS */
 };
 
@@ -1008,6 +1009,7 @@ struct perf_event_context {
 	 * that until the signal is delivered.
 	 */
 	local_t				nr_no_switch_fast;
+	UEK_KABI_RESERVE(1)
 };
 
 struct perf_cpu_pmu_context {

@@ -132,6 +132,7 @@ struct ethtool_link_ext_state_info {
 		enum ethtool_link_ext_substate_module module;
 		u32 __link_ext_substate;
 	};
+	UEK_KABI_RESERVE(1)
 };
 
 struct ethtool_link_ext_stats {
@@ -1125,6 +1126,10 @@ struct ethtool_ops {
 	int	(*set_mm)(struct net_device *dev, struct ethtool_mm_cfg *cfg,
 			  struct netlink_ext_ack *extack);
 	void	(*get_mm_stats)(struct net_device *dev, struct ethtool_mm_stats *stats);
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
 };
 
 int ethtool_check_ops(const struct ethtool_ops *ops);
