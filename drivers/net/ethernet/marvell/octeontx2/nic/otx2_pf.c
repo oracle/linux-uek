@@ -1322,6 +1322,7 @@ int otx2_reset_mac_stats(struct otx2_nic *pfvf)
 	mutex_unlock(&pfvf->mbox.lock);
 	return err;
 }
+EXPORT_SYMBOL(otx2_reset_mac_stats);
 
 static int otx2_cgx_config_loopback(struct otx2_nic *pf, bool enable)
 {

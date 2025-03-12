@@ -343,6 +343,31 @@ static int otx2_dl_serdes_link_get(struct devlink *devlink, u32 id,
 	return 0;
 }
 
+static int otx2_dl_mac_stats_reset_get(struct devlink *devlink, u32 id,
+				       struct devlink_param_gset_ctx *ctx)
+{
+       /* Setting to false, to set stats reset */
+	ctx->val.vbool = false;
+	return 0;
+}
+
+static int otx2_dl_mac_stats_reset_set(struct devlink *devlink, u32 id,
+				       struct devlink_param_gset_ctx *ctx,
+				       struct netlink_ext_ack *extack)
+{
+	struct otx2_devlink *otx2_dl = devlink_priv(devlink);
+	struct otx2_nic *pfvf = otx2_dl->pfvf;
+	int err;
+
+	if (ctx->val.vbool) {
+		err = otx2_reset_mac_stats(pfvf);
+		if (err)
+			return err;
+	}
+
+	return 0;
+}
+
 enum otx2_dl_param_id {
 	OTX2_DEVLINK_PARAM_ID_BASE = DEVLINK_PARAM_GENERIC_ID_MAX,
 	OTX2_DEVLINK_PARAM_ID_MCAM_COUNT,
@@ -351,6 +376,7 @@ enum otx2_dl_param_id {
 	OTX2_DEVLINK_PARAM_ID_CQE_SIZE,
 	OTX2_DEVLINK_PARAM_ID_RBUF_SIZE,
 	OTX2_DEVLINK_PARAM_ID_SERDES_LINK,
+	OTX2_DEVLINK_PARAM_ID_MAC_STATS_RST,
 };
 
 static const struct devlink_param otx2_dl_params[] = {
@@ -383,6 +409,12 @@ static const struct devlink_param otx2_dl_params[] = {
 			     "serdes_link", DEVLINK_PARAM_TYPE_BOOL,
 			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
 			     otx2_dl_serdes_link_get, otx2_dl_serdes_link_set,
+			     NULL),
+	DEVLINK_PARAM_DRIVER(OTX2_DEVLINK_PARAM_ID_MAC_STATS_RST,
+			     "mac_stats_reset", DEVLINK_PARAM_TYPE_BOOL,
+			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
+			     otx2_dl_mac_stats_reset_get,
+			     otx2_dl_mac_stats_reset_set,
 			     NULL),
 };
 
