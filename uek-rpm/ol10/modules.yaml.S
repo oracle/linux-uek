@@ -3363,6 +3363,8 @@ modules-desktop:
 - rockchipdrm
 - rpm-proc
 - rpr0521
+- rsi_91x
+- rsi_usb
 - s2250
 - s5p-jpeg
 - s5p-mfc
@@ -3890,8 +3892,6 @@ modules-wireless:
 - ath6kl_core
 - ath6kl_usb
 - cw1200_core
-- rsi_91x
-- rsi_usb
 - wcn36xx
 #endif /* Arch_aarch64 */
 
