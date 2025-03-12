@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2025, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -690,8 +690,10 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		if (test_bit(RDS_MSG_RETRANSMITTED, &rm->m_flags))
 			rm->m_inc.i_hdr.h_flags |= RDS_FLAG_RETRANSMITTED;
 
-		/* If it has a RDMA op, tell the peer we did it. This is
-		 * used by the peer to release use-once RDMA MRs. */
+		/* If it has an RDMA op, tell the peer we did it. This
+		 * is used by the peer to release use-once RDMA MRs.
+		 */
+
 		if (rm->rdma.op_active) {
 			struct rds_ext_header_rdma ext_hdr;
 
@@ -699,10 +701,14 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 			rds_message_add_extension(&rm->m_inc.i_hdr,
 						  RDS_EXTHDR_RDMA, &ext_hdr);
 		}
-		if (rm->m_rdma_cookie) {
+		/* We attempt to insert the RDS_EXTHDR_RDMA_DEST
+		 * extension header only once.
+		 */
+		if (rm->m_rdma_cookie && !test_bit(RDS_MSG_EH_RDMA_DEST_INSERTED, &rm->m_flags)) {
 			rds_message_add_rdma_dest_extension(&rm->m_inc.i_hdr,
 					rds_rdma_cookie_key(rm->m_rdma_cookie),
 					rds_rdma_cookie_offset(rm->m_rdma_cookie));
+			rds_set_rm_flag_bit(rm, RDS_MSG_EH_RDMA_DEST_INSERTED);
 		}
 
 		/* Note - rds_ib_piggyb_ack clears the ACK_REQUIRED bit, so
