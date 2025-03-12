@@ -77,7 +77,7 @@ static DECLARE_WAIT_QUEUE_HEAD(khugepaged_wait);
  */
 static unsigned int khugepaged_max_ptes_none __read_mostly;
 static unsigned int khugepaged_max_ptes_swap __read_mostly;
-static unsigned int khugepaged_max_ptes_shared __read_mostly;
+unsigned int khugepaged_max_ptes_shared __read_mostly;
 
 #define MM_SLOTS_HASH_BITS 10
 static __read_mostly DEFINE_HASHTABLE(mm_slots_hash, MM_SLOTS_HASH_BITS);
@@ -1823,26 +1823,8 @@ static void collapse_file(struct mm_struct *mm,
 				get_page(page);
 				xas_unlock_irq(&xas);
 			} else {
-				if (!is_khugepaged) {
-					/*
-					 * trylock_page() can fail due to
-					 * concurrent access. To improve
-					 * chances of THP creation, try a
-					 * blocking call. After the page
-					 * lock is acquired, state of the
-					 * page(Dirty or wrieback) is
-					 * checked again below.
-					 */
-					xas_unlock_irq(&xas);
-					page = find_lock_page(mapping, index);
-					if (unlikely(page == NULL)) {
-						result = SCAN_FAIL;
-						goto xa_unlocked;
-					}
-				} else {
-					result = SCAN_PAGE_LOCK;
-					goto xa_locked;
-				}
+				result = SCAN_PAGE_LOCK;
+				goto xa_locked;
 			}
 		}
 
@@ -1876,8 +1858,8 @@ static void collapse_file(struct mm_struct *mm,
 		 * limit the overhead associated with invalidating mappings and
 		 * page table tear down, abort collapse if mapcount is large.
 		 */
-		if (!is_khugepaged && page_mapcount(page) >
-				 khugepaged_max_ptes_shared) {
+		if (!is_shmem &&
+			page_mapcount(page) > khugepaged_max_ptes_shared) {
 			result = SCAN_EXCEED_SHARED_PTE;
 			goto out_unlock;
 		}
@@ -2065,28 +2047,37 @@ out:
 }
 
 static void khugepaged_scan_file(struct mm_struct *mm,
-		struct file *file, pgoff_t start, struct page **hpage)
+		struct file *file, pgoff_t start, struct page **hpage,
+		bool is_khugepaged)
 {
 	struct page *page = NULL;
 	struct address_space *mapping = file->f_mapping;
 	XA_STATE(xas, &mapping->i_pages, start);
-	int present, swap;
+	int present, swap, shared;
 	int node = NUMA_NO_NODE;
 	int result = SCAN_SUCCEED;
+	bool is_shmem = shmem_file(file);
 
 	present = 0;
 	swap = 0;
-	memset(khugepaged_node_load, 0, sizeof(khugepaged_node_load));
+	shared = 0;
+	if (is_khugepaged)
+		memset(khugepaged_node_load, 0, sizeof(khugepaged_node_load));
 	rcu_read_lock();
 	xas_for_each(&xas, page, start + HPAGE_PMD_NR - 1) {
 		if (xas_retry(&xas, page))
 			continue;
 
 		if (xa_is_value(page)) {
-			if (++swap > khugepaged_max_ptes_swap) {
-				result = SCAN_EXCEED_SWAP_PTE;
-				break;
-			}
+			/*
+			 * !is_khugepaged is for the fault path which applies
+			 * only to regular file executable mappings.
+			 */
+			if (is_khugepaged)
+				if (++swap > khugepaged_max_ptes_swap) {
+					result = SCAN_EXCEED_SWAP_PTE;
+					break;
+				}
 			continue;
 		}
 
@@ -2095,12 +2086,19 @@ static void khugepaged_scan_file(struct mm_struct *mm,
 			break;
 		}
 
-		node = page_to_nid(page);
-		if (khugepaged_scan_abort(node)) {
-			result = SCAN_SCAN_ABORT;
-			break;
+		/*
+		 * For THP creation in fault path(!is_khugepaged), will choose
+		 * current numa node as the preferred node. Also, no direct
+		 * reclaim is attemped in collapse_file() in fault path.
+		 */
+		if (is_khugepaged) {
+			node = page_to_nid(page);
+			if (khugepaged_scan_abort(node)) {
+				result = SCAN_SCAN_ABORT;
+				break;
+			}
+			khugepaged_node_load[node]++;
 		}
-		khugepaged_node_load[node]++;
 
 		if (!PageLRU(page)) {
 			result = SCAN_PAGE_LRU;
@@ -2110,6 +2108,20 @@ static void khugepaged_scan_file(struct mm_struct *mm,
 		if (page_count(page) !=
 		    1 + page_mapcount(page) + page_has_private(page)) {
 			result = SCAN_PAGE_COUNT;
+			break;
+		}
+
+		/* check if a page has too many shared mappings */
+		if (!is_shmem &&
+			page_mapcount(page) > khugepaged_max_ptes_shared) {
+			result = SCAN_EXCEED_SHARED_PTE;
+			break;
+		}
+
+		 /* check if too many pages have shared mappings */
+		if (!is_shmem && page_mapcount(page) > 1 &&
+			++shared > khugepaged_max_ptes_shared) {
+			result = SCAN_EXCEED_SHARED_PTE;
 			break;
 		}
 
@@ -2129,12 +2141,21 @@ static void khugepaged_scan_file(struct mm_struct *mm,
 	rcu_read_unlock();
 
 	if (result == SCAN_SUCCEED) {
-		if (present < HPAGE_PMD_NR - khugepaged_max_ptes_none) {
+		/*
+		 * In !is_khugepaged case, attempt to create THP pages even if
+		 * there are 0 small pages present in the THP range.
+		 */
+		if (is_khugepaged &&
+			present < HPAGE_PMD_NR - khugepaged_max_ptes_none) {
 			result = SCAN_EXCEED_NONE_PTE;
-		} else {
-			node = khugepaged_find_target_node();
-			collapse_file(mm, file, start, hpage, node, true);
+			return;
 		}
+
+		if (is_khugepaged)
+			node = khugepaged_find_target_node();
+		else
+			node = numa_node_id();
+		collapse_file(mm, file, start, hpage, node, is_khugepaged);
 	}
 
 	/* TODO: tracepoints */
@@ -2143,8 +2164,7 @@ static void khugepaged_scan_file(struct mm_struct *mm,
 void hugepage_scan_file(struct vm_fault *vmf, struct file *file, pgoff_t thpoff)
 {
 	struct page *hpage = NULL;
-	collapse_file(vmf->vma->vm_mm, file, thpoff, &hpage,
-				numa_node_id(), false);
+	khugepaged_scan_file(vmf->vma->vm_mm, file, thpoff, &hpage, false);
 	if (!IS_ERR_OR_NULL(hpage))
 		put_page(hpage);
 }
@@ -2153,7 +2173,8 @@ void hugepage_scan_file(struct vm_fault *vmf, struct file *file, pgoff_t thpoff)
 {
 }
 static void khugepaged_scan_file(struct mm_struct *mm,
-		struct file *file, pgoff_t start, struct page **hpage)
+		struct file *file, pgoff_t start, struct page **hpage,
+		bool is_khugepaged)
 {
 	BUILD_BUG();
 }
@@ -2240,7 +2261,8 @@ skip:
 
 				mmap_read_unlock(mm);
 				ret = 1;
-				khugepaged_scan_file(mm, file, pgoff, hpage);
+				khugepaged_scan_file(mm, file, pgoff, hpage,
+						true);
 				fput(file);
 			} else {
 				ret = khugepaged_scan_pmd(mm, vma,

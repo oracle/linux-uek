@@ -3030,6 +3030,10 @@ static struct file *do_async_mmap_readahead(struct vm_fault *vmf,
 /*
  * Check if given vma at offset is eligible for THP.
  * Only candidates are vmas of regular files mapped executable.
+ * To avoid contention that can occur when there are large  number of
+ * processes executing from the same executable, check page mapcount on
+ * the small page found, and abort THP creation if it exceeds max_pte_shared
+ * threshold.
  */
 static inline bool check_vma_thp_eligible(struct vm_area_struct *vma,
 		struct page *page, pgoff_t offset, pgoff_t *thpoff)
@@ -3039,6 +3043,8 @@ static inline bool check_vma_thp_eligible(struct vm_area_struct *vma,
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	/* check to make sure transparent_hugepage is enabled */
         if (!khugepaged_enabled())
+		return false;
+	if (page != NULL && page_mapcount(page) > khugepaged_max_ptes_shared)
 		return false;
 #else
 	return false;
@@ -3121,13 +3127,7 @@ retry_getpage:
 		if (likely(page))
 			put_page(page);
 
-		/*
-		 * grab inode lock to serialize and improve chances of
-		 * THP conversion.
-		 */
-		inode_lock(inode);
 		hugepage_scan_file(vmf, file, thpoff);
-		inode_unlock(inode);
 		triedhuge = true;
 		goto retry_getpage;
         }
@@ -3385,7 +3385,7 @@ vm_fault_t filemap_map_pages(struct vm_fault *vmf,
 
 	/* Attempt to create THP if eligible */
 	if (!(vmf->flags & FAULT_FLAG_TRIED) &&
-		 check_vma_thp_eligible(vma, NULL, vmf->pgoff, NULL)) {
+		 check_vma_thp_eligible(vma, head, vmf->pgoff, NULL)) {
 		unlock_page(head);
 		put_page(head);
 		goto out;
