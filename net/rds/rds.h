@@ -693,6 +693,8 @@ static inline u32 rds_rdma_cookie_offset(rds_rdma_cookie_t cookie)
 #define RDS_MSG_PAGEVEC		7
 #define RDS_MSG_FLUSH           8
 #define RDS_MSG_CANCELED	9
+/* Avoid double exthdr insertions */
+#define RDS_MSG_EH_RDMA_DEST_INSERTED	10
 
 struct rds_iov_vector {
 	struct rds_iovec *iv_vec;
