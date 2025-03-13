@@ -696,7 +696,7 @@ enum flow_table_type {
 #define MLX5_FS_MAX_TYPES	 6
 #define MLX5_FS_MAX_ENTRIES	 BIT(16)
 
-static bool mlx5_ib_shared_ft_allowed(struct ib_device *device)
+static bool __maybe_unused mlx5_ib_shared_ft_allowed(struct ib_device *device)
 {
 	struct mlx5_ib_dev *dev = to_mdev(device);
 
@@ -3084,6 +3084,7 @@ DECLARE_UVERBS_NAMED_OBJECT(
 	&UVERBS_METHOD(MLX5_IB_METHOD_STEERING_ANCHOR_DESTROY));
 
 const struct uapi_definition mlx5_ib_flow_defs[] = {
+#if IS_ENABLED(CONFIG_INFINIBAND_USER_ACCESS)
 	UAPI_DEF_CHAIN_OBJ_TREE_NAMED(
 		MLX5_IB_OBJECT_FLOW_MATCHER),
 	UAPI_DEF_CHAIN_OBJ_TREE(
@@ -3094,6 +3095,7 @@ const struct uapi_definition mlx5_ib_flow_defs[] = {
 	UAPI_DEF_CHAIN_OBJ_TREE_NAMED(
 		MLX5_IB_OBJECT_STEERING_ANCHOR,
 		UAPI_DEF_IS_OBJ_SUPPORTED(mlx5_ib_shared_ft_allowed)),
+#endif
 	{},
 };
 
