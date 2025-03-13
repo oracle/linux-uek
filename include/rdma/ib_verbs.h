@@ -2692,6 +2692,11 @@ struct ib_device_ops {
 	int (*counter_update_stats)(struct rdma_counter *counter);
 
 	/**
+	 * counter_init - Initialize the driver specific rdma counter struct.
+	 */
+	void (*counter_init)(struct rdma_counter *counter);
+
+	/**
 	 * Allows rdma drivers to add their own restrack attributes
 	 * dumped via 'rdma stat' iproute2 command.
 	 */
@@ -2742,6 +2747,7 @@ struct ib_device_ops {
 	DECLARE_RDMA_OBJ_SIZE(ib_srq);
 	DECLARE_RDMA_OBJ_SIZE(ib_ucontext);
 	DECLARE_RDMA_OBJ_SIZE(ib_xrcd);
+	DECLARE_RDMA_OBJ_SIZE(rdma_counter);
 };
 
 struct ib_core_device {
