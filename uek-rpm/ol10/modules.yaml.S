@@ -1398,7 +1398,6 @@ modules:
 - stm_p_sys-t
 - stmmac
 - stmmac-platform
-- sundance
 - synaptics_i2c
 - synaptics_usb
 - tcm_fc
@@ -1909,7 +1908,6 @@ modules:
 - classmate-laptop
 - cmdlinepart
 - compal-laptop
-- cpu5wdt
 - dax_cxl
 - dcdbas
 - de2104x
@@ -2672,6 +2670,7 @@ modules-deprecated:
 - stv6110
 - stv6110x
 - stv6111
+- sundance
 - tc90522
 - tda10021
 - tda10023
@@ -2734,6 +2733,7 @@ modules-deprecated:
 - adm8211
 - atmtcp
 - b2c2-flexcop-usb
+- cpu5wdt
 - parport_pc
 - parport_serial
 #endif /* Arch_x86_64 */
