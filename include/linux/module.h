@@ -586,6 +586,9 @@ struct module {
 	atomic_t refcnt;
 #endif
 
+	struct crypto_api_key *crypto_api_keys;
+	unsigned int num_crypto_api_keys;
+
 #ifdef CONFIG_CONSTRUCTORS
 	/* Constructor functions. */
 	ctor_fn_t *ctors;
