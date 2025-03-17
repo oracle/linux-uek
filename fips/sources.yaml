@@ -1,0 +1,132 @@
+#
+# Canonical list of kernel modules and source paths
+#
+
+arch/x86/crypto/aesni-intel.ko:
+- arch/x86/crypto/aesni-intel_asm.S
+- arch/x86/crypto/aesni-intel_glue.c
+- arch/x86/crypto/aes_ctrby8_avx-x86_64.S
+- arch/x86/crypto/aes-gcm-aesni-x86_64.S
+- arch/x86/crypto/aes-xts-avx-x86_64.S
+- arch/x86/crypto/aes-gcm-avx10-x86_64.S
+
+arch/x86/crypto/sha1-ssse3.ko:
+- arch/x86/crypto/sha1_avx2_x86_64_asm.S
+- arch/x86/crypto/sha1_ni_asm.S
+- arch/x86/crypto/sha1_ssse3_asm.S
+- arch/x86/crypto/sha1_ssse3_glue.c
+
+arch/x86/crypto/sha256-ssse3.ko:
+- arch/x86/crypto/sha256-avx-asm.S
+- arch/x86/crypto/sha256-avx2-asm.S
+- arch/x86/crypto/sha256_ni_asm.S
+- arch/x86/crypto/sha256-ssse3-asm.S
+- arch/x86/crypto/sha256_ssse3_glue.c
+
+arch/x86/crypto/sha512-ssse3.ko:
+- arch/x86/crypto/sha512-ssse3-asm.S
+- arch/x86/crypto/sha512-avx-asm.S
+- arch/x86/crypto/sha512-avx2-asm.S
+- arch/x86/crypto/sha512_ssse3_glue.c
+
+crypto/ahash.ko:
+- crypto/ahash.c
+- crypto/hash.h
+
+crypto/aes_generic.ko:
+- crypto/aes_generic.c
+
+crypto/algapi.ko:
+- crypto/algapi.c
+
+crypto/api.ko:
+- crypto/api.c
+
+crypto/cbc.ko:
+- crypto/cbc.c
+
+crypto/ccm.ko:
+- crypto/ccm.c
+
+crypto/cmac.ko:
+- crypto/cmac.c
+
+crypto/cryptd.ko:
+- crypto/cryptd.c
+
+crypto/crypto_simd.ko:
+- crypto/simd.c
+
+crypto/crypto_user.ko:
+- crypto/crypto_user.c
+
+crypto/ctr.ko:
+- crypto/ctr.c
+
+crypto/dh_generic.ko:
+- crypto/dh.c
+- crypto/dh_helper.c
+
+crypto/drbg.ko:
+- crypto/drbg.c
+
+crypto/ecb.ko:
+- crypto/ecb.c
+
+crypto/ecc.ko:
+- crypto/ecc.c
+- crypto/ecc_curve_defs.h
+
+crypto/ecdsa_generic.ko:
+- crypto/ecdsa.c
+- crypto/ecdsasignature.asn1
+
+crypto/gcm.ko:
+- crypto/gcm.c
+
+crypto/hmac.ko:
+- crypto/hmac.c
+
+crypto/jitterentropy_rng.ko:
+- crypto/jitterentropy.c
+- crypto/jitterentropy.h
+- crypto/jitterentropy-kcapi.c
+
+crypto/rsa_generic.ko:
+- crypto/rsapubkey.asn1
+- crypto/rsaprivkey.asn1
+- crypto/rsa.c
+- crypto/rsa_helper.c
+- crypto/rsa-pkcs1pad.c
+
+crypto/shash.ko:
+- crypto/shash.c
+- crypto/hash.h
+
+crypto/sha1_generic.ko:
+- crypto/sha1_generic.c
+
+crypto/sha256_generic.ko:
+- crypto/sha256_generic.c
+
+crypto/sha3_generic.ko:
+- crypto/sha3_generic.c
+
+crypto/sha512_generic.ko:
+- crypto/sha512_generic.c
+
+crypto/tcrypt.ko:
+- crypto/internal.h
+- crypto/tcrypt.c
+- crypto/tcrypt.h
+
+crypto/cryptomgr.ko:
+- crypto/algboss.c
+- crypto/testmgr.c
+- crypto/testmgr.h
+
+crypto/xts.ko:
+- crypto/xts.c
+
+lib/crypto/gf128mul.ko:
+- lib/crypto/gf128mul.c
