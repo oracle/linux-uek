@@ -1014,6 +1014,7 @@ int CRYPTO_API(crypto_type_has_alg)(const char *name, const struct crypto_type *
 }
 DEFINE_CRYPTO_API(crypto_type_has_alg);
 
+#ifndef FIPS_MODULE
 static void __init crypto_start_tests(void)
 {
 	if (!IS_BUILTIN(CONFIG_CRYPTO_ALGAPI))
@@ -1075,6 +1076,7 @@ static void __exit crypto_algapi_exit(void)
  */
 late_initcall(crypto_algapi_init);
 module_exit(crypto_algapi_exit);
+#endif
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Cryptographic algorithms API");
