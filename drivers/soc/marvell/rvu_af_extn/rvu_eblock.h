@@ -68,5 +68,7 @@ void ree_eb_module_init(void);
 void ree_eb_module_exit(void);
 void dpi_eb_module_init(void);
 void dpi_eb_module_exit(void);
+void cplt_eb_module_init(void);
+void cplt_eb_module_exit(void);
 void sdp_eb_module_init(void);
 void sdp_eb_module_exit(void);

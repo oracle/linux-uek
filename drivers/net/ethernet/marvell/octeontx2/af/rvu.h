@@ -542,10 +542,12 @@ struct rvu_hwinfo {
 	u32	max_msix;	/* Max msix vec HW support */
 	u8	cgx;
 	u8	lmac_per_cgx;
+	u8	lmac_per_cplt;
 	u16	cgx_chan_base;	/* CGX base channel number */
 	u16	lbk_chan_base;	/* LBK base channel number */
 	u16	sdp_chan_base;	/* SDP base channel number */
 	u16	cpt_chan_base;	/* CPT base channel number */
+	u16	cplt_chan_base;	/* CPLT base channel number */
 	u8	cgx_links;
 	u8	lbk_links;
 	u8	sdp_links;
@@ -697,6 +699,26 @@ struct rep_evtq_ent {
 	struct rep_event event;
 };
 
+struct rvu_cplt_rpm {
+#define PF_CPLTMAP_BASE		34 /* CPLT PF starts from 34 */
+	u16			cplt_mapped_vfs; /* maximum CPLT mapped VFs */
+	u8			cplt_mapped_pfs;
+	u8			cplt_cnt_max;	 /* CPLT port count max */
+	u16			*pf2cpltlmac_map; /* pf to cplt_lmac map */
+	u64			*cpltlmac2pf_map; /* bitmap of mapped pfs for
+						   * every CPLT lmac port
+						   */
+	unsigned long		cplt_pf_notify_bmap; /* Flags for PF notify */
+	unsigned long		lmac_bmap;
+	struct			work_struct cplt_evh_work;
+	struct			workqueue_struct *cplt_evh_wq;
+	spinlock_t		cplt_evq_lock; /* cplt event queue lock */
+	struct list_head	cplt_evq_head; /* cplt event queue head */
+	struct mutex		cplt_cfg_lock; /* serialize cplt config */
+	struct rvu		*rvu;
+	bool			ready;
+};
+
 struct rvu {
 	void __iomem		*afreg_base;
 	void __iomem		*pfreg_base;
@@ -798,6 +820,7 @@ struct rvu {
 	spinlock_t		rep_evtq_lock;
 
 	struct ng_rvu           *ng_rvu;
+	struct rvu_cplt_rpm	*cplt_rpm;
 };
 
 static inline void rvu_write64(struct rvu *rvu, u64 block, u64 offset, u64 val)
@@ -1167,6 +1190,8 @@ static inline bool is_cgx_vf(struct rvu *rvu, u16 pcifunc)
 	return ((pcifunc & RVU_PFVF_FUNC_MASK) &&
 		is_pf_cgxmapped(rvu, rvu_get_pf(rvu->pdev, pcifunc)));
 }
+
+unsigned long cplt_prepare_lmac_bmap(struct rvu *rvu, u8 max_lmac, int n_cplts);
 
 #define M(_name, _id, fn_name, req, rsp)				\
 int rvu_mbox_handler_ ## fn_name(struct rvu *, struct req *, struct rsp *);
