@@ -57,6 +57,40 @@ int CRYPTO_API(fips140_init)(void)
 }
 DEFINE_CRYPTO_API(fips140_init);
 
+static int trace_template(void)
+{
+	int err;
+	struct crypto_shash *tfm = NULL;
+	const char key[] = "98ea6e4f216f2fb4b69fff9b3a44842c38686ca685f3f55dc48c5d3fb1107be4";
+
+	SHASH_DESC_ON_STACK(desc, dontcare);
+	u8 digest[SHA256_DIGEST_SIZE];
+
+	tfm = crypto_alloc_shash("hmac(sha256)", 0, 0);
+	if (IS_ERR(tfm))
+		return PTR_ERR(tfm);
+
+	desc->tfm = tfm;
+
+	err = crypto_shash_setkey(tfm, key, sizeof(key));
+	if (err)
+		return err;
+
+	err = crypto_shash_init(desc);
+	if (err)
+		return err;
+
+	err = crypto_shash_update(desc, "hello world", strlen("hello world"));
+	if (err)
+		return err;
+
+	err = crypto_shash_final(desc, digest);
+	if (err)
+		return err;
+
+	return 0;
+}
+
 static int __init fips_loader_init(void)
 {
 	void *ko_mem;
@@ -84,6 +118,8 @@ static int __init fips_loader_init(void)
 	err = fips140_init();
 	if (err)
 		goto out;
+
+	printk(KERN_ERR "trace_template() = %d\n", trace_template());
 
 out:
 	if (err)
