@@ -60,7 +60,7 @@ MODULE_PARM_DESC(fuzz_iterations, "number of fuzz test iterations");
 #ifdef CONFIG_CRYPTO_MANAGER_DISABLE_TESTS
 
 /* a perfect nop */
-int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
+int CRYPTO_API(alg_test)(const char *driver, const char *alg, u32 type, u32 mask)
 {
 	return 0;
 }
@@ -5865,7 +5865,7 @@ static int alg_fips_disabled(const char *driver, const char *alg)
 	return -ECANCELED;
 }
 
-int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
+int CRYPTO_API(alg_test)(const char *driver, const char *alg, u32 type, u32 mask)
 {
 	int i;
 	int j;
@@ -5970,4 +5970,4 @@ non_fips_alg:
 
 #endif /* CONFIG_CRYPTO_MANAGER_DISABLE_TESTS */
 
-EXPORT_SYMBOL_GPL(alg_test);
+DEFINE_CRYPTO_API(alg_test);
