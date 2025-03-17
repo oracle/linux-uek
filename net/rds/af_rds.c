@@ -1462,6 +1462,7 @@ static void __exit rds_exit(void)
 	rds_unreg_pernet();
 	rds_conn_exit();
 	rds_sysctl_exit();
+	rds_cfu_fini_cache();
 	rds_threads_exit();
 	rds_page_exit();
 	rds_info_deregister_func(RDS_INFO_SOCKETS, rds_sock_info);
@@ -1471,7 +1472,6 @@ static void __exit rds_exit(void)
 	rds_info_deregister_func(RDS6_INFO_RECV_MESSAGES, rds6_sock_inc_info);
 #endif
 	kmem_cache_destroy(rds_rs_buf_info_slab);
-	rds_cfu_fini_cache();
 }
 
 module_exit(rds_exit);
