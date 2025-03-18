@@ -2513,6 +2513,17 @@ void rds_ib_conn_path_shutdown_prepare(struct rds_conn_path *cp)
 				ic->rds_ibdev->dev : NULL, ic->rds_ibdev,
 				conn, ic, "failed to disconnect", err);
 
+			if (ic->i_cm_id->qp) {
+				struct ib_qp_attr attr;
+				int sts;
+
+				/* Move QP state to ERROR */
+				attr.qp_state = IB_QPS_ERR;
+				sts = ib_modify_qp(ic->i_cm_id->qp, &attr, IB_QP_STATE);
+				trace_rds_ib_conn_path_shutdown_prepare_err(ic->rds_ibdev ?
+					    ic->rds_ibdev->dev : NULL, ic->rds_ibdev,
+					    conn, ic, "failed to modify QP to ERR state", sts);
+			}
 		} else if (rds_ib_srq_enabled && ic->rds_ibdev) {
 			/*
 			   wait for the last wqe to complete, then schedule
