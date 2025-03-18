@@ -382,7 +382,8 @@ static inline bool dso__is_kcore(struct dso *dso)
 
 static inline bool dso__is_kallsyms(struct dso *dso)
 {
-	return dso->kernel && dso->long_name[0] != '/';
+	return dso->binary_type == DSO_BINARY_TYPE__KALLSYMS ||
+	       dso->binary_type == DSO_BINARY_TYPE__GUEST_KALLSYMS;
 }
 
 void dso__free_a2l(struct dso *dso);
