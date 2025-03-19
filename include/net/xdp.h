@@ -10,6 +10,7 @@
 #include <linux/filter.h>
 #include <linux/netdevice.h>
 #include <linux/skbuff.h> /* skb_shared_info */
+#include <linux/uek_kabi.h>
 
 /**
  * DOC: XDP RX-queue information
@@ -68,6 +69,9 @@ struct xdp_rxq_info {
 
 struct xdp_txq_info {
 	struct net_device *dev;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 enum xdp_buff_flags {
@@ -86,6 +90,9 @@ struct xdp_buff {
 	struct xdp_txq_info *txq;
 	u32 frame_sz; /* frame size to deduce data_hard_end/reserved tailroom*/
 	u32 flags; /* supported values defined in xdp_buff_flags */
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 static __always_inline bool xdp_buff_has_frags(struct xdp_buff *xdp)
