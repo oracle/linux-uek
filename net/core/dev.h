@@ -5,6 +5,7 @@
 #include <linux/types.h>
 #include <linux/rwsem.h>
 #include <linux/netdevice.h>
+#include <linux/uek_kabi.h>
 
 struct net;
 struct netlink_ext_ack;
@@ -56,6 +57,9 @@ struct netdev_name_node {
 	struct net_device *dev;
 	const char *name;
 	struct rcu_head rcu;
+
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 int netdev_get_name(struct net *net, char *name, int ifindex);
