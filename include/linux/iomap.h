@@ -53,6 +53,9 @@ struct vm_fault;
  *
  * IOMAP_F_XATTR indicates that the iomap is for an extended attribute extent
  * rather than a file data extent.
+ *
+ * IOMAP_F_ATOMIC_BIO indicates that (write) I/O will be issued as an atomic
+ * bio, i.e. set REQ_ATOMIC.
  */
 #define IOMAP_F_NEW		(1U << 0)
 #define IOMAP_F_DIRTY		(1U << 1)
@@ -64,6 +67,7 @@ struct vm_fault;
 #define IOMAP_F_BUFFER_HEAD	0
 #endif /* CONFIG_BUFFER_HEAD */
 #define IOMAP_F_XATTR		(1U << 5)
+#define IOMAP_F_ATOMIC_BIO	(1U << 8)
 
 /*
  * Flags set by the core iomap code during operations:
@@ -178,8 +182,7 @@ struct iomap_folio_ops {
 #else
 #define IOMAP_DAX		0
 #endif /* CONFIG_FS_DAX */
-#define IOMAP_ATOMIC_HW		(1 << 9)/* HW-based torn-write protection */
-#define IOMAP_ATOMIC_SW		(1 << 11)/* SW-based torn-write protection */
+#define IOMAP_ATOMIC		(1 << 9) /* torn-write protection */
 
 struct iomap_ops {
 	/*
@@ -430,11 +433,6 @@ struct iomap_dio_ops {
  * fault.
  */
 #define IOMAP_DIO_PARTIAL		(1 << 2)
-
-/*
- * Use software-based torn-write protection.
- */
-#define IOMAP_DIO_ATOMIC_SW		(1 << 3)
 
 ssize_t iomap_dio_rw(struct kiocb *iocb, struct iov_iter *iter,
 		const struct iomap_ops *ops, const struct iomap_dio_ops *dops,

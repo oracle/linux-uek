@@ -304,7 +304,7 @@ static loff_t iomap_dio_bio_iter(const struct iomap_iter *iter,
 	if (dio->flags & IOMAP_DIO_WRITE) {
 		bio_opf |= REQ_OP_WRITE;
 
-		if (iter->flags & IOMAP_ATOMIC_HW) {
+		if (iomap->flags & IOMAP_F_ATOMIC_BIO) {
 			/*
 			 * Ensure that the mapping covers the full write
 			 * length, otherwise it won't be submitted as a single
@@ -633,10 +633,8 @@ __iomap_dio_rw(struct kiocb *iocb, struct iov_iter *iter,
 			iomi.flags |= IOMAP_OVERWRITE_ONLY;
 		}
 
-		if (dio_flags & IOMAP_DIO_ATOMIC_SW)
-			iomi.flags |= IOMAP_ATOMIC_SW;
-		else if (iocb->ki_flags & IOCB_ATOMIC)
-			iomi.flags |= IOMAP_ATOMIC_HW;
+		if (iocb->ki_flags & IOCB_ATOMIC)
+			iomi.flags |= IOMAP_ATOMIC;
 
 		/* for data sync or sync, we need sync completion processing */
 		if (iocb_is_dsync(iocb)) {
