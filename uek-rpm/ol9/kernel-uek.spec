@@ -1818,7 +1818,7 @@ fi\
 /sbin/depmod -a %{KVERREL}%{?1:.%{1}}\
 %{nil}\
 %{expand:%%postun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-modules-core}\
-ls /lib/modules/%{KVERREL}%{?1:.%{1}}/modules.* | grep -v builtin | grep -v packages | xargs rm -f\
+find /lib/modules/%{KVERREL}%{?1:.%{1}}/ -maxdepth 1 -name 'modules.*' | grep -vE 'builtin|packages' | xargs --no-run-if-empty rm -r\
 %{nil}
 
 # This macro defines a %%posttrans script for a kernel package.
