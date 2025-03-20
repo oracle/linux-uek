@@ -113,9 +113,7 @@ modules-core:
 - dm-writecache
 - dm-zero
 - dns_resolver
-- drm
-- drm_kms_helper
-- drm_shmem_helper
+- drm_client_lib
 - drm_ttm_helper
 - drm_vram_helper
 - dummy
