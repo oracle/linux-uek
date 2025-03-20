@@ -614,12 +614,12 @@ struct skb_shared_info {
 	 * remains valid until skb destructor */
 	void *		destructor_arg;
 
-	/* must be last field, see pskb_expand_head() */
-	skb_frag_t	frags[MAX_SKB_FRAGS];
 	UEK_KABI_RESERVE(1)
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
+	/* must be last field, see pskb_expand_head() */
+	skb_frag_t	frags[MAX_SKB_FRAGS];
 };
 
 /**
