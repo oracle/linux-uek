@@ -118,6 +118,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release %{uek_release}
 %define with_embedded %{?_without_embedded: 0} %{?!_without_embedded: 1}
 # build pensando kernel
 %define with_embedded2 %{?_without_embedded: 0} %{?!_without_embedded: 1}
+# build bluefield 3 kernel
+%define with_embedded3 %{?_without_embedded: 0} %{?!_without_embedded: 1}
 
 # verbose build, i.e. no silent rules and V=1
 %define with_verbose %{?_with_verbose:        1} %{?!_with_verbose:      0}
@@ -242,6 +244,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release %{uek_release}
 %define with_64k_ps_debug 0
 %define with_embedded 0
 %define with_embedded2 0
+%define with_embedded3 0
 %endif
 
 %define all_x86 i386 i686
@@ -258,11 +261,12 @@ Summary: Oracle Unbreakable Enterprise Kernel Release %{uek_release}
 %define with_debug 0
 %endif
 
-# don't do 4k/64k page size or embedded2 kernels for arch except aarch64
+# don't do 4k/64k page size or embedded2/3 kernels for arch except aarch64
 %ifnarch aarch64
 %define with_64k_ps       0
 %define with_64k_ps_debug 0
 %define with_embedded2 0
+%define with_embedded3 0
 %endif
 
 # don't do embedded kernel for arch except aarch64 and mips64
@@ -340,6 +344,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release %{uek_release}
 %define with_debug 0
 %define with_embedded 0
 %define with_embedded2 0
+%define with_embedded3 0
 %define with_headers 0
 %define with_perf 0
 %define with_bpftool 0
@@ -347,6 +352,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release %{uek_release}
 %if %{with_embeddedonly}
 %define with_embedded 1
 %define with_embedded2 1
+%define with_embedded3 1
 %define with_up 0
 %define with_container 0
 %define with_64k_ps 0
@@ -541,6 +547,7 @@ Source47: core-emb2-aarch64.list
 Source48: core-emb-mips64.list
 Source49: core-kdump-mips64.list
 Source50: core-emb-aarch64.list
+Source51: core-emb3-aarch64.list
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
@@ -552,6 +559,7 @@ Source1010: config-aarch64-embedded2
 Source1011: config-mips64-emb
 Source1012: config-mips64-kdump
 Source1013: config-aarch64-embedded
+Source1014: config-aarch64-embedded3
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -877,6 +885,11 @@ This package includes an embedded kernel.
 %description -n kernel%{?variant}emb-core
 This package includes T73 kernel for mips platform
 
+%define variant_summary The Linux kernel compiled for an embedded platform
+%kernel_variant_package -o emb3
+%description -n kernel%{?variant}emb3-core
+This package includes an embedded kernel.
+
 %define variant_summary A minimal Linux kernel compiled for crash dumps
 %kernel_variant_package -o kdump
 %description -n kernel%{?variant}kdump-core
@@ -1063,6 +1076,7 @@ mkdir -p configs
 	cp %{SOURCE1007} configs/config
 	cp %{SOURCE1010} configs/config-emb2
 	cp %{SOURCE1013} configs/config-emb
+	cp %{SOURCE1014} configs/config-emb3
 %endif
 
 %ifarch mips64
@@ -1192,6 +1206,9 @@ BuildKernel() {
     elif [ "$Flavour" == "emb2" ]; then
         cp configs/config-emb2 .config
         modlistVariant=../kernel%{?variant}emb2
+    elif [ "$Flavour" == "emb3" ]; then
+        cp configs/config-emb3 .config
+        modlistVariant=../kernel%{?variant}emb3
     elif [ "$Flavour" == "kdump" ]; then
         cp configs/config-kdump .config
         modlistVariant=../kernel%{?variant}kdump
@@ -1203,7 +1220,7 @@ BuildKernel() {
     Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
     echo USING ARCH=$Arch
     make %{?make_opts} ARCH=$Arch %{?_kernel_cc} olddefconfig > /dev/null
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb2" ] && [ "$Flavour" != "kdump" ]; then
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb2" ] && [ "$Flavour" != "emb3" ] && [ "$Flavour" != "kdump" ]; then
        make %{?make_opts} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
     else
        make %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
@@ -1354,7 +1371,7 @@ BuildKernel() {
     %_sourcedir/kabitool -s Module.symvers -o %{_tmppath}/kernel-$KernelVer-kabideps
 
 %if %{with_kabichk}
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb2" ] && [ "$Flavour" != "kdump" ]; then
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb2" ] && [ "$Flavour" != "emb3" ] && [ "$Flavour" != "kdump" ]; then
        # Create symbol type data which can be used to introspect kABI breakages
        python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
 
@@ -1544,6 +1561,8 @@ BuildKernel() {
       cp $RPM_SOURCE_DIR/core-emb-%{_target_cpu}.list core.list
     elif [ "$Flavour" == "emb2" ]; then
       cp $RPM_SOURCE_DIR/core-emb2-%{_target_cpu}.list core.list
+    elif [ "$Flavour" == "emb3" ]; then
+      cp $RPM_SOURCE_DIR/core-emb3-%{_target_cpu}.list core.list
     elif [ "$Flavour" == "kdump" ]; then
       cp $RPM_SOURCE_DIR/core-kdump-%{_target_cpu}.list core.list
     else
@@ -1658,6 +1677,10 @@ BuildKernel %make_target %kernel_image emb
 BuildKernel %make_target %kernel_image emb2
 %endif
 
+%if %{with_embedded3}
+BuildKernel %make_target %kernel_image emb3
+%endif
+
 %if %{with_kdump}
 BuildKernel %make_target %kernel_image kdump
 %endif
@@ -1708,6 +1731,11 @@ make %{?make_opts} %{?_smp_mflags} htmldocs || %{doc_build_fail}
        mv certs/signing_key.pem.sign.emb2 certs/signing_key.pem \
        mv certs/signing_key.x509.sign.emb2 certs/signing_key.x509 \
        %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb2/ %{dgst} \
+    fi \
+    if [ "%{with_embedded3}" -ne "0" ]; then \
+       mv certs/signing_key.pem.sign.emb3 certs/signing_key.pem \
+       mv certs/signing_key.x509.sign.emb3 certs/signing_key.x509 \
+       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb3/ %{dgst} \
     fi \
     if [ "%{with_kdump}" -ne "0" ]; then \
        mv certs/signing_key.pem.sign.kdump certs/signing_key.pem \
@@ -2041,6 +2069,11 @@ fi\
 %kernel_variant_postun -o emb
 %kernel_variant_post -o -v emb
 
+%kernel_variant_pre -o emb3
+%kernel_variant_preun -o emb3
+%kernel_variant_postun -o emb3
+%kernel_variant_post -o -v emb3
+
 %kernel_variant_pre -o kdump
 %kernel_variant_preun -o kdump
 %kernel_variant_postun -o kdump
@@ -2202,6 +2235,8 @@ fi
 %kernel_variant_files -o %{with_embedded} emb
 
 %kernel_variant_files -o %{with_embedded2} emb2
+
+%kernel_variant_files -o %{with_embedded3} emb3
 
 %kernel_variant_files -o %{with_kdump} kdump
 
