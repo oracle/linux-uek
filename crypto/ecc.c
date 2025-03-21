@@ -44,13 +44,13 @@ typedef struct {
 } uint128_t;
 
 /* Returns curv25519 curve param */
-const struct ecc_curve *ecc_get_curve25519(void)
+const struct ecc_curve *CRYPTO_API(ecc_get_curve25519)(void)
 {
 	return &ecc_25519;
 }
-EXPORT_SYMBOL(ecc_get_curve25519);
+DEFINE_CRYPTO_API(ecc_get_curve25519);
 
-const struct ecc_curve *ecc_get_curve(unsigned int curve_id)
+const struct ecc_curve *CRYPTO_API(ecc_get_curve)(unsigned int curve_id)
 {
 	switch (curve_id) {
 	/* In FIPS mode only allow P256 and higher */
@@ -66,9 +66,9 @@ const struct ecc_curve *ecc_get_curve(unsigned int curve_id)
 		return NULL;
 	}
 }
-EXPORT_SYMBOL(ecc_get_curve);
+DEFINE_CRYPTO_API(ecc_get_curve);
 
-void ecc_digits_from_bytes(const u8 *in, unsigned int nbytes,
+void CRYPTO_API(ecc_digits_from_bytes)(const u8 *in, unsigned int nbytes,
 			   u64 *out, unsigned int ndigits)
 {
 	int diff = ndigits - DIV_ROUND_UP(nbytes, sizeof(u64));
@@ -88,7 +88,7 @@ void ecc_digits_from_bytes(const u8 *in, unsigned int nbytes,
 	}
 	ecc_swap_digits(in, out, ndigits);
 }
-EXPORT_SYMBOL(ecc_digits_from_bytes);
+DEFINE_CRYPTO_API(ecc_digits_from_bytes);
 
 static u64 *ecc_alloc_digits_space(unsigned int ndigits)
 {
@@ -105,7 +105,7 @@ static void ecc_free_digits_space(u64 *space)
 	kfree_sensitive(space);
 }
 
-struct ecc_point *ecc_alloc_point(unsigned int ndigits)
+struct ecc_point *CRYPTO_API(ecc_alloc_point)(unsigned int ndigits)
 {
 	struct ecc_point *p = kmalloc(sizeof(*p), GFP_KERNEL);
 
@@ -130,9 +130,9 @@ err_alloc_x:
 	kfree(p);
 	return NULL;
 }
-EXPORT_SYMBOL(ecc_alloc_point);
+DEFINE_CRYPTO_API(ecc_alloc_point);
 
-void ecc_free_point(struct ecc_point *p)
+void CRYPTO_API(ecc_free_point)(struct ecc_point *p)
 {
 	if (!p)
 		return;
@@ -141,7 +141,7 @@ void ecc_free_point(struct ecc_point *p)
 	kfree_sensitive(p->y);
 	kfree_sensitive(p);
 }
-EXPORT_SYMBOL(ecc_free_point);
+DEFINE_CRYPTO_API(ecc_free_point);
 
 static void vli_clear(u64 *vli, unsigned int ndigits)
 {
@@ -152,7 +152,7 @@ static void vli_clear(u64 *vli, unsigned int ndigits)
 }
 
 /* Returns true if vli == 0, false otherwise. */
-bool vli_is_zero(const u64 *vli, unsigned int ndigits)
+bool CRYPTO_API(vli_is_zero)(const u64 *vli, unsigned int ndigits)
 {
 	int i;
 
@@ -163,7 +163,7 @@ bool vli_is_zero(const u64 *vli, unsigned int ndigits)
 
 	return true;
 }
-EXPORT_SYMBOL(vli_is_zero);
+DEFINE_CRYPTO_API(vli_is_zero);
 
 /* Returns nonzero if bit of vli is set. */
 static u64 vli_test_bit(const u64 *vli, unsigned int bit)
@@ -191,7 +191,7 @@ static unsigned int vli_num_digits(const u64 *vli, unsigned int ndigits)
 }
 
 /* Counts the number of bits required for vli. */
-unsigned int vli_num_bits(const u64 *vli, unsigned int ndigits)
+unsigned int CRYPTO_API(vli_num_bits)(const u64 *vli, unsigned int ndigits)
 {
 	unsigned int i, num_digits;
 	u64 digit;
@@ -206,10 +206,10 @@ unsigned int vli_num_bits(const u64 *vli, unsigned int ndigits)
 
 	return ((num_digits - 1) * 64 + i);
 }
-EXPORT_SYMBOL(vli_num_bits);
+DEFINE_CRYPTO_API(vli_num_bits);
 
 /* Set dest from unaligned bit string src. */
-void vli_from_be64(u64 *dest, const void *src, unsigned int ndigits)
+void CRYPTO_API(vli_from_be64)(u64 *dest, const void *src, unsigned int ndigits)
 {
 	int i;
 	const u64 *from = src;
@@ -217,9 +217,9 @@ void vli_from_be64(u64 *dest, const void *src, unsigned int ndigits)
 	for (i = 0; i < ndigits; i++)
 		dest[i] = get_unaligned_be64(&from[ndigits - 1 - i]);
 }
-EXPORT_SYMBOL(vli_from_be64);
+DEFINE_CRYPTO_API(vli_from_be64);
 
-void vli_from_le64(u64 *dest, const void *src, unsigned int ndigits)
+void CRYPTO_API(vli_from_le64)(u64 *dest, const void *src, unsigned int ndigits)
 {
 	int i;
 	const u64 *from = src;
@@ -227,7 +227,7 @@ void vli_from_le64(u64 *dest, const void *src, unsigned int ndigits)
 	for (i = 0; i < ndigits; i++)
 		dest[i] = get_unaligned_le64(&from[i]);
 }
-EXPORT_SYMBOL(vli_from_le64);
+DEFINE_CRYPTO_API(vli_from_le64);
 
 /* Sets dest = src. */
 static void vli_set(u64 *dest, const u64 *src, unsigned int ndigits)
@@ -239,7 +239,7 @@ static void vli_set(u64 *dest, const u64 *src, unsigned int ndigits)
 }
 
 /* Returns sign of left - right. */
-int vli_cmp(const u64 *left, const u64 *right, unsigned int ndigits)
+int CRYPTO_API(vli_cmp)(const u64 *left, const u64 *right, unsigned int ndigits)
 {
 	int i;
 
@@ -252,7 +252,7 @@ int vli_cmp(const u64 *left, const u64 *right, unsigned int ndigits)
 
 	return 0;
 }
-EXPORT_SYMBOL(vli_cmp);
+DEFINE_CRYPTO_API(vli_cmp);
 
 /* Computes result = in << c, returning carry. Can modify in place
  * (if result == in). 0 < shift < 64.
@@ -331,7 +331,7 @@ static u64 vli_uadd(u64 *result, const u64 *left, u64 right,
 }
 
 /* Computes result = left - right, returning borrow. Can modify in place. */
-u64 vli_sub(u64 *result, const u64 *left, const u64 *right,
+u64 CRYPTO_API(vli_sub)(u64 *result, const u64 *left, const u64 *right,
 		   unsigned int ndigits)
 {
 	u64 borrow = 0;
@@ -349,7 +349,7 @@ u64 vli_sub(u64 *result, const u64 *left, const u64 *right,
 
 	return borrow;
 }
-EXPORT_SYMBOL(vli_sub);
+DEFINE_CRYPTO_API(vli_sub);
 
 /* Computes result = left - right, returning borrow. Can modify in place. */
 static u64 vli_usub(u64 *result, const u64 *left, u64 right,
@@ -1001,7 +1001,7 @@ static bool vli_mmod_fast(u64 *result, u64 *product,
 /* Computes result = (left * right) % mod.
  * Assumes that mod is big enough curve order.
  */
-void vli_mod_mult_slow(u64 *result, const u64 *left, const u64 *right,
+void CRYPTO_API(vli_mod_mult_slow)(u64 *result, const u64 *left, const u64 *right,
 		       const u64 *mod, unsigned int ndigits)
 {
 	u64 product[ECC_MAX_DIGITS * 2];
@@ -1009,7 +1009,7 @@ void vli_mod_mult_slow(u64 *result, const u64 *left, const u64 *right,
 	vli_mult(product, left, right, ndigits);
 	vli_mmod_slow(result, product, mod, ndigits);
 }
-EXPORT_SYMBOL(vli_mod_mult_slow);
+DEFINE_CRYPTO_API(vli_mod_mult_slow);
 
 /* Computes result = (left * right) % curve_prime. */
 static void vli_mod_mult_fast(u64 *result, const u64 *left, const u64 *right,
@@ -1036,7 +1036,7 @@ static void vli_mod_square_fast(u64 *result, const u64 *left,
  * See "From Euclid's GCD to Montgomery Multiplication to the Great Divide"
  * https://labs.oracle.com/techrep/2001/smli_tr-2001-95.pdf
  */
-void vli_mod_inv(u64 *result, const u64 *input, const u64 *mod,
+void CRYPTO_API(vli_mod_inv)(u64 *result, const u64 *input, const u64 *mod,
 			unsigned int ndigits)
 {
 	u64 a[ECC_MAX_DIGITS], b[ECC_MAX_DIGITS];
@@ -1109,17 +1109,17 @@ void vli_mod_inv(u64 *result, const u64 *input, const u64 *mod,
 
 	vli_set(result, u, ndigits);
 }
-EXPORT_SYMBOL(vli_mod_inv);
+DEFINE_CRYPTO_API(vli_mod_inv);
 
 /* ------ Point operations ------ */
 
 /* Returns true if p_point is the point at infinity, false otherwise. */
-bool ecc_point_is_zero(const struct ecc_point *point)
+bool CRYPTO_API(ecc_point_is_zero)(const struct ecc_point *point)
 {
 	return (vli_is_zero(point->x, point->ndigits) &&
 		vli_is_zero(point->y, point->ndigits));
 }
-EXPORT_SYMBOL(ecc_point_is_zero);
+DEFINE_CRYPTO_API(ecc_point_is_zero);
 
 /* Point multiplication algorithm using Montgomery's ladder with co-Z
  * coordinates. From https://eprint.iacr.org/2011/338.pdf
@@ -1411,7 +1411,7 @@ static void ecc_point_add(const struct ecc_point *result,
 /* Computes R = u1P + u2Q mod p using Shamir's trick.
  * Based on: Kenneth MacKay's micro-ecc (2014).
  */
-void ecc_point_mult_shamir(const struct ecc_point *result,
+void CRYPTO_API(ecc_point_mult_shamir)(const struct ecc_point *result,
 			   const u64 *u1, const struct ecc_point *p,
 			   const u64 *u2, const struct ecc_point *q,
 			   const struct ecc_curve *curve)
@@ -1466,7 +1466,7 @@ void ecc_point_mult_shamir(const struct ecc_point *result,
 	vli_mod_inv(z, z, curve->p, ndigits);
 	apply_z(rx, ry, z, curve);
 }
-EXPORT_SYMBOL(ecc_point_mult_shamir);
+DEFINE_CRYPTO_API(ecc_point_mult_shamir);
 
 /*
  * This function performs checks equivalent to Appendix A.4.2 of FIPS 186-5.
@@ -1497,7 +1497,7 @@ static int __ecc_is_key_valid(const struct ecc_curve *curve,
 	return 0;
 }
 
-int ecc_is_key_valid(unsigned int curve_id, unsigned int ndigits,
+int CRYPTO_API(ecc_is_key_valid)(unsigned int curve_id, unsigned int ndigits,
 		     const u64 *private_key, unsigned int private_key_len)
 {
 	int nbytes;
@@ -1510,7 +1510,7 @@ int ecc_is_key_valid(unsigned int curve_id, unsigned int ndigits,
 
 	return __ecc_is_key_valid(curve, private_key, ndigits);
 }
-EXPORT_SYMBOL(ecc_is_key_valid);
+DEFINE_CRYPTO_API(ecc_is_key_valid);
 
 /*
  * ECC private keys are generated using the method of rejection sampling,
@@ -1519,7 +1519,7 @@ EXPORT_SYMBOL(ecc_is_key_valid);
  * This method generates a private key uniformly distributed in the range
  * [2, n-3].
  */
-int ecc_gen_privkey(unsigned int curve_id, unsigned int ndigits,
+int CRYPTO_API(ecc_gen_privkey)(unsigned int curve_id, unsigned int ndigits,
 		    u64 *private_key)
 {
 	const struct ecc_curve *curve = ecc_get_curve(curve_id);
@@ -1561,9 +1561,9 @@ int ecc_gen_privkey(unsigned int curve_id, unsigned int ndigits,
 
 	return 0;
 }
-EXPORT_SYMBOL(ecc_gen_privkey);
+DEFINE_CRYPTO_API(ecc_gen_privkey);
 
-int ecc_make_pub_key(unsigned int curve_id, unsigned int ndigits,
+int CRYPTO_API(ecc_make_pub_key)(unsigned int curve_id, unsigned int ndigits,
 		     const u64 *private_key, u64 *public_key)
 {
 	int ret = 0;
@@ -1597,10 +1597,10 @@ err_free_point:
 out:
 	return ret;
 }
-EXPORT_SYMBOL(ecc_make_pub_key);
+DEFINE_CRYPTO_API(ecc_make_pub_key);
 
 /* SP800-56A section 5.6.2.3.4 partial verification: ephemeral keys only */
-int ecc_is_pubkey_valid_partial(const struct ecc_curve *curve,
+int CRYPTO_API(ecc_is_pubkey_valid_partial)(const struct ecc_curve *curve,
 				struct ecc_point *pk)
 {
 	u64 yy[ECC_MAX_DIGITS], xxx[ECC_MAX_DIGITS], w[ECC_MAX_DIGITS];
@@ -1630,10 +1630,10 @@ int ecc_is_pubkey_valid_partial(const struct ecc_curve *curve,
 
 	return 0;
 }
-EXPORT_SYMBOL(ecc_is_pubkey_valid_partial);
+DEFINE_CRYPTO_API(ecc_is_pubkey_valid_partial);
 
 /* SP800-56A section 5.6.2.3.3 full verification */
-int ecc_is_pubkey_valid_full(const struct ecc_curve *curve,
+int CRYPTO_API(ecc_is_pubkey_valid_full)(const struct ecc_curve *curve,
 			     struct ecc_point *pk)
 {
 	struct ecc_point *nQ;
@@ -1657,9 +1657,9 @@ int ecc_is_pubkey_valid_full(const struct ecc_curve *curve,
 
 	return ret;
 }
-EXPORT_SYMBOL(ecc_is_pubkey_valid_full);
+DEFINE_CRYPTO_API(ecc_is_pubkey_valid_full);
 
-int crypto_ecdh_shared_secret(unsigned int curve_id, unsigned int ndigits,
+int CRYPTO_API(crypto_ecdh_shared_secret)(unsigned int curve_id, unsigned int ndigits,
 			      const u64 *private_key, const u64 *public_key,
 			      u64 *secret)
 {
@@ -1713,7 +1713,7 @@ err_alloc_product:
 out:
 	return ret;
 }
-EXPORT_SYMBOL(crypto_ecdh_shared_secret);
+DEFINE_CRYPTO_API(crypto_ecdh_shared_secret);
 
 MODULE_DESCRIPTION("core elliptic curve module");
 MODULE_LICENSE("Dual BSD/GPL");

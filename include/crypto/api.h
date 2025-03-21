@@ -64,6 +64,13 @@ struct crypto_api_key {
 		return static_call(crypto_##name##_key)(arg0, arg1, arg2, arg3, arg4); \
 	}
 
+#define DECLARE_CRYPTO_API6(name, ret_type, arg0_type, arg0, arg1_type, arg1, arg2_type, arg2, arg3_type, arg3, arg4_type, arg4, arg5_type, arg5) \
+	ret_type nonfips_##name(arg0_type arg0, arg1_type arg1, arg2_type arg2, arg3_type arg3, arg4_type arg4, arg5_type arg5); \
+	DECLARE_STATIC_CALL(crypto_##name##_key, nonfips_##name); \
+	static inline ret_type name(arg0_type arg0, arg1_type arg1, arg2_type arg2, arg3_type arg3, arg4_type arg4, arg5_type arg5) { \
+		return static_call(crypto_##name##_key)(arg0, arg1, arg2, arg3, arg4, arg5); \
+	}
+
 #define DEFINE_CRYPTO_API(name) \
 	DEFINE_STATIC_CALL(crypto_##name##_key, nonfips_##name); \
 	EXPORT_STATIC_CALL(crypto_##name##_key)
@@ -123,6 +130,13 @@ struct crypto_api_key {
 	DECLARE_STATIC_CALL(crypto_##name##_key, fips_##name); \
 	static inline ret_type name(arg0_type arg0, arg1_type arg1, arg2_type arg2, arg3_type arg3, arg4_type arg4) { \
 		return fips_##name(arg0, arg1, arg2, arg3, arg4); \
+	}
+
+#define DECLARE_CRYPTO_API6(name, ret_type, arg0_type, arg0, arg1_type, arg1, arg2_type, arg2, arg3_type, arg3, arg4_type, arg4, arg5_type, arg5) \
+	ret_type fips_##name(arg0_type arg0, arg1_type arg1, arg2_type arg2, arg3_type arg3, arg4_type arg4, arg5_type arg5); \
+	DECLARE_STATIC_CALL(crypto_##name##_key, fips_##name); \
+	static inline ret_type name(arg0_type arg0, arg1_type arg1, arg2_type arg2, arg3_type arg3, arg4_type arg4, arg5_type arg5) { \
+		return fips_##name(arg0, arg1, arg2, arg3, arg4, arg5); \
 	}
 
 /*
