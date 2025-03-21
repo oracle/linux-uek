@@ -6,6 +6,7 @@
 #ifndef _CRYPTO_AES_H
 #define _CRYPTO_AES_H
 
+#include <crypto/api.h>
 #include <linux/types.h>
 #include <linux/crypto.h>
 
@@ -28,6 +29,14 @@ struct crypto_aes_ctx {
 	u32 key_length;
 };
 
+#ifndef FIPS_MODULE
+#define crypto_ft_tab nonfips_crypto_ft_tab
+#define crypto_it_tab nonfips_crypto_it_tab
+#else
+#define crypto_ft_tab fips_crypto_ft_tab
+#define crypto_it_tab fips_crypto_it_tab
+#endif
+
 extern const u32 crypto_ft_tab[4][256] ____cacheline_aligned;
 extern const u32 crypto_it_tab[4][256] ____cacheline_aligned;
 
@@ -48,8 +57,7 @@ static inline int aes_check_keylen(unsigned int keylen)
 	return 0;
 }
 
-int crypto_aes_set_key(struct crypto_tfm *tfm, const u8 *in_key,
-		unsigned int key_len);
+DECLARE_CRYPTO_API3(crypto_aes_set_key, int, struct crypto_tfm *, tfm, const u8 *, in_key, unsigned int, key_len);
 
 /**
  * aes_expandkey - Expands the AES key as described in FIPS-197
