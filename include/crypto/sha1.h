@@ -6,6 +6,7 @@
 #ifndef _CRYPTO_SHA1_H
 #define _CRYPTO_SHA1_H
 
+#include <crypto/api.h>
 #include <linux/types.h>
 
 #define SHA1_DIGEST_SIZE        20
@@ -17,6 +18,12 @@
 #define SHA1_H3		0x10325476UL
 #define SHA1_H4		0xc3d2e1f0UL
 
+#ifndef FIPS_MODULE
+#define sha1_zero_message_hash nonfips_sha1_zero_message_hash
+#else
+#define sha1_zero_message_hash fips_sha1_zero_message_hash
+#endif
+
 extern const u8 sha1_zero_message_hash[SHA1_DIGEST_SIZE];
 
 struct sha1_state {
@@ -27,11 +34,9 @@ struct sha1_state {
 
 struct shash_desc;
 
-extern int crypto_sha1_update(struct shash_desc *desc, const u8 *data,
-			      unsigned int len);
+DECLARE_CRYPTO_API3(crypto_sha1_update, int, struct shash_desc *, desc, const u8 *, data, unsigned int, len);
 
-extern int crypto_sha1_finup(struct shash_desc *desc, const u8 *data,
-			     unsigned int len, u8 *hash);
+DECLARE_CRYPTO_API4(crypto_sha1_finup, int, struct shash_desc *, desc, const u8 *, data, unsigned int, len, u8 *, hash);
 
 /*
  * An implementation of SHA-1's compression function.  Don't use in new code!
