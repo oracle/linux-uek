@@ -4,6 +4,7 @@
 #ifndef _CRYTO_ECC_CURVE_H
 #define _CRYTO_ECC_CURVE_H
 
+#include <crypto/api.h>
 #include <linux/types.h>
 
 /**
@@ -50,13 +51,13 @@ struct ecc_curve {
  *
  * Returns curve if get curve succssful, NULL otherwise
  */
-const struct ecc_curve *ecc_get_curve(unsigned int curve_id);
+DECLARE_CRYPTO_API1(ecc_get_curve, const struct ecc_curve *, unsigned int, curve_id);
 
 /**
  * ecc_get_curve25519() - get curve25519 curve;
  *
  * Returns curve25519
  */
-const struct ecc_curve *ecc_get_curve25519(void);
+DECLARE_CRYPTO_API0(ecc_get_curve25519, const struct ecc_curve *);
 
 #endif
