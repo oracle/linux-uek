@@ -6,6 +6,7 @@
 #ifndef _CRYPTO_SHA2_H
 #define _CRYPTO_SHA2_H
 
+#include <crypto/api.h>
 #include <linux/types.h>
 
 #define SHA224_DIGEST_SIZE	28
@@ -56,6 +57,18 @@
 #define SHA512_H6	0x1f83d9abfb41bd6bULL
 #define SHA512_H7	0x5be0cd19137e2179ULL
 
+#ifndef FIPS_MODULE
+#define sha224_zero_message_hash nonfips_sha224_zero_message_hash
+#define sha256_zero_message_hash nonfips_sha256_zero_message_hash
+#define sha384_zero_message_hash nonfips_sha384_zero_message_hash
+#define sha512_zero_message_hash nonfips_sha512_zero_message_hash
+#else
+#define sha224_zero_message_hash fips_sha224_zero_message_hash
+#define sha256_zero_message_hash fips_sha256_zero_message_hash
+#define sha384_zero_message_hash fips_sha384_zero_message_hash
+#define sha512_zero_message_hash fips_sha512_zero_message_hash
+#endif
+
 extern const u8 sha224_zero_message_hash[SHA224_DIGEST_SIZE];
 
 extern const u8 sha256_zero_message_hash[SHA256_DIGEST_SIZE];
@@ -78,17 +91,13 @@ struct sha512_state {
 
 struct shash_desc;
 
-extern int crypto_sha256_update(struct shash_desc *desc, const u8 *data,
-			      unsigned int len);
+DECLARE_CRYPTO_API3(crypto_sha256_update, int, struct shash_desc *, desc, const u8 *, data, unsigned int, len);
 
-extern int crypto_sha256_finup(struct shash_desc *desc, const u8 *data,
-			       unsigned int len, u8 *hash);
+DECLARE_CRYPTO_API4(crypto_sha256_finup, int, struct shash_desc *, desc, const u8 *, data, unsigned int, len, u8 *, hash);
 
-extern int crypto_sha512_update(struct shash_desc *desc, const u8 *data,
-			      unsigned int len);
+DECLARE_CRYPTO_API3(crypto_sha512_update, int, struct shash_desc *, desc, const u8 *, data, unsigned int, len);
 
-extern int crypto_sha512_finup(struct shash_desc *desc, const u8 *data,
-			       unsigned int len, u8 *hash);
+DECLARE_CRYPTO_API4(crypto_sha512_finup, int, struct shash_desc *, desc, const u8 *, data, unsigned int, len, u8 *, hash);
 
 /*
  * Stand-alone implementation of the SHA256 algorithm. It is designed to
