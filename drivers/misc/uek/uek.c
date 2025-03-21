@@ -10,6 +10,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/kvm_para.h>
+#include <linux/utsname.h>
 #ifdef CONFIG_ARM64
 #include <asm/virt.h>
 #endif
@@ -233,3 +234,14 @@ bool uek_runs_in_kvm(void)
 #endif
 }
 EXPORT_SYMBOL_GPL(uek_runs_in_kvm);
+
+bool uek_on_ol8_or_ol9(void) {
+
+	if (strstr(utsname()->release, "el8uek"))
+		return true;
+	if (strstr(utsname()->release, "el9uek"))
+		return true;
+	return false;
+
+}
+EXPORT_SYMBOL_GPL(uek_on_ol8_or_ol9);

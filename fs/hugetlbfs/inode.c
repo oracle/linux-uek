@@ -1605,12 +1605,29 @@ struct file *hugetlb_file_setup(const char *name, size_t size,
 	if (creat_flags == HUGETLB_SHMFS_INODE && !can_do_hugetlb_shm()) {
 		struct ucounts *ucounts = current_ucounts();
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		if (user_shm_lock(size, ucounts)) {
+			user_shm_unlock(size, ucounts);
+			if (!uek_on_ol8_or_ol9()) {
+
+				pr_warn_once("%s (%d): Using mlock ulimits for SHM_HUGETLB is obsolete\n",
+				current->comm, current->pid);
+				return ERR_PTR(-EPERM);
+			} else {
+				pr_warn_once("%s (%d): Using mlock ulimits for SHM_HUGETLB is deprecated\n",
+				current->comm, current->pid);
+			}
+		} else {
+			return ERR_PTR(-EPERM);
+		}
+#else
 		if (user_shm_lock(size, ucounts)) {
 			pr_warn_once("%s (%d): Using mlock ulimits for SHM_HUGETLB is obsolete\n",
 				current->comm, current->pid);
 			user_shm_unlock(size, ucounts);
 		}
 		return ERR_PTR(-EPERM);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	}
 
 	file = ERR_PTR(-ENOSPC);

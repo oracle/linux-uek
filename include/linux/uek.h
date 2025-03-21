@@ -13,6 +13,7 @@ DECLARE_STATIC_KEY_FALSE(on_exadata);
 DECLARE_STATIC_KEY_FALSE(cls_enabled);
 DECLARE_STATIC_KEY_FALSE(on_oci);
 extern bool uek_runs_in_kvm(void);
+extern bool uek_on_ol8_or_ol9(void);
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 #endif /* __UEK_H__ */
