@@ -860,39 +860,65 @@
 #define CPT_LF_Q_GRP_PTR                0x120
 #define CPT_LF_CTX_FLUSH                0x510
 
-#define NPC_AF_BLK_RST                  (0x00040)
-
 #define CPT_AF_LF_CTL2_SHIFT		3
 #define CPT_AF_LF_SSO_PF_FUNC_SHIFT	32
 
 /* NPC */
-#define NPC_AF_CFG			(0x00000)
-#define NPC_AF_ACTIVE_PC		(0x00010)
-#define NPC_AF_CONST			(0x00020)
-#define NPC_AF_CONST1			(0x00030)
-#define NPC_AF_BLK_RST			(0x00040)
-#define NPC_AF_MCAM_SCRUB_CTL		(0x000a0)
-#define NPC_AF_KCAM_SCRUB_CTL		(0x000b0)
-#define NPC_AF_CONST2			(0x00100)
-#define NPC_AF_CONST3			(0x00110)
-#define NPC_AF_KPUX_CFG(a)		(0x00500 | (a) << 3)
-#define NPC_AF_PCK_CFG			(0x00600)
-#define NPC_AF_PCK_DEF_OL2		(0x00610)
-#define NPC_AF_PCK_DEF_OIP4		(0x00620)
-#define NPC_AF_PCK_DEF_OIP6		(0x00630)
-#define NPC_AF_PCK_DEF_IIP4		(0x00640)
+#define NPC_AF_CFG			(is_cn20k(rvu->pdev) ? (0x00800) : (0x00000))
+#define NPC_AF_ACTIVE_PC		(is_cn20k(rvu->pdev) ? (0x00820) : (0x00010))
+#define NPC_AF_CONST			(is_cn20k(rvu->pdev) ? (0x00000) : (0x00020))
+#define NPC_AF_CONST1			(is_cn20k(rvu->pdev) ? (0x00008) : (0x00030))
+#define NPC_AF_BLK_RST			(is_cn20k(rvu->pdev) ? (0x00810) : (0x00040))
+#define NPC_AF_MCAM_SCRUB_CTL		(is_cn20k(rvu->pdev) ? (0x100000) : (0x000a0))
+#define NPC_AF_KCAM_SCRUB_CTL		(is_cn20k(rvu->pdev) ? (0x100010) : (0x000b0))
+#define NPC_AF_CONST2			(is_cn20k(rvu->pdev) ? (0x00010) : (0x00100))
+#define NPC_AF_CONST3			(is_cn20k(rvu->pdev) ? (0x00018) : (0x00110))
+#define NPC_AF_KPUX_CFG(a) ({			      \
+	typeof(a) _a = (a);			      \
+	is_cn20k(rvu->pdev) ? (0x10000 | (_a) << 3) : \
+	(0x00500 | (_a) << 3); })
+#define NPC_AF_PCK_CFG			(is_cn20k(rvu->pdev) ? (0x80000) : (0x00600))
+#define NPC_AF_PCK_DEF_OL2		(is_cn20k(rvu->pdev) ? (0x80010) : (0x00610))
+#define NPC_AF_PCK_DEF_OIP4		(is_cn20k(rvu->pdev) ? (0x80020) : (0x00620))
+#define NPC_AF_PCK_DEF_OIP6		(is_cn20k(rvu->pdev) ? (0x80030) : (0x00630))
+#define NPC_AF_PCK_DEF_IIP4		(is_cn20k(rvu->pdev) ? (0x80040) : (0x00640))
 #define NPC_AF_INTFX_HASHX_RESULT_CTRL(a, b)	(0x006c0 | (a) << 4 | (b) << 3)
 #define NPC_AF_INTFX_HASHX_MASKX(a, b, c)  (0x00700 | (a) << 5 | (b) << 4 | (c) << 3)
 #define NPC_AF_KEX_LDATAX_FLAGS_CFG(a)	(0x00800 | (a) << 3)
 #define NPC_AF_INTFX_HASHX_CFG(a, b)  (0x00b00 | (a) << 6 | (b) << 4)
-#define NPC_AF_INTFX_SECRET_KEY0(a)	(0x00e00 | (a) << 3)
-#define NPC_AF_INTFX_SECRET_KEY1(a)	(0x00e20 | (a) << 3)
-#define NPC_AF_INTFX_SECRET_KEY2(a)	(0x00e40 | (a) << 3)
-#define NPC_AF_INTFX_KEX_CFG(a)		(0x01010 | (a) << 8)
-#define NPC_AF_PKINDX_ACTION0(a)	(0x80000ull | (a) << 6)
-#define NPC_AF_PKINDX_ACTION1(a)	(0x80008ull | (a) << 6)
-#define NPC_AF_PKINDX_TYPE(a)		(0x80010ull | (a) << 6)
-#define NPC_AF_PKINDX_CPI_DEFX(a, b)	(0x80020ull | (a) << 6 | (b) << 3)
+#define NPC_AF_INTFX_SECRET_KEY0(a) ({		      \
+	typeof(a) _a = (a);			      \
+	is_cn20k(rvu->pdev) ? (0x90180 | (_a) << 3) : \
+	(0x00e00 | (_a) << 3); })
+#define NPC_AF_INTFX_SECRET_KEY1(a) ({		      \
+	typeof(a) _a = (a);			      \
+	is_cn20k(rvu->pdev) ? (0x90200 | (_a) << 3) : \
+	(0x00e20 | (_a) << 3); })
+#define NPC_AF_INTFX_SECRET_KEY2(a) ({		      \
+	typeof(a) _a = (a);			      \
+	is_cn20k(rvu->pdev) ? (0x90280 | (_a) << 3) : \
+	(0x00e40 | (_a) << 3); })
+#define NPC_AF_INTFX_KEX_CFG(a) ({			\
+	typeof(a) _a = (a);				\
+	is_cn20k(rvu->pdev) ? (0x200000 | (_a) << 16) : \
+	(0x01010 | (_a) << 8); })
+#define NPC_AF_PKINDX_ACTION0(a) ({			 \
+	typeof(a) _a = (a);				 \
+	is_cn20k(rvu->pdev) ? (0x70000ull | (_a) << 3) : \
+	(0x80000ull | (_a) << 6); })
+#define NPC_AF_PKINDX_ACTION1(a) ({			 \
+	typeof(a) _a = (a);				 \
+	is_cn20k(rvu->pdev) ? (0x70800ull | (_a) << 3) : \
+	(0x80008ull | (_a) << 6); })
+#define NPC_AF_PKINDX_TYPE(a) ({			 \
+	typeof(a) _a = (a);				 \
+	is_cn20k(rvu->pdev) ? (0x71000ull | (_a) << 3) : \
+	(0x80010ull | (_a) << 6); })
+#define NPC_AF_PKINDX_CPI_DEFX(a, b) ({				      \
+	typeof(a) _a = (a);					      \
+	typeof(a) _b = (b);					      \
+	is_cn20k(rvu->pdev) ? (0x84000ull | (_a) << 3 | (_b) << 12) : \
+	(0x80020ull | (_a) << 6 | (_b) << 3); })
 #define NPC_AF_KPUX_ENTRYX_CAMX(a, b, c) \
 		(0x100000 | (a) << 14 | (b) << 6 | (c) << 3)
 #define NPC_AF_KPUX_ENTRYX_ACTION0(a, b) \
@@ -900,7 +926,10 @@
 #define NPC_AF_KPUX_ENTRYX_ACTION1(a, b) \
 		(0x100028 | (a) << 14 | (b) << 6)
 #define NPC_AF_KPUX_ENTRY_DISX(a, b)	(0x180000 | (a) << 6 | (b) << 3)
-#define NPC_AF_CPIX_CFG(a)		(0x200000 | (a) << 3)
+#define NPC_AF_CPIX_CFG(a) ({			      \
+	typeof(a) _a = (a);			      \
+	is_cn20k(rvu->pdev) ? (0xd0000 | (_a) << 3) : \
+	(0x200000 | (_a) << 3); })
 #define NPC_AF_INTFX_LIDX_LTX_LDX_CFG(a, b, c, d) \
 		(0x900000 | (a) << 16 | (b) << 12 | (c) << 5 | (d) << 3)
 #define NPC_AF_INTFX_LDATAX_FLAGSX_CFG(a, b, c) \
@@ -908,24 +937,54 @@
 #define NPC_AF_INTFX_MISS_STAT_ACT(a)	(0x1880040 + (a) * 0x8)
 #define NPC_AF_INTFX_MISS_ACT(a)	(0x1a00000 | (a) << 4)
 #define NPC_AF_INTFX_MISS_TAG_ACT(a)	(0x1b00008 | (a) << 4)
-#define NPC_AF_LKUP_CTL			(0x2000000)
-#define NPC_AF_LKUP_DATAX(a)		(0x2000200 | (a) << 4)
-#define NPC_AF_LKUP_RESULTX(a)		(0x2000400 | (a) << 4)
-#define NPC_AF_INTFX_STAT(a)		(0x2000800 | (a) << 4)
-#define NPC_AF_DBG_CTL			(0x3000000)
-#define NPC_AF_DBG_STATUS		(0x3000010)
-#define NPC_AF_KPUX_DBG(a)		(0x3000020 | (a) << 8)
-#define NPC_AF_IKPU_ERR_CTL		(0x3000080)
-#define NPC_AF_KPUX_ERR_CTL(a)		(0x30000a0 | (a) << 8)
-#define NPC_AF_MCAM_DBG			(0x3001000)
-#define NPC_AF_DBG_DATAX(a)		(0x3001400 | (a) << 4)
-#define NPC_AF_DBG_RESULTX(a)		(0x3001800 | (a) << 4)
+#define NPC_AF_LKUP_CTL			(is_cn20k(rvu->pdev) ? (0x100030) : (0x2000000))
+#define NPC_AF_LKUP_DATAX(a) ({			       \
+	typeof(a) _a = (a);			       \
+	is_cn20k(rvu->pdev) ? (0x108200 | (_a) << 3) : \
+	(0x2000200 | (_a) << 4); })
+#define NPC_AF_LKUP_RESULTX(a) ({			\
+	typeof(a) _a = (a);				\
+	is_cn20k(rvu->pdev) ? (0xf006000 | (_a) << 4) :	\
+	(0x2000400 | (_a) << 4); })
+#define NPC_AF_INTFX_STAT(a) ({				\
+	typeof(a) _a = (a);				\
+	is_cn20k(rvu->pdev) ? (0xe0000 | (_a) << 3) :	\
+	(0x2000800 | (_a) << 4); })
+#define NPC_AF_DBG_CTL			(is_cn20k(rvu->pdev) ? (0x100020) : (0x3000000))
+#define NPC_AF_DBG_STATUS		(is_cn20k(rvu->pdev) ? (0x100040) : (0x3000010))
+#define NPC_AF_KPUX_DBG(a) ({				 \
+	typeof(a) _a = (a);				 \
+	is_cn20k(rvu->pdev) ? (0x3000020 | (_a) << 8) :  \
+	(0x110000 | (_a) << 3); })
+#define NPC_AF_IKPU_ERR_CTL		(is_cn20k(rvu->pdev) ? (0x10200) : (0x3000080))
+#define NPC_AF_KPUX_ERR_CTL(a) ({			\
+	typeof(a) _a = (a);				\
+	is_cn20k(rvu->pdev) ? (0x30000a0 | (_a) << 8) :	\
+	(0x10100 | (_a) << 3); })
+#define NPC_AF_MCAM_DBG			(is_cn20k(rvu->pdev) ? (0xf007000) : (0x3001000))
+#define NPC_AF_DBG_DATAX(a) ({			       \
+	typeof(a) _a = (a);			       \
+	is_cn20k(rvu->pdev) ? (0x108100 | (_a) << 3) : \
+	(0x3001400 | (_a) << 4); })
+#define NPC_AF_DBG_RESULTX(a) ({			\
+	typeof(a) _a = (a);				\
+	is_cn20k(rvu->pdev) ? (0xf005000 | (_a) << 4) :	\
+	(0x3001800 | (_a) << 4); })
 
 #define NPC_AF_EXACT_MEM_ENTRY(a, b)	(0x300000 | (a) << 15 | (b) << 3)
 #define NPC_AF_EXACT_CAM_ENTRY(a)	(0xC00 | (a) << 3)
-#define NPC_AF_INTFX_EXACT_MASK(a)	(0x660 | (a) << 3)
-#define NPC_AF_INTFX_EXACT_RESULT_CTL(a)(0x680 | (a) << 3)
-#define NPC_AF_INTFX_EXACT_CFG(a)	(0xA00 | (a) << 3)
+#define NPC_AF_INTFX_EXACT_MASK(a) ({			\
+	typeof(a) _a = (a);				\
+	is_cn20k(rvu->pdev) ? (0x90000 | (_a) << 3) :	\
+	(0x660 | (_a) << 3); })
+#define NPC_AF_INTFX_EXACT_RESULT_CTL(a) ({		\
+	typeof(a) _a = (a);				\
+	is_cn20k(rvu->pdev) ? (0x90080 | (_a) << 3) :	\
+	(0x680 | (_a) << 3); })
+#define NPC_AF_INTFX_EXACT_CFG(a) ({			\
+	typeof(a) _a = (a);				\
+	is_cn20k(rvu->pdev) ? (0x90100 | (_a) << 3) :	\
+	(0xa00 | (_a) << 3); })
 #define NPC_AF_INTFX_EXACT_SECRET0(a)	(0xE00 | (a) << 3)
 #define NPC_AF_INTFX_EXACT_SECRET1(a)	(0xE20 | (a) << 3)
 #define NPC_AF_INTFX_EXACT_SECRET2(a)	(0xE40 | (a) << 3)

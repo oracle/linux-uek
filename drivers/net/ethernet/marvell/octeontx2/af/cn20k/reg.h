@@ -79,70 +79,74 @@
 
 /* NPC registers */
 #define NPC_AF_INTFX_EXTRACTORX_CFG(a, b) \
-	(0x908000ull | (a) << 10 | (b) << 3)
+	(0x20c000ull | (a) << 16 | (b) << 8)
 #define NPC_AF_INTFX_EXTRACTORX_LTX_CFG(a, b, c) \
-	(0x900000ull | (a) << 13 | (b) << 8  | (c) << 3)
+	(0x204000ull | (a) << 16 | (b) << 8  | (c) << 3)
 #define NPC_AF_KPMX_ENTRYX_CAMX(a, b, c) \
-	(0x100000ull | (a) << 14 | (b) << 6 | (c) << 3)
+	(0x20000ull | (a) << 12 | (b) << 3 | (c) << 16)
 #define NPC_AF_KPMX_ENTRYX_ACTION0(a, b) \
-	(0x100020ull | (a) << 14 | (b) << 6)
+	(0x40000ull | (a) << 12 | (b) << 3)
 #define NPC_AF_KPMX_ENTRYX_ACTION1(a, b) \
-	(0x100028ull | (a) << 14 | (b) << 6)
-#define NPC_AF_KPMX_ENTRY_DISX(a, b)	(0x180000ull | (a) << 6 | (b) << 3)
-#define NPC_AF_KPM_PASS2_CFG	0x580
-#define NPC_AF_KPMX_PASS2_OFFSET(a)	(0x190000ull | (a) << 3)
-#define NPC_AF_MCAM_SECTIONX_CFG_EXT(a)	(0xC000000ull | (a) << 3)
+	(0x50000ull | (a) << 12 | (b) << 3)
+#define NPC_AF_KPMX_ENTRY_DISX(a, b)	(0x60000ull | (a) << 12 | (b) << 3)
+#define NPC_AF_KPM_PASS2_CFG	0x10210
+#define NPC_AF_KPMX_PASS2_OFFSET(a)	(0x60040ull | (a) << 12)
+#define NPC_AF_MCAM_SECTIONX_CFG_EXT(a)	(0xf000000ull | (a) << 3)
 
-#define NIX_AF_LSO_ALT_FLAGS_CFG(a)	(0x4B00 | (a) << 3)
-#define NIX_AF_LSO_ALT_FLAGS_CFG1(a)	(0x4B20 | (a) << 3)
-
-/* NIX Registers */
-#define NIX_AF_RX_DEF_INLINEX(a)		(0x2c0 | (a) << 3)
-#define NIX_AF_RX_INLINE_GEN_CFGX(a)		(0x340 | (a) << 3)
-#define NIX_AF_RX_EXTRACT_INLINEX(a)		(0x380 | (a) << 3)
-#define NIX_AF_RX_PROT_FIELDX_INLINEX(a, b)	(0x4c00 | (a) << 6 | (b) << 3)
 #define NPC_AF_CN20K_MCAMEX_BANKX_CAMX_INTF_EXT(a, b, c) ({		\
 	u64 offset;							\
-	offset = (0x8000000ull | (a) << 8 | (b) << 22 | (c) << 3);	\
+	offset = (0x8000000ull | (a) << 4 | (b) << 20 | (c) << 3);	\
 	offset; })
 
 #define NPC_AF_CN20K_MCAMEX_BANKX_CAMX_W0_EXT(a, b, c) ({		\
 	u64 offset;							\
-	offset = (0x8000010ull | (a) << 8 | (b) << 22 | (c) << 3);	\
+	offset = (0x9000000ull | (a) << 4 | (b) << 20 | (c) << 3);	\
 	offset; })
 
 #define NPC_AF_CN20K_MCAMEX_BANKX_CAMX_W1_EXT(a, b, c) ({		\
 	u64 offset;							\
-	offset = (0x8000020ull | (a) << 8 | (b) << 22 | (c) << 3);	\
+	offset = (0x9400000ull | (a) << 4 | (b) << 20 | (c) << 3);	\
 	offset; })
 
 #define NPC_AF_CN20K_MCAMEX_BANKX_CAMX_W2_EXT(a, b, c) ({		\
 	u64 offset;							\
-	offset = (0x8000030ull | (a) << 8 | (b) << 22 | (c) << 3);	\
+	offset = (0x9800000ull | (a) << 4 | (b) << 20 | (c) << 3);	\
 	offset; })
 
 #define NPC_AF_CN20K_MCAMEX_BANKX_CAMX_W3_EXT(a, b, c) ({		\
 	u64 offset;							\
-	offset = (0x8000040ull | (a) << 8 | (b) << 22 | (c) << 3);	\
+	offset = (0x9c00000ull | (a) << 4 | (b) << 20 | (c) << 3);	\
 	offset; })
 
 #define NPC_AF_CN20K_MCAMEX_BANKX_CFG_EXT(a, b) ({		\
 	u64 offset;						\
-	offset = (0x8000050ull | (a) << 8 | (b) << 22);		\
+	offset = (0xa000000ull | (a) << 4 | (b) << 20);		\
 	offset; })
 
 #define NPC_AF_CN20K_MCAMEX_BANKX_ACTIONX_EXT(a, b, c) ({		   \
 	u64 offset;							   \
 									   \
-	offset = (0x8000060ull | (a) << 8 | (b) << 22 | (c) << 3);	   \
+	offset = (0xc000000ull | (a) << 4 | (b) << 20 | (c) << 22);	   \
 	offset; })
 
-#define NPC_AF_INTFX_MISS_ACTX(a, b)	(0x1a00000 | (a) << 6 | (b) << 4)
+#define NPC_AF_INTFX_MISS_ACTX(a, b)	(0xf003000 | (a) << 6 | (b) << 4)
 
 #define NPC_AF_CN20K_MCAMEX_BANKX_STAT_EXT(a, b) ({		\
 	u64 offset;						\
 								\
-	offset = (0x8000080ull | (a) << 8 | (b) << 22);		\
+	offset = (0xb000000ull | (a) << 4 | (b) << 20);		\
 	offset; })
+
+/* NIX Registers */
+#define NIX_AF_LSO_ALT_FLAGS_CFG(a)	(0x4B00 | (a) << 3)
+#define NIX_AF_LSO_ALT_FLAGS_CFG1(a)	(0x4B20 | (a) << 3)
+#define NIX_AF_RX_CPT_CHAN_CFG			(0x0E8)
+#define NIX_AF_RX_DEF_INLINEX(a)		(0x2c0 | (a) << 3)
+#define NIX_AF_RX_INLINE_GEN_CFGX(a)		(0x340 | (a) << 3)
+#define NIX_AF_RX_EXTRACT_INLINEX(a)		(0x380 | (a) << 3)
+#define NIX_AF_RX_PROT_FIELDX_INLINEX(a, b)	(0x4c00 | (a) << 6 | (b) << 3)
+#define NIX_AF_LFX_RX_INLINE_SA_BASE(a, b)	(0x4240 | (a) << 17 | (b) << 3)
+#define NIX_AF_LFX_RX_INLINE_CFG0(a, b)		(0x4280 | (a) << 17 | (b) << 3)
+#define NIX_AF_LFX_RX_INLINE_CFG1(a, b)		(0x42c0 | (a) << 17 | (b) << 3)
 
 #endif /* RVU_MBOX_REG_H */
