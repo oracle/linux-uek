@@ -734,6 +734,13 @@ void rds_ib_dev_put(struct rds_ib_device *rds_ibdev)
 	}
 }
 
+void rds_ib_dev_get(struct rds_ib_device *rds_ibdev)
+{
+	int prev_refcnt = atomic_inc_return(&rds_ibdev->rid_refcount);
+
+	WARN_ON(prev_refcnt <= 1);
+}
+
 /*
  * New connections use this to find the device to associate with the
  * connection.  It's not in the fast path so we're not concerned about the
