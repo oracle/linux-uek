@@ -688,6 +688,7 @@ extern void rds_ib_remove_one(struct ib_device *device, void *client_data);
 
 struct rds_ib_device *rds_ib_get_client_data(struct ib_device *device);
 void rds_ib_dev_put(struct rds_ib_device *rds_ibdev);
+void rds_ib_dev_get(struct rds_ib_device *rds_ibdev);
 void rds_ib_nodev_connect(void);
 void rds_ib_free_one_frag(struct rds_page_frag *frag, size_t cache_sz);
 void rds_ib_free_one_inc(struct rds_ib_incoming *inc);
