@@ -568,11 +568,25 @@ static void rds_ib_cq_follow_affinity(struct rds_ib_connection *ic,
 	bool *cq_isolate_warned_p;
 	const char *preferred_cpu_name;
 	struct cpumask preferred_cpu_mask;
+	struct rds_ib_device *rds_ibdev;
 	unsigned long flags;
+	int smp_node;
 
 	/* Update i_cq_last_seen_{recv,send}_irqn before potential early return */
 	cq_vector = in_send_path ? ic->i_scq_vector : ic->i_rcq_vector;
-	irqn = ib_get_vector_irqn(ic->rds_ibdev->dev, cq_vector);
+
+	spin_lock_irqsave(&ib_nodev_conns_lock, flags);
+	rds_ibdev = ic->rds_ibdev;
+	if (!rds_ibdev) {
+		spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
+		return;
+	}
+	rds_ib_dev_get(rds_ibdev);
+	/* We can release lock now, b/c ref count has been incremented */
+	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
+	irqn = ib_get_vector_irqn(rds_ibdev->dev, cq_vector);
+	smp_node = rdsibdev_to_node(rds_ibdev);
+	rds_ib_dev_put(rds_ibdev);
 
 	if (in_send_path)
 		ic->i_cq_last_seen_send_irqn = irqn;
@@ -603,8 +617,7 @@ static void rds_ib_cq_follow_affinity(struct rds_ib_connection *ic,
 	if (irqn < 0)
 		return;
 
-	rds_ib_get_preferred_cpu_mask(&preferred_cpu_mask,
-				      irqn, rdsibdev_to_node(ic->rds_ibdev));
+	rds_ib_get_preferred_cpu_mask(&preferred_cpu_mask, irqn, smp_node);
 	if (cpumask_weight(&preferred_cpu_mask) != 1 ||
 	    cpumask_first(&preferred_cpu_mask) != smp_processor_id()) {
 		if (!*cq_isolate_warned_p) {
