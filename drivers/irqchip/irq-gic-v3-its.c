@@ -2283,8 +2283,8 @@ static int __init its_setup_lpi_prop_table(void)
 
 		gic_rdists->prop_table_pa = page_to_phys(page);
 		gic_rdists->prop_table_va = page_address(page);
-		WARN_ON(gic_reserve_range(gic_rdists->prop_table_pa,
-					  LPI_PROPBASE_SZ));
+		gic_reserve_range(gic_rdists->prop_table_pa,
+					  LPI_PROPBASE_SZ);
 	}
 
 	pr_info("GICv3: using LPI property table @%pa\n",
@@ -3115,7 +3115,7 @@ static void its_cpu_init_lpis(void)
 
 	pend_page = gic_data_rdist()->pend_page;
 	paddr = page_to_phys(pend_page);
-	WARN_ON(gic_reserve_range(paddr, LPI_PENDBASE_SZ));
+	gic_reserve_range(paddr, LPI_PENDBASE_SZ);
 
 	/* set PROPBASE */
 	val = (gic_rdists->prop_table_pa |
