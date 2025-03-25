@@ -3517,12 +3517,6 @@ int btrfs_free_tree_block(struct btrfs_trans_handle *trans,
 	trace_btrfs_reserved_extent_free(fs_info, buf->start, buf->len);
 
 out:
-
-	/*
-	 * Deleting the buffer, clear the corrupt flag since it doesn't
-	 * matter anymore.
-	 */
-	clear_bit(EXTENT_BUFFER_CORRUPT, &buf->bflags);
 	return 0;
 }
 
