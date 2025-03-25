@@ -1060,6 +1060,11 @@ static void __init crypto_start_tests(void)
 
 static int __init crypto_algapi_init(void)
 {
+#ifdef CONFIG_CRYPTO_FIPS_LOADER
+	if (fips_operational)
+		return 0;
+#endif
+
 	crypto_init_proc();
 	crypto_start_tests();
 	return 0;
