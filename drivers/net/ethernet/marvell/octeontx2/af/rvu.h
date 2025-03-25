@@ -712,6 +712,9 @@ struct rvu {
 	/* CPT interrupt lock */
 	spinlock_t		cpt_intr_lock;
 
+	/* NPA */
+	struct rsrc_bmap	npa_dpc;
+
 	struct mutex		mbox_lock; /* Serialize mbox up and down msgs */
 	u16			rep_pcifunc;
 	bool			altaf_ready;

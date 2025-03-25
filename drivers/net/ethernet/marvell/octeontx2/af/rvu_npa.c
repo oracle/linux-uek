@@ -8,6 +8,7 @@
 #include <linux/module.h>
 #include <linux/pci.h>
 
+#include "cn20k/api.h"
 #include "rvu_struct.h"
 #include "rvu_reg.h"
 #include "rvu.h"
@@ -508,6 +509,8 @@ int rvu_mbox_handler_npa_lf_free(struct rvu *rvu, struct msg_req *req,
 		return NPA_AF_ERR_LF_RESET;
 	}
 
+	if (is_cn20k(rvu->pdev))
+		npa_cn20k_dpc_free_all(rvu, pcifunc);
 	npa_ctx_free(rvu, pfvf);
 
 	return 0;
@@ -573,11 +576,16 @@ static int npa_aq_init(struct rvu *rvu, struct rvu_block *block)
 int rvu_npa_init(struct rvu *rvu)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
-	int blkaddr;
+	int err, blkaddr;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPA, 0);
 	if (blkaddr < 0)
 		return 0;
+
+	rvu->npa_dpc.max = NPA_DPC_MAX;
+	err = rvu_alloc_bitmap(&rvu->npa_dpc);
+	if (err)
+		return err;
 
 	/* Initialize admin queue */
 	return npa_aq_init(rvu, &hw->block[blkaddr]);
@@ -595,6 +603,7 @@ void rvu_npa_freemem(struct rvu *rvu)
 
 	block = &hw->block[blkaddr];
 	rvu_aq_free(rvu, block->aq);
+	kfree(rvu->npa_dpc.bmap);
 }
 
 void rvu_npa_lf_teardown(struct rvu *rvu, u16 pcifunc, int npalf)
@@ -615,6 +624,8 @@ void rvu_npa_lf_teardown(struct rvu *rvu, u16 pcifunc, int npalf)
 	ctx_req.ctype = NPA_AQ_CTYPE_HALO;
 	npa_lf_hwctx_disable(rvu, &ctx_req);
 
+	if (is_cn20k(rvu->pdev))
+		npa_cn20k_dpc_free_all(rvu, pcifunc);
 	npa_ctx_free(rvu, pfvf);
 }
 

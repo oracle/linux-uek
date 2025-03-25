@@ -215,6 +215,10 @@ M(NPA_AQ_ENQ,		0x402, npa_aq_enq, npa_aq_enq_req, npa_aq_enq_rsp)   \
 M(NPA_HWCTX_DISABLE,	0x403, npa_hwctx_disable, hwctx_disable_req, msg_rsp)\
 M(NPA_CN20K_AQ_ENQ,	0x404, npa_cn20k_aq_enq, npa_cn20k_aq_enq_req,	\
 				npa_cn20k_aq_enq_rsp)			\
+M(NPA_CN20K_DPC_ALLOC,	0x405, npa_cn20k_dpc_alloc, npa_cn20k_dpc_alloc_req, \
+				npa_cn20k_dpc_alloc_rsp)		\
+M(NPA_CN20K_DPC_FREE,	0x406, npa_cn20k_dpc_free, npa_cn20k_dpc_free_req, \
+				msg_rsp)				\
 /* SSO/SSOW mbox IDs (range 0x600 - 0x7FF) */				\
 M(SSO_LF_ALLOC,		0x600, sso_lf_alloc,				\
 				sso_lf_alloc_req, sso_lf_alloc_rsp)	\
@@ -983,6 +987,21 @@ struct npa_cn20k_aq_enq_rsp {
 		/* Valid when op == READ and ctype == HALO */
 		struct npa_cn20k_halo_s halo;
 	};
+};
+
+struct npa_cn20k_dpc_alloc_req {
+	struct mbox_msghdr hdr;
+	u16 dpc_conf;
+};
+
+struct npa_cn20k_dpc_alloc_rsp {
+	struct mbox_msghdr hdr;
+	u8 cntr_id;
+};
+
+struct npa_cn20k_dpc_free_req {
+	struct mbox_msghdr hdr;
+	u8 cntr_id;
 };
 
 /* Disable all contexts of type 'ctype' */

@@ -149,4 +149,14 @@
 #define NIX_AF_LFX_RX_INLINE_CFG0(a, b)		(0x4280 | (a) << 17 | (b) << 3)
 #define NIX_AF_LFX_RX_INLINE_CFG1(a, b)		(0x42c0 | (a) << 17 | (b) << 3)
 
+/* NPA Registers */
+#define NPA_AF_DPCX_CFG(a)		(0x800 | (a) << 6)
+/* a: counter index, b: register index */
+#define NPA_AF_DPCX_LF_ENAX(a, b)	(0x830 | (a) << 6 | (b) << 3)
+/* a: counter index, b: register index */
+#define NPA_AF_DPC_PERMITX(a, b)	(0x1000 | (a) << 4 | (b) << 3)
+
+#define NPA_DPC_MAX			32
+#define NPA_DPC_LFS_PER_REG		64
+
 #endif /* RVU_MBOX_REG_H */
