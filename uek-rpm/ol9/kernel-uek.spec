@@ -771,7 +771,7 @@ Provides: installonlypkg(%{installonly_variant_name}-modules)\
 Provides: %{variant_name}-modules-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
-Requires: linux-firmware >= 999:20230516-999.26.git6c9e0ed5\
+Requires: linux-firmware >= 999:20250203-999.38.git0fd450ee\
 AutoReq: no\
 AutoProv: yes\
 %description -n %{variant_name}-modules\
@@ -793,7 +793,7 @@ Provides: %{variant_name}-modules-core = %{version}-%{release}%{?1:.%{1}}\
 Provides: installonlypkg(%{installonly_variant_name}-modules-core)\
 Provides: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-core-uname-r = %{KVERREL}%{?1:.%{1}}\
-Requires: linux-firmware-core >= 999:20230516-999.26.git6c9e0ed5\
+Requires: linux-firmware-core >= 999:20250203-999.38.git0fd450ee\
 Requires: libdnf >= 0.69.0-6.0.2\
 AutoReq: no\
 AutoProv: yes\
