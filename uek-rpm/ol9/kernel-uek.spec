@@ -1078,6 +1078,11 @@ BuildKernel() {
     # This ensures build-ids are unique to allow parallel debuginfo
     perl -p -i -e "s/^CONFIG_BUILD_SALT.*/CONFIG_BUILD_SALT=\"%{KVERREL}\"/" .config
 
+    # Build FIPS cryptographic module
+    %{make} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} modules_prepare
+    (cd fips && ./make.py -C .. --make-args ARCH=$Arch %{?_kernel_cc} %{_smp_mflags}) || exit 1
+    cp fips/kmodsrc/fips140.{ko,hmac} crypto/
+
     if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ]; then
        %{make} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
     else
