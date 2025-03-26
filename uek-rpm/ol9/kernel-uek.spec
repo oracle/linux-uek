@@ -1549,16 +1549,27 @@ BuildKernel %make_target %kernel_image 64kdebug
 %if %{with_tools}
 %ifarch %{vdso_arches}
 %ifnarch noarch
+  # The approach is to build and install perf to a temporary directory,
+  # then selectively install what we want in non-standard paths in order
+  # to avoid conflicts with the perf RPM.
+  # We also need to configure certain install variables, such as
+  # perfexecdir, so that perf references the files provided by UEK, rather
+  # than the perf RPM.
+  # Finally, we use "-f Makefile.perf" because the Makefile is simply a
+  # wrapper that calls Makefile.perf with parallel build options. Certain
+  # configuration variables (like perfexecdir) aren't correctly propagated
+  # through that wrapper, and we don't need the wrapper anyway.
   %{__make} %{?make_opts} %{?_smp_mflags} \
-    -C tools/perf \
+    -C tools/perf -f Makefile.perf \
     VF=1 \
     NO_PERF_READ_VDSO32=1 NO_PERF_READ_VDSOX32=1 \
     WERROR=0 \
     NO_LIBUNWIND=1 NO_STRLCPY=1 \
     HAVE_CPLUS_DEMANGLE=1 NO_GTK2=1 \
     LIBTRACEEVENT_DYNAMIC=1 \
+    perfexecdir=libexec/perf-core.%{KVERREL} \
     %{?perf_build_extra_opts} \
-    DESTDIR=$RPM_BUILD_ROOT prefix=%{_prefix} PYTHON=%{__python3} all
+    DESTDIR=./tmp prefix=%{_prefix} PYTHON=%{__python3} all install install-tools
 %endif
 %endif
 
@@ -1683,6 +1694,7 @@ cp $RPM_SOURCE_DIR/perf $RPM_BUILD_ROOT/usr/sbin/perf
 chmod 0755 $RPM_BUILD_ROOT/usr/sbin/perf
 mkdir -p $RPM_BUILD_ROOT/usr/libexec/
 install -m 755 tools/perf/perf $RPM_BUILD_ROOT/usr/libexec/perf.%{KVERREL}
+mv tools/perf/tmp/usr/libexec/perf-core.%{KVERREL} $RPM_BUILD_ROOT/usr/libexec/
 %if %{with_debug}
 ln -sf perf.%{KVERREL} $RPM_BUILD_ROOT/usr/libexec/perf.%{KVERREL}.debug
 %endif
