@@ -1266,16 +1266,29 @@ BuildKernel() {
 %endif
 %ifarch %{vdso_arches}
 %ifnarch noarch
-# build tools/perf:
     if [ -d tools/perf ]; then
-	cd tools/perf
-	make %{?make_opts} %{?_smp_mflags} NO_LIBPERL=1 EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow" all
-# and install it:
-#	mkdir -p $RPM_BUILD_ROOT/usr/bin/$KernelVer/
-	mkdir -p $RPM_BUILD_ROOT/usr/libexec/
-	install -m 755 perf $RPM_BUILD_ROOT/usr/libexec/perf.$KernelVer
-	#install -m 755 libperf.a $RPM_BUILD_ROOT/lib/modules/$KernelVer/bin/%{_target_cpu}/libperf.a
-	cd ../..
+        cd tools/perf
+        # The approach is to build and install perf to a temporary directory,
+        # then selectively install what we want in non-standard paths in order
+        # to avoid conflicts with the perf RPM.
+        # We also need to configure certain install variables, such as
+        # perfexecdir, so that perf references the files provided by UEK, rather
+        # than the perf RPM.
+        # Finally, we use "-f Makefile.perf" because the Makefile is simply a
+        # wrapper that calls Makefile.perf with parallel build options. Certain
+        # configuration variables (like perfexecdir) aren't correctly propagated
+        # through that wrapper, and we don't need the wrapper anyway.
+        make %{?make_opts} %{?_smp_mflags} \
+            NO_LIBPERL=1 \
+            EXTRA_CFLAGS="-Wno-format-truncation -Wno-format-overflow" \
+            DESTDIR=./tmp prefix=%{_prefix} \
+            perfexecdir=libexec/perf-core.$KernelVer \
+            -f Makefile.perf all install install-tools
+        mkdir -p $RPM_BUILD_ROOT/usr/libexec/
+        install -m 755 perf $RPM_BUILD_ROOT/usr/libexec/perf.$KernelVer
+        mv ./tmp/usr/libexec/perf-core.$KernelVer $RPM_BUILD_ROOT/usr/libexec/
+        rm -rf ./tmp
+        cd ../..
     fi
 %endif
 %ifarch x86_64 %{all_x86}
@@ -2138,6 +2151,7 @@ fi
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.*\
 %ifnarch mips64\
 /usr/libexec/perf.%{KVERREL}%{?2:.%{2}}\
+/usr/libexec/perf-core.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/perf\
 %endif\
 %ifarch %{arm} aarch64\
