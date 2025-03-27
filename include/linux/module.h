@@ -582,12 +582,6 @@ struct module {
 	atomic_t refcnt;
 #endif
 
-#ifdef CONFIG_CONSTRUCTORS
-	/* Constructor functions. */
-	ctor_fn_t *ctors;
-	unsigned int num_ctors;
-#endif
-
 #ifdef CONFIG_FUNCTION_ERROR_INJECTION
 	struct error_injection_entry *ei_funcs;
 	unsigned int num_ei_funcs;
@@ -595,6 +589,17 @@ struct module {
 #ifdef CONFIG_DYNAMIC_DEBUG_CORE
 	struct _ddebug_info dyndbg_info;
 #endif
+
+#ifdef CONFIG_CONSTRUCTORS
+	/* Constructor functions. */
+	UEK_KABI_USE(1, ctor_fn_t *ctors)
+	UEK_KABI_USE(2, unsigned int num_ctors)
+#else
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+#endif
+
+	UEK_KABI_RESERVE(3)
 } ____cacheline_aligned __randomize_layout;
 #ifndef MODULE_ARCH_INIT
 #define MODULE_ARCH_INIT {}
