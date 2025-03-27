@@ -946,7 +946,7 @@ static struct crypto_template cryptd_tmpl = {
 	.module = THIS_MODULE,
 };
 
-struct cryptd_skcipher *cryptd_alloc_skcipher(const char *alg_name,
+struct cryptd_skcipher *CRYPTO_API(cryptd_alloc_skcipher)(const char *alg_name,
 					      u32 type, u32 mask)
 {
 	char cryptd_alg_name[CRYPTO_MAX_ALG_NAME];
@@ -971,34 +971,34 @@ struct cryptd_skcipher *cryptd_alloc_skcipher(const char *alg_name,
 
 	return container_of(tfm, struct cryptd_skcipher, base);
 }
-EXPORT_SYMBOL_GPL(cryptd_alloc_skcipher);
+DEFINE_CRYPTO_API(cryptd_alloc_skcipher);
 
-struct crypto_skcipher *cryptd_skcipher_child(struct cryptd_skcipher *tfm)
+struct crypto_skcipher *CRYPTO_API(cryptd_skcipher_child)(struct cryptd_skcipher *tfm)
 {
 	struct cryptd_skcipher_ctx *ctx = crypto_skcipher_ctx(&tfm->base);
 
 	return ctx->child;
 }
-EXPORT_SYMBOL_GPL(cryptd_skcipher_child);
+DEFINE_CRYPTO_API(cryptd_skcipher_child);
 
-bool cryptd_skcipher_queued(struct cryptd_skcipher *tfm)
+bool CRYPTO_API(cryptd_skcipher_queued)(struct cryptd_skcipher *tfm)
 {
 	struct cryptd_skcipher_ctx *ctx = crypto_skcipher_ctx(&tfm->base);
 
 	return refcount_read(&ctx->refcnt) - 1;
 }
-EXPORT_SYMBOL_GPL(cryptd_skcipher_queued);
+DEFINE_CRYPTO_API(cryptd_skcipher_queued);
 
-void cryptd_free_skcipher(struct cryptd_skcipher *tfm)
+void CRYPTO_API(cryptd_free_skcipher)(struct cryptd_skcipher *tfm)
 {
 	struct cryptd_skcipher_ctx *ctx = crypto_skcipher_ctx(&tfm->base);
 
 	if (refcount_dec_and_test(&ctx->refcnt))
 		crypto_free_skcipher(&tfm->base);
 }
-EXPORT_SYMBOL_GPL(cryptd_free_skcipher);
+DEFINE_CRYPTO_API(cryptd_free_skcipher);
 
-struct cryptd_ahash *cryptd_alloc_ahash(const char *alg_name,
+struct cryptd_ahash *CRYPTO_API(cryptd_alloc_ahash)(const char *alg_name,
 					u32 type, u32 mask)
 {
 	char cryptd_alg_name[CRYPTO_MAX_ALG_NAME];
@@ -1021,41 +1021,41 @@ struct cryptd_ahash *cryptd_alloc_ahash(const char *alg_name,
 
 	return __cryptd_ahash_cast(tfm);
 }
-EXPORT_SYMBOL_GPL(cryptd_alloc_ahash);
+DEFINE_CRYPTO_API(cryptd_alloc_ahash);
 
-struct crypto_shash *cryptd_ahash_child(struct cryptd_ahash *tfm)
+struct crypto_shash *CRYPTO_API(cryptd_ahash_child)(struct cryptd_ahash *tfm)
 {
 	struct cryptd_hash_ctx *ctx = crypto_ahash_ctx(&tfm->base);
 
 	return ctx->child;
 }
-EXPORT_SYMBOL_GPL(cryptd_ahash_child);
+DEFINE_CRYPTO_API(cryptd_ahash_child);
 
-struct shash_desc *cryptd_shash_desc(struct ahash_request *req)
+struct shash_desc *CRYPTO_API(cryptd_shash_desc)(struct ahash_request *req)
 {
 	struct cryptd_hash_request_ctx *rctx = ahash_request_ctx(req);
 	return &rctx->desc;
 }
-EXPORT_SYMBOL_GPL(cryptd_shash_desc);
+DEFINE_CRYPTO_API(cryptd_shash_desc);
 
-bool cryptd_ahash_queued(struct cryptd_ahash *tfm)
+bool CRYPTO_API(cryptd_ahash_queued)(struct cryptd_ahash *tfm)
 {
 	struct cryptd_hash_ctx *ctx = crypto_ahash_ctx(&tfm->base);
 
 	return refcount_read(&ctx->refcnt) - 1;
 }
-EXPORT_SYMBOL_GPL(cryptd_ahash_queued);
+DEFINE_CRYPTO_API(cryptd_ahash_queued);
 
-void cryptd_free_ahash(struct cryptd_ahash *tfm)
+void CRYPTO_API(cryptd_free_ahash)(struct cryptd_ahash *tfm)
 {
 	struct cryptd_hash_ctx *ctx = crypto_ahash_ctx(&tfm->base);
 
 	if (refcount_dec_and_test(&ctx->refcnt))
 		crypto_free_ahash(&tfm->base);
 }
-EXPORT_SYMBOL_GPL(cryptd_free_ahash);
+DEFINE_CRYPTO_API(cryptd_free_ahash);
 
-struct cryptd_aead *cryptd_alloc_aead(const char *alg_name,
+struct cryptd_aead *CRYPTO_API(cryptd_alloc_aead)(const char *alg_name,
 						  u32 type, u32 mask)
 {
 	char cryptd_alg_name[CRYPTO_MAX_ALG_NAME];
@@ -1078,32 +1078,32 @@ struct cryptd_aead *cryptd_alloc_aead(const char *alg_name,
 
 	return __cryptd_aead_cast(tfm);
 }
-EXPORT_SYMBOL_GPL(cryptd_alloc_aead);
+DEFINE_CRYPTO_API(cryptd_alloc_aead);
 
-struct crypto_aead *cryptd_aead_child(struct cryptd_aead *tfm)
+struct crypto_aead *CRYPTO_API(cryptd_aead_child)(struct cryptd_aead *tfm)
 {
 	struct cryptd_aead_ctx *ctx;
 	ctx = crypto_aead_ctx(&tfm->base);
 	return ctx->child;
 }
-EXPORT_SYMBOL_GPL(cryptd_aead_child);
+DEFINE_CRYPTO_API(cryptd_aead_child);
 
-bool cryptd_aead_queued(struct cryptd_aead *tfm)
+bool CRYPTO_API(cryptd_aead_queued)(struct cryptd_aead *tfm)
 {
 	struct cryptd_aead_ctx *ctx = crypto_aead_ctx(&tfm->base);
 
 	return refcount_read(&ctx->refcnt) - 1;
 }
-EXPORT_SYMBOL_GPL(cryptd_aead_queued);
+DEFINE_CRYPTO_API(cryptd_aead_queued);
 
-void cryptd_free_aead(struct cryptd_aead *tfm)
+void CRYPTO_API(cryptd_free_aead)(struct cryptd_aead *tfm)
 {
 	struct cryptd_aead_ctx *ctx = crypto_aead_ctx(&tfm->base);
 
 	if (refcount_dec_and_test(&ctx->refcnt))
 		crypto_free_aead(&tfm->base);
 }
-EXPORT_SYMBOL_GPL(cryptd_free_aead);
+DEFINE_CRYPTO_API(cryptd_free_aead);
 
 static int __init cryptd_init(void)
 {
