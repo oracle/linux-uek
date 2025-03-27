@@ -129,7 +129,6 @@ modules-core:
 - fuse
 - garp
 - geneve
-- gf128mul
 - gnss
 - grace
 - gre
@@ -483,7 +482,6 @@ modules-core:
 - virtio_pmem
 - virtio_scsi
 - virtio_vdpa
-- vmac
 - vmw_vsock_virtio_transport
 - vmw_vsock_virtio_transport_common
 - vmwgfx
@@ -529,8 +527,8 @@ modules-core:
 - button
 - chacha-neon
 - cppc_cpufreq
-- crct10dif-ce
 - ecdh_generic
+- gf128mul
 - ghash-ce
 - poly1305-neon
 - sbsa_gwdt
@@ -572,9 +570,7 @@ modules-core:
 - cdrom
 - chacha-x86_64
 - coretemp
-- crc32-pclmul
 - crc8
-- crct10dif-pclmul
 - crypto_simd
 - curve25519-x86_64
 - dax_hmem
@@ -781,7 +777,7 @@ modules:
 - chcr
 - chipreg
 - cicada
-- cirrus
+- cirrus-qemu
 - cm109
 - cortina
 - cramfs
@@ -1054,6 +1050,7 @@ modules:
 - mhi_pci_generic
 - micrel
 - microchip
+- microchip_rds_ptp
 - microchip_t1
 - mpi3mr
 - mscc
@@ -1154,6 +1151,7 @@ modules:
 - pi3usb30532
 - pktcdvd
 - platform_lcd
+- platform_profile
 - plusb
 - pmbus
 - pmbus_core
@@ -1544,7 +1542,6 @@ modules:
 - cptpf
 - cptvf
 - cpufreq-dt
-- cpufreq-dt-platdev
 - cros_ec_dev
 - cros_ec_hwmon
 - dc395x
@@ -1901,6 +1898,7 @@ modules:
 - dcdbas
 - de2104x
 - dell-laptop
+- dell-lis3lv02d
 - dell-pc
 - dell-rbtn
 - dell-smbios
@@ -2030,7 +2028,6 @@ modules:
 - k8temp
 - leds-mlxcpld
 - leds-ss4200
-- libaesgcm
 - lp
 - lp3971
 - lpc_sch
@@ -2123,7 +2120,6 @@ modules:
 - pinctrl-lewisburg
 - pinctrl-sunrisepoint
 - pinctrl-tigerlake
-- platform_profile
 - pmc551
 - pmt_class
 - pmt_crashlog
@@ -2801,6 +2797,7 @@ modules-desktop:
 - drm_display_helper
 - drm_exec
 - drm_gpuvm
+- drm_panel_backlight_quirks
 - drm_suballoc_helper
 - dst
 - dst_ca
@@ -3203,6 +3200,7 @@ modules-desktop:
 - cros_kbd_led_backlight
 - cros_peripheral_charger
 - cros_typec_switch
+- cros_ec_ucsi
 - cros_usbpd_notify
 - da280
 - da311
