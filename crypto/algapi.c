@@ -30,9 +30,11 @@ EXPORT_PER_CPU_SYMBOL_GPL(crypto_simd_disabled_for_test);
 
 static inline void crypto_check_module_sig(struct module *mod)
 {
+#ifndef FIPS_MODULE
 	if (fips_enabled && mod && !module_sig_ok(mod))
 		panic("Module %s signature verification failed in FIPS mode\n",
 		      module_name(mod));
+#endif
 }
 
 static int crypto_check_alg(struct crypto_alg *alg)
