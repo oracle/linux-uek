@@ -593,9 +593,9 @@ Requires(preun): /usr/bin/kernel-install\
 Requires: numactl-libs\
 Conflicts: %{kernel_dot_org_conflicts}\
 Conflicts: %{package_conflicts}\
-Conflicts: shim-x64 <= 15.3-1.0.3\
-Conflicts: shim-ia32 <= 15.3-1.0.3\
-Provides: oracle(kernel-sig-key) == 202204\
+Conflicts: shim-x64 < 15.8-4.0.2\
+Conflicts: shim-ia32 < 15.8-4.0.2\
+Provides: oracle(kernel-sig-key) == 202502\
 %{expand:%%{?kernel%{?1:_%{1}}_conflicts:Conflicts: %%{kernel%{?1:_%{1}}_conflicts}}}\
 %{expand:%%{?kernel%{?1:_%{1}}_obsoletes:Obsoletes: %%{kernel%{?1:_%{1}}_obsoletes}}}\
 %{expand:%%{?kernel%{?1:_%{1}}_provides:Provides: %%{kernel%{?1:_%{1}}_provides}}}\
