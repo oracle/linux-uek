@@ -2093,11 +2093,14 @@ static void module_augment_kernel_taints(struct module *mod, struct load_info *i
 
 static int check_modinfo(struct module *mod, struct load_info *info, int flags)
 {
-	const char *modmagic = get_modinfo(info, "vermagic");
+	const char *modmagic = NULL;
 	int err;
 
-	if (flags & MODULE_INIT_IGNORE_VERMAGIC)
-		modmagic = NULL;
+	if (flags & MODULE_INIT_MEM)
+		return 0;
+
+	if (!(flags & MODULE_INIT_IGNORE_VERMAGIC))
+		modmagic = get_modinfo(info, "vermagic");
 
 	/* This is allowed: modprobe --force will invalidate it. */
 	if (!modmagic) {
@@ -2895,7 +2898,8 @@ static int _load_module(struct load_info *info, const char __user *uargs,
 	 * We are tainting your kernel if your module gets into
 	 * the modules linked list somehow.
 	 */
-	module_augment_kernel_taints(mod, info);
+	if (!(flags & MODULE_INIT_MEM))
+		module_augment_kernel_taints(mod, info);
 
 	/* To avoid stressing percpu allocator, do this once we're unique. */
 	err = percpu_modalloc(mod, info);
@@ -3062,7 +3066,7 @@ int load_module_mem(const char *mem, size_t size)
 	info.hdr = (Elf64_Ehdr *) mem;
 	info.len = size;
 
-	err = _load_module(&info, NULL, 0);
+	err = _load_module(&info, NULL, MODULE_INIT_MEM);
 	if (0)
 		free_copy(&info, 0);
 
@@ -3262,6 +3266,10 @@ SYSCALL_DEFINE3(finit_module, int, fd, const char __user *, uargs, int, flags)
 
 	pr_debug("finit_module: fd=%d, uargs=%p, flags=%i\n", fd, uargs, flags);
 
+	/*
+	 * Deliberately omitting MODULE_INIT_MEM as it is for internal use
+	 * only.
+	 */
 	if (flags & ~(MODULE_INIT_IGNORE_MODVERSIONS
 		      |MODULE_INIT_IGNORE_VERMAGIC
 		      |MODULE_INIT_COMPRESSED_FILE))
