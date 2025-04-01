@@ -8,6 +8,7 @@
 #include <linux/cdev.h>
 #include <linux/cleanup.h>
 #include <uapi/fwctl/fwctl.h>
+#include <linux/mm.h>
 
 struct fwctl_device;
 struct fwctl_uctx;
@@ -108,5 +109,7 @@ struct fwctl_uctx {
 	/* Head at fwctl_device::uctx_list */
 	struct list_head uctx_list_entry;
 };
+
+DEFINE_FREE(kvfree, void *, if (!IS_ERR_OR_NULL(_T)) kvfree(_T))
 
 #endif
