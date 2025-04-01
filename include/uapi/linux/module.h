@@ -7,4 +7,7 @@
 #define MODULE_INIT_IGNORE_VERMAGIC	2
 #define MODULE_INIT_COMPRESSED_FILE	4
 
+/* Internal flags (use upper bits to avoid conflicts with upstream) */
+#define MODULE_INIT_MEM			30
+
 #endif /* _UAPI_LINUX_MODULE_H */
