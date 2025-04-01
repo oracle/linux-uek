@@ -225,11 +225,9 @@ static void *mlx5ctl_fw_rpc(struct fwctl_uctx *uctx, enum fwctl_rpc_scope scope,
 		container_of(uctx->fwctl, struct mlx5ctl_dev, fwctl);
 	struct mlx5ctl_uctx *mfd =
 		container_of(uctx, struct mlx5ctl_uctx, uctx);
-	void *rpc_alloc __free(kvfree);
+	void *rpc_alloc __free(kvfree) = NULL;
 	void *rpc_out;
 	int ret;
-
-	rpc_alloc = NULL;
 
 	if (in_len < MLX5_ST_SZ_BYTES(mbox_in_hdr) ||
 	    *out_len < MLX5_ST_SZ_BYTES(mbox_out_hdr))

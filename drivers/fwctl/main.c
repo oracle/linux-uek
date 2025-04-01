@@ -83,8 +83,6 @@ static int fwctl_cmd_rpc(struct fwctl_ucmd *ucmd)
 {
 	struct fwctl_device *fwctl = ucmd->uctx->fwctl;
 	struct fwctl_rpc *cmd = ucmd->cmd;
-	void *inbuf __free(kvfree);
-	void *outbuf __free(kvfree_errptr);
 	size_t out_len;
 
 	if (cmd->in_len > MAX_RPC_LEN || cmd->out_len > MAX_RPC_LEN)
@@ -112,7 +110,7 @@ static int fwctl_cmd_rpc(struct fwctl_ucmd *ucmd)
 		return -EOPNOTSUPP;
 	};
 
-	inbuf =
+	void *inbuf __free(kvfree) =
 		kvzalloc(cmd->in_len, GFP_KERNEL | GFP_KERNEL_ACCOUNT);
 	if (!inbuf)
 		return -ENOMEM;
@@ -120,7 +118,7 @@ static int fwctl_cmd_rpc(struct fwctl_ucmd *ucmd)
 		return -EFAULT;
 
 	out_len = cmd->out_len;
-	outbuf = fwctl->ops->fw_rpc(
+	void *outbuf __free(kvfree_errptr) = fwctl->ops->fw_rpc(
 		ucmd->uctx, cmd->scope, inbuf, cmd->in_len, &out_len);
 	if (IS_ERR(outbuf))
 		return PTR_ERR(outbuf);
@@ -130,7 +128,7 @@ static int fwctl_cmd_rpc(struct fwctl_ucmd *ucmd)
 	}
 
 	if (copy_to_user(u64_to_user_ptr(cmd->out), outbuf,
-			 min((size_t)cmd->out_len, out_len)))
+			 min(cmd->out_len, out_len)))
 		return -EFAULT;
 
 	cmd->out_len = out_len;
@@ -206,14 +204,13 @@ static int fwctl_fops_open(struct inode *inode, struct file *filp)
 {
 	struct fwctl_device *fwctl =
 		container_of(inode->i_cdev, struct fwctl_device, cdev);
-	struct fwctl_uctx *uctx __free(kfree);
 	int ret;
 
 	guard(rwsem_read)(&fwctl->registration_lock);
 	if (!fwctl->ops)
 		return -ENODEV;
 
-	uctx =
+	struct fwctl_uctx *uctx __free(kfree) =
 		kzalloc(fwctl->ops->uctx_size, GFP_KERNEL | GFP_KERNEL_ACCOUNT);
 	if (!uctx)
 		return -ENOMEM;
@@ -273,7 +270,7 @@ static void fwctl_device_release(struct device *device)
 	kfree(fwctl);
 }
 
-static char *fwctl_devnode(struct device *dev, umode_t *mode)
+static char *fwctl_devnode(const struct device *dev, umode_t *mode)
 {
 	return kasprintf(GFP_KERNEL, "fwctl/%s", dev_name(dev));
 }
