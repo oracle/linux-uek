@@ -95,7 +95,7 @@ static const struct seq_operations crypto_seq_ops = {
 	.show		= c_show
 };
 
-void __init crypto_init_proc(void)
+void crypto_init_proc(void)
 {
 	proc_create_seq("crypto", 0, NULL, &crypto_seq_ops);
 }

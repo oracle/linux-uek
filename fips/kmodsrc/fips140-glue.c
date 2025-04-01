@@ -336,6 +336,8 @@ int CRYPTO_API(fips140_init)(void)
 
 	fips_operational = 1;
 
+	crypto_init_proc();
+
 	pr_info("FIPS 140: operational\n");
 	return 0;
 }

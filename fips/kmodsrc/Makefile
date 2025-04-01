@@ -47,6 +47,7 @@ fips140-y += crypto/api.o
 fips140-y += crypto/ahash.o
 fips140-y += crypto/cryptd.o
 fips140-y += crypto/shash.o
+fips140-y += crypto/proc.o
 
 obj-m += fips140.o
 endif

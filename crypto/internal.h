@@ -90,7 +90,7 @@ static inline void set_crypto_boot_test_finished(void)
 	*/
 
 #ifdef CONFIG_PROC_FS
-void __init crypto_init_proc(void);
+void crypto_init_proc(void);
 void __exit crypto_exit_proc(void);
 #else
 static inline void crypto_init_proc(void)
