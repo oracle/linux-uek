@@ -1,0 +1,281 @@
+// SPDX-License-Identifier: (GPL-2.0-only or BSD-2-Clause)
+/*
+ * Copyright 2023-2024 Advanced Micro Devices, Inc.
+ */
+
+#include <dt-bindings/gpio/gpio.h>
+#include "dt-bindings/interrupt-controller/arm-gic.h"
+#include "dt-bindings/interrupt-controller/irq.h"
+#include "dt-bindings/soc/pensando,capmem.h"
+
+/ {
+	interrupt-parent = <&gic>;
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	dma-coherent;
+
+	ahb_clk: oscillator0 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+	};
+
+	emmc_clk: oscillator2 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+	};
+
+	flash_clk: oscillator3 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+	};
+
+	ref_clk: oscillator4 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+	};
+
+	gmac_clk: oscillator5 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+	};
+
+	timer {
+		compatible = "arm,armv8-timer";
+		interrupts = <GIC_PPI 13 IRQ_TYPE_LEVEL_LOW>,
+			     <GIC_PPI 14 IRQ_TYPE_LEVEL_LOW>,
+			     <GIC_PPI 11 IRQ_TYPE_LEVEL_LOW>,
+			     <GIC_PPI 10 IRQ_TYPE_LEVEL_LOW>;
+	};
+
+	pmu {
+		compatible = "arm,armv8-pmuv3";
+		interrupts = <GIC_PPI 7 IRQ_TYPE_LEVEL_LOW>;
+	};
+
+	/* Common UIO device for MSI drivers */
+	uio_penmsi {
+		compatible = "pensando,uio_penmsi";
+		name = "uio_penmsi";
+	};
+
+	rstcause {
+		compatible = "pensando,rstcause";
+		pensando,causeregs = <&syscon 0x204>;
+	};
+
+	capmem {
+		compatible = "pensando,capmem";
+		pensando,capmem-fixed-ranges =
+			<0x0 0x10000 0x0 0x6fff0000 DSC_MEM_ATTR_DEVICE>,
+			<0x2 0x40000000 0x0 0x8000000 DSC_MEM_ATTR_DEVICE>;
+	};
+
+	soc: soc {
+		compatible = "simple-bus";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		i2c1: i2c@20000 {
+			compatible = "snps,designware-i2c";
+			reg = <0x0 0x20000 0x0 0x100>;
+			clocks = <&ahb_clk>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			i2c-sda-hold-time-ns = <480>;
+			snps,sda-timeout-ms = <750>;
+			interrupts = <GIC_SPI 8 IRQ_TYPE_LEVEL_HIGH>;
+			status = "disabled";
+		};
+
+		spi1: spi@c0000 {
+			compatible = "amd,pensando-elba-spi";
+			reg = <0x0 0xc0000 0x0 0x100>;
+			amd,pensando-elba-syscon = <&syscon>;
+			clocks = <&ahb_clk>;
+			interrupts = <GIC_SPI 11 IRQ_TYPE_LEVEL_HIGH>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			num-cs = <2>;
+			status = "disabled";
+		};
+
+		qspi0: spi@90000 {
+			compatible = "amd,pensando-elba-qspi";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0x0 0x90000 0x0 0x400>,
+			      <0x0 0x77ff0000 0x0 0x1000>;
+			interrupts = <GIC_SPI 0 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&flash_clk>;
+			cdns,fifo-depth = <1024>;
+			cdns,fifo-width = <4>;
+			cdns,trigger-address = <0x07ff0000>;
+			status = "disabled";
+		};
+
+		gpio0: gpio@d0000 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			compatible = "snps,dw-apb-gpio";
+			reg = <0x0 0xd0000 0x0 0x78>;
+			status = "disabled";
+
+			porta: gpio-controller@0 {
+				compatible = "snps,dw-apb-gpio-port";
+				reg = <0>;
+				gpio-controller;
+				#gpio-cells = <2>;
+				ngpios = <8>;
+				interrupts = <GIC_SPI 2 IRQ_TYPE_LEVEL_HIGH>;
+				interrupt-controller;
+				interrupt-parent = <&gic>;
+				#interrupt-cells = <2>;
+			};
+			portb: gpio-controller@1 {
+				compatible = "snps,dw-apb-gpio-port";
+				reg = <1>;
+				gpio-controller;
+				#gpio-cells = <2>;
+				ngpios = <8>;
+			};
+		};
+
+		gpio1: gpio@e0000 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			compatible = "snps,dw-apb-gpio";
+			reg = <0x0 0xe0000 0x0 0x78>;
+			status = "disabled";
+		};
+
+		uart1: serial@100000 {
+			device_type = "serial";
+			compatible = "ns16550a";
+			reg = <0x0 0x100000 0x0 0x100>;
+			clocks = <&ref_clk>;
+			interrupts = <GIC_SPI 5 IRQ_TYPE_LEVEL_HIGH>;
+			reg-shift = <2>;
+			reg-io-width = <4>;
+		};
+
+		emmc0: sdio-host-chip@600000 {
+			compatible = "amd,pensando-salina-sd4hc", "cdns,sd4hc";
+			clocks = <&emmc_clk>;
+			interrupts = <GIC_SPI 51 IRQ_TYPE_LEVEL_HIGH>;
+			reg = <0x0 0x600000 0x0 0x10000
+			       0x0 0x680044 0x0 0x4>;
+			mmc-ddr-1_8v;
+			mmc-hs200-1_8v;
+			mmc-hs400-1_8v;
+			cdns,phy-input-delay-sd-highspeed = <0x4>;
+			cdns,phy-input-delay-legacy = <0x4>;
+			cdns,phy-input-delay-sd-uhs-sdr50 = <0x6>;
+			cdns,phy-input-delay-sd-uhs-ddr50 = <0x16>;
+			cdns,phy-dll-delay-sdclk = <0x1f>;
+			status = "disabled";
+		};
+
+		cmn_pmu_int: interrupt-controller@42200000 {
+			compatible = "pensando,salina-cmn-pmu-interrupt";
+			interrupt-controller;
+			reg = <0x0 0x42200000 0x0 0x40>;
+			#interrupt-cells = <3>;
+			interrupt-parent = <&gic>;
+			interrupts = <GIC_SPI 21 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "cmn_pmu_int";
+		};
+
+		cmn_pmu@400000000 {
+			compatible = "arm,cmn-700";
+			#address-cells = <2>;
+			#size-cells = <2>;
+			/* base 0x4_0000_0000	size 256MB */
+			reg = <0x4 0x0 0x0 0x10000000>;
+			interrupts = <GIC_SPI 21 IRQ_TYPE_LEVEL_HIGH>;
+		};
+
+		stmmac_axi_setup: stmmac-axi-config {
+			snps,wr_osr_lmt = <0>;
+			snps,rd_osr_lmt = <0>;
+			snps,blen = <0 0 0 0 0 4 0>;
+		};
+
+		gmac0: ethernet@6d73a000 {
+			compatible = "snps,dwmac-3.70a", "snps,dwmac";
+			reg = <0x0 0x6d73a000 0x0 0x8000>;
+			clocks = <&gmac_clk>;
+			clock-names = "stmmaceth";
+			interrupts = <GIC_SPI 57 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "macirq";
+			mac-address = [00 ae cd 10 96 38]; /* Filled in by U-Boot */
+			max-frame-size = <3800>;
+			phy-mode = "gmii";
+			snps,fixed-burst;
+			snps,multicast-filter-bins = <256>;
+			snps,perfect-filter-entries = <128>;
+			rx-fifo-depth = <16384>;
+			tx-fifo-depth = <16384>;
+			snps,axi-config = <&stmmac_axi_setup>;
+			snps,pbl = <2>;
+			fixed-link {
+				speed = <1000>;
+				full-duplex;
+			};
+		};
+
+		gmac1: ethernet@6df3a000 {
+			compatible = "snps,dwmac-3.70a", "snps,dwmac";
+			reg = <0x0 0x6df3a000 0x0 0x8000>;
+			clocks = <&gmac_clk>;
+			clock-names = "stmmaceth";
+			interrupts = <GIC_SPI 58 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "macirq";
+			mac-address = [00 ae cd 10 96 39];/* Filled in by U-Boot */
+			max-frame-size = <3800>;
+			phy-mode = "gmii";
+			snps,fixed-burst;
+			snps,multicast-filter-bins = <256>;
+			snps,perfect-filter-entries = <128>;
+			rx-fifo-depth = <16384>;
+			tx-fifo-depth = <16384>;
+			snps,axi-config = <&stmmac_axi_setup>;
+			snps,pbl = <2>;
+			fixed-link {
+				speed = <1000>;
+				full-duplex;
+			};
+		};
+
+		gic: interrupt-controller@1000000 {
+			compatible = "arm,gic-v3";
+			#address-cells = <2>;
+			#interrupt-cells = <3>;
+			#size-cells = <2>;
+			ranges;
+			interrupt-controller;
+			reg = <0x0 0x1000000 0 0x10000>,	/* GICD */
+			      <0x0 0x1060000 0 0x200000>;	/* GICR */
+			interrupts = <GIC_PPI 9 IRQ_TYPE_LEVEL_HIGH>;
+
+			gic_its: interrupt-controller@1040000 {
+				compatible = "arm,gic-v3-its";
+				msi-controller;
+				#msi-cells = <1>;
+				reg = <0x0 0x1040000 0x0 0x20000>, /* ITS */
+				      <0x0 0x1400040 0x0 0x4>;	   /* MSI encapsulator */
+			};
+		};
+
+		syscon: syscon@61000000 {
+			compatible = "amd,pensando-elba-syscon", "syscon";
+			reg = <0x0 0x61000000 0x0 0x80000>;
+		};
+
+		panic: panicdump {
+			compatible = "pensando,capri-crash";
+			status = "disabled";
+		};
+	};
+};
