@@ -23,6 +23,7 @@ obj-y				+= loongson/
 obj-y				+= mediatek/
 obj-y				+= microchip/
 obj-y				+= nuvoton/
+obj-$(CONFIG_ARCH_PENSANDO)	+= pensando/
 obj-y				+= pxa/
 obj-y				+= amlogic/
 obj-y				+= qcom/
