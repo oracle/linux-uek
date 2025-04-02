@@ -28,6 +28,7 @@ void arm64_force_sig_fault(int signo, int code, unsigned long far, const char *s
 void arm64_force_sig_fault_pkey(unsigned long far, const char *str, int pkey);
 void arm64_force_sig_mceerr(int code, unsigned long far, short lsb, const char *str);
 void arm64_force_sig_ptrace_errno_trap(int errno, unsigned long far, const char *str);
+int platform_serror(struct pt_regs *regs, unsigned int esr);
 
 int early_brk64(unsigned long addr, unsigned long esr, struct pt_regs *regs);
 
