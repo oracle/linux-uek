@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+// SPDX-License-Identifier: (GPL-2.0-only or BSD-2-Clause)
 /*
  * Device Tree file for AMD Pensando Elba Board.
  *
@@ -7,16 +7,16 @@
 
 /dts-v1/;
 
-#include "elba.dtsi"
+#include "giglio.dtsi"
 #include "elba-16core.dtsi"
-#include "elba-asic-common.dtsi"
+#include "giglio-asic-common.dtsi"
 #include "elba-flash-parts.dtsi"
 #include "elba-asic-memory.dtsi"
 #include "elba-mdev.dtsi"
 
 / {
-	model = "AMD Pensando Elba Board";
-	compatible = "amd,pensando-elba-ortano", "amd,pensando-elba";
+	model = "AMD Pensando Giglio Board";
+	compatible = "amd, pensando-giglio-ginestra", "amd,pensando-giglio";
 
 	aliases {
 		serial0 = &uart0;
