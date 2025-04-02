@@ -1,0 +1,91 @@
+if ARCH_PENSANDO
+
+menu "Pensando SoC drivers"
+
+choice
+    prompt "SoC Select"
+    default ARCH_PENSANDO_ELBA_SOC
+
+config ARCH_PENSANDO_ELBA_SOC
+	bool "Elba SoC"
+	select DMA_OPS
+	select REGMAP_SPI
+	help
+	  Support for the Pensando Elba SoC
+
+config ARCH_PENSANDO_GIGLIO_SOC
+	bool "Giglio SoC"
+	help
+	  Support for the Pensando Giglio SoC
+
+config ARCH_PENSANDO_SALINA_SOC
+	bool "Salina SoC"
+	select DMA_OPS
+	help
+	  Support for the Pensando Salina SoC
+endchoice
+
+config PENSANDO_SOC_CAPMEM
+	tristate "/dev/capmem driver for the Pensando SoCs"
+	depends on OF
+	default y
+	help
+	  Support for the Pensando SoC memory driver
+
+config PENSANDO_SOC_CAPMEM_HUGEPAGE
+	tristate "Enable hugepage support in capmem"
+	select TRANSPARENT_HUGEPAGE
+	default n
+	help
+	  Support for Huge pages in Pensando SoC memory driver
+
+config PENSANDO_SOC_PCIE
+	tristate "PCIe driver for Pensando SoCs"
+	depends on OF
+	default y
+	help
+	  Provide a PCIe driver for pciemgr kernel assist
+
+config PENSANDO_SOC_RSTCAUSE
+	tristate "Pensando reset cause driver"
+	depends on OF
+	default y
+	help
+	  Support for the Pensando SoC reset cause driver
+
+config PENSANDO_SOC_CRASH
+	tristate "Pensando crash driver"
+	depends on OF
+	default y
+	help
+	  Support for the Pensando SoC crash driver
+
+config PENSANDO_SOC_BSM
+	bool "Pensando SoC Boot State Machine"
+	depends on OF
+	default y
+	help
+	  Support for the Pensando SoC boot state machine driver
+
+config PENSANDO_SOC_BSM_ENABLE
+	bool "Enable the Boot State Machine in the kernel"
+        depends on PENSANDO_SOC_BSM
+	help
+	  Re-enable the BSM on kernel startup
+
+config PENSANDO_SOC_PENFW
+	bool "Pensando penfw driver"
+	default n
+	help
+	  Driver module to interface secure boot config
+
+config PENSANDO_SOC_SBUS
+	tristate "Pensando sbus read/write driver"
+	depends on OF
+	default y
+	help
+	  Support for the Pensando SoC sbus read/write driver
+
+endmenu
+
+endif
