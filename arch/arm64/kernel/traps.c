@@ -966,8 +966,16 @@ bool arm64_is_fatal_ras_serror(struct pt_regs *regs, unsigned long esr)
 	}
 }
 
+int __weak platform_serror(struct pt_regs *regs, unsigned int esr)
+{
+	return 0;
+}
+
 void do_serror(struct pt_regs *regs, unsigned long esr)
 {
+	if (platform_serror(regs, esr))
+		return;
+
 	/* non-RAS errors are not containable */
 	if (!arm64_is_ras_serror(esr) || arm64_is_fatal_ras_serror(regs, esr))
 		arm64_serror_panic(regs, esr);
