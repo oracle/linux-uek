@@ -61,7 +61,11 @@ struct dw_spi_mscc {
  * bit: |---3-------2-------1-------0
  *      |  cs1   cs1_ovr   cs0   cs0_ovr
  */
+#ifdef CONFIG_ARCH_PENSANDO_SALINA_SOC
+#define ELBA_SPICS_REG			0x66c
+#else
 #define ELBA_SPICS_REG			0x2468
+#endif
 #define ELBA_SPICS_OFFSET(cs)		((cs) << 1)
 #define ELBA_SPICS_MASK(cs)		(GENMASK(1, 0) << ELBA_SPICS_OFFSET(cs))
 #define ELBA_SPICS_SET(cs, val)		\
