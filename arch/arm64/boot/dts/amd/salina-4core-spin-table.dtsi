@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: (GPL-2.0-only or BSD-2-Clause)
+/*
+ * Copyright 2023-2024 Advanced Micro Devices, Inc.
+ */
+
+/ {
+	cpus {
+		#address-cells = <2>;
+		#size-cells = <0>;
+
+		cpu-map {
+			cluster0 {
+				core0 { cpu = <&cpu0>; };
+			};
+			cluster1 {
+				core0 { cpu = <&cpu2>; };
+			};
+			cluster2 {
+				core0 { cpu = <&cpu4>; };
+			};
+			cluster3 {
+				core0 { cpu = <&cpu6>; };
+			};
+		};
+
+		/* CLUSTER 0 */
+		cpu0: cpu@0 {
+			device_type = "cpu";
+			compatible = "arm,neoverse-n1";
+			reg = <0 0x0>;
+			enable-method = "spin-table";
+		};
+
+		/* CLUSTER 1 */
+		cpu2: cpu@20000 {
+			device_type = "cpu";
+			compatible = "arm,neoverse-n1";
+			reg = <0 0x20000>;
+			enable-method = "spin-table";
+		};
+
+		/* CLUSTER 2 */
+		cpu4: cpu@40000 {
+			device_type = "cpu";
+			compatible = "arm,neoverse-n1";
+			reg = <0 0x40000>;
+			enable-method = "spin-table";
+		};
+
+		/* CLUSTER 3 */
+		cpu6: cpu@60000 {
+			device_type = "cpu";
+			compatible = "arm,neoverse-n1";
+			reg = <0 0x60000>;
+			enable-method = "spin-table";
+		};
+	};
+};
