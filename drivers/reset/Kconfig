@@ -66,6 +66,15 @@ config RESET_BRCMSTB_RESCAL
 	  This enables the RESCAL reset controller for SATA, PCIe0, or PCIe1 on
 	  BCM7216 or the BCM2712.
 
+config RESET_ELBASR
+	tristate "Pensando Elba System Resource reset controller"
+	depends on MFD_PENSANDO_ELBASR || COMPILE_TEST
+	help
+	  This option enables support for the external reset functions
+	  on the Pensando Elba System Resource Chip.  Reset control
+	  of peripherals is accessed over SPI to the system resource
+	  chip device registers using CS0.
+
 config RESET_EYEQ
 	bool "Mobileye EyeQ reset controller"
 	depends on MACH_EYEQ5 || MACH_EYEQ6H || COMPILE_TEST
@@ -230,6 +239,16 @@ config RESET_RZG2L_USBPHY_CTRL
 	help
 	  Support for USBPHY Control found on RZ/G2L family. It mainly
 	  controls reset and power down of the USB/PHY.
+
+config RESET_SALINASR
+	tristate "AMD Pensando Salina System Resource reset controller"
+	depends on ARCH_PENSANDO_SALINA_SOC || COMPILE_TEST
+	help
+	  This option enables support for the external reset functions
+	  on the Pensando Salina System Resource Chip.  Reset control
+	  of peripherals is accessed over IPC to management processor.
+
+	  The management processor is an ARM64 A35 in the Salina SoC.
 
 config RESET_SCMI
 	tristate "Reset driver controlled via ARM SCMI interface"
