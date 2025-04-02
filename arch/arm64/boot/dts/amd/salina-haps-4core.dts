@@ -1,0 +1,71 @@
+// SPDX-License-Identifier: (GPL-2.0-only or BSD-2-Clause)
+/*
+ * Device Tree file for AMD Pensando Salina Emulation Board.
+ *
+ * Copyright 2023-2024 Advanced Micro Devices, Inc.
+ */
+
+/dts-v1/;
+
+#include "salina-haps.dtsi"
+#include "salina-4core-spin-table.dtsi"
+#include "salina-haps-common.dtsi"
+#include "elba-flash-parts.dtsi"
+
+/ {
+	model = "Salina HAPS Emulation Board";
+	compatible = "pensando,salina";
+
+	aliases {
+		serial0 = &uart0;
+		spi0 = &spi0;
+		spi1 = &spi1;
+		spi2 = &qspi;
+	};
+
+	chosen {
+		stdout-path = "serial0:19200n8";
+	};
+};
+
+&spi0 {
+	status = "okay";
+};
+
+&spi1 {
+	status = "okay";
+};
+
+&emmc_clk {
+	clock-frequency = <208000000>;
+};
+
+&emmc {
+	bus-width = <8>;
+	status = "ok";
+};
+
+&i2c0 {
+	clock-frequency = <100000>;
+	status = "okay";
+};
+
+&i2c1 {
+	clock-frequency = <100000>;
+	status = "okay";
+
+	rtc@51 {
+		compatible = "nxp,pcf85263";
+		reg = <0x51>;
+	};
+};
+
+&i2c2 {
+	clock-frequency = <100000>;
+	status = "okay";
+};
+
+&i2c3 {
+	clock-frequency = <100000>;
+	status = "okay";
+};
