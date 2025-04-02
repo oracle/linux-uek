@@ -2023,6 +2023,7 @@ modules:
 - intel-uncore-frequency-tpmi
 - intel-vbtn
 - intel-wmi-thunderbolt
+- intel_ifs
 - intel_ips
 - intel_oaktrail
 - intel_pmc_core
