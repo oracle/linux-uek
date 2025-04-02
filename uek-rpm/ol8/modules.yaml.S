@@ -2019,6 +2019,7 @@ modules:
 - intel-vsec
 - intel-vsec_tpmi
 - intel-wmi-thunderbolt
+- intel_ifs
 - intel_ips
 - intel_pmc_core
 - intel_pmc_core_pltdrv
