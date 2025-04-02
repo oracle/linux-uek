@@ -1,7 +1,4 @@
-// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
-/*
- * Copyright 2020-2022 Advanced Micro Devices, Inc.
- */
+// SPDX-License-Identifier: GPL-2.0
 
 #include <dt-bindings/reset/amd,pensando-elba-reset.h>
 
@@ -23,7 +20,6 @@
 
 &qspi {
 	status = "okay";
-
 	flash0: flash@0 {
 		compatible = "jedec,spi-nor";
 		reg = <0>;
@@ -39,7 +35,11 @@
 };
 
 &gpio0 {
-	status = "okay";
+	status = "ok";
+};
+
+&gpio1 {
+	status = "ok";
 };
 
 &emmc {
@@ -47,7 +47,7 @@
 	cap-mmc-hw-reset;
 	reset-names = "hw";
 	resets = <&rstc EMMC_HW_RESET>;
-	status = "okay";
+	status = "ok";
 };
 
 &edac {
@@ -61,21 +61,47 @@
 &i2c0 {
 	clock-frequency = <100000>;
 	status = "okay";
+};
+
+&i2c1 {
+	clock-frequency = <100000>;
+	status = "okay";
+};
+
+&i2c2 {
+	clock-frequency = <100000>;
+	status = "okay";
+
+	temp-sensor@4c {
+		compatible = "ti,tmp451";
+		reg = <0x4c>;
+	};
 
 	rtc@51 {
 		compatible = "nxp,pcf85263";
 		reg = <0x51>;
 	};
+
+	regulator@62 {
+		compatible = "ti,tps53688";
+		reg = <0x62>;
+	};
+};
+
+&i2c3 {
+	clock-frequency = <100000>;
+	status = "okay";
+
+	/* MCTP slave default 0x64 is 0x32 7-bit address */
+	mctp@32 {
+		compatible = "snps,mctp";
+		reg = <0x40000032>;
+	};
 };
 
 &spi0 {
-	#address-cells = <1>;
-	#size-cells = <0>;
-	num-cs = <4>;
-	cs-gpios = <0>, <0>, <&porta 1 GPIO_ACTIVE_LOW>,
-		   <&porta 7 GPIO_ACTIVE_LOW>;
+	num-cs = <2>;
 	status = "okay";
-
 	spi@0 {
 		compatible = "amd,pensando-elbasr", "simple-mfd";
 		reg = <0>;
@@ -95,18 +121,21 @@
 		reg = <1>;
 		spi-max-frequency = <12000000>;
 	};
+};
 
-	spi@2 {
-		compatible = "amd,pensando-cpld-rd1173";
-		reg = <2>;
-		spi-max-frequency = <12000000>;
-		interrupt-parent = <&porta>;
-		interrupts = <0 IRQ_TYPE_LEVEL_LOW>;
-	};
+&spi1 {
+	status = "okay";
 
-	spi@3 {
-		compatible = "amd,pensando-elbasr", "simple-mfd";
-		reg = <3>;
-		spi-max-frequency = <12000000>;
+	flash1: flash1@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0>;
+		spi-max-frequency = <20000000>;
+		spi-rx-bus-width = <1>;
+		m25p,fast-read;
+		cdns,read-delay = <0>;
+		cdns,tshsl-ns = <0>;
+		cdns,tsd2d-ns = <0>;
+		cdns,tchsh-ns = <0>;
+		cdns,tslch-ns = <0>;
 	};
 };
