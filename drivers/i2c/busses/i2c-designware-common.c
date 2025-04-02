@@ -63,6 +63,8 @@ static char *abort_sources[] = {
 		"slave lost the bus while transmitting data to a remote master",
 	[ABRT_SLAVE_RD_INTX] =
 		"incorrect slave-transmitter mode configuration",
+	[ABRT_SDA_STUCK_AT_LOW] =
+		"sda line stuck low",
 };
 
 static int dw_reg_read(void *context, unsigned int reg, unsigned int *val)
@@ -235,6 +237,9 @@ static void i2c_dw_of_configure(struct device *device)
 {
 	struct platform_device *pdev = to_platform_device(device);
 	struct dw_i2c_dev *dev = dev_get_drvdata(device);
+
+	device_property_read_u32(&pdev->dev, "snps,sda-timeout-ms",
+				 &dev->sda_timeout_ms);
 
 	switch (dev->flags & MODEL_MASK) {
 	case MODEL_MSCC_OCELOT:
