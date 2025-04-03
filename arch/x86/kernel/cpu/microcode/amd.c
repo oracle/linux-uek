@@ -66,6 +66,12 @@ static u8 amd_ucode_patch[MAX_NUMNODES][PATCH_MAX_SIZE];
 static const char
 ucode_path[] __maybe_unused = "kernel/x86/microcode/AuthenticAMD.bin";
 
+/* This is CPUID(1).EAX on the BSP. */
+static u32 bsp_cpuid_1_eax __ro_after_init;
+
+/* Size of the processor's microcode */
+static u32 ucode_new_size __ro_after_init;
+
 static u16 find_equiv_id(struct equiv_cpu_table *et, u32 sig)
 {
 	unsigned int i;
@@ -423,14 +429,16 @@ apply_microcode_early_amd(u32 cpuid_1_eax, void *ucode, size_t size, bool save_p
 	struct cont_desc desc = { 0 };
 	u8 (*patch)[PATCH_MAX_SIZE];
 	struct microcode_amd *mc;
-	u32 rev, dummy, *new_rev;
+	u32 rev, dummy, *new_rev, *new_size;
 	bool ret = false;
 
 #ifdef CONFIG_X86_32
 	new_rev = (u32 *)__pa_nodebug(&ucode_new_rev);
+	new_size = (u32 *)__pa_nodebug(&ucode_new_size);
 	patch	= (u8 (*)[PATCH_MAX_SIZE])__pa_nodebug(&amd_ucode_patch);
 #else
 	new_rev = &ucode_new_rev;
+	new_size = &ucode_new_size;
 	patch	= &amd_ucode_patch[0];
 #endif
 
@@ -454,6 +462,7 @@ apply_microcode_early_amd(u32 cpuid_1_eax, void *ucode, size_t size, bool save_p
 
 	if (!__apply_microcode_amd(mc)) {
 		*new_rev = mc->hdr.patch_id;
+		*new_size = desc.psize;
 		ret      = true;
 
 		if (save_patch)
@@ -507,6 +516,8 @@ static void __load_ucode_amd(unsigned int cpuid_1_eax, struct cpio_data *ret)
 void __init load_ucode_amd_bsp(unsigned int cpuid_1_eax)
 {
 	struct cpio_data cp = { };
+
+	bsp_cpuid_1_eax = cpuid_1_eax;
 
 	__load_ucode_amd(cpuid_1_eax, &cp);
 	if (!(cp.data && cp.size))
