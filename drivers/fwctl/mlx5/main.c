@@ -405,7 +405,7 @@ static struct auxiliary_driver mlx5ctl_driver = {
 
 module_auxiliary_driver(mlx5ctl_driver);
 
-MODULE_IMPORT_NS("FWCTL");
+MODULE_IMPORT_NS(FWCTL);
 MODULE_DESCRIPTION("mlx5 ConnectX fwctl driver");
 MODULE_AUTHOR("Saeed Mahameed <saeedm@nvidia.com>");
 MODULE_LICENSE("Dual BSD/GPL");
