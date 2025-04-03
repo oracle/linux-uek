@@ -638,6 +638,9 @@ static int microcode_reload_late(void)
 	if (ret == 0)
 		microcode_check();
 
+	if (microcode_ops->finalize_late_load)
+		microcode_ops->finalize_late_load(ret);
+
 	pr_info("Reload completed, microcode revision: 0x%x\n", boot_cpu_data.microcode);
 
 	return ret;
