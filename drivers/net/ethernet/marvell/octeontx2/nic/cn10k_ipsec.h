@@ -231,6 +231,8 @@ bool otx2_sqe_add_sg_ipsec(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
 bool cn10k_ipsec_transmit(struct otx2_nic *pf, struct netdev_queue *txq,
 			  struct otx2_snd_queue *sq, struct sk_buff *skb,
 			  int num_segs, int size);
+void cn10k_ipsec_send_queues_cleanup(struct otx2_nic *pfvf);
+int cn10k_ipsec_send_queues_init(struct otx2_nic *pfvf);
 #else
 static inline __maybe_unused int cn10k_ipsec_init(struct net_device *netdev)
 {
@@ -260,6 +262,17 @@ cn10k_ipsec_transmit(struct otx2_nic *pf, struct netdev_queue *txq,
 		     int num_segs, int size)
 {
 	return true;
+}
+
+static inline __maybe_unused void
+cn10k_ipsec_send_queues_cleanup(struct otx2_nic *pfvf)
+{
+}
+
+static inline __maybe_unused int
+cn10k_ipsec_send_queues_init(struct otx2_nic *pfvf)
+{
+	return 0;
 }
 #endif
 #endif // CN10K_IPSEC_H
