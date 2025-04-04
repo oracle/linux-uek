@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006 Oracle.  All rights reserved.
+ * Copyright (c) 2006, 2025, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -112,6 +112,7 @@ static char *rds_ib_stat_names[] = {
 	"ib_frag_pages_allocated",
 	"ib_frag_pages_in_ib_recv_queue",
 	"ib_frag_pages_in_caches",
+	"ib_cm_id_resurrected",
 };
 
 unsigned int rds_ib_stats_info_copy(struct rds_info_iterator *iter,
