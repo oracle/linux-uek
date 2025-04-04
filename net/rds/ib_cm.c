@@ -1836,6 +1836,7 @@ static int rds_ib_cm_accept(struct rds_connection *conn,
 	BUG_ON(ic->i_cm_id);
 
 	ic->i_cm_id = cm_id;
+	ic->i_cm_id_gen = 0;
 	cm_id->context = conn;
 
 	if (isv6) {
@@ -2214,7 +2215,7 @@ void rds_ib_conn_destroy_init(struct rds_connection *conn)
 
 int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 {
-	struct rds_connection *conn = cm_id->context;
+	struct rds_connection *conn = RDS_IB_CM_ID_EXTRACT_CONN(cm_id);
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rdma_conn_param conn_param;
 	union rds_ib_conn_priv dp;
@@ -2419,8 +2420,9 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 		handler = rds_rdma_cm_event_handler;
 
 	WARN_ON(ic->i_cm_id);
-	ic->i_cm_id = rdma_create_id(rds_conn_net(conn),
-				     handler, conn, RDMA_PS_TCP, IB_QPT_RC);
+	ic->i_cm_id = rdma_create_id(rds_conn_net(conn), handler,
+				     RDS_IB_CM_ID_ADD_GEN(conn, ++ic->i_cm_id_gen),
+				     RDMA_PS_TCP, IB_QPT_RC);
 
 	if (IS_ERR(ic->i_cm_id)) {
 		ret = PTR_ERR(ic->i_cm_id);

@@ -52,6 +52,7 @@ struct rds_rdma_cm_event_handler_info {
 	struct rdma_cm_event   event;
 	struct rds_connection *conn;
 	bool                   isv6;
+	int		       cm_id_gen;
 	char                   private_data[];
 };
 
@@ -110,6 +111,7 @@ static inline bool __rds_rdma_chk_dev(struct rds_connection *conn)
 }
 
 static void rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
+					  int cm_id_gen,
 					  struct rdma_cm_event *event,
 					  struct rds_connection *conn,
 					  bool isv6)
@@ -196,6 +198,14 @@ static void rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 		up_read(&ic->i_cm_id_free_lock);
 		mutex_unlock(&conn->c_cm_lock);
                 return;
+	}
+
+	/* Although same address, could be different generation */
+	if (cm_id_gen != ic->i_cm_id_gen) {
+		rds_ib_stats_inc(s_ib_cm_id_resurrected);
+		up_read(&ic->i_cm_id_free_lock);
+		mutex_unlock(&conn->c_cm_lock);
+		return;
 	}
 
 	/* Even though this function no longer accesses "ic->i_cm_id" past this point
@@ -388,7 +398,8 @@ static void rds_rdma_cm_event_handler_worker(struct work_struct *work)
 								   struct rds_rdma_cm_event_handler_info,
 								   work);
 
-	rds_rdma_cm_event_handler_cmn(info->cm_id, &info->event, info->conn, info->isv6);
+	rds_rdma_cm_event_handler_cmn(info->cm_id, info->cm_id_gen, &info->event,
+				      info->conn, info->isv6);
 
 	kfree(info);
 }
@@ -397,7 +408,8 @@ static void rds_spawn_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 					    struct rdma_cm_event *event,
 					    bool isv6)
 {
-	struct rds_connection *conn = cm_id->context;
+	int cm_id_gen = RDS_IB_CM_ID_EXTRACT_GEN(cm_id);
+	struct rds_connection *conn = RDS_IB_CM_ID_EXTRACT_CONN(cm_id);
 	struct rds_ib_connection *ic = conn ? conn->c_transport_data : NULL;
 	struct workqueue_struct *wq;
 	struct rds_rdma_cm_event_handler_info *info;
@@ -408,13 +420,13 @@ static void rds_spawn_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 		wq = rds_aux_wq;
 
 	if (!wq) {
-		rds_rdma_cm_event_handler_cmn(cm_id, event, conn, isv6);
+		rds_rdma_cm_event_handler_cmn(cm_id, cm_id_gen, event, conn, isv6);
 		return;
 	}
 
 	info = kmalloc(sizeof(*info) + event->param.conn.private_data_len, GFP_KERNEL);
 	if (!info) {
-		rds_rdma_cm_event_handler_cmn(cm_id, event, conn, isv6);
+		rds_rdma_cm_event_handler_cmn(cm_id, cm_id_gen, event, conn, isv6);
 		return;
 	}
 
@@ -424,6 +436,7 @@ static void rds_spawn_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	memcpy(&info->event, event, sizeof(*event));
 	info->conn = conn;
 	info->isv6 = isv6;
+	info->cm_id_gen = cm_id_gen;
 
 	if (event->param.conn.private_data &&
 	    event->param.conn.private_data_len) {
