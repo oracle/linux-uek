@@ -54,12 +54,6 @@ struct dw_spi_mscc {
 	void __iomem        *spi_mst; /* Not sparx5 */
 };
 
-struct dw_spi_elba {
-	struct regmap *regmap;
-	unsigned int reg;
-	unsigned int ctl;
-};
-
 /*
  * ctl:              1               |               0
  * cs:       1               0       |       1               0
@@ -67,10 +61,15 @@ struct dw_spi_elba {
  *      cs1   cs1_ovr   cs0   cs0_ovr|  cs1   cs1_ovr   cs0   cs0_ovr
  *                  ssi1             |            ssi0
  */
-#define ELBA_SPICS_SHIFT(ctl, cs)	(4 * (ctl) + 2 * (cs))
-#define ELBA_SPICS_MASK(ctl, cs)	(0x3 << ELBA_SPICS_SHIFT(ctl, cs))
-#define ELBA_SPICS_SET(ctl, cs, val)	\
-			((((val) << 1) | 0x1) << ELBA_SPICS_SHIFT(ctl, cs))
+#ifdef CONFIG_ARCH_PENSANDO_SALINA_SOC
+#define ELBA_SPICS_REG			0x66c
+#else
+#define ELBA_SPICS_REG			0x2468
+#endif
+#define ELBA_SPICS_OFFSET(cs)		((cs) << 1)
+#define ELBA_SPICS_MASK(cs)		(GENMASK(1, 0) << ELBA_SPICS_OFFSET(cs))
+#define ELBA_SPICS_SET(cs, val)         \
+		((((val) << 1) | BIT(0)) << ELBA_SPICS_OFFSET(cs))
 
 /*
  * The Designware SPI controller (referred to as master in the documentation)
@@ -256,24 +255,22 @@ static int dw_spi_canaan_k210_init(struct platform_device *pdev,
 	return 0;
 }
 
-static void elba_spics_set_cs(struct dw_spi_elba *dwselba, int cs, int enable)
+static void dw_spi_elba_override_cs(struct regmap *syscon, int cs, int enable)
 {
-	regmap_update_bits(dwselba->regmap, dwselba->reg,
-		ELBA_SPICS_MASK(dwselba->ctl, cs),
-		ELBA_SPICS_SET(dwselba->ctl, cs, enable));
+	regmap_update_bits(syscon, ELBA_SPICS_REG, ELBA_SPICS_MASK(cs),
+			   ELBA_SPICS_SET(cs, enable));
 }
 
 static void dw_spi_elba_set_cs(struct spi_device *spi, bool enable)
 {
 	struct dw_spi *dws = spi_master_get_devdata(spi->master);
 	struct dw_spi_mmio *dwsmmio = container_of(dws, struct dw_spi_mmio, dws);
-	struct dw_spi_elba *dwselba = dwsmmio->priv;
-	u8 cs = spi->chip_select;
+	struct regmap *syscon = dwsmmio->priv;
+	u8 cs;
 
-	if (cs < 2) {
-		/* overridden native chip-select */
-		elba_spics_set_cs(dwselba, spi->chip_select, enable);
-	}
+	cs = spi->chip_select;
+	if (cs < 2)
+		dw_spi_elba_override_cs(syscon, spi->chip_select, enable);
 
 	/*
 	 * The DW SPI controller needs a native CS bit selected to start
@@ -288,37 +285,14 @@ static void dw_spi_elba_set_cs(struct spi_device *spi, bool enable)
 static int dw_spi_elba_init(struct platform_device *pdev,
 			    struct dw_spi_mmio *dwsmmio)
 {
-	struct of_phandle_args args;
-	struct dw_spi_elba *dwselba;
-	struct regmap *regmap;
-	int rc;
+	struct regmap *syscon;
 
-	rc = of_parse_phandle_with_fixed_args(pdev->dev.of_node,
-					      "pensando,spics", 2, 0, &args);
-	if (rc) {
-		dev_err(&pdev->dev, "could not find pensando,spics\n");
-		return rc;
-	}
-
-	regmap = syscon_node_to_regmap(args.np);
-	if (IS_ERR(regmap)) {
-		dev_err(&pdev->dev, "could not map pensando,spics\n");
-		return PTR_ERR(regmap);
-	}
-
-	dwselba = devm_kzalloc(&pdev->dev, sizeof(*dwselba), GFP_KERNEL);
-	if (!dwselba)
-		return -ENOMEM;
-
-	dwselba->regmap = regmap;
-	dwselba->reg = args.args[0];
-	dwselba->ctl = args.args[1];
-
-	/* deassert cs */
-	elba_spics_set_cs(dwselba, 0, 1);
-	elba_spics_set_cs(dwselba, 1, 1);
-
-	dwsmmio->priv = dwselba;
+	syscon = syscon_regmap_lookup_by_phandle(dev_of_node(&pdev->dev),
+						 "amd,pensando-elba-syscon");
+	if (IS_ERR(syscon))
+		return dev_err_probe(&pdev->dev, PTR_ERR(syscon),
+				     "syscon regmap lookup failed\n");
+	dwsmmio->priv = syscon;
 	dwsmmio->dws.set_cs = dw_spi_elba_set_cs;
 
 	return 0;
@@ -438,7 +412,7 @@ static const struct of_device_id dw_spi_mmio_of_match[] = {
 	{ .compatible = "intel,keembay-ssi", .data = dw_spi_keembay_init},
 	{ .compatible = "microchip,sparx5-spi", dw_spi_mscc_sparx5_init},
 	{ .compatible = "canaan,k210-spi", dw_spi_canaan_k210_init},
-	{ .compatible = "pensando,elba-spi", .data = dw_spi_elba_init },
+	{ .compatible = "amd,pensando-elba-spi", .data = dw_spi_elba_init },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, dw_spi_mmio_of_match);

@@ -58,7 +58,7 @@
 
 	rstcause {
 		compatible = "pensando,rstcause";
-		pensando,causeregs = <&mssoc 0x2084>;
+		pensando,causeregs = <&syscon 0x2084>;
 	};
 
 	capmem {
@@ -146,9 +146,10 @@
 		};
 
 		spi0: spi@2800 {
-			compatible = "pensando,elba-spi";
+			compatible = "amd,pensando-elba-spi", "pensando,elba-spi";
 			reg = <0x0 0x2800 0x0 0x100>;
-			pensando,spics = <&mssoc 0x2468 0>;
+			pensando,spics = <&syscon>;
+			amd,pensando-elba-syscon = <&syscon>;
 			clocks = <&ahb_clk>;
 			interrupts = <GIC_SPI 9 IRQ_TYPE_LEVEL_HIGH>;
 			#address-cells = <1>;
@@ -277,8 +278,8 @@
 			status = "disabled";
 		};
 
-		mssoc: mssoc@307c0000 {
-			compatible = "pensando,mssoc", "syscon";
+		syscon: syscon@307c0000 {
+			compatible = "pensando,mssoc", "amd,pensando-elba-syscon", "syscon";
 			reg = <0x0 0x307c0000 0x0 0x3000>;
 		};
 

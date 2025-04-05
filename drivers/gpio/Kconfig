@@ -529,6 +529,14 @@ config GPIO_ROCKCHIP
 	help
 	  Say yes here to support GPIO on Rockchip SoCs.
 
+config GPIO_SALINA_SPICS
+	bool "Pensando Salina SPI chip-select"
+	depends on ARCH_PENSANDO_SALINA_SOC
+	help
+	  Say yes here to support the Pensndo Salina SoC SPI chip-select driver.
+	  This option enables multiple chip-selects to the Pensando system
+	  controller CPLD device for board management.
+
 config GPIO_SAMA5D2_PIOBU
 	tristate "SAMA5D2 PIOBU GPIO support"
 	depends on MFD_SYSCON
