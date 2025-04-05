@@ -212,15 +212,18 @@ enum {
 #define VSEC_FULLY_SUPPORTED(dev) \
     (((dev)->functional_vsc_offset) && ((dev)->spaces_support_status == SS_ALL_SPACES_SUPPORTED))
 
-void swap_pci_address_space(int* address_space)
+static void swap_pci_address_space(int* address_space)
 {
     switch (*address_space) {
     case AS_ICMD_EXT:
         *address_space = AS_PCI_ICMD;
+        fallthrough;
 
     case AS_ND_CRSPACE:
+        fallthrough;
     case AS_CR_SPACE:
         *address_space = AS_PCI_CRSPACE;
+        fallthrough;
 
     case AS_ICMD:
         *address_space = AS_PCI_ALL_ICMD;
@@ -263,7 +266,7 @@ void swap_pci_address_space(int* address_space)
 }
 
 
-int get_syndrome_code(struct mst_dev_data* dev, u_int8_t* syndrome_code)
+static int get_syndrome_code(struct mst_dev_data* dev, u_int8_t* syndrome_code)
 {
     /* In case syndrome is set, if syndrome_code is 0x3 (address_out_of_range), return the syndrome_code, so that the */
     /* ioctl will fail and then we'll retry with PCI space. */
