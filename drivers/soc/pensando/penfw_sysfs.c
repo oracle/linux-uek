@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2021, Pensando Systems Inc.
  */
@@ -10,6 +11,7 @@
 #include <linux/device.h>
 #include <linux/types.h>
 #include <linux/string.h>
+#include <linux/module.h>
 
 #include "penfw_sysfs.h"
 #include "penfw.h"
@@ -44,8 +46,8 @@ static ssize_t pentrust_show(struct kobject *kobj, struct kobj_attribute *attr,
 		return sprintf(buf, "\n");
 }
 
-static ssize_t pentrust_show_version(struct kobject *kobj, struct kobj_attribute *attr,
-			     char *buf)
+static ssize_t pentrust_show_version(struct kobject *kobj,
+				     struct kobj_attribute *attr, char *buf)
 {
 	struct penfw_call_args args = {0};
 	int major, minor1, minor2;
@@ -66,8 +68,9 @@ static ssize_t pentrust_show_version(struct kobject *kobj, struct kobj_attribute
 		minor1 = (args.a2 & 0xffff0000) >> 16;
 		minor2 = args.a2 & 0xffff;
 		return sprintf(buf, "%d.%d.%d\n", major, minor1, minor2);
-	} else
+	} else {
 		return sprintf(buf, "\n");
+	}
 }
 
 static ssize_t pentrust_store(struct kobject *kobj, struct kobj_attribute *attr,
@@ -77,6 +80,7 @@ static ssize_t pentrust_store(struct kobject *kobj, struct kobj_attribute *attr,
 
 	if (strcmp(attr->attr.name, "upgrade") != 0)
 		return -1;
+
 	args.a1 = PENFW_OP_SET_PENTRUST_UPG;
 	penfw_smc(&args);
 	if (args.a0 < 0)
@@ -132,6 +136,7 @@ static ssize_t bl1_store(struct kobject *kobj, struct kobj_attribute *attr,
 
 	if (strcmp(attr->attr.name, "upgrade") != 0)
 		return -1;
+
 	args.a1 = PENFW_OP_SET_BL1_UPG;
 	penfw_smc(&args);
 	if (args.a0 < 0)

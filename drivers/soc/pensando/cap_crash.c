@@ -8,10 +8,9 @@
 #include <linux/module.h>
 #include <linux/kmsg_dump.h>
 #include <linux/time.h>
-#include <linux/platform_device.h>
 #include <linux/panic_notifier.h>
+#include <linux/platform_device.h>
 #include <linux/of.h>
-#include <linux/of_address.h>
 #include "cap_reboot.h"
 
 #define PCRASH_NAME	"pensando-crash"
@@ -19,7 +18,6 @@
 struct pcrash_st {
 	struct platform_device	*pdev;
 	struct kmsg_dumper	dump;
-	void __iomem		*ctrlbase;
 	void __iomem		*flashbase;
 	resource_size_t		size;
 	void *panic_buf;
@@ -31,47 +29,7 @@ struct panicbuf_header {
 };
 
 static struct pcrash_st *pcrash;
-static u32 PANIC_SIGNATURE = 0x9d7a7318;
-
-/*
- * Prepare the Cadence Quad SPI Controller for
- * memory mapped crash dump writes.
- */
-
-#define CQSPI_REG_CONFIG                        0x00
-#define CQSPI_REG_CONFIG_ENB_DIR_ACC_CTRL       BIT(7)
-
-#define CQSPI_REG_WR_COMPLETION_CTRL            0x38
-#define CQSPI_REG_WR_DISABLE_AUTO_POLL          BIT(14)
-
-static void pcrash_prepare_controller(void)
-{
-	void __iomem *ctrl = pcrash->ctrlbase;
-	u32 val;
-
-	/*
-	 * Re-enable the Direct Access Controller (memory-mapped access).
-	 */
-	val = readl(ctrl + CQSPI_REG_CONFIG);
-	if (!(val & CQSPI_REG_CONFIG_ENB_DIR_ACC_CTRL)) {
-		val |= CQSPI_REG_CONFIG_ENB_DIR_ACC_CTRL;
-		writel(val, ctrl + CQSPI_REG_CONFIG);
-	}
-
-	/*
-	 * Re-enable auto-polling, if it was disabled.
-	 * This is required for memory-mapped writes.
-	 */
-	val = readl(ctrl + CQSPI_REG_WR_COMPLETION_CTRL);
-	if (val & CQSPI_REG_WR_DISABLE_AUTO_POLL) {
-		val &= ~CQSPI_REG_WR_DISABLE_AUTO_POLL;
-		writel(val, ctrl + CQSPI_REG_WR_COMPLETION_CTRL);
-	}
-
-	/* readback + barrier */
-	(void)readl(ctrl + CQSPI_REG_CONFIG);
-	__iowmb();
-}
+static u32 PANIC_SIGNATURE = 0x9D7A7318;
 
 static void pcrash_do_dump(struct kmsg_dumper *dumper,
 			   enum kmsg_dump_reason reason)
@@ -82,11 +40,6 @@ static void pcrash_do_dump(struct kmsg_dumper *dumper,
 	struct kmsg_dump_iter iter;
 	u32 __iomem *dst = (u32 *)pcrash->flashbase;
 	struct panicbuf_header *hdr = pcrash->flashbase;
-
-	/*
-	 * Prepare the flash controller for memory-mapped writes.
-	 */
-	pcrash_prepare_controller();
 
 	/*
 	 * read first 32bits, if all ff then the new panic data
@@ -127,35 +80,11 @@ static struct notifier_block cap_panic_notifier = {
 	.notifier_call = cap_panic_callback,
 };
 
-static int pcrash_get_flash_controller(struct platform_device *pdev,
-	struct resource *res)
-{
-	const struct device_node *np;
-	struct device_node *dn;
-	int err = -ENODEV;
-
-	np = pdev->dev.of_node;
-	if (np) {
-		/*
-		 * The pensando,crash-ctrl property should be a phandle
-		 * to a pensando,elba-qspi controller.
-		 * Extract its register space, if found.
-		 */
-		dn = of_parse_phandle(np, "pensando,crash-ctrl", 0);
-		if (of_device_is_compatible(dn, "pensando,elba-qspi"))
-			if (!of_address_to_resource(dn, 0, res))
-				err = 0;
-		of_node_put(dn);
-	}
-	return err;
-}
-
 static int pcrash_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct resource ctrlres;
 	struct resource *res;
-	int err = -ENODEV;
+	int err;
 
 	pcrash = devm_kzalloc(dev, sizeof(*pcrash), GFP_KERNEL);
 	if (!pcrash)
@@ -164,56 +93,32 @@ static int pcrash_probe(struct platform_device *pdev)
 	pcrash->pdev = pdev;
 	platform_set_drvdata(pdev, pcrash);
 
-	/* get and map the flash controller */
-	if (pcrash_get_flash_controller(pdev, &ctrlres)) {
-		dev_err(dev, "%s: Cannot find flash controller.\n", pdev->name);
-		return -ENODEV;
-	}
-	pcrash->ctrlbase = ioremap(ctrlres.start, resource_size(&ctrlres));
-	if (!pcrash->ctrlbase) {
-		dev_err(dev, "%s: Cannot map flash controller.\n", pdev->name);
-		return -ENODEV;
-	}
+	pcrash->dump.max_reason = KMSG_DUMP_PANIC;
+	pcrash->dump.dump = pcrash_do_dump;
 
-	/* get and map the memory-mapped flash */
+	/* Obtain and remap flash address. */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		dev_err(dev, "%s: Memory resource not found\n", pdev->name);
-		goto bail1;
-	}
 	pcrash->flashbase = devm_ioremap_resource(dev, res);
 	if (IS_ERR(pcrash->flashbase)) {
-		dev_err(dev, "%s: Cannot remap flash address.\n", pdev->name);
-		err = PTR_ERR(pcrash->flashbase);
-		goto bail1;
+		dev_err(dev, "Cannot remap flash address.\n");
+		return PTR_ERR(pcrash->flashbase);
 	}
 	pcrash->size = resource_size(res);
 	pcrash->panic_buf = vmalloc(pcrash->size);
 	if (!pcrash->panic_buf) {
-		dev_err(dev, "%s: Failed to allocate buffer workspace\n",
-				pdev->name);
-		err = -ENOMEM;
-		goto bail1;
+		dev_err(dev, "failed to allocate buffer workspace\n");
+		return -ENOMEM;
 	}
 	memset(pcrash->panic_buf, 0xff, pcrash->size);
 	atomic_notifier_chain_register(&panic_notifier_list,
 				       &cap_panic_notifier);
-	pcrash->dump.max_reason = KMSG_DUMP_PANIC;
-	pcrash->dump.dump = pcrash_do_dump;
 	err = kmsg_dump_register(&pcrash->dump);
 	if (err) {
-		dev_err(dev, "%s: registering kmsg dumper failed, error %d\n",
-				pdev->name, err);
-		goto bail2;
+		vfree(pcrash->panic_buf);
+		dev_err(dev, "%s: registering kmsg dumper failed, error %d\n", __func__, err);
+		return err;
 	}
 	return 0;
-bail2:
-	atomic_notifier_chain_unregister(&panic_notifier_list,
-					 &cap_panic_notifier);
-	vfree(pcrash->panic_buf);
-bail1:
-	iounmap(pcrash->ctrlbase);
-	return err;
 }
 
 static int pcrash_remove(struct platform_device *pdev)
@@ -225,7 +130,6 @@ static int pcrash_remove(struct platform_device *pdev)
 	atomic_notifier_chain_unregister(&panic_notifier_list,
 					 &cap_panic_notifier);
 	vfree(pcrash->panic_buf);
-	iounmap(pcrash->ctrlbase);
 	return 0;
 }
 
@@ -248,6 +152,6 @@ static struct platform_driver pcrash_platform_driver = {
 module_platform_driver(pcrash_platform_driver);
 
 MODULE_DESCRIPTION("Pensando Panic Crash Driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:" PCRASH_NAME);
 MODULE_AUTHOR("Rahul Shekhar <rahulshekhar@pensando.io>");

@@ -11,8 +11,8 @@
 #include <linux/sysfs.h>
 #include <linux/export.h>
 #include <linux/module.h>
-#include <linux/platform_device.h>
 #include <linux/panic_notifier.h>
+#include <linux/platform_device.h>
 #include <linux/of.h>
 #include <linux/init.h>
 #include <linux/reboot.h>
@@ -60,7 +60,6 @@ void cap_rstcause_set(u32 mask)
 	if (g_rdev)
 		set_next_cause_reg(g_rdev, mask);
 }
-
 EXPORT_SYMBOL_GPL(cap_rstcause_set);
 
 static int rstcause_reboot_handler(struct notifier_block *this,

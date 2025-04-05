@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2021, Pensando Systems Inc.
  */
@@ -24,6 +25,9 @@ static int    majorNumber;
 static struct class *penfw_class;
 static struct device *penfw_dev;
 static DEFINE_MUTEX(penfw_mutex);
+
+void *penfwdata;
+phys_addr_t penfwdata_phys;
 
 static int penfw_open(struct inode *inodep, struct file *filep)
 {
@@ -111,6 +115,16 @@ static int penfw_probe(struct platform_device *pdev)
 	}
 	dev_info(penfw_dev, "penfw sys initialization success\n");
 
+	// Allocate memory for smc calls
+	penfwdata = (struct penfw_data *)devm_get_free_pages(penfw_dev,
+									GFP_KERNEL | GFP_ATOMIC, 0);
+	if (penfwdata == NULL) {
+		dev_err(penfw_dev, "penfw memory allocation failed\n");
+		return -1;
+	}
+
+	penfwdata_phys = virt_to_phys(penfwdata);
+
 	return 0;
 }
 
@@ -127,7 +141,7 @@ static int penfw_remove(struct platform_device *pd)
 	return 0;
 }
 
-static const struct of_device_id penfw_of_match[] = {
+static struct of_device_id penfw_of_match[] = {
 	{ .compatible = "pensando,penfw" },
 	{ /* end of table */ }
 };

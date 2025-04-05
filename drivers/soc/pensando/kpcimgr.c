@@ -484,7 +484,9 @@ int kpcimgr_module_register(struct module *mod,
 		}
 		kpci_memcpy(ks->code_base, mod->core_layout.base,
 			    mod->core_layout.size);
-		flush_icache_range((long)ks->code_base, (long)ks->code_base + mod->core_layout.size);
+		flush_icache_range((long)ks->code_base,
+				   (long)ks->code_base + mod->core_layout.size);
+
 		set_memory_x((unsigned long)ks->code_base,
 			     mod->core_layout.size >> PAGE_SHIFT);
 	} else {

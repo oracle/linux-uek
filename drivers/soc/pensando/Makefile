@@ -18,3 +18,4 @@ obj-$(CONFIG_PENSANDO_SOC_CRASH) += cap_crash.o
 obj-$(CONFIG_PENSANDO_SOC_BSM) += cap_bsm.o
 obj-$(CONFIG_PENSANDO_SOC_PENFW) += penfw_smc.o penfw_sysfs.o penfw_drv.o
 obj-$(CONFIG_PENSANDO_SOC_SBUS) += sbus.o
+obj-$(CONFIG_ARCH_PENSANDO_SALINA_SOC) += cmn_pmu_irq.o

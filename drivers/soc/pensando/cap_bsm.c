@@ -25,13 +25,13 @@ static struct bsm bsm;
 		int val = (bsm.val >> BSM_##s##_LSB) & BSM_##s##_MASK;	\
 		return sprintf(buf, "%d\n", val);			\
 	}								\
-	static DEVICE_ATTR_RO(n);
+	static DEVICE_ATTR_RO(n)
 
-BSM_SHOW_INT(wdt,      WDT)
-BSM_SHOW_INT(attempt,  ATTEMPT)
-BSM_SHOW_INT(stage,    STAGE)
-BSM_SHOW_INT(running,  RUNNING)
-BSM_SHOW_INT(autoboot, AUTOBOOT)
+BSM_SHOW_INT(wdt,      WDT);
+BSM_SHOW_INT(attempt,  ATTEMPT);
+BSM_SHOW_INT(stage,    STAGE);
+BSM_SHOW_INT(running,  RUNNING);
+BSM_SHOW_INT(autoboot, AUTOBOOT);
 
 static const char *fwnames[4] = {
 	"mainfwa", "mainfwb", "goldfw", "diagfw"
@@ -44,10 +44,10 @@ static const char *fwnames[4] = {
 		int val = (bsm.val >> BSM_##s##_LSB) & BSM_##s##_MASK;	\
 		return sprintf(buf, "%s\n", fwnames[val & 0x3]);	\
 	}								\
-	static DEVICE_ATTR_RO(n);
+	static DEVICE_ATTR_RO(n)
 
-BSM_SHOW_FWID(fwid,  FWID)
-BSM_SHOW_FWID(track, TRACK)
+BSM_SHOW_FWID(fwid,  FWID);
+BSM_SHOW_FWID(track, TRACK);
 
 static ssize_t success_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
@@ -110,7 +110,7 @@ static const struct of_device_id bsm_of_match[] = {
 
 static struct platform_driver bsm_driver = {
 	.driver = {
-		.name = "capri-bsm",
+		.name = "elba-bsm",
 		.of_match_table = bsm_of_match,
 		.suppress_bind_attrs = true,
 	},

@@ -21,7 +21,18 @@
 #include "cap_reboot.h"
 #include "cap_rstcause.h"
 #include "penpcie_dev.h"
+#ifdef CONFIG_ARCH_PENSANDO_CAPRI_SOC
+#include "cap_pcie_capri.h"
+#endif
+#ifdef CONFIG_ARCH_PENSANDO_ELBA_SOC
 #include "cap_pcie_elba.h"
+#endif
+#ifdef CONFIG_ARCH_PENSANDO_GIGLIO_SOC
+#include "cap_pcie_giglio.h"
+#endif
+#ifdef CONFIG_ARCH_PENSANDO_SALINA_SOC
+#include "cap_pcie_salina.h"
+#endif
 
 #define DRV_NAME	"cap_pcie"
 #define PFX		DRV_NAME ": "
@@ -41,6 +52,7 @@ struct pciedev_info {
 	int pciep_access_error;
 	spinlock_t pciep_access_lock;
 	long (*saved_panic_blink)(int state);
+	u32 hotplug_delaylnkup;
 };
 
 static struct pciedev_info pciedev_info;
@@ -79,7 +91,10 @@ int platform_serror(struct pt_regs *regs, unsigned int esr)
 	if (pciep_access_in_progress())
 		return 1;
 
-	if ((esr >> 26) == 0x2f && (esr & 0x3) == 0x0) { /* Decode Error */
+	// TODO: Salina N1 async SError user mode convert to bus error
+	// ESR_ELx[5:0] = 0b010001  Asynchronous SError exception
+	if (((esr & 0x11) == 0x11) ||
+	    ((esr >> 26) == 0x2f && (esr & 0x3) == 0x0)) { /* Decode Error */
 		if (user_mode(regs)) {
 			struct task_struct *tsk = current;
 
@@ -302,6 +317,8 @@ static void cap_reset(void)
  *
  * If we haven't yet initialized the link (ltssm_en=0) then the
  * host side hasn't come up yet.  In that case just reset immediately.
+ *
+ * If hotplug enabled then reset immediately
  */
 static long pcie_panic_blink(int state)
 {
@@ -312,7 +329,7 @@ static long pcie_panic_blink(int state)
 		cap_reset();
 
 	port = pcie_get_ltssm_en();
-	if (port >= 0) {
+	if (!pciedev_info.hotplug_delaylnkup && port >= 0) {
 		pr_info(PFX "port %d enabled\n", port);
 		pcie_set_crs(0);
 		while ((port = pcie_poll_for_hostdn()) < 0)
@@ -388,6 +405,8 @@ static int pcie_probe(struct platform_device *pd)
 	}
 	pi->pcie_base = res.start;
 	pi->pcie_size = resource_size(&res);
+
+	of_property_read_u32(dn, "hotplug_delaylnkup", &pi->hotplug_delaylnkup);
 
 	err = misc_register(&pcie_dev);
 	if (err) {

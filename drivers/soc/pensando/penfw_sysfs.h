@@ -1,7 +1,7 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2021, Pensando Systems Inc.
  */
-
 #ifndef __PENFW_SYSFS_H__
 #define __PENFW_SYSFS_H__
 

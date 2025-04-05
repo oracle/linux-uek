@@ -17,6 +17,7 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_platform.h>
+#include <linux/platform_device.h>
 #include <linux/delay.h>
 
 #define MAX_DEVICES			4
@@ -26,9 +27,9 @@
 #define SBUS_INDIR_DATA_ADDR_LSB	8
 #define SBUS_INDIR_DATA_COMMAND_LSB	16
 
-static dev_t sbus_dev = 0;
+static dev_t sbus_dev;
 static struct class *dev_class;
-static int dev_inst = 0;
+static int dev_inst;
 
 struct sbus_ioctl_args {
 	u32 sbus_rcvr_addr;
@@ -59,7 +60,7 @@ static int sbus_drv_open(struct inode *inode, struct file *file)
 }
 
 static void sbus_write(struct sbus_ioctl_args param,
-				struct sbusdev_info *sbus_ring)
+		       struct sbusdev_info *sbus_ring)
 {
 	uint32_t sbus_val;
 
@@ -79,7 +80,7 @@ static void sbus_write(struct sbus_ioctl_args param,
 }
 
 static uint32_t sbus_read(struct sbus_ioctl_args param,
-				struct sbusdev_info * sbus_ring)
+			  struct sbusdev_info *sbus_ring)
 {
 	uint32_t sbus_val, val;
 
@@ -101,7 +102,7 @@ static uint32_t sbus_read(struct sbus_ioctl_args param,
 }
 
 static void sbus_reset(struct sbus_ioctl_args param,
-		struct sbusdev_info *sbus_ring)
+		       struct sbusdev_info *sbus_ring)
 {
 	uint32_t sbus_val;
 
@@ -124,7 +125,7 @@ static void sbus_reset(struct sbus_ioctl_args param,
  * This function will be called when we write IOCTL on the Device file
  */
 static long sbus_drv_ioctl(struct file *file, unsigned int cmd,
-			unsigned long arg)
+			   unsigned long arg)
 {
 	struct sbusdev_info *sbus_ring = file->private_data;
 	struct sbus_ioctl_args param_ioctl;
@@ -161,7 +162,6 @@ static long sbus_drv_ioctl(struct file *file, unsigned int cmd,
 		break;
 	default:
 		return -ENOTTY;
-		break;
 	}
 
 	return 0;
@@ -170,7 +170,7 @@ static long sbus_drv_ioctl(struct file *file, unsigned int cmd,
 /*
  * File operation structure
  */
-static struct file_operations fops = {
+static const struct file_operations fops = {
 	.open = sbus_drv_open,
 	.owner = THIS_MODULE,
 	.unlocked_ioctl = sbus_drv_ioctl,
@@ -224,11 +224,11 @@ static int sbus_probe(struct platform_device *pdev)
 			return -1;
 		}
 		pr_debug("Major = %d Minor = %d \n", MAJOR(sbus_dev),
-				MINOR(sbus_dev));
+			MINOR(sbus_dev));
 
 		/* Creating struct class */
-		if ((dev_class =
-			class_create(THIS_MODULE, "sbus_class")) == NULL) {
+		dev_class = class_create(THIS_MODULE, "sbus_class");
+		if (dev_class == NULL) {
 			pr_err("Cannot create the struct class\n");
 			goto r_class;
 		}

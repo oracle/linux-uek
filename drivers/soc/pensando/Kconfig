@@ -2,12 +2,28 @@ if ARCH_PENSANDO
 
 menu "Pensando SoC drivers"
 
+choice
+    prompt "SoC Select"
+    default ARCH_PENSANDO_ELBA_SOC
+
 config ARCH_PENSANDO_ELBA_SOC
 	bool "Elba SoC"
 	select DMA_OPS
-	default y
+	select REGMAP_SPI
 	help
 	  Support for the Pensando Elba SoC
+
+config ARCH_PENSANDO_GIGLIO_SOC
+	bool "Giglio SoC"
+	help
+	  Support for the Pensando Giglio SoC
+
+config ARCH_PENSANDO_SALINA_SOC
+	bool "Salina SoC"
+	select DMA_OPS
+	help
+	  Support for the Pensando Salina SoC
+endchoice
 
 config PENSANDO_SOC_CAPMEM
 	tristate "/dev/capmem driver for the Pensando SoCs"
@@ -15,6 +31,13 @@ config PENSANDO_SOC_CAPMEM
 	default y
 	help
 	  Support for the Pensando SoC memory driver
+
+config PENSANDO_SOC_CAPMEM_HUGEPAGE
+	tristate "Enable hugepage support in capmem"
+	select TRANSPARENT_HUGEPAGE
+	default n
+	help
+	  Support for Huge pages in Pensando SoC memory driver
 
 config PENSANDO_SOC_PCIE
 	tristate "PCIe driver for Pensando SoCs"

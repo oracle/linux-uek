@@ -5,6 +5,7 @@
  * Copyright (c) 2020-2022, Pensando Systems Inc.
  */
 
+#include <linux/kobject.h>
 #include <linux/string.h>
 #include <linux/sysfs.h>
 #include <linux/module.h>
@@ -27,15 +28,12 @@ bool cap_panic_reboot(void)
 		return true;
 	return false;
 }
-EXPORT_SYMBOL_GPL(cap_panic_reboot);
 
 unsigned long cap_boot_count(void)
 {
 	return boot_count;
 }
-EXPORT_SYMBOL_GPL(cap_boot_count);
 
-extern struct kobject *pensando_fw_kobj_get(void);
 struct kobject *reboot_kobj;
 
 static ssize_t panic_reboot_show(struct kobject *kobj,
@@ -91,13 +89,9 @@ static struct attribute_group attr_group = {
 
 static int __init capri_reboot_init(void)
 {
-	struct kobject *pensando_kobj;
 	int ret;
 
-	pensando_kobj = pensando_fw_kobj_get();
-	if (!pensando_kobj)
-		return -ENOMEM;
-	reboot_kobj = kobject_create_and_add("reboot", pensando_kobj);
+	reboot_kobj = kobject_create_and_add("reboot_pensando", kernel_kobj);
 	if (!reboot_kobj)
 		return -ENOMEM;
 
