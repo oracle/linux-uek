@@ -1993,35 +1993,41 @@ static void sdhci_cdns_set_uhs_signaling(struct sdhci_host *host,
 		sdhci_set_uhs_signaling(host, timing);
 }
 
+/* Elba control register bits [6:3] are byte-lane enables */
+#define ELBA_BYTE_ENABLE_MASK(x)	((x) << 3)
+
 /*
- * The Pensando Elba SoC explicitly controls byte-lane enables on writes
- * which includes writes to the HRS registers.
+ * The Pensando Elba SoC explicitly controls byte-lane enabling on writes
+ * which includes writes to the HRS registers.  The write lock (wrlock)
+ * is used to ensure byte-lane enable, using write control (ctl_addr),
+ * occurs before the data write.
  */
-static void elba_priv_write_l(struct sdhci_cdns_priv *priv, u32 val,
-			      void __iomem *reg)
+static void elba_priv_writel(struct sdhci_cdns_priv *priv, u32 val,
+			     void __iomem *reg)
 {
 	unsigned long flags;
 
 	spin_lock_irqsave(&priv->wrlock, flags);
-	writel(0x78, priv->ctl_addr);
+	writel(GENMASK(6, 3), priv->ctl_addr);
 	writel(val, reg);
 	spin_unlock_irqrestore(&priv->wrlock, flags);
 }
 
 static void elba_write_l(struct sdhci_host *host, u32 val, int reg)
 {
-	elba_priv_write_l(sdhci_cdns_priv(host), val, host->ioaddr + reg);
+	elba_priv_writel(sdhci_cdns_priv(host), val, host->ioaddr + reg);
 }
 
 static void elba_write_w(struct sdhci_host *host, u16 val, int reg)
 {
 	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
+	u32 shift = reg & GENMASK(1, 0);
 	unsigned long flags;
-	u32 m = (reg & 0x3);
-	u32 msk = (0x3 << (m));
+	u32 byte_enables;
 
+	byte_enables = GENMASK(1, 0) << shift;
 	spin_lock_irqsave(&priv->wrlock, flags);
-	writel(msk << 3, priv->ctl_addr);
+	writel(ELBA_BYTE_ENABLE_MASK(byte_enables), priv->ctl_addr);
 	writew(val, host->ioaddr + reg);
 	spin_unlock_irqrestore(&priv->wrlock, flags);
 }
@@ -2029,12 +2035,13 @@ static void elba_write_w(struct sdhci_host *host, u16 val, int reg)
 static void elba_write_b(struct sdhci_host *host, u8 val, int reg)
 {
 	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
+	u32 shift = reg & GENMASK(1, 0);
 	unsigned long flags;
-	u32 m = (reg & 0x3);
-	u32 msk = (0x1 << (m));
+	u32 byte_enables;
 
+	byte_enables = BIT(0) << shift;
 	spin_lock_irqsave(&priv->wrlock, flags);
-	writel(msk << 3, priv->ctl_addr);
+	writel(ELBA_BYTE_ENABLE_MASK(byte_enables), priv->ctl_addr);
 	writeb(val, host->ioaddr + reg);
 	spin_unlock_irqrestore(&priv->wrlock, flags);
 }
@@ -2253,34 +2260,26 @@ static const struct sdhci_ops sdhci_elba_ops = {
 };
 
 static const struct dma_map_ops elba_dma_mapping_ops = {
-        .alloc = elba_dma_alloc,
-        .map_sg = elba_dma_map_sg,
-        .unmap_sg = elba_dma_unmap_sg,
+	.alloc = elba_dma_alloc,
+	.map_sg = elba_dma_map_sg,
+	.unmap_sg = elba_dma_unmap_sg,
 };
 
-static int elba_drv_init(struct platform_device *pdev)
+static const struct sdhci_ops sdhci_salina_ops = {
+	.set_clock = sdhci_set_clock,
+	.get_timeout_clock = sdhci_cdns_get_timeout_clock,
+	.set_bus_width = sdhci_set_bus_width,
+	.reset = sdhci_reset,
+	.set_uhs_signaling = sdhci_cdns_set_uhs_signaling,
+	.adma_write_desc = elba_adma_write_desc,
+};
+
+static int setup_bounce_buffer(struct platform_device *pdev)
 {
 	struct sdhci_host *host = platform_get_drvdata(pdev);
 	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
 	struct device_node *np = pdev->dev.of_node;
-	struct resource *iomem;
-	void __iomem *ioaddr;
 	u64 val[2];
-
-	host->mmc->caps |= (MMC_CAP_1_8V_DDR | MMC_CAP_8_BIT_DATA);
-
-	iomem = platform_get_resource(pdev, IORESOURCE_MEM, 1);
-	if (!iomem)
-		return -ENOMEM;
-
-	ioaddr = devm_platform_ioremap_resource(pdev, 1);
-	if (IS_ERR(ioaddr))
-		return PTR_ERR(ioaddr);
-
-	priv->ctl_addr = ioaddr;
-	priv->priv_write_l = elba_priv_write_l;
-	spin_lock_init(&priv->wrlock);
-	writel(0x78, priv->ctl_addr);
 
 	/*
 	 * Check for a pre-allocated bounce region to enable ADMA with
@@ -2304,15 +2303,15 @@ static int elba_drv_init(struct platform_device *pdev)
 		}
 
 		priv->bounce = devm_kzalloc(&pdev->dev,
-					sizeof(struct sdhci_cdns_bounce),
-					GFP_KERNEL);
+					    sizeof(struct sdhci_cdns_bounce),
+					    GFP_KERNEL);
 		if (!priv->bounce)
 			return -ENOMEM;
 
-		/* Each entry holds the original dma buffer address to bounce */
+		/* Each entry holds the original dma buffer address */
 		priv->bounce->io_orig_addr = devm_kzalloc(&pdev->dev,
-			sizeof(priv->bounce->io_orig_addr) * buffer_count,
-			GFP_KERNEL);
+				sizeof(priv->bounce->io_orig_addr) * buffer_count,
+				GFP_KERNEL);
 		if (!priv->bounce->io_orig_addr) {
 			devm_kfree(&pdev->dev, priv->bounce);
 			return -ENOMEM;
@@ -2328,7 +2327,7 @@ static int elba_drv_init(struct platform_device *pdev)
 			return -ENOMEM;
 		}
 
-		/* Create a mapping once for this dedicated memory region */
+		/* Create a mapping for this dedicated memory region */
 		priv->bounce->vaddr = devm_ioremap_wc(&pdev->dev, bounce_addr,
 						      bounce_size);
 		if (IS_ERR(priv->bounce->vaddr)) {
@@ -2346,10 +2345,45 @@ static int elba_drv_init(struct platform_device *pdev)
 		priv->bounce->buffers = bounce_addr + BOUNCE_BUF_OFFSET;
 		spin_lock_init(&priv->bounce->io_lock);
 		set_dma_ops(&pdev->dev, &elba_dma_mapping_ops);
+
+		dev_info(mmc_dev(host->mmc),
+				"bounce buffer addr 0x%llx size %u MB\n",
+				(unsigned long long)bounce_addr,
+				bounce_size >> 20ULL);
+
 	}
 
 no_bounce_buffer:
 	return 0;
+}
+
+static int elba_drv_init(struct platform_device *pdev)
+{
+	struct sdhci_host *host = platform_get_drvdata(pdev);
+	struct sdhci_cdns_priv *priv = sdhci_cdns_priv(host);
+	void __iomem *ioaddr;
+
+	host->mmc->caps |= MMC_CAP_1_8V_DDR;
+	spin_lock_init(&priv->wrlock);
+
+	/* Byte-lane control register */
+	ioaddr = devm_platform_ioremap_resource(pdev, 1);
+	if (IS_ERR(ioaddr))
+		return PTR_ERR(ioaddr);
+
+	priv->ctl_addr = ioaddr;
+	priv->priv_write_l = elba_priv_writel;
+	writel(ELBA_BYTE_ENABLE_MASK(0xf), priv->ctl_addr);
+
+	return setup_bounce_buffer(pdev);
+}
+
+static int salina_drv_init(struct platform_device *pdev)
+{
+	struct sdhci_host *host = platform_get_drvdata(pdev);
+
+	host->mmc->caps |= MMC_CAP_1_8V_DDR;
+	return setup_bounce_buffer(pdev);
 }
 
 static uint32_t sdhci_cdns_sd6_irq(struct sdhci_host *host, u32 intmask)
@@ -2435,6 +2469,13 @@ static const struct sdhci_cdns_drv_data sdhci_elba_drv_data = {
 	},
 };
 
+static const struct sdhci_cdns_drv_data sdhci_salina_drv_data = {
+	.init = salina_drv_init,
+	.pltfm_data = {
+		.ops = &sdhci_salina_ops,
+	},
+};
+
 static const struct sdhci_cdns_drv_data sdhci_cdns_sd4_drv_data = {
 	.phy_init = sdhci_cdns_sd4_phy_init,
 	.phy_probe = sdhci_cdns_sd4_phy_probe,
@@ -2479,8 +2520,8 @@ static void sdhci_mmc_hw_reset(struct mmc_host *mmc)
 	dev_info(mmc_dev(host->mmc), "emmc hardware reset\n");
 
 	reset_control_assert(priv->rst_hw);
-	/* For eMMC, minimum is 1us but give it 9us for good measure */
-	udelay(9);
+	/* For eMMC, minimum is 1us but give it 3us for good measure */
+	udelay(3);
 
 	reset_control_deassert(priv->rst_hw);
 	/* For eMMC, minimum is 200us but give it 300us for good measure */
@@ -2593,8 +2634,6 @@ static int sdhci_cdns_probe(struct platform_device *pdev)
 	else if (is_soc_cn10ka_ax() || is_soc_cnf10ka_ax())
 		cn10k_irq_workaround = 1;
 
-	sdhci_get_of_property(pdev);
-
 	if (data->init) {
 		ret = data->init(pdev);
 		if (ret)
@@ -2606,6 +2645,8 @@ static int sdhci_cdns_probe(struct platform_device *pdev)
 		__sdhci_read_caps(host, NULL, NULL, NULL);
 	else
 		__sdhci_read_caps(host, &version, NULL, NULL);
+
+	sdhci_get_of_property(pdev);
 
 	ret = mmc_of_parse(host->mmc);
 	if (ret)
@@ -2620,14 +2661,14 @@ static int sdhci_cdns_probe(struct platform_device *pdev)
 		goto free;
 
 	if (host->mmc->caps & MMC_CAP_HW_RESET) {
-		priv->rst_hw = devm_reset_control_get_optional_exclusive(dev, "hw");
+		priv->rst_hw = devm_reset_control_get_optional_exclusive(dev, NULL);
 		if (IS_ERR(priv->rst_hw)) {
-			ret = PTR_ERR(priv->rst_hw);
-			if (ret == -ENOENT)
-				priv->rst_hw = NULL;
-		} else {
-			host->mmc_host_ops.hw_reset = sdhci_mmc_hw_reset;
+			ret = dev_err_probe(mmc_dev(host->mmc), PTR_ERR(priv->rst_hw),
+					    "reset controller error\n");
+			goto free;
 		}
+		if (priv->rst_hw)
+			host->mmc_host_ops.hw_reset = sdhci_mmc_hw_reset;
 	}
 
 	ret = sdhci_add_host(host);
@@ -2690,7 +2731,15 @@ static const struct of_device_id sdhci_cdns_match[] = {
 	},
 	{
 		.compatible = "pensando,elba-emmc",
-		.data = &sdhci_elba_drv_data
+		.data = &sdhci_elba_drv_data,
+	},
+	{
+		.compatible = "amd,pensando-elba-sd4hc",
+		.data = &sdhci_elba_drv_data,
+	},
+	{
+		.compatible = "amd,pensando-salina-sd4hc",
+		.data = &sdhci_salina_drv_data,
 	},
 	{
 		.compatible = "cdns,sd4hc",
