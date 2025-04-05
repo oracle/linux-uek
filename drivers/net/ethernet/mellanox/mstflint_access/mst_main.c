@@ -212,15 +212,18 @@ enum {
 #define VSEC_FULLY_SUPPORTED(dev) \
     (((dev)->functional_vsc_offset) && ((dev)->spaces_support_status == SS_ALL_SPACES_SUPPORTED))
 
-void swap_pci_address_space(int* address_space)
+static void swap_pci_address_space(int* address_space)
 {
     switch (*address_space) {
     case AS_ICMD_EXT:
         *address_space = AS_PCI_ICMD;
+        fallthrough;
 
     case AS_ND_CRSPACE:
+        fallthrough;
     case AS_CR_SPACE:
         *address_space = AS_PCI_CRSPACE;
+        fallthrough;
 
     case AS_ICMD:
         *address_space = AS_PCI_ALL_ICMD;
@@ -263,7 +266,7 @@ void swap_pci_address_space(int* address_space)
 }
 
 
-int get_syndrome_code(struct mst_dev_data* dev, u_int8_t* syndrome_code)
+static int get_syndrome_code(struct mst_dev_data* dev, u_int8_t* syndrome_code)
 {
     /* In case syndrome is set, if syndrome_code is 0x3 (address_out_of_range), return the syndrome_code, so that the */
     /* ioctl will fail and then we'll retry with PCI space. */
@@ -618,7 +621,7 @@ static int read4_vsec(struct mst_dev_data* dev, int address_space, unsigned int 
     return 0; /* OPERATIONAL and LOGICAL success (PCI VSC address_spaces not supported) */
 }
 
-int pciconf_read4_legacy(struct mst_dev_data* dev, unsigned int offset, unsigned int* data)
+static int pciconf_read4_legacy(struct mst_dev_data* dev, unsigned int offset, unsigned int* data)
 {
     int          res = 0;
     unsigned int new_offset = offset;
@@ -646,7 +649,7 @@ int pciconf_read4_legacy(struct mst_dev_data* dev, unsigned int offset, unsigned
     return 0;
 }
 
-int pciconf_write4_legacy(struct mst_dev_data* dev, unsigned int offset, unsigned int data)
+static int pciconf_write4_legacy(struct mst_dev_data* dev, unsigned int offset, unsigned int data)
 {
     int res = 0;
 
@@ -753,7 +756,7 @@ static int get_space_support_status(struct mst_dev_data* dev)
 
 #define WO_REG_ADDR_DATA 0xbadacce5
 #define DEVID_OFFSET     0xf0014
-int is_wo_gw(struct pci_dev* pcidev, unsigned int addr_reg)
+static int is_wo_gw(struct pci_dev* pcidev, unsigned int addr_reg)
 {
     int          ret;
     unsigned int data = 0;
@@ -1502,7 +1505,7 @@ static int mst_ioctl(struct inode* inode, struct file* file, unsigned int opcode
 
         dev->hw_addr = ioremap(resource_start, MST_MEMORY_SIZE);
 
-        if (dev->hw_addr <= 0) {
+        if (!dev->hw_addr) {
             mst_err("could not map device memory\n");
             res = -EFAULT;
             goto fin;
@@ -1780,7 +1783,7 @@ static struct mst_dev_data* mst_device_create(enum dev_type type, struct pci_dev
         dev->data_reg = 0;     /* invalid */
         dev->bar = 0;
         dev->hw_addr = ioremap(pci_resource_start(pdev, dev->bar), MST_MEMORY_SIZE);
-        if (dev->hw_addr <= 0) {
+        if (!dev->hw_addr) {
             mst_err("could not map device memory, BAR: %x\n", dev->bar);
             goto out;
         }
