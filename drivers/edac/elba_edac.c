@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * AMD Pensando Elba Memory Controller EDAC Driver
+ * AMD Pensando Elba/Giglio Memory Controller EDAC Driver
  *
  * Copyright (c) 2022, Advanced Micro Devices Inc.
  */
 
 #include <linux/edac.h>
 #include <linux/platform_device.h>
-#include <linux/panic_notifier.h>
 #include <linux/notifier.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
+#include <linux/panic_notifier.h>
 #include "edac_module.h"
 
 #define ELB_MC_CHAN_STRIDE		0x80000
@@ -84,6 +84,16 @@ static const struct mc_edac_regs elba_mc_edac_regs = {
 	.ecc_id = 285,
 	.int_stat_ecc = 377,
 	.int_ack_ecc = 384,
+};
+
+static const struct mc_edac_regs giglio_mc_edac_regs = {
+	.ecc_u_addr = 282,
+	.ecc_u_synd = 283,
+	.ecc_c_addr = 286,
+	.ecc_c_synd = 287,
+	.ecc_id = 290,
+	.int_stat_ecc = 399,
+	.int_ack_ecc = 408,
 };
 
 static inline u32 elba_mc_read(struct elba_mcdata *mcp, int chan, int subchan,
@@ -544,6 +554,7 @@ static int elba_edac_mc_remove(struct platform_device *pdev)
 
 static const struct of_device_id elba_edac_mc_of_match[] = {
 	{ .compatible = "pensando,elba-edac-mc", .data = &elba_mc_edac_regs },
+	{ .compatible = "pensando,giglio-edac-mc", .data = &giglio_mc_edac_regs },
 	{ },
 };
 
@@ -557,6 +568,6 @@ static struct platform_driver elba_edac_mc_driver = {
 };
 module_platform_driver(elba_edac_mc_driver);
 
-MODULE_DESCRIPTION("AMD Pensando Elba platform EDAC memory controller driver");
+MODULE_DESCRIPTION("AMD Pensando Elba/Giglio platform EDAC memory controller driver");
 MODULE_AUTHOR("Advanced Micro Devices, Inc.");
 MODULE_LICENSE("GPL v2");

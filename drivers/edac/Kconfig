@@ -542,7 +542,7 @@ config EDAC_DMC520
 
 config EDAC_ELBA
 	tristate "Pensando Elba Memory ECC"
-	depends on ARCH_PENSANDO_ELBA_SOC
+	depends on ARCH_PENSANDO_ELBA_SOC || ARCH_PENSANDO_GIGLIO_SOC
 	help
 	  Support for error detection and correction on the
 	  Pensando Elba SoC.
