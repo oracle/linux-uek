@@ -197,6 +197,16 @@ config RESET_RZG2L_USBPHY_CTRL
 	  Support for USBPHY Control found on RZ/G2L family. It mainly
 	  controls reset and power down of the USB/PHY.
 
+config RESET_SALINASR
+	tristate "AMD Pensando Salina System Resource reset controller"
+	depends on ARCH_PENSANDO_SALINA_SOC || COMPILE_TEST
+	help
+	  This option enables support for the external reset functions
+	  on the Pensando Salina System Resource Chip.  Reset control
+	  of peripherals is accessed over IPC to management processor.
+
+	  The management processor is an ARM64 A35 in the Salina SoC.
+
 config RESET_SCMI
 	tristate "Reset driver controlled via ARM SCMI interface"
 	depends on ARM_SCMI_PROTOCOL || COMPILE_TEST
