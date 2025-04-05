@@ -262,7 +262,7 @@
 		};
 
 		emmc: mmc@30440000 {
-			compatible = "pensando,elba-emmc", "cdns,sd4hc";
+			compatible = "pensando,elba-emmc", "amd,pensando-elba-sd4hc", "cdns,sd4hc";
 			clocks = <&emmc_clk>;
 			interrupts = <GIC_SPI 26 IRQ_TYPE_LEVEL_HIGH>;
 			reg = <0x0 0x30440000 0x0 0x10000

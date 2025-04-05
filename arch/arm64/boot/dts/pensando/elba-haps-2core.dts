@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: GPL-2.0
+
+/dts-v1/;
+
+/ {
+	model = "Elba HAPS Emulation Board";
+	compatible = "pensando,elba";
+
+	aliases {
+		serial0 = &uart0;
+		spi0 = &spi0;
+		spi1 = &qspi;
+	};
+
+	chosen {
+		stdout-path = "serial0:19200n8";
+	};
+};
+
+#include "elba.dtsi"
+#include "elba-2core.dtsi"
+#include "elba-haps-common.dtsi"
+#include "elba-flash-parts.dtsi"

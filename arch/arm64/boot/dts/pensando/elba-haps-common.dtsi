@@ -1,0 +1,131 @@
+// SPDX-License-Identifier: GPL-2.0
+
+&ahb_clk {
+	clock-frequency = <2080000>;
+};
+
+&emmc_clk {
+	clock-frequency = <208000000>;
+};
+
+&flash_clk {
+	clock-frequency = <2000000>;
+};
+
+&ref_clk {
+	clock-frequency = <9216000>; /* fake so UART 115200 works at 19200 */
+};
+
+&qspi {
+	status = "okay";
+	flash0: mt25q@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0>;
+		spi-max-frequency = <500000>;
+		spi-rx-bus-width = <4>;
+		m25p,fast-read;
+		cdns,read-delay = <0>;
+		cdns,tshsl-ns = <0>;
+		cdns,tsd2d-ns = <0>;
+		cdns,tchsh-ns = <0>;
+		cdns,tslch-ns = <0>;
+	};
+
+	flash1: mt25q@1 {
+		compatible = "jedec,spi-nor";
+		reg = <1>;
+		spi-max-frequency = <500000>;
+		spi-rx-bus-width = <4>;
+		m25p,fast-read;
+		cdns,read-delay = <0>;
+		cdns,tshsl-ns = <0>;
+		cdns,tsd2d-ns = <0>;
+		cdns,tchsh-ns = <0>;
+		cdns,tslch-ns = <0>;
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			/* Some test partitions */
+			partition@0 {
+				label = "test_32_0";
+				reg = <0x0 0x2000000>;
+			};
+
+			partition@2000000 {
+				label = "test_32_1";
+				reg = <0x2000000 0x2000000>;
+			};
+
+			partition@4000000 {
+				label = "test_64";
+				reg = <0x4000000 0x4000000>;
+			};
+
+			partition@8000000 {
+				label = "test_128";
+				reg = <0x8000000 0x8000000>;
+			};
+		};
+	};
+
+	flash2: mt25q@2 {
+		compatible = "jedec,spi-nor";
+		reg = <2>;
+		spi-max-frequency = <500000>;
+		spi-rx-bus-width = <4>;
+		m25p,fast-read;
+		cdns,read-delay = <0>;
+		cdns,tshsl-ns = <0>;
+		cdns,tsd2d-ns = <0>;
+		cdns,tchsh-ns = <0>;
+		cdns,tslch-ns = <0>;
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+			partition@0 {
+				label = "big_ubi";
+				reg = <0x0 0x10000000>;
+			};
+		};
+	};
+};
+
+&gpio0 {
+	status = "ok";
+};
+
+&emmc {
+	status = "ok";
+};
+
+&spi0 {
+	num-cs = <3>;
+	cs-gpios = <0>, <0>, <&porta 1 0>;
+	status = "okay";
+	cpld@0 {
+		compatible = "pensando,cpld";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		spi-max-frequency = <156250>;
+		reg = <0>;
+	};
+
+	cpld@1 {
+		compatible = "pensando,cpld";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		spi-max-frequency = <156250>;
+		reg = <1>;
+	};
+
+	cpld@2 {
+		compatible = "pensando,cpld";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		spi-max-frequency = <156250>;
+		reg = <2>;
+	};
+};
