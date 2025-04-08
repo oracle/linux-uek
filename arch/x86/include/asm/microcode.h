@@ -50,6 +50,7 @@ struct microcode_ops {
 	 */
 	enum ucode_state (*apply_microcode) (int cpu);
 	int (*collect_cpu_info) (int cpu, struct cpu_signature *csig);
+	void (*finalize_late_load)(int result);
 };
 
 struct ucode_cpu_info {

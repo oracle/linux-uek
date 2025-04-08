@@ -530,6 +530,9 @@ static int microcode_reload_late(void)
 			boot_cpu_data.microcode);
 	}
 
+	if (microcode_ops->finalize_late_load)
+                microcode_ops->finalize_late_load(ret);
+
 	return ret;
 }
 
