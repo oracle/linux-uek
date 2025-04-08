@@ -1296,7 +1296,7 @@ struct nix_txschq_config {
 	u8 lvl;	/* SMQ/MDQ/TL4/TL3/TL2/TL1 */
 	u8 read;
 #define TXSCHQ_IDX_SHIFT	16
-#define TXSCHQ_IDX_MASK		(BIT_ULL(10) - 1)
+#define TXSCHQ_IDX_MASK		(BIT_ULL(11) - 1)
 #define TXSCHQ_IDX(reg, shift)	(((reg) >> (shift)) & TXSCHQ_IDX_MASK)
 	u8 num_regs;
 #define MAX_REGS_PER_MBOX_MSG	20
