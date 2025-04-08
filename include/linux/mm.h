@@ -3215,7 +3215,7 @@ static inline bool pagetable_pmd_ctor(struct mm_struct *mm,
 {
 	struct folio *folio = ptdesc_folio(ptdesc);
 
-	if (!pmd_ptlock_init(ptdesc))
+	if (mm != &init_mm && !pmd_ptlock_init(ptdesc))
 		return false;
 	__folio_set_pgtable(folio);
 	ptdesc_pmd_pts_init(ptdesc);
