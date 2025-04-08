@@ -63,6 +63,9 @@ static u32 ucode_new_rev;
 static const char
 ucode_path[] __maybe_unused = "kernel/x86/microcode/AuthenticAMD.bin";
 
+/* This is CPUID(1).EAX on the BSP. */
+static u32 bsp_cpuid_1_eax __ro_after_init;
+
 static u16 find_equiv_id(struct equiv_cpu_table *et, u32 sig)
 {
 	unsigned int i;
@@ -504,6 +507,10 @@ static void apply_ucode_from_containers(unsigned int cpuid_1_eax)
 
 void load_ucode_amd_early(unsigned int cpuid_1_eax)
 {
+	if (bsp_cpuid_1_eax == 0)
+		/* This only happens on BSP */
+		bsp_cpuid_1_eax = cpuid_1_eax;
+
 	return apply_ucode_from_containers(cpuid_1_eax);
 }
 
