@@ -115,6 +115,11 @@ struct debug_info {
 #endif
 };
 
+enum fp_type {
+	FP_STATE_FPSIMD,
+	FP_STATE_SVE,
+};
+
 struct cpu_context {
 	unsigned long x19;
 	unsigned long x20;
@@ -146,6 +151,7 @@ struct thread_struct {
 	} uw;
 
 	unsigned int		fpsimd_cpu;
+	UEK_KABI_FILL_HOLE(enum fp_type	fp_type)/* registers FPSIMD or SVE? */
 	void			*sve_state;	/* SVE registers, if any */
 	unsigned int		sve_vl;		/* SVE vector length */
 	unsigned int		sve_vl_onexec;	/* SVE vl after next exec */
