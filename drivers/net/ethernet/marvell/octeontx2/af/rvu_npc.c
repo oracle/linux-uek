@@ -249,6 +249,9 @@ static void npc_clear_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
 	int actbank = bank;
 
 	index &= (mcam->banksize - 1);
+	if (is_cn20k(rvu->pdev))
+		return npc_cn20k_clear_mcam_entry(rvu, blkaddr, bank, index);
+
 	for (; bank < (actbank + mcam->banks_per_entry); bank++) {
 		rvu_write64(rvu, blkaddr,
 			    NPC_AF_MCAMEX_BANKX_CAMX_INTF(index, bank, 1), 0);

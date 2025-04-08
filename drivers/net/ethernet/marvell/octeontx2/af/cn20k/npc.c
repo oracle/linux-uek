@@ -2958,8 +2958,8 @@ void npc_cn20k_enable_mcam_entry(struct rvu *rvu, int blkaddr, int index, bool e
 	}
 }
 
-static void npc_cn20k_clear_mcam_entry(struct rvu *rvu, int blkaddr,
-				       int bank, int index)
+void npc_cn20k_clear_mcam_entry(struct rvu *rvu, int blkaddr,
+				int bank, int index)
 {
 	rvu_write64(rvu, blkaddr,
 		    NPC_AF_CN20K_MCAMEX_BANKX_CAMX_INTF_EXT(index, bank, 1), 0);
