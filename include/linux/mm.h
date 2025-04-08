@@ -3117,7 +3117,7 @@ static inline bool pagetable_pte_ctor(struct mm_struct *mm,
 {
 	struct folio *folio = ptdesc_folio(ptdesc);
 
-	if (!ptlock_init(ptdesc))
+	if (mm != &init_mm && !ptlock_init(ptdesc))
 		return false;
 	__folio_set_pgtable(folio);
 	lruvec_stat_add_folio(folio, NR_PAGETABLE);
