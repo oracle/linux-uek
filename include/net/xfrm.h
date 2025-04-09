@@ -241,7 +241,7 @@ struct xfrm_state {
 
 	/* Data for encapsulator */
 	struct xfrm_encap_tmpl	*encap;
-	struct sock __rcu	*encap_sk;
+	UEK_KABI_DEPRECATE(struct sock __rcu *, encap_sk)
 
 	/* Data for care-of address */
 	xfrm_address_t	*coaddr;
