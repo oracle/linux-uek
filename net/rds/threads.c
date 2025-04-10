@@ -404,6 +404,7 @@ void rds_recv_worker(struct work_struct *work)
 			rds_stats_inc(cp->cp_conn->c_stats,
 				      s_recv_delayed_retry);
 			delay = 2;
+			break;
 		default:
 			return;
 		}
