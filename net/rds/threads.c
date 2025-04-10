@@ -400,6 +400,7 @@ void rds_recv_worker(struct work_struct *work)
 		case -ENOMEM:
 			rds_stats_inc(s_recv_delayed_retry);
 			delay = 2;
+			break;
 		default:
 			return;
 		}
