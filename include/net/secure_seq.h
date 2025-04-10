@@ -21,10 +21,6 @@ u64 secure_ipv6_port_ephemeral(const __be32 *saddr, const __be32 *daddr,
 union tcp_seq_and_ts_off
 secure_tcp_seq_and_ts_off(const struct net *net, __be32 saddr, __be32 daddr,
 			  __be16 sport, __be16 dport);
-u64 secure_dccp_sequence_number(__be32 saddr, __be32 daddr,
-				__be16 sport, __be16 dport);
-u64 secure_dccpv6_sequence_number(__be32 *saddr, __be32 *daddr,
-				  __be16 sport, __be16 dport);
 
 static inline u32 secure_tcp_seq(__be32 saddr, __be32 daddr,
 				 __be16 sport, __be16 dport)
