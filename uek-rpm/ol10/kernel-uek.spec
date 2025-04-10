@@ -8,7 +8,7 @@
 %define _wrong_version_format_terminate_build   0
 
 # NOTE: Set uek_release when updating the UEK release version
-%define uek_release unset
+%define uek_release 8
 %if "%{uek_release}" != "unset"
 %define uek_release_name UEK%{uek_release}
 %define uek_release_name_full Unbreakable Enterprise Kernel %{uek_release}
