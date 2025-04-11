@@ -681,9 +681,9 @@ static irqreturn_t rvu_tim_af_bsk_intr_handler(int irq, void *ptr)
 		reg = rvu_read64(rvu, blkaddr, TIM_AF_BKT_SKIP_INTX(i));
 		if (!reg)
 			continue;
-		dev_err_ratelimited(rvu->dev,
-				    "Received TIM_AF_BKT_SKIP_INTX(%d) irq : 0x%llx",
-				    i, reg);
+		dev_warn_ratelimited(rvu->dev,
+				     "Received TIM_AF_BKT_SKIP_INTX(%d) irq : 0x%llx",
+				     i, reg);
 		rvu_write64(rvu, blkaddr, TIM_AF_BKT_SKIP_INTX(i), reg);
 	}
 
