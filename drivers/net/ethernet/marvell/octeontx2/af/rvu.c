@@ -3650,7 +3650,7 @@ static int rvu_register_flr_me_afpf_interrupts(struct rvu *rvu)
 
 static int rvu_register_interrupts(struct rvu *rvu)
 {
-	int ret, offset, pf_vec_start;
+	int i, ret, offset, pf_vec_start;
 
 	rvu->num_vec = pci_msix_vec_count(rvu->pdev);
 
@@ -3808,6 +3808,13 @@ static int rvu_register_interrupts(struct rvu *rvu)
 	ret = rvu_cpt_register_interrupts(rvu);
 	if (ret)
 		goto fail;
+
+	for (i = 0; i < rvu->num_vec; i++) {
+		if (strstr(&rvu->irq_name[i * NAME_SIZE], "Mbox") ||
+		    strstr(&rvu->irq_name[i * NAME_SIZE], "FLR"))
+			irq_set_affinity(pci_irq_vector(rvu->pdev, i),
+					 cpumask_of(0));
+	}
 
 	return 0;
 
