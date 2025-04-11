@@ -1078,6 +1078,7 @@ modules:
 - msdos
 - mt76
 - mt76-connac-lib
+- ptp_ocp
 - mtd
 - mtd_blkdevs
 - mtdblock
