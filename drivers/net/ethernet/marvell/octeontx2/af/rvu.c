@@ -704,6 +704,7 @@ check_pf:
 
 static int rvu_setup_msix_resources(struct rvu *rvu)
 {
+	struct altaf_intr_notify *altaf_intr_data;
 	struct rvu_hwinfo *hw = rvu->hw;
 	int pf, vf, numvfs, hwvf, err;
 	u64 cfg, phy_addr, reg;
@@ -808,6 +809,17 @@ setup_vfmsix:
 	rvu_write64(rvu, BLKADDR_RVUM, RVU_AF_MSIXTR_BASE, (u64)iova);
 	rvu->msix_base_iova = iova;
 	rvu->msixtr_base_phy = phy_addr;
+
+	altaf_intr_data = &rvu->fwdata->altaf_intr_info;
+	if (rvu->fwdata && altaf_intr_data->gint_paddr) {
+		iova = dma_map_resource(rvu->dev, altaf_intr_data->gint_paddr,
+					PCI_MSIX_ENTRY_SIZE, DMA_BIDIRECTIONAL, 0);
+
+		if (dma_mapping_error(rvu->dev, iova))
+			return -ENOMEM;
+
+		altaf_intr_data->gint_iova_addr = iova;
+	}
 
 	return 0;
 }
