@@ -1872,19 +1872,20 @@ fi}\
 
 #
 # This macro defines a %%postun script for a kernel package.
-#      %%kernel_variant_postun [-o] <subpackage>
+#      %%kernel_variant_postun [-o]  [-v <subpackage>]
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_variant_postun(o) \
-%{expand:%%postun -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-core}\
+%define kernel_variant_postun(ov:) \
+%{expand:%%postun -n kernel%{?variant}%{?-v*:%{!-o:-}%{-v*}}-core}\
 if [ $1 -eq 0 ] && \
    [ "$(uname -i)" == "x86_64" -o "$(uname -i)" == "aarch64" ] && \
    [ -f /etc/sysconfig/kernel ]; then\
     CUR_DEFAULT=$(grep '^DEFAULTKERNEL' /etc/sysconfig/kernel | cut -d= -f2);\
-    THIS_KERNEL="kernel%{?variant}%{?-v:%{!-o:-}%{-v*}}-core";\
+    FLAVOUR="%{?variant}%{?-v:%{!-o:-}%{-v*}}";\
+    THIS_KERNEL="kernel${FLAVOUR}-core";\
     NEW_DEFAULT="";\
     if [ "${CUR_DEFAULT}" == "${THIS_KERNEL}" ]; then\
-        if [ "%{?variant}" != "-uek" ] && \
+        if [ "${FLAVOUR}" != "-uek" ] && \
           rpm -q kernel-uek-core >& /dev/null; then\
             NEW_DEFAULT="kernel-uek-core";\
         elif rpm -q kernel-ueknano >& /dev/null; then\
@@ -1987,27 +1988,27 @@ fi\
 
 %kernel_variant_pre debug
 %kernel_variant_preun debug
-%kernel_variant_postun debug
+%kernel_variant_postun -v debug
 %kernel_variant_post -v debug
 
 %kernel_variant_pre -o 64k
 %kernel_variant_preun -o 64k
-%kernel_variant_postun -o 64k
+%kernel_variant_postun -o -v 64k
 %kernel_variant_post -o -v 64k -r (kernel%{variant}|kernel%{variant}-debug)
 
 %kernel_variant_pre -o 64kdebug
 %kernel_variant_preun -o 64kdebug
-%kernel_variant_postun -o 64kdebug
+%kernel_variant_postun -o -v 64kdebug
 %kernel_variant_post -o -v 64kdebug
 
 %kernel_variant_pre -o emb3
 %kernel_variant_preun -o emb3
-%kernel_variant_postun -o emb3
+%kernel_variant_postun -o -v emb3
 %kernel_variant_post -o -v emb3
 
 %kernel_variant_pre -o emb3debug
 %kernel_variant_preun -o emb3debug
-%kernel_variant_postun -o emb3debug
+%kernel_variant_postun -o -v emb3debug
 %kernel_variant_post -o -v emb3debug
 
 if [ -x /sbin/ldconfig ]
