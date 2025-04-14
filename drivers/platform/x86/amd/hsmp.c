@@ -33,7 +33,7 @@
 #define HSMP_ERR_SMU_BUSY              0xFC
 
 /* Timeout in millsec */
-#define HSMP_MSG_TIMEOUT	100
+#define HSMP_MSG_TIMEOUT	500
 #define HSMP_SHORT_SLEEP	1
 
 #define HSMP_WR			true
