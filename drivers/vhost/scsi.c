@@ -98,6 +98,11 @@ struct vhost_scsi_cmd {
 	unsigned char tvc_cdb[VHOST_SCSI_MAX_CDB_SIZE];
 	/* Sense buffer that will be mapped into outgoing status */
 	unsigned char tvc_sense_buf[TRANSPORT_SENSE_BUFFER];
+	/*
+	 * Dirty write descriptors of this command.
+	 */
+	u32 tvc_log_num;
+	struct vhost_log *tvc_log;
 	/* Completed commands list, serviced from vhost worker thread */
 	struct llist_node tvc_completion_list;
 	/* Used to track inflight cmd */
@@ -553,6 +558,28 @@ static int vhost_scsi_copy_sgl_to_iov(struct vhost_scsi_cmd *cmd)
 	return 0;
 }
 
+static void vhost_scsi_log_write(struct vhost_virtqueue *vq,
+				 struct vhost_log *log, u32 log_num)
+{
+	u64 total_len = 0;
+	u32 i;
+
+	if (likely(!log_num))
+		return;
+
+	if (likely(!vhost_has_feature(vq, VHOST_F_LOG_ALL)))
+		return;
+
+	for (i = 0; i < log_num; i++)
+		total_len += log[i].len;
+
+	/*
+	 * vhost-scsi doesn't support VIRTIO_F_ACCESS_PLATFORM.
+	 * No requirement for vq->iotlb case.
+	 */
+	vhost_log_write(vq, log, log_num, total_len, NULL, 0);
+}
+
 /* Fill in status and signal that we are done processing this command
  *
  * This is scheduled in the vhost work queue so we are called with the owner
@@ -604,6 +631,8 @@ static void vhost_scsi_complete_cmd_work(struct vhost_work *work)
 		} else
 			pr_err("Faulted on virtio_scsi_cmd_resp\n");
 
+		vhost_scsi_log_write(cmd->tvc_vq, cmd->tvc_log,
+				     cmd->tvc_log_num);
 		vhost_scsi_release_cmd_res(se_cmd);
 	}
 
@@ -625,6 +654,7 @@ vhost_scsi_get_cmd(struct vhost_virtqueue *vq, struct vhost_scsi_tpg *tpg,
 	struct scatterlist *sg, *prot_sg;
 	struct iovec *tvc_resp_iov;
 	struct page **pages;
+	struct vhost_log *log;
 	int tag;
 
 	tv_nexus = tpg->tpg_nexus;
@@ -643,11 +673,13 @@ vhost_scsi_get_cmd(struct vhost_virtqueue *vq, struct vhost_scsi_tpg *tpg,
 	sg = cmd->tvc_sgl;
 	prot_sg = cmd->tvc_prot_sgl;
 	pages = cmd->tvc_upages;
+	log = cmd->tvc_log;
 	tvc_resp_iov = cmd->tvc_resp_iov;
 	memset(cmd, 0, sizeof(*cmd));
 	cmd->tvc_sgl = sg;
 	cmd->tvc_prot_sgl = prot_sg;
 	cmd->tvc_upages = pages;
+	cmd->tvc_log = log;
 	cmd->tvc_se_cmd.map_tag = tag;
 	cmd->tvc_tag = scsi_tag;
 	cmd->tvc_lun = lun;
@@ -953,15 +985,33 @@ vhost_scsi_send_bad_target(struct vhost_scsi *vs,
 		pr_err("Faulted on virtio_scsi_cmd_resp\n");
 }
 
+/*
+ * log_num isn't NULL only when this is IO Queue path.
+ *
+ * Value returned in *log_num indicates the number of collected logs.
+ * (*log_num == 0) indicates no log is collected.
+ *
+ * vhost_scsi_get_desc() resets *log_num at the beginning.
+ */
 static int
 vhost_scsi_get_desc(struct vhost_scsi *vs, struct vhost_virtqueue *vq,
-		    struct vhost_scsi_ctx *vc)
+		    struct vhost_scsi_ctx *vc, u32 *log_num)
 {
+	struct vhost_log *vq_log;
 	int ret = -ENXIO;
+
+	/*
+	 * log_num isn't NULL only when this is IO Queue path.
+	 */
+	vq_log = unlikely(vhost_has_feature(vq, VHOST_F_LOG_ALL) && log_num) ?
+		vq->log : NULL;
+
+	if (log_num)
+		*log_num = 0;
 
 	vc->head = vhost_get_vq_desc(vq, vq->iov,
 				     ARRAY_SIZE(vq->iov), &vc->out, &vc->in,
-				     NULL, NULL);
+				     vq_log, log_num);
 
 	pr_debug("vhost_get_vq_desc: head: %d, out: %u in: %u\n",
 		 vc->head, vc->out, vc->in);
@@ -1075,6 +1125,7 @@ vhost_scsi_handle_vq(struct vhost_scsi *vs, struct vhost_virtqueue *vq)
 	u8 task_attr;
 	bool t10_pi = vhost_has_feature(vq, VIRTIO_SCSI_F_T10_PI);
 	void *cdb;
+	u32 log_num;
 
 	mutex_lock(&vq->mutex);
 	/*
@@ -1091,7 +1142,7 @@ vhost_scsi_handle_vq(struct vhost_scsi *vs, struct vhost_virtqueue *vq)
 	vhost_disable_notify(&vs->dev, vq);
 
 	do {
-		ret = vhost_scsi_get_desc(vs, vq, &vc);
+		ret = vhost_scsi_get_desc(vs, vq, &vc, &log_num);
 		if (ret)
 			goto err;
 
@@ -1231,6 +1282,11 @@ vhost_scsi_handle_vq(struct vhost_scsi *vs, struct vhost_virtqueue *vq)
 			cmd->tvc_resp_iov[i] = vq->iov[vc.out + i];
 		cmd->tvc_in_iovs = vc.in;
 
+		if (unlikely(log_num)) {
+			memcpy(cmd->tvc_log, vq->log, sizeof(*cmd->tvc_log) * log_num);
+			cmd->tvc_log_num = log_num;
+		}
+
 		pr_debug("vhost_scsi got command opcode: %#02x, lun: %d\n",
 			 cmd->tvc_cdb[0], cmd->tvc_lun);
 		pr_debug("cmd: %p exp_data_len: %d, prot_bytes: %d data_direction:"
@@ -1262,8 +1318,10 @@ err:
 		 */
 		if (ret == -ENXIO)
 			break;
-		else if (ret == -EIO)
+		else if (ret == -EIO) {
 			vhost_scsi_send_bad_target(vs, vq, vc.head, vc.out);
+			vhost_scsi_log_write(vq, vq->log, log_num);
+		}
 	} while (likely(!vhost_exceeds_weight(vq, ++c, 0)));
 out:
 	mutex_unlock(&vq->mutex);
@@ -1419,7 +1477,7 @@ vhost_scsi_ctl_handle_vq(struct vhost_scsi *vs, struct vhost_virtqueue *vq)
 	vhost_disable_notify(&vs->dev, vq);
 
 	do {
-		ret = vhost_scsi_get_desc(vs, vq, &vc);
+		ret = vhost_scsi_get_desc(vs, vq, &vc, NULL);
 		if (ret)
 			goto err;
 
@@ -1608,6 +1666,7 @@ static void vhost_scsi_destroy_vq_cmds(struct vhost_virtqueue *vq)
 		kfree(tv_cmd->tvc_prot_sgl);
 		kfree(tv_cmd->tvc_upages);
 		kfree(tv_cmd->tvc_resp_iov);
+		kfree(tv_cmd->tvc_log);
 	}
 
 	sbitmap_free(&svq->scsi_tags);
@@ -1668,6 +1727,18 @@ static int vhost_scsi_setup_vq_cmds(struct vhost_virtqueue *vq, int max_cmds)
 					       GFP_KERNEL);
 		if (!tv_cmd->tvc_prot_sgl) {
 			pr_err("Unable to allocate tv_cmd->tvc_prot_sgl\n");
+			goto out;
+		}
+
+		/*
+		 * tv_cmd->tvc_log and vq->log need to have the same max
+		 * length.
+		 */
+		tv_cmd->tvc_log = kcalloc(vq->dev->iov_limit,
+					  sizeof(struct vhost_log),
+					  GFP_KERNEL);
+		if (!tv_cmd->tvc_log) {
+			pr_err("Unable to allocate tv_cmd->tvc_log\n");
 			goto out;
 		}
 	}

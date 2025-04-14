@@ -2335,7 +2335,7 @@ int vhost_log_write(struct vhost_virtqueue *vq, struct vhost_log *log,
 		}
 	}
 	/* Length written exceeds what we have stored. This is a bug. */
-	BUG();
+	WARN_ON_ONCE(true);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(vhost_log_write);
@@ -2546,7 +2546,19 @@ static int get_indirect(struct vhost_virtqueue *vq,
 		/* If this is an input descriptor, increment that count. */
 		if (access == VHOST_ACCESS_WO) {
 			*in_num += ret;
-			if (unlikely(log && ret)) {
+
+			/*
+			 * Since long time ago, the only user of vq->log is
+			 * vhost-net. The concern is to add support for
+			 * more devices (i.e. vhost-scsi or vsock) may
+			 * reveals unknown issue in the vhost API. Add a
+			 * boundary check and WARNING.
+			 *
+			 * The log_num is used and not NULL only when log
+			 * is not NULL.
+			 */
+			WARN_ON_ONCE(unlikely(log && ret && (*log_num >= vq->dev->iov_limit)));
+			if (unlikely(log && ret && (*log_num < vq->dev->iov_limit))) {
 				log[*log_num].addr = vhost64_to_cpu(vq, desc.addr);
 				log[*log_num].len = vhost32_to_cpu(vq, desc.len);
 				++*log_num;
@@ -2666,7 +2678,18 @@ int vhost_get_vq_desc(struct vhost_virtqueue *vq,
 			/* If this is an input descriptor,
 			 * increment that count. */
 			*in_num += ret;
-			if (unlikely(log && ret)) {
+			/*
+			 * Since long time ago, the only user of vq->log is
+			 * vhost-net. The concern is to add support for
+			 * more devices (i.e. vhost-scsi or vsock) may
+			 * reveals unknown issue in the vhost API. Add a
+			 * boundary check and WARNING.
+			 *
+			 * The log_num is used and not NULL only when log
+			 * is not NULL.
+			 */
+			WARN_ON_ONCE(unlikely(log && ret && (*log_num >= vq->dev->iov_limit)));
+			if (unlikely(log && ret && (*log_num < vq->dev->iov_limit))) {
 				log[*log_num].addr = vhost64_to_cpu(vq, desc.addr);
 				log[*log_num].len = vhost32_to_cpu(vq, desc.len);
 				++*log_num;
