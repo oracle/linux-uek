@@ -576,8 +576,8 @@ Requires(preun): %{_sbindir}/new-kernel-pkg\
 Requires: numactl-libs\
 Conflicts: %{kernel_dot_org_conflicts}\
 Conflicts: %{package_conflicts}\
-Conflicts: shim-x64 < 15.8-1.0.5.el7\
-Conflicts: shim-ia32 < 15.8-1.0.5.el7\
+Conflicts: shim-x64 < 15.8-1.0.5\
+Conflicts: shim-ia32 < 15.8-1.0.5\
 Provides: oracle(kernel-sig-key) == 202502\
 %{expand:%%{?kernel%{?1:_%{1}}_conflicts:Conflicts: %%{kernel%{?1:_%{1}}_conflicts}}}\
 %{expand:%%{?kernel%{?1:_%{1}}_obsoletes:Obsoletes: %%{kernel%{?1:_%{1}}_obsoletes}}}\
