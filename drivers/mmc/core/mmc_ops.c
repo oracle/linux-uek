@@ -23,6 +23,7 @@
 #define MMC_SANITIZE_TIMEOUT_MS		(240 * 1000) /* 240s */
 #define MMC_OP_COND_PERIOD_US		(4 * 1000) /* 4ms */
 #define MMC_OP_COND_TIMEOUT_MS		1000 /* 1s */
+#define MMC_CACHE_FLUSH_INTERRUPT_MS	(3 * 1000) /* 3s */
 
 static const u8 tuning_blk_pattern_4bit[] = {
 	0xff, 0x0f, 0xff, 0x00, 0xff, 0xcc, 0xc3, 0xcc,
@@ -65,6 +66,8 @@ struct mmc_op_cond_busy_data {
 	u32 ocr;
 	struct mmc_command *cmd;
 };
+
+static int mmc_send_hpi_cmd(struct mmc_card *card);
 
 int __mmc_send_status(struct mmc_card *card, u32 *status, unsigned int retries)
 {
@@ -505,12 +508,24 @@ int __mmc_poll_for_busy(struct mmc_host *host, unsigned int period_us,
 			void *cb_data)
 {
 	int err;
-	unsigned long timeout;
+	unsigned long timeout, timeout_hpi;
 	unsigned int udelay = period_us ? period_us : 32, udelay_max = 32768;
+	struct mmc_busy_data *data = cb_data;
+	struct mmc_card *card = data->card;
+	bool hpi_expired = false;
+	bool hpi_sent = false;
 	bool expired = false;
 	bool busy = false;
 
 	timeout = jiffies + msecs_to_jiffies(timeout_ms) + 1;
+
+	/*
+	 * Cache flush is periodically sent (~5-7 secconds).  Interrupt a lengthy
+	 * cache flush to allow timely normal IO and continue the flush when the
+	 * next cache flush command is sent.
+	 */
+	timeout_hpi = jiffies + msecs_to_jiffies(MMC_CACHE_FLUSH_INTERRUPT_MS) + 1;
+
 	do {
 		/*
 		 * Due to the possibility of being preempted while polling,
@@ -521,6 +536,20 @@ int __mmc_poll_for_busy(struct mmc_host *host, unsigned int period_us,
 		err = (*busy_cb)(cb_data, &busy);
 		if (err)
 			return err;
+
+		hpi_expired = time_after(jiffies, timeout_hpi);
+		if (!hpi_sent && card->ext_csd.hpi_en && hpi_expired && busy &&
+		    data->busy_cmd == MMC_BUSY_CMD6) {
+			err = mmc_send_hpi_cmd(card);
+			if (err) {
+				pr_err("%s: HPI to interrupt cache flush failed %d\n",
+				       mmc_hostname(host), err);
+			} else {
+				pr_info("%s: HPI sent to interrupt cache flush\n",
+					mmc_hostname(host));
+				hpi_sent = true;
+			}
+		}
 
 		/* Timeout if the device still remains busy. */
 		if (expired && busy) {
