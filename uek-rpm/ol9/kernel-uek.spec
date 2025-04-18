@@ -141,6 +141,12 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 # This is used to enable/disable kABI checking.
 %define with_kabichk 1
 
+# gcov can only be enabled on x86_64 and aarch64 for now
+%define with_gcov 0
+%ifarch x86_64 aarch64
+%define with_gcov %{?_with_gcov:1} %{?!_with_gcov:0}
+%endif
+
 # .BTF section must stay in modules
 %define _find_debuginfo_opt_btf --keep-section .BTF
 %define _find_debuginfo_opts %{_find_debuginfo_opt_btf}
@@ -643,6 +649,14 @@ Provides: installonlypkg(%{installonly_variant_name}-tools)
 This package contains some of tools/ directory binaries from the kernel source.
 %endif
 
+%if %{with_gcov}
+%package gcov
+Summary: gcov graph and source files for coverage data collection.
+Group: Development/System
+%description gcov
+kernel-gcov includes the gcov graph and source files for gcov coverage collection.
+%endif
+
 #
 # This macro does requires, provides, conflicts, obsoletes for a kernel package.
 #       %%kernel_reqprovconf <subpackage>
@@ -953,6 +967,15 @@ done
 # get rid of unwanted files resulting from patch fuzz
 find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
 
+# Enable GCOV kernel config options if gcov is on, only apply on configs/config
+%if %{with_gcov}
+  scripts/config --file configs/config --enable CONFIG_GCOV_KERNEL --enable CONFIG_GCOV_PROFILE_ALL
+  # For the aarch64 builds, to avoid elf header section blowing up, CONFIG_KSPLICE needs to be disabled
+  %ifarch aarch64
+    scripts/config --file configs/config --disable CONFIG_KSPLICE
+  %endif
+%endif
+
 ###
 ### build
 ###
@@ -1145,6 +1168,14 @@ BuildKernel() {
     %{make} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT modules_install KERNELRELEASE=$KernelVer
     %{make} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT ctf_install KERNELRELEASE=$KernelVer
     # check if the modules are being signed
+
+%if %{with_gcov}
+    # install gcov-needed files to $BUILDROOT/$BUILD/...:
+    # gcov_info->filename is absolute path
+    # gcno references to sources can use absolute paths (e.g. in out-of-tree builds)
+    # sysfs symlink targets (set up at compile time) use absolute paths to BUILD dir
+    find . \( -name '*.gcno' -o -name '*.[chS]' \) -exec install -D '{}' "$RPM_BUILD_ROOT/$(pwd)/{}" \;
+%endif
 
 %ifarch %{vdso_arches}
     %{make} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT vdso_install KERNELRELEASE=$KernelVer
@@ -2063,6 +2094,14 @@ fi
 %ifarch x86_64 %{all_x86}
 /usr/sbin/x86_energy_perf_policy
 /usr/sbin/turbostat
+%endif
+%endif
+
+%if %{with_gcov}
+%ifarch x86_64 aarch64
+%files gcov
+%defattr(-,root,root)
+%{_builddir}
 %endif
 %endif
 
