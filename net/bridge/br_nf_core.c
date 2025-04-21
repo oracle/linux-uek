@@ -66,7 +66,7 @@ static struct dst_ops fake_dst_ops = {
  * require us to fill additional fields.
  */
 static const u32 br_dst_default_metrics[RTAX_MAX] = {
-	[RTAX_MTU - 1] = 1500,
+	[RTAX_MTU - 1] = 0,
 };
 
 void br_netfilter_rtable_init(struct net_bridge *br)
