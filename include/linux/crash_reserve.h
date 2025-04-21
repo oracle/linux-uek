@@ -20,7 +20,11 @@ int __init parse_crashkernel(char *cmdline, unsigned long long system_ram,
 
 #ifdef CONFIG_ARCH_HAS_GENERIC_CRASHKERNEL_RESERVATION
 #ifndef DEFAULT_CRASH_KERNEL_LOW_SIZE
+#ifdef __aarch64__
+#define DEFAULT_CRASH_KERNEL_LOW_SIZE   (256UL << 20)
+#else
 #define DEFAULT_CRASH_KERNEL_LOW_SIZE	(128UL << 20)
+#endif
 #endif
 #ifndef CRASH_ALIGN
 #define CRASH_ALIGN			SZ_2M
