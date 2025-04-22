@@ -135,6 +135,10 @@ static int otx2_mbox_up_handler_sdp_rings_update(struct otx2_nic *vf,
 	return 0;
 }
 
+static int otx2_mbox_up_handler_sdp_create_vfs(struct otx2_nic *vf,
+					       struct sdp_create_vfs_req *msg,
+					       struct msg_rsp *rsp);
+
 static int otx2vf_process_mbox_msg_up(struct otx2_nic *vf,
 				      struct mbox_msghdr *req)
 {
@@ -189,6 +193,20 @@ static int otx2vf_process_mbox_msg_up(struct otx2_nic *vf,
 		err = otx2_mbox_up_handler_sdp_rings_update(vf,
 							    (struct sdp_rings_cfg *)req
 							    , rsp);
+		return err;
+	case MBOX_MSG_SDP_CREATE_VFS:
+		rsp = (struct msg_rsp *)otx2_mbox_alloc_msg(&vf->mbox.mbox_up,
+						0, sizeof(struct msg_rsp));
+		if (!rsp)
+			return -ENOMEM;
+
+		rsp->hdr.id = MBOX_MSG_SDP_CREATE_VFS;
+		rsp->hdr.sig = OTX2_MBOX_RSP_SIG;
+		rsp->hdr.pcifunc = req->pcifunc;
+		rsp->hdr.rc = 0;
+		err = otx2_mbox_up_handler_sdp_create_vfs(vf,
+							  (struct sdp_create_vfs_req *)req
+							  , rsp);
 		return err;
 	default:
 		otx2_reply_invalid_msg(&vf->mbox.mbox_up, 0, 0, req->id);
@@ -596,6 +614,17 @@ static const struct net_device_ops otx2vf_netdev_ops = {
 	.ndo_hwtstamp_set = otx2_config_hwtstamp_set,
 };
 
+static netdev_tx_t null_xmit(struct sk_buff *skb, struct net_device *dev)
+{
+	dev_kfree_skb(skb);
+
+	return NETDEV_TX_OK;
+}
+
+static const struct net_device_ops otx2vf_netdev_null_ops = {
+	.ndo_start_xmit = null_xmit,
+};
+
 static int otx2_vf_wq_init(struct otx2_nic *vf)
 {
 	vf->otx2_wq = create_singlethread_workqueue("otx2vf_wq");
@@ -627,6 +656,376 @@ static int otx2vf_realloc_msix_vectors(struct otx2_nic *vf)
 	return otx2vf_register_mbox_intr(vf, false);
 }
 
+static int otx2_mbox_up_handler_sdp_create_vfs(struct otx2_nic *vf,
+					       struct sdp_create_vfs_req *msg,
+					       struct msg_rsp *rsp)
+{
+	struct net_device *netdev = vf->netdev;
+	int err, qcount, qos_txqs;
+	struct otx2_hw *hw;
+
+	/* Do rest of the initialization now */
+	hw = &vf->hw;
+	qcount = num_online_cpus();
+	/* Request AF to attach NPA and NIX LFs to this AF */
+	err = otx2_attach_npa_nix(vf);
+	if (err) {
+		dev_err(&vf->pdev->dev, "NIX and NPA LF attach failed\n");
+		return err;
+	}
+
+	/* Assign default mac address */
+	otx2_get_mac_from_af(netdev);
+
+	netdev->min_mtu = OTX2_MIN_MTU;
+	netdev->max_mtu = otx2_get_max_mtu(vf);
+	hw->max_mtu = netdev->max_mtu;
+
+	err = otx2vf_realloc_msix_vectors(vf);
+	if (err)
+		goto err_detach_rsrc;
+
+	err = cn10k_lmtst_init(vf);
+	if (err)
+		goto err_detach_rsrc;
+
+	/* Don't check for error.  Proceed without ptp */
+	otx2_ptp_init(vf);
+
+	err = otx2_vf_wq_init(vf);
+	if (err)
+		goto err_ptp_destroy;
+
+	err = otx2vf_mcam_flow_init(vf);
+	if (err)
+		goto err_ptp_destroy;
+
+	err = otx2_init_tc(vf);
+	if (err)
+		goto err_ptp_destroy;
+
+	err = otx2_register_dl(vf);
+	if (err)
+		goto err_shutdown_tc;
+
+	vf->af_xdp_zc_qidx = bitmap_zalloc(qcount, GFP_KERNEL);
+	if (!vf->af_xdp_zc_qidx)
+		goto err_shutdown_tc;
+
+#ifdef CONFIG_DCB
+	err = otx2_dcbnl_set_ops(netdev);
+	if (err)
+		goto err_shutdown_tc;
+#endif
+	qos_txqs = min_t(int, qcount, OTX2_QOS_MAX_LEAF_NODES);
+	otx2_qos_init(vf, qos_txqs);
+
+	otx2vf_set_ethtool_ops(netdev);
+	netdev->netdev_ops = &otx2vf_netdev_ops;
+
+	return 0;
+
+err_shutdown_tc:
+	otx2_shutdown_tc(vf);
+err_ptp_destroy:
+	otx2_ptp_destroy(vf);
+err_detach_rsrc:
+	free_percpu(vf->hw.lmt_info);
+	if (test_bit(CN10K_LMTST, &vf->hw.cap_flag))
+		qmem_free(vf->dev, vf->dync_lmt);
+	otx2_detach_resources(&vf->mbox);
+	return err;
+}
+
+static struct otx2_nic *otx2_pci_mbox_init(struct pci_dev *pdev)
+{
+	int num_vec = pci_msix_vec_count(pdev);
+	struct device *dev = &pdev->dev;
+	int err, qcount, qos_txqs;
+	struct net_device *netdev;
+	struct otx2_nic *vf;
+	struct otx2_hw *hw;
+
+	err = pcim_enable_device(pdev);
+	if (err) {
+		dev_err(dev, "Failed to enable PCI device\n");
+		return ERR_PTR(err);
+	}
+
+	err = pci_request_regions(pdev, DRV_NAME);
+	if (err) {
+		dev_err(dev, "PCI request regions failed 0x%x\n", err);
+		return ERR_PTR(err);
+	}
+
+	err = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(48));
+	if (err) {
+		dev_err(dev, "DMA mask config failed, abort\n");
+		goto err_release_regions;
+	}
+
+	pci_set_master(pdev);
+
+	qcount = num_online_cpus();
+	qos_txqs = min_t(int, qcount, OTX2_QOS_MAX_LEAF_NODES);
+	netdev = alloc_etherdev_mqs(sizeof(*vf), qcount + qos_txqs, qcount);
+	if (!netdev) {
+		err = -ENOMEM;
+		goto err_release_regions;
+	}
+
+	pci_set_drvdata(pdev, netdev);
+	SET_NETDEV_DEV(netdev, &pdev->dev);
+	vf = netdev_priv(netdev);
+	vf->netdev = netdev;
+	vf->pdev = pdev;
+	vf->dev = dev;
+	vf->iommu_domain = iommu_get_domain_for_dev(dev);
+	if (vf->iommu_domain)
+		vf->iommu_domain_type =
+			((struct iommu_domain *)vf->iommu_domain)->type;
+
+	vf->flags |= OTX2_FLAG_INTF_DOWN;
+	hw = &vf->hw;
+	hw->pdev = vf->pdev;
+	hw->rx_queues = qcount;
+	hw->tx_queues = qcount;
+	hw->max_queues = qcount;
+	hw->non_qos_queues = qcount;
+	hw->rbuf_len = OTX2_DEFAULT_RBUF_LEN;
+	/* Use CQE of 128 byte descriptor size by default */
+	hw->xqe_size = 128;
+	hw->irq_name = devm_kmalloc_array(dev, num_vec, NAME_SIZE,
+					  GFP_KERNEL);
+	if (!hw->irq_name) {
+		err = -ENOMEM;
+		goto err_free_netdev;
+	}
+
+	hw->affinity_mask = devm_kcalloc(dev, num_vec,
+					 sizeof(cpumask_var_t), GFP_KERNEL);
+	if (!hw->affinity_mask) {
+		err = -ENOMEM;
+		goto err_free_netdev;
+	}
+
+	err = pci_alloc_irq_vectors(pdev, num_vec, num_vec, PCI_IRQ_MSIX);
+	if (err < 0) {
+		dev_err(dev, "%s: Failed to alloc %d IRQ vectors\n",
+			__func__, num_vec);
+		goto err_free_netdev;
+	}
+
+	vf->reg_base = pcim_iomap(pdev, PCI_CFG_REG_BAR_NUM, 0);
+	if (!vf->reg_base) {
+		dev_err(dev, "Unable to map physical function CSRs, aborting\n");
+		err = -ENOMEM;
+		goto err_free_irq_vectors;
+	}
+
+	otx2_setup_dev_hw_settings(vf);
+
+	cn20k_init(vf);
+
+	/* Init VF <=> PF mailbox stuff */
+	err = otx2vf_vfaf_mbox_init(vf);
+	if (err)
+		goto err_free_irq_vectors;
+
+	/* Register mailbox interrupt */
+	err = otx2vf_register_mbox_intr(vf, true);
+	if (err)
+		goto err_mbox_destroy;
+
+	err = otx2_set_real_num_queues(netdev, qcount, qcount);
+	if (err)
+		goto err_disable_mbox_intr;
+
+	return vf;
+
+err_disable_mbox_intr:
+	otx2vf_disable_mbox_intr(vf);
+err_mbox_destroy:
+	otx2vf_vfaf_mbox_destroy(vf);
+err_free_irq_vectors:
+	pci_free_irq_vectors(hw->pdev);
+err_free_netdev:
+	pci_set_drvdata(pdev, NULL);
+	free_netdev(netdev);
+err_release_regions:
+	pci_release_regions(pdev);
+	return ERR_PTR(err);
+}
+
+static int otx2_setup_netdev(struct otx2_nic *vf)
+{
+	struct net_device *netdev = vf->netdev;
+	struct pci_dev *pdev;
+	struct otx2_hw *hw;
+	int vfid, err;
+
+	hw = &vf->hw;
+	pdev = hw->pdev;
+
+	netdev->hw_features = NETIF_F_RXCSUM | NETIF_F_IP_CSUM |
+			      NETIF_F_IPV6_CSUM | NETIF_F_RXHASH |
+			      NETIF_F_SG | NETIF_F_TSO | NETIF_F_TSO6 |
+			      NETIF_F_GSO_UDP_L4;
+	netdev->features = netdev->hw_features;
+	/* Support TSO on tag interface */
+	netdev->vlan_features |= netdev->features;
+	netdev->hw_features  |= NETIF_F_HW_VLAN_CTAG_TX |
+				NETIF_F_HW_VLAN_STAG_TX;
+	netdev->features |= netdev->hw_features;
+
+	netdev->hw_features |= NETIF_F_NTUPLE;
+	netdev->hw_features |= NETIF_F_RXALL;
+	netdev->hw_features |= NETIF_F_HW_TC;
+
+	netif_set_tso_max_segs(netdev, OTX2_MAX_GSO_SEGS);
+	netdev->watchdog_timeo = OTX2_TX_TIMEOUT;
+
+	netdev->netdev_ops = &otx2vf_netdev_null_ops;
+
+	vfid = (vf->pcifunc >> RVU_PFVF_FUNC_SHIFT) & RVU_PFVF_FUNC_MASK;
+	/* VF number is VF number + 1 in pcifunc */
+	vfid -= 1;
+
+	/* Host PF0 -> epf0
+	 * Host PF0 VF0 -> epf0-vf0
+	 */
+	if (vfid)
+		snprintf(netdev->name, sizeof(netdev->name), "epf%d-vf%d",
+			 pdev->bus->number, vfid - 1);
+	else
+		snprintf(netdev->name, sizeof(netdev->name), "epf%d",
+			 pdev->bus->number);
+
+	err = register_netdev(netdev);
+	if (err) {
+		dev_err(&pdev->dev, "Failed to register netdevice\n");
+		return err;
+	}
+
+	return 0;
+}
+
+static int otx2_sdpvf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+{
+	struct device *dev = &pdev->dev;
+	int err, qcount, qos_txqs;
+	struct net_device *netdev;
+	struct otx2_nic *vf;
+	struct otx2_hw *hw;
+	int vfid;
+
+	vf = otx2_pci_mbox_init(pdev);
+	if (IS_ERR(vf)) {
+		dev_err(dev, "Could not init PCI and mailbox\n");
+		return err;
+	}
+
+	netdev = vf->netdev;
+
+	err = otx2_setup_netdev(vf);
+	if (err) {
+		dev_err(dev, "Could not register netdev\n");
+		goto err_disable_mbox_intr;
+	}
+
+	vfid = (vf->pcifunc >> RVU_PFVF_FUNC_SHIFT) & RVU_PFVF_FUNC_MASK;
+	/* VF number is VF number + 1 in pcifunc */
+	vfid -= 1;
+
+	/* First VF, VF0 always serve IO for host PF. For VF0s we fully bring
+	 * up the interface so that host PF, EPF is operational. But rest of the
+	 * VFs are brought up only when VFs are created on the host i.e,
+	 * SDP_CREATE_VFS message is received from PF.
+	 */
+	if (vfid != 0)
+		return 0;
+
+	qcount = num_online_cpus();
+
+	hw = &vf->hw;
+
+	/* Request AF to attach NPA and NIX LFs to this AF */
+	err = otx2_attach_npa_nix(vf);
+	if (err)
+		goto err_unreg_netdev;
+
+	/* Assign default mac address */
+	otx2_get_mac_from_af(netdev);
+
+	netdev->min_mtu = OTX2_MIN_MTU;
+	netdev->max_mtu = otx2_get_max_mtu(vf);
+	hw->max_mtu = netdev->max_mtu;
+
+	err = otx2vf_realloc_msix_vectors(vf);
+	if (err)
+		goto err_detach_rsrc;
+
+	err = cn10k_lmtst_init(vf);
+	if (err)
+		goto err_detach_rsrc;
+
+	/* Don't check for error.  Proceed without ptp */
+	otx2_ptp_init(vf);
+
+	err = otx2_vf_wq_init(vf);
+	if (err)
+		goto err_ptp_destroy;
+
+	err = otx2vf_mcam_flow_init(vf);
+	if (err)
+		goto err_ptp_destroy;
+
+	err = otx2_init_tc(vf);
+	if (err)
+		goto err_ptp_destroy;
+
+	err = otx2_register_dl(vf);
+	if (err)
+		goto err_shutdown_tc;
+
+	vf->af_xdp_zc_qidx = bitmap_zalloc(qcount, GFP_KERNEL);
+	if (!vf->af_xdp_zc_qidx)
+		goto err_shutdown_tc;
+
+#ifdef CONFIG_DCB
+	err = otx2_dcbnl_set_ops(netdev);
+	if (err)
+		goto err_shutdown_tc;
+#endif
+	otx2_qos_init(vf, qos_txqs);
+
+	otx2vf_set_ethtool_ops(netdev);
+	netdev->netdev_ops = &otx2vf_netdev_ops;
+
+	return 0;
+
+err_shutdown_tc:
+	otx2_shutdown_tc(vf);
+err_ptp_destroy:
+	otx2_ptp_destroy(vf);
+err_detach_rsrc:
+	free_percpu(vf->hw.lmt_info);
+	if (test_bit(CN10K_LMTST, &vf->hw.cap_flag))
+		qmem_free(vf->dev, vf->dync_lmt);
+	otx2_detach_resources(&vf->mbox);
+err_unreg_netdev:
+	unregister_netdev(netdev);
+err_disable_mbox_intr:
+	otx2vf_disable_mbox_intr(vf);
+	otx2vf_vfaf_mbox_destroy(vf);
+	pci_set_drvdata(pdev, NULL);
+	free_netdev(netdev);
+	pci_free_irq_vectors(hw->pdev);
+	pci_release_regions(pdev);
+
+	return err;
+}
+
 static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	int num_vec = pci_msix_vec_count(pdev);
@@ -635,6 +1034,9 @@ static int otx2vf_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	struct net_device *netdev;
 	struct otx2_nic *vf;
 	struct otx2_hw *hw;
+
+	if (is_cn20k(pdev) && is_otx2_sdpvf(pdev))
+		return otx2_sdpvf_probe(pdev, id);
 
 	err = pcim_enable_device(pdev);
 	if (err) {
