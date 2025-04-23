@@ -29,6 +29,8 @@ M(PSW_FID_FREE_ENTRY,   0x1208, psw_fid_free_entry, psw_fid_free_entry_req,\
 M(PSW_EPF_DBL_CFG,      0x1209, psw_epf_dbl_cfg, psw_epf_dbl_cfg_req, msg_rsp) \
 M(PSW_EPFVF_MAP_CFG,    0x120A, psw_epfvf_map_cfg, psw_epfvf_map_cfg_req, \
 				msg_rsp)				\
+M(PSW_EPFVF_PCIE_CFG,   0x120B, psw_epfvf_pcie_cfg, psw_epfvf_pcie_cfg_req, \
+				msg_rsp)				\
 
 /* PSW mailbox error codes
  * Range 1301 - 1400.
@@ -181,6 +183,18 @@ struct psw_epfvf_map_cfg_req {
 	u16 lf_id; /* PSW LF slot id */
 	u8 enable; /* Enable or disable EPF/EVF mapping */
 	u8 rsvd1[3];
+	u64 rsvd2;
+};
+
+/* Configures PSW_AF_EPF(0..15)_EVF(0..127)_PCIE_CFG and
+ * PSW_AF_EPF(0..15)_PCIE_CFG
+ */
+struct psw_epfvf_pcie_cfg_req {
+	struct mbox_msghdr hdr;
+	u16 evf_id; /* Host VF ID */
+	u8 msix_enable; /* Enable or disable MSIX */
+	u8 master_enable; /* Enable or disable master */
+	u32 rsvd1;
 	u64 rsvd2;
 };
 

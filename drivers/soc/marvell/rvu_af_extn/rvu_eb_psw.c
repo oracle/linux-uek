@@ -109,6 +109,9 @@
 #define MAP_LFNUM  GENMASK_ULL(9, 4)
 #define MAP_ENABLE GENMASK_ULL(0, 0)
 
+#define PCIE_CFG_MASTERENA  GENMASK_ULL(2, 2)
+#define PCIE_CFG_MSIXENA    GENMASK_ULL(0, 0)
+
 struct gid_key {
 	u16 epffunc;
 	u16 rid;
@@ -579,6 +582,29 @@ err:
 	mutex_unlock(&rvu->rsrc_lock);
 
 	return ret;
+}
+
+int rvu_mbox_handler_psw_epfvf_pcie_cfg(struct rvu *rvu,
+					struct psw_epfvf_pcie_cfg_req *req,
+					struct msg_rsp *rsp)
+{
+	struct psw_rsrc *psw = rvu->hw->psw;
+	int blkaddr = BLKADDR_PSW;
+	u8 pf, epf;
+	u64 reg;
+
+	pf = rvu_get_pf(rvu->pdev, req->hdr.pcifunc);
+	epf = psw->pf2epf_map[pf];
+
+	reg = FIELD_PREP(PCIE_CFG_MASTERENA, req->master_enable);
+	reg |= FIELD_PREP(PCIE_CFG_MSIXENA, req->msix_enable);
+
+	if (req->evf_id == 0)
+		rvu_write64(rvu, blkaddr, PSW_AF_EPFX_PCIE_CFG(epf), reg);
+	else
+		rvu_write64(rvu, blkaddr, PSW_AF_EPFX_EVFX_PCIE_CFG(epf, req->evf_id - 1), reg);
+
+	return 0;
 }
 
 int rvu_mbox_handler_psw_epfvf_map_cfg(struct rvu *rvu,
