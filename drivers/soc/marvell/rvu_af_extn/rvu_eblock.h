@@ -60,6 +60,7 @@ int rvu_eblock_register_driver(const struct rvu_eblock_driver_ops *ops);
 void rvu_eblock_unregister_driver(struct rvu_eblock_driver_ops *ops);
 int rvu_eblock_mbox_handler(struct otx2_mbox *mbox, int devid,
 			    struct mbox_msghdr *req);
+void rvu_eblock_reset(struct rvu *rvu, int blkaddr, u64 rst_reg);
 int rvu_dpi_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr,
 			int lf, int slot);
 
@@ -74,6 +75,8 @@ void sdp_eb_module_init(void);
 void sdp_eb_module_exit(void);
 void ml_eb_module_init(void);
 void ml_eb_module_exit(void);
+void psw_eb_module_init(void);
+void psw_eb_module_exit(void);
 
 /* ML block */
 int rvu_ml_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot);

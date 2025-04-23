@@ -337,6 +337,7 @@ struct rvu_pfvf {
 	u16		dpilfs;
 	u16		dpi1_lfs;
 	u16		mllfs;
+	u16		pswlfs;
 	u8		cgx_lmac;
 	u8		sso_uniq_ident;
 
@@ -585,6 +586,7 @@ struct rvu_hwinfo {
 	struct dpi_rsrc *dpi;
 	struct dpi_rsrc *dpi1;
 	struct sdp_rsrc sdp;
+	struct psw_rsrc	*psw;
 };
 
 struct mbox_wq_info {

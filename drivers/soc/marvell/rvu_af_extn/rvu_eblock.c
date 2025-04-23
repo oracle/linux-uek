@@ -173,10 +173,28 @@ static inline bool is_eblock(int blkaddr)
 	case BLKADDR_RFOE1:
 	case BLKADDR_SDP:
 	case BLKADDR_ML:
+	case BLKADDR_PSW:
 		return true;
 	default:
 		return false;
 	};
+}
+
+void rvu_eblock_reset(struct rvu *rvu, int blkaddr, u64 rst_reg)
+{
+	struct rvu_block *block = &rvu->hw->block[blkaddr];
+	int err;
+
+	if (!block->implemented)
+		return;
+
+	rvu_write64(rvu, blkaddr, rst_reg, BIT_ULL(0));
+	err = rvu_poll_reg(rvu, blkaddr, rst_reg, BIT_ULL(63), true);
+	if (err) {
+		dev_err(rvu->dev, "HW block:%d reset timeout retrying again\n", blkaddr);
+		while (rvu_poll_reg(rvu, blkaddr, rst_reg, BIT_ULL(63), true) == -EBUSY)
+			;
+	}
 }
 
 /* API for block addition and removal from the extension bus */
@@ -406,6 +424,7 @@ void rvu_eblock_module_init(void)
 	cplt_eb_module_init();
 	sdp_eb_module_init();
 	ml_eb_module_init();
+	psw_eb_module_init();
 }
 
 void rvu_eblock_module_exit(void)
@@ -419,4 +438,5 @@ void rvu_eblock_module_exit(void)
 	cplt_eb_module_exit();
 	sdp_eb_module_exit();
 	ml_eb_module_exit();
+	psw_eb_module_exit();
 }

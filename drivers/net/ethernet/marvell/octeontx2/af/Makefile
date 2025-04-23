@@ -24,4 +24,5 @@ rvu_af-y := cgx.o rvu.o rvu_cgx.o rvu_npa.o rvu_nix.o rvu_nix_spi.o \
 		  $(EB_DIR)/rvu_eb_sdp.o \
 		  $(EB_DIR)/rvu_eb_dpi.o \
 		  $(EB_DIR)/rvu_eb_cplt.o \
-		  $(EB_DIR)/rvu_eb_ml.o
+		  $(EB_DIR)/rvu_eb_ml.o \
+		  $(EB_DIR)/rvu_eb_psw.o
