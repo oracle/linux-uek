@@ -137,6 +137,10 @@
 #define PSW_AF_GID_ENTRY_RESULT0            0x4200018ull
 #define PSW_AF_GID_ENTRY_RESULT1            0x4200020ull
 #define PSW_AF_GID_LU                       0x4200028ull
+#define PSW_AF_HOX_QCX(a, b)                (0x5000000ull | ((a) << 6) | \
+					     ((b) << 3))
+#define PSW_AF_SHOX_QCX(a, b)               (0x5100000ull | ((a) << 6) | \
+					     ((b) << 3))
 #define PSW_AF_PFX_PIDBL_CFG(a)             (0x5200000ull | ((a) << 3))
 #define PSW_AF_PFX_CIDBL_CFG(a)             (0x5200100ull | ((a) << 3))
 #define PSW_AF_DBL_TO_TH(a)                 (0x5200200ull | ((a) << 3))
@@ -146,6 +150,10 @@
 #define PSW_AF_SHO_QE_CAPTURE               0x5200620ull
 #define PSW_AF_NQE_CAPTURE                  0x5200630ull
 #define PSW_AF_HOQ_QOS_WRR                  0x5200640ull
+#define PSW_AF_HIX_QCX(a, b)                (0x6000000ull | ((a) << 6) | \
+					     ((b) << 3))
+#define PSW_AF_SHIX_QCX(a, b)               (0x6100000ull | ((a) << 6) | \
+					     ((b) << 3))
 #define PSW_AF_HI_QE_CAPTURE                0x6200000ull
 #define PSW_AF_SHI_QE_CAPTURE               0x6200010ull
 #define PSW_AF_AQE_CAPTURE                  0x6200020ull
@@ -180,6 +188,14 @@
 #define PSW_AF_LFX_NCB_ATTR(a)              (0xC000200ull | ((a) << 3))
 #define PSW_AF_CCLK_PART1_ACTIVE_PC(a)      (0xC000400ull | ((a) << 3))
 #define PSW_AF_CLK_EN_PART1                 0xC000450ull
+
+#define PSW_AF_BAR2_SEL                     0x9000000
+#define PSW_AF_BAR2_ALIASX(a, b)            RVU_AF_BAR2_ALIASX(a, b)
+
+#define PSW_LF_ANQCX(a)                 (0x40ull | ((a) << 3))
+#define PSW_LF_AAQCX(a)                 (0x80ull | ((a) << 3))
+#define PSW_LF_NX_QCX(a, b)             (0x200ull | ((a) << 6) | ((b) << 3))
+#define PSW_LF_AX_QCX(a, b)             (0x400ull | ((a) << 6) | ((b) << 3))
 
 /* ML AF interrupt vector enumeration */
 enum ml_af_int_vec_e {

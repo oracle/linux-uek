@@ -26,6 +26,7 @@
 #define PSW_MAX_RID_CNT_PER_FUNC 260
 #define PSW_MAX_QUEUES 4096
 #define PSW_PST_ENTRY_SZ 32
+#define PSW_LF_MAX_NQS 8
 
 #define CONST_MAX_EPFS  GENMASK_ULL(63, 48)
 #define CONST1_MAX_GID  GENMASK_ULL(63, 48)
@@ -327,6 +328,54 @@ static int rvu_psw_check_rsrc_availability(struct rvu *rvu,
 	return 0;
 }
 
+static int disable_queue_and_poll(struct rvu *rvu, u64 blkaddr,
+				  u64 ena_dis_offset, u64 idle_offset)
+{
+	u64 reg;
+
+	reg = rvu_read64(rvu, blkaddr, ena_dis_offset);
+	if (reg & 0x1) {
+		rvu_write64(rvu, blkaddr, ena_dis_offset, reg & ~0x1ULL);
+		return rvu_poll_reg(rvu, blkaddr, idle_offset, BIT_ULL(3),
+				    false);
+	}
+	return 0;
+}
+
+static void psw_af_queue_disable(struct rvu *rvu, int blkaddr, u16 qid)
+{
+	disable_queue_and_poll(rvu, blkaddr, PSW_AF_HOX_QCX(qid, 0), PSW_AF_HOX_QCX(qid, 7));
+	disable_queue_and_poll(rvu, blkaddr, PSW_AF_SHOX_QCX(qid, 0), PSW_AF_SHOX_QCX(qid, 7));
+	disable_queue_and_poll(rvu, blkaddr, PSW_AF_HIX_QCX(qid, 0), PSW_AF_HIX_QCX(qid, 7));
+	disable_queue_and_poll(rvu, blkaddr, PSW_AF_SHIX_QCX(qid, 0), PSW_AF_SHIX_QCX(qid, 7));
+}
+
+static void psw_lf_queues_disable(struct rvu *rvu, u16 pcifunc, int blkaddr, int slot)
+{
+	int i;
+
+	mutex_lock(&rvu->alias_lock);
+	/* Enable BAR2 ALIAS for this pcifunc. */
+	rvu_bar2_sel_write64(rvu, blkaddr, PSW_AF_BAR2_SEL,
+			     BIT_ULL(16) | pcifunc);
+
+	disable_queue_and_poll(rvu, blkaddr, PSW_AF_BAR2_ALIASX(slot, PSW_LF_ANQCX(0)),
+			       PSW_AF_BAR2_ALIASX(slot, PSW_LF_ANQCX(7)));
+
+	disable_queue_and_poll(rvu, blkaddr, PSW_AF_BAR2_ALIASX(slot, PSW_LF_AAQCX(0)),
+			       PSW_AF_BAR2_ALIASX(slot, PSW_LF_AAQCX(7)));
+
+	for (i = 0; i < PSW_LF_MAX_NQS; i++) {
+		disable_queue_and_poll(rvu, blkaddr, PSW_AF_BAR2_ALIASX(slot, PSW_LF_NX_QCX(i, 0)),
+				       PSW_AF_BAR2_ALIASX(slot, PSW_LF_NX_QCX(i, 7)));
+
+		disable_queue_and_poll(rvu, blkaddr, PSW_AF_BAR2_ALIASX(slot, PSW_LF_AX_QCX(i, 0)),
+				       PSW_AF_BAR2_ALIASX(slot, PSW_LF_AX_QCX(i, 7)));
+	}
+	rvu_bar2_sel_write64(rvu, blkaddr, PSW_AF_BAR2_SEL, 0);
+	mutex_unlock(&rvu->alias_lock);
+}
+
 static int psw_tps_pause_and_update(struct rvu *rvu, int blkaddr, u64 reg,
 				    u64 offset)
 {
@@ -473,6 +522,9 @@ static int psw_gid_delete(struct rvu *rvu, struct gid_key *key,
 	action->iqvalid = iqvalid;
 	action->oqvalid = oqvalid;
 	action->mvalid = mvalid;
+
+	if (iqvalid || oqvalid)
+		psw_af_queue_disable(rvu, BLKADDR_PSW, action->qid);
 
 	if (FIELD_GET(GID_ENT_RSLT1_LL_LENGTH, result1) == 1)
 		/* Match is on first entry */
@@ -1030,6 +1082,7 @@ static int psw_lf_free(struct rvu *rvu, u16 pcifunc)
 		if (pswlf < 0)
 			return PSW_AF_ERR_LF_INVALID;
 
+		rvu_psw_lf_teardown(rvu, pcifunc, blkaddr, pswlf, slot);
 		/* Reset LF */
 		ret = rvu_lf_reset(rvu, block, pswlf);
 		if (ret) {
@@ -1109,6 +1162,101 @@ int rvu_mbox_handler_psw_attach_resources(struct rvu *rvu,
 exit:
 	mutex_unlock(&rvu->rsrc_lock);
 	return ret;
+}
+
+static void psw_epfvf_teardown(struct rvu *rvu, int blkaddr, u16 epffunc, u8 epf, u16 evf_id)
+{
+	struct psw_rsrc *psw = rvu->hw->psw;
+	struct psw_timed_polling_s *addr;
+	struct gid_action action = {0};
+	struct gid_key key;
+	u64 reg;
+	int i;
+
+	key.epffunc = epffunc;
+	/* Delete the GID entries for this epffunc */
+	for (i = 0; i < PSW_MAX_RID_CNT_PER_FUNC; i++) {
+		key.rid = i;
+		psw_gid_delete(rvu, &key, &action);
+
+		mutex_lock(&rvu->rsrc_lock);
+		if (action.iqvalid || action.oqvalid)
+			rvu_free_rsrc(&psw->qid_t, action.qid);
+		if (action.mvalid)
+			rvu_free_rsrc(&psw->mid_t, action.mid);
+
+		mutex_unlock(&rvu->rsrc_lock);
+	}
+	if (!rvu->fwdata)
+		goto skip_tsp;
+
+	/* Disable structure polling for this epffunc */
+	for (i = 0; i < psw->tst_t.max; i++) {
+		addr = psw->pst_base_addr;
+		if ((addr[i].w0 & 0xffff) != key.epffunc)
+			continue;
+		reg = rvu_read64(rvu, blkaddr,
+				 PSW_AF_TIMER_SEL_TBL(i));
+		if (FIELD_GET(TST_ENABLE, reg)) {
+			reg = FIELD_PREP(TST_ENABLE, 0);
+			psw_tps_pause_and_update(rvu, blkaddr,
+						 PSW_AF_TIMER_SEL_TBL(i), reg);
+			rvu_free_rsrc(&psw->tst_t, i);
+		}
+	}
+skip_tsp:
+	/* Clear this epffunc pcie config and lf mapping */
+	if (evf_id == 0) {
+		rvu_write64(rvu, blkaddr, PSW_AF_EPFX_PCIE_CFG(epf), 0ULL);
+		rvu_write64(rvu, blkaddr, PSW_AF_EPFX_MAP(epf), 0ULL);
+	} else {
+		rvu_write64(rvu, blkaddr,
+			    PSW_AF_EPFX_EVFX_PCIE_CFG(epf, evf_id - 1), 0ULL);
+		rvu_write64(rvu, blkaddr,
+			    PSW_AF_EPFX_EVFX_MAP(epf, evf_id - 1), 0ULL);
+	}
+	/* Delete the FID enties for this epffunc */
+	for (i = 0; i < psw->fid_t.max; i++) {
+		reg = rvu_read64(rvu, blkaddr, PSW_AF_FID_ATTR(i));
+		if (epf == FIELD_GET(FID_EPF_NUM, reg) &&
+		    FIELD_GET(FID_VALID, reg)) {
+			rvu_write64(rvu, blkaddr, PSW_AF_FID_ATTR(i), 0x0ULL);
+			rvu_free_rsrc(&psw->fid_t, i);
+		}
+	}
+}
+
+int rvu_psw_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int lf,
+			int slot)
+{
+	if (!is_block_implemented(rvu->hw, blkaddr))
+		return 0;
+
+	psw_lf_queues_disable(rvu, pcifunc, blkaddr, slot);
+
+	return 0;
+}
+
+int rvu_psw_epf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr)
+{
+	struct psw_rsrc *psw = rvu->hw->psw;
+	u16 evf_id, epffunc, nb_epfvfs = 2;
+	u8 pf, epf, port_epf, port;
+
+	if (!is_block_implemented(rvu->hw, blkaddr))
+		return 0;
+
+	pf = rvu_get_pf(rvu->pdev, pcifunc);
+	epf = psw->pf2epf_map[pf];
+	port = PSW_PEM_ID(epf);
+	port_epf = PSW_PEM_EPF(epf);
+
+	for (evf_id = 0; evf_id < nb_epfvfs; evf_id++) {
+		epffunc = PSW_EPFFUNC(port, port_epf, evf_id);
+		psw_epfvf_teardown(rvu, blkaddr, epffunc, epf, evf_id);
+	}
+
+	return 0;
 }
 
 static void rvu_psw_unregister_interrupts_block(struct rvu_block *block, void *data)

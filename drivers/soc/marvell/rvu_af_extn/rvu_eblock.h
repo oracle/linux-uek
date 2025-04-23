@@ -80,3 +80,8 @@ void psw_eb_module_exit(void);
 
 /* ML block */
 int rvu_ml_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot);
+
+/* PSW block */
+int rvu_psw_epf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr);
+int rvu_psw_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int lf,
+			int slot);

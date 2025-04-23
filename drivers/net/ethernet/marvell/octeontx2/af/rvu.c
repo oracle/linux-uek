@@ -3593,6 +3593,8 @@ static void rvu_blklf_teardown(struct rvu *rvu, u16 pcifunc, u8 blkaddr)
 		}
 		rvu_sso_cleanup_xaq_aura(rvu, pcifunc, num_lfs);
 	}
+	if (block->addr == BLKADDR_PSW)
+		rvu_psw_epf_teardown(rvu, pcifunc, block->addr);
 
 	for (slot = 0; slot < num_lfs; slot++) {
 		lf = rvu_get_lf(rvu, block, pcifunc, slot);
@@ -3622,6 +3624,9 @@ static void rvu_blklf_teardown(struct rvu *rvu, u16 pcifunc, u8 blkaddr)
 					    slot);
 		else if (block->addr == BLKADDR_ML)
 			rvu_ml_lf_teardown(rvu, pcifunc, lf, slot);
+		else if (block->addr == BLKADDR_PSW)
+			rvu_psw_lf_teardown(rvu, pcifunc, block->addr, lf,
+					    slot);
 
 		err = rvu_lf_reset(rvu, block, lf);
 		if (err) {
@@ -3678,6 +3683,7 @@ void __rvu_flr_handler(struct rvu *rvu, u16 pcifunc)
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_NPA);
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_DPI0);
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_DPI1);
+	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_PSW);
 	rvu_reset_lmt_map_tbl(rvu, pcifunc);
 	rvu_detach_rsrcs(rvu, NULL, pcifunc);
 	rvu_sso_pfvf_rst(rvu, pcifunc);
