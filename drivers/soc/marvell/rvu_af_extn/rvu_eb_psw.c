@@ -22,6 +22,7 @@
 #define PSW_EPFFUNC(port, epf, vf_id)	\
 		((((port) & 0x1) << 14) | (((epf) & 0x7) << 9) | \
 		((vf_id) & 0xFF))
+#define PSW_ECC_INT_BITS 37
 #define CONST_MAX_EPFS  GENMASK_ULL(63, 48)
 
 struct psw_rsrc {
@@ -36,6 +37,148 @@ struct psw_drvdata {
 	struct psw_rsrc	rsrc;
 	int res_idx;
 };
+
+static irqreturn_t psw_api_notif_intr_handler(int irq, void *ptr)
+{
+	struct rvu_block *block = ptr;
+	struct rvu *rvu = block->rvu;
+	int blkaddr = block->addr;
+	u64 reg;
+
+	reg = rvu_read64(rvu, blkaddr, PSW_AF_APINOTIF_INT);
+
+	rvu_write64(rvu, blkaddr, PSW_AF_APINOTIF_INT, reg);
+
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t psw_gen_intr_handler(int irq, void *ptr)
+{
+	struct rvu_block *block = ptr;
+	struct rvu *rvu = block->rvu;
+	int blkaddr = block->addr;
+	u64 reg;
+
+	reg = rvu_read64(rvu, blkaddr, PSW_AF_GEN_INT);
+
+	rvu_write64(rvu, blkaddr, PSW_AF_GEN_INT, reg);
+
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t psw_rvu_intr_handler(int irq, void *ptr)
+{
+	struct rvu_block *block = ptr;
+	struct rvu *rvu = block->rvu;
+	int blkaddr = block->addr;
+	u64 reg;
+
+	reg = rvu_read64(rvu, blkaddr, PSW_AF_RVU_INT);
+	dev_err_ratelimited(rvu->dev, "Received PSWAF RVU irq : 0x%llx", reg);
+
+	rvu_write64(rvu, blkaddr, PSW_AF_RVU_INT, reg);
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t psw_ras_intr_handler(int irq, void *ptr)
+{
+	struct rvu_block *block = ptr;
+	struct rvu *rvu = block->rvu;
+	int blkaddr = block->addr;
+	u64 reg, cap_reg;
+
+	reg = rvu_read64(rvu, blkaddr, PSW_AF_RAS_INT);
+	dev_err_ratelimited(rvu->dev, "Received PSWAF RAS irq : 0x%llx", reg);
+
+	if (reg & BIT_ULL(8)) {
+		dev_err_ratelimited(rvu->dev,
+				    "Host transaction with no match on FID");
+		cap_reg = rvu_read64(rvu, blkaddr, PSW_AF_FID_NOMATCH_CAPTURE);
+		dev_err_ratelimited(rvu->dev, "PSW_AF_FID_NOMATCH_CAPTURE: 0x%llx",
+				    cap_reg);
+	}
+	if (reg & BIT_ULL(7)) {
+		dev_err_ratelimited(rvu->dev,
+				    "Disabled queue needs access by HW");
+		cap_reg = rvu_read64(rvu, blkaddr, PSW_AF_HO_QE_CAPTURE);
+		dev_err_ratelimited(rvu->dev, "PSW_AF_HO_QE_CAPTURE: 0x%llx",
+				    cap_reg);
+		cap_reg = rvu_read64(rvu, blkaddr, PSW_AF_SHO_QE_CAPTURE);
+		dev_err_ratelimited(rvu->dev, "PSW_AF_SHO_QE_CAPTURE: 0x%llx",
+				    cap_reg);
+		cap_reg = rvu_read64(rvu, blkaddr, PSW_AF_NQE_CAPTURE);
+		dev_err_ratelimited(rvu->dev, "PSW_AF_NQE_CAPTURE: 0x%llx",
+				    cap_reg);
+	}
+	if (reg & BIT_ULL(6))
+		dev_err_ratelimited(rvu->dev, "Timed poll drift");
+
+	if (reg & BIT_ULL(5)) {
+		dev_err_ratelimited(rvu->dev, "Polling transaction error");
+		cap_reg = rvu_read64(rvu, blkaddr, PSW_AF_TIMED_ERR_CAPTURE);
+		dev_err_ratelimited(rvu->dev, "PSW_AF_TIMED_ERR_CAPTURE: 0x%llx",
+				    cap_reg);
+	}
+	if (reg & BIT_ULL(4)) {
+		dev_err_ratelimited(rvu->dev, "GID lookup MAX_LL_DEPTH error");
+		cap_reg = rvu_read64(rvu, blkaddr, PSW_AF_GID_ERR_CAPTURE);
+		dev_err_ratelimited(rvu->dev, "PSW_AF_GID_ERR_CAPTURE: 0x%llx",
+				    cap_reg);
+	}
+	if (reg & BIT_ULL(3)) {
+		dev_err_ratelimited(rvu->dev, "GID no match error");
+		cap_reg = rvu_read64(rvu, blkaddr, PSW_AF_GID_ERR_CAPTURE);
+		dev_err_ratelimited(rvu->dev, "PSW_AF_GID_ERR_CAPTURE: 0x%llx",
+				    cap_reg);
+	}
+	if ((reg & BIT_ULL(2)) || (reg & BIT_ULL(1))) {
+		dev_err_ratelimited(rvu->dev, "EVF/EPF LF map error");
+		cap_reg = rvu_read64(rvu, blkaddr, PSW_AF_MAP_CAPTURE);
+		dev_err_ratelimited(rvu->dev, "PSW_AF_MAP_CAPTURE: 0x%llx",
+				    cap_reg);
+	}
+	if (reg & BIT_ULL(0)) {
+		dev_err_ratelimited(rvu->dev, "API notification queue error");
+		cap_reg = rvu_read64(rvu, blkaddr, PSW_AF_API_NQE_CAPTURE);
+		dev_err_ratelimited(rvu->dev, "PSW_AF_API_NQE_CAPTURE: 0x%llx",
+				    cap_reg);
+	}
+
+	rvu_write64(rvu, blkaddr, PSW_AF_RAS_INT, reg);
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t psw_ecc_intr_handler(int irq, void *ptr)
+{
+	struct rvu_block *block = ptr;
+	struct rvu *rvu = block->rvu;
+	int blkaddr = block->addr;
+	u64 reg;
+
+	reg = rvu_read64(rvu, blkaddr, PSW_AF_ECC_INT);
+	dev_err_ratelimited(rvu->dev, "Received PSWAF ECC irq : 0x%llx", reg);
+
+	rvu_write64(rvu, blkaddr, PSW_AF_ECC_INT, reg);
+	return IRQ_HANDLED;
+}
+
+static int psw_do_register_interrupt(struct rvu_block *block, int irq_off,
+				     irq_handler_t handler, const char *name)
+{
+	struct rvu *rvu = block->rvu;
+	int ret;
+
+	ret = request_irq(pci_irq_vector(rvu->pdev, irq_off), handler, 0,
+			  name, block);
+	if (ret) {
+		dev_err(rvu->dev, "RVUAF: %s irq registration failed", name);
+		return ret;
+	}
+	WARN_ON(rvu->irq_allocated[irq_off]);
+	rvu->irq_allocated[irq_off] = true;
+
+	return 0;
+}
 
 static int rvu_psw_check_rsrc_availability(struct rvu *rvu,
 					   struct psw_rsrc_attach_req *req,
@@ -205,16 +348,101 @@ exit:
 
 static void rvu_psw_unregister_interrupts_block(struct rvu_block *block, void *data)
 {
-	(void)block;
+	struct rvu *rvu = block->rvu;
+	int blkaddr = block->addr;
+	struct rvu_hwinfo *hw;
+	u16 i, nvecs;
+	int off;
+	u64 reg;
+
 	(void)data;
+
+	reg = rvu_read64(rvu, blkaddr, PSW_PRIV_AF_INT_CFG);
+	off = reg & 0x7FF;
+	if (!off) {
+		dev_warn(rvu->dev,
+			 "Failed to get PSW_AF_INT vector offsets\n");
+		return;
+	}
+	nvecs = FIELD_GET(GENMASK_ULL(23, 12), reg);
+
+	hw = rvu->hw;
+	block = &hw->block[blkaddr];
+
+	rvu_write64(rvu, blkaddr, PSW_AF_APINOTIF_INT_ENA_W1C, 0x1);
+	rvu_write64(rvu, blkaddr, PSW_AF_GEN_INT_ENA_W1C, 0xFFFF);
+	rvu_write64(rvu, blkaddr, PSW_AF_RAS_INT_ENA_W1C, 0x1FF);
+	rvu_write64(rvu, blkaddr, PSW_AF_RVU_INT_ENA_W1C, 0x1);
+	rvu_write64(rvu, blkaddr, PSW_AF_ECC_INT_ENA_W1C,
+		    INTR_MASK(PSW_ECC_INT_BITS));
+
+	for (i = 0; i < nvecs; i++) {
+		if (rvu->irq_allocated[off + i]) {
+			free_irq(pci_irq_vector(rvu->pdev, off + i), block);
+			rvu->irq_allocated[off + i] = false;
+		}
+	}
 }
 
 static int rvu_psw_register_interrupts_block(struct rvu_block *block, void *data)
 {
-	(void)block;
-	(void)data;
+	int api_notif_int_vec, gen_int_vec, ras_int_vec;
+	struct rvu *rvu = block->rvu;
+	int rvu_int_vec, ecc_int_vec;
+	int blkaddr = block->addr;
+	u16 max_evfs;
+	int off, ret;
+
+	max_evfs = rvu->hw->psw->const0 & 0xFFFF;
+	off = rvu_read64(rvu, blkaddr, PSW_PRIV_AF_INT_CFG) & 0x7FF;
+	if (!off) {
+		dev_warn(rvu->dev,
+			 "Failed to get PSW_AF_INT vector offsets\n");
+		return 0;
+	}
+
+	api_notif_int_vec = off + max_evfs + 1;
+	ret = psw_do_register_interrupt(block, api_notif_int_vec,
+					psw_api_notif_intr_handler,
+					"PSWAF API NOTIF");
+	if (ret)
+		goto err;
+	rvu_write64(rvu, blkaddr, PSW_AF_APINOTIF_INT_ENA_W1S, 0x1);
+
+	gen_int_vec = api_notif_int_vec + 1;
+	ret = psw_do_register_interrupt(block, gen_int_vec,
+					psw_gen_intr_handler, "PSWAF GEN");
+	if (ret)
+		goto err;
+	rvu_write64(rvu, blkaddr, PSW_AF_GEN_INT_ENA_W1S, 0xFFFF);
+
+	ras_int_vec = gen_int_vec + 1;
+	ret = psw_do_register_interrupt(block, ras_int_vec,
+					psw_ras_intr_handler, "PSWAF RAS");
+	if (ret)
+		goto err;
+	rvu_write64(rvu, blkaddr, PSW_AF_RAS_INT_ENA_W1S, 0x1FF);
+
+	rvu_int_vec = ras_int_vec + 1;
+	ret = psw_do_register_interrupt(block, rvu_int_vec,
+					psw_rvu_intr_handler, "PSWAF RVU");
+	if (ret)
+		goto err;
+	rvu_write64(rvu, blkaddr, PSW_AF_RVU_INT_ENA_W1S, 0x1);
+
+	ecc_int_vec = rvu_int_vec + 1;
+	ret = psw_do_register_interrupt(block, ecc_int_vec,
+					psw_ecc_intr_handler, "PSWAF ECC");
+	if (ret)
+		goto err;
+	rvu_write64(rvu, blkaddr, PSW_AF_ECC_INT_ENA_W1S,
+		    INTR_MASK(PSW_ECC_INT_BITS));
 
 	return 0;
+err:
+	rvu_psw_unregister_interrupts_block(block, data);
+
+	return ret;
 }
 
 static void rvu_psw_freemem_block(struct rvu_block *block, void *data)
