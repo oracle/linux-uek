@@ -209,6 +209,25 @@ static int rvu_psw_check_rsrc_availability(struct rvu *rvu,
 	return 0;
 }
 
+int rvu_mbox_handler_psw_caps_get(struct rvu *rvu, struct msg_req *req,
+				  struct psw_caps_get_rsp *rsp)
+{
+	struct psw_rsrc *psw = rvu->hw->psw;
+	int blkaddr = BLKADDR_PSW, psw_type;
+	u8 pf;
+
+	pf = rvu_get_pf(rvu->pdev, req->hdr.pcifunc);
+	rsp->epf = psw->pf2epf_map[pf];
+	rsp->const0 = psw->const0;
+	rsp->const1 = psw->const1;
+	rsp->const2 = psw->const2;
+	for (psw_type = 0; psw_type < PSW_TYPE_COUNT; psw_type++)
+		rsp->fid_type_const[psw_type] = rvu_read64(rvu, blkaddr,
+							   PSW_AF_FID_TYPEX_CONST(psw_type));
+
+	return 0;
+}
+
 int rvu_mbox_handler_psw_msix_offset(struct rvu *rvu, struct msg_req *req,
 				     struct psw_msix_offset_rsp *rsp)
 {
