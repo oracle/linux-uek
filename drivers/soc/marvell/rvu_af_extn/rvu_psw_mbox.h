@@ -22,6 +22,10 @@ M(PSW_MSIX_OFFSET,	0x1203, psw_msix_offset, msg_req,               \
 M(PSW_CAPS_GET,      0x1204, psw_caps_get, msg_req, psw_caps_get_rsp)	\
 M(PSW_GID_ALLOC,     0x1205, psw_gid_alloc, psw_gid_alloc_req, msg_rsp)	\
 M(PSW_GID_FREE,      0x1206, psw_gid_free, psw_gid_free_req, msg_rsp)	\
+M(PSW_FID_ALLOC_ENTRY,  0x1207, psw_fid_alloc_entry, psw_fid_alloc_entry_req,\
+				psw_fid_alloc_entry_rsp)		\
+M(PSW_FID_FREE_ENTRY,   0x1208, psw_fid_free_entry, psw_fid_free_entry_req,\
+				msg_rsp)				\
 
 /* PSW mailbox error codes
  * Range 1301 - 1400.
@@ -112,6 +116,43 @@ struct psw_gid_free_req {
 	u16 nb_rids;
 	u16 rid_base;
 	u16 rsvd1;
+	u64 rsvd2;
+};
+
+/* Allocates a FID entry for the requested epf_func
+ * and populates PSW_AF_FID_INDX, PSW_AF_FID_BASEX, PSW_AF_FID_ATTRX
+ * and returns the index.
+ */
+struct psw_fid_alloc_entry_req {
+	struct mbox_msghdr hdr;
+	u16 evf_id; /* Host VF ID */
+	u16 evfm1_mask; /* EVF minus 1 MASK */
+	u16 bar; /* BAR number */
+	u16 isepf;
+	u32 base_addr; /* Base address */
+	u32 base_mask; /* Mask for base address */
+	u8 read_en; /* 0-write, 1-read */
+	u8 read_mask;
+	/* Indirection */
+	u8 log2size; /* Log2 of size of address area */
+	u8 log2stride; /* Log2 of stride */
+	u32 offset;
+	u8 psw_type; /* PSW type */
+	u8 rsvd1[3];
+	u32 rsvd2;
+};
+
+struct psw_fid_alloc_entry_rsp {
+	struct mbox_msghdr hdr;
+	u16 fid_idx;
+	u16 rsvd[3];
+};
+
+/* Frees up FID table entry */
+struct psw_fid_free_entry_req {
+	struct mbox_msghdr hdr;
+	u16 fid_idx;
+	u16 rsvd1[3];
 	u64 rsvd2;
 };
 

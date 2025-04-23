@@ -83,6 +83,24 @@
 
 #define GID_PARAM_LL_DEPTH GENMASK_ULL(31, 16)
 
+#define FID_LOG2STRIDE GENMASK_ULL(44, 40)
+#define FID_LOG2SIZE   GENMASK_ULL(36, 32)
+#define FID_OFFSET     GENMASK_ULL(31, 4)
+#define FID_PSW_TYPE   GENMASK_ULL(3, 0)
+
+#define FID_BASE_ADDR  GENMASK_ULL(31, 3)
+#define FID_BASE_MASK  GENMASK_ULL(63, 35)
+
+#define FID_EPF_NUM    GENMASK_ULL(43, 40)
+#define FID_EPF_MASK   GENMASK_ULL(35, 32)
+#define FID_EVFM1_NUM  GENMASK_ULL(30, 24)
+#define FID_EVFM1_MASK GENMASK_ULL(22, 16)
+#define FID_ISEPF      GENMASK_ULL(6, 6)
+#define FID_EBAR       GENMASK_ULL(5, 4)
+#define FID_READ       GENMASK_ULL(3, 3)
+#define FID_READ_MASK  GENMASK_ULL(2, 2)
+#define FID_VALID      GENMASK_ULL(0, 0)
+
 struct gid_key {
 	u16 epffunc;
 	u16 rid;
@@ -106,6 +124,7 @@ struct psw_rsrc {
 	struct rsrc_bmap gid_t;
 	struct rsrc_bmap qid_t;
 	struct rsrc_bmap mid_t;
+	struct rsrc_bmap fid_t;
 };
 
 struct psw_drvdata {
@@ -554,6 +573,63 @@ err:
 	return ret;
 }
 
+int rvu_mbox_handler_psw_fid_alloc_entry(struct rvu *rvu,
+					 struct psw_fid_alloc_entry_req *req,
+					 struct psw_fid_alloc_entry_rsp *rsp)
+{
+	struct psw_rsrc *psw = rvu->hw->psw;
+	int fid_idx, blkaddr = BLKADDR_PSW;
+	u8 pf, epf;
+	u64 reg;
+
+	pf = rvu_get_pf(rvu->pdev, req->hdr.pcifunc);
+	epf = psw->pf2epf_map[pf];
+
+	fid_idx = rvu_alloc_rsrc(&psw->fid_t);
+	if (fid_idx < 0)
+		return PSW_AF_ERR_NOSPC;
+
+	reg = FIELD_PREP(FID_LOG2STRIDE, req->log2stride);
+	reg |= FIELD_PREP(FID_LOG2SIZE, req->log2size);
+	reg |= FIELD_PREP(FID_OFFSET, req->offset);
+	reg |= FIELD_PREP(FID_PSW_TYPE, req->psw_type);
+	rvu_write64(rvu, blkaddr, PSW_AF_FID_IND(fid_idx), reg);
+
+	reg = FIELD_PREP(FID_BASE_ADDR, req->base_addr);
+	reg |= FIELD_PREP(FID_BASE_MASK, req->base_mask);
+	rvu_write64(rvu, blkaddr, PSW_AF_FID_BASE(fid_idx), reg);
+
+	reg = FIELD_PREP(FID_EPF_NUM, epf);
+	reg |= FIELD_PREP(FID_EPF_MASK, psw->num_epfs - 1);
+	reg |= FIELD_PREP(FID_ISEPF, req->isepf);
+	if (req->evf_id)
+		reg |= FIELD_PREP(FID_EVFM1_NUM, req->evf_id - 1);
+
+	reg |= FIELD_PREP(FID_EVFM1_MASK, req->evfm1_mask);
+	reg |= FIELD_PREP(FID_EBAR, req->bar);
+	reg |= FIELD_PREP(FID_READ, req->read_en);
+	reg |= FIELD_PREP(FID_READ_MASK, req->read_mask);
+	reg |= FIELD_PREP(FID_VALID, 0x1);
+	rvu_write64(rvu, blkaddr, PSW_AF_FID_ATTR(fid_idx), reg);
+
+	rsp->fid_idx = fid_idx;
+
+	return 0;
+}
+
+int rvu_mbox_handler_psw_fid_free_entry(struct rvu *rvu,
+					struct psw_fid_free_entry_req *req,
+					struct msg_rsp *rsp)
+{
+	struct psw_rsrc *psw = rvu->hw->psw;
+	int blkaddr = BLKADDR_PSW;
+
+	rvu_write64(rvu, blkaddr, PSW_AF_FID_ATTR(req->fid_idx), 0x0ULL);
+	rvu_free_rsrc(&psw->fid_t, req->fid_idx);
+
+	return 0;
+}
+
 int rvu_mbox_handler_psw_gid_free(struct rvu *rvu,
 				  struct psw_gid_free_req *req,
 				  struct msg_rsp *rsp)
@@ -982,6 +1058,7 @@ static int rvu_psw_init_block(struct rvu_block *block, void *data)
 	u8 *pf2epf_map;
 	u16 max_epfs;
 	u64 cfg;
+	int ret;
 
 	if (!data)
 		return -EINVAL;
@@ -1015,7 +1092,23 @@ static int rvu_psw_init_block(struct rvu_block *block, void *data)
 	psw->num_epfs = epf_id;
 	psw->pf2epf_map = pf2epf_map;
 
-	return psw_gid_setup(rvu, psw, blkaddr);
+	ret = psw_gid_setup(rvu, psw, BLKADDR_PSW);
+	if (ret)
+		return ret;
+
+	psw->fid_t.max = FIELD_GET(GENMASK_ULL(31, 16), psw->const1);
+	ret = rvu_alloc_bitmap(&psw->fid_t);
+	if (ret)
+		goto gid_free;
+
+	return 0;
+
+gid_free:
+	kfree(psw->gid_t.bmap);
+	kfree(psw->qid_t.bmap);
+	kfree(psw->mid_t.bmap);
+
+	return ret;
 }
 
 static void *rvu_psw_probe(struct rvu *rvu, int blkaddr)
@@ -1051,6 +1144,7 @@ static void rvu_psw_remove(struct rvu_block *block, void *data)
 
 	psw = rvu->hw->psw;
 
+	kfree(psw->fid_t.bmap);
 	kfree(psw->gid_t.bmap);
 	kfree(psw->qid_t.bmap);
 	kfree(psw->mid_t.bmap);
