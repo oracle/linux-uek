@@ -106,6 +106,9 @@
 #define DBL_CFG_TGLEN   GENMASK_ULL(7, 7)
 #define DBL_CFG_ROTATE  GENMASK_ULL(5, 0)
 
+#define MAP_LFNUM  GENMASK_ULL(9, 4)
+#define MAP_ENABLE GENMASK_ULL(0, 0)
+
 struct gid_key {
 	u16 epffunc;
 	u16 rid;
@@ -576,6 +579,38 @@ err:
 	mutex_unlock(&rvu->rsrc_lock);
 
 	return ret;
+}
+
+int rvu_mbox_handler_psw_epfvf_map_cfg(struct rvu *rvu,
+				       struct psw_epfvf_map_cfg_req *req,
+				       struct msg_rsp *rsp)
+{
+	struct psw_rsrc *psw = rvu->hw->psw;
+	u16 pcifunc = req->hdr.pcifunc;
+	int blkaddr = BLKADDR_PSW;
+	struct rvu_block *block;
+	u8 pf, epf;
+	int pswlf;
+	u64 reg;
+
+	pf = rvu_get_pf(rvu->pdev, req->hdr.pcifunc);
+	epf = psw->pf2epf_map[pf];
+
+	block = &rvu->hw->block[blkaddr];
+	pswlf = rvu_get_lf(rvu, block, pcifunc, req->lf_id);
+	if (pswlf < 0)
+		return SSOW_AF_ERR_LF_INVALID;
+
+	reg = FIELD_PREP(MAP_ENABLE, req->enable);
+	reg |= FIELD_PREP(MAP_LFNUM, pswlf);
+
+	if (req->evf_id == 0)
+		rvu_write64(rvu, blkaddr, PSW_AF_EPFX_MAP(epf), reg);
+	else
+		rvu_write64(rvu, blkaddr,
+			    PSW_AF_EPFX_EVFX_MAP(epf, req->evf_id - 1), reg);
+
+	return 0;
 }
 
 int rvu_mbox_handler_psw_epf_dbl_cfg(struct rvu *rvu,
