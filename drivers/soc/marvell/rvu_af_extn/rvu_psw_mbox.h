@@ -26,6 +26,7 @@ M(PSW_FID_ALLOC_ENTRY,  0x1207, psw_fid_alloc_entry, psw_fid_alloc_entry_req,\
 				psw_fid_alloc_entry_rsp)		\
 M(PSW_FID_FREE_ENTRY,   0x1208, psw_fid_free_entry, psw_fid_free_entry_req,\
 				msg_rsp)				\
+M(PSW_EPF_DBL_CFG,      0x1209, psw_epf_dbl_cfg, psw_epf_dbl_cfg_req, msg_rsp) \
 
 /* PSW mailbox error codes
  * Range 1301 - 1400.
@@ -154,6 +155,21 @@ struct psw_fid_free_entry_req {
 	u16 fid_idx;
 	u16 rsvd1[3];
 	u64 rsvd2;
+};
+
+struct psw_epf_dbl_cfg {
+	u16 mask; /* mask on 8 bytes doorbell value */
+	u8 les; /* Little endian swap */
+	u8 tglen; /* toggle enable */
+	u8 rotate; /* Bit rotate right */
+	u8 rsvd[3];
+};
+
+struct psw_epf_dbl_cfg_req {
+	struct mbox_msghdr hdr;
+	struct psw_epf_dbl_cfg pi;
+	struct psw_epf_dbl_cfg ci;
+	u64 rsvd;
 };
 
 #define M(_name, _id, _fn, _req_t, _rsp_t)                              \

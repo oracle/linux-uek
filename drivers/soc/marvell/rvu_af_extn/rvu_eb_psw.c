@@ -101,6 +101,11 @@
 #define FID_READ_MASK  GENMASK_ULL(2, 2)
 #define FID_VALID      GENMASK_ULL(0, 0)
 
+#define DBL_CFG_MASK    GENMASK_ULL(31, 16)
+#define DBL_CFG_LES     GENMASK_ULL(8, 8)
+#define DBL_CFG_TGLEN   GENMASK_ULL(7, 7)
+#define DBL_CFG_ROTATE  GENMASK_ULL(5, 0)
+
 struct gid_key {
 	u16 epffunc;
 	u16 rid;
@@ -571,6 +576,33 @@ err:
 	mutex_unlock(&rvu->rsrc_lock);
 
 	return ret;
+}
+
+int rvu_mbox_handler_psw_epf_dbl_cfg(struct rvu *rvu,
+				     struct psw_epf_dbl_cfg_req *req,
+				     struct msg_rsp *rsp)
+{
+	struct psw_rsrc *psw = rvu->hw->psw;
+	int blkaddr = BLKADDR_PSW;
+	u8 pf, epf;
+	u64 reg;
+
+	pf = rvu_get_pf(rvu->pdev, req->hdr.pcifunc);
+	epf = psw->pf2epf_map[pf];
+
+	reg = FIELD_PREP(DBL_CFG_MASK, req->pi.mask);
+	reg |= FIELD_PREP(DBL_CFG_LES, req->pi.les);
+	reg |= FIELD_PREP(DBL_CFG_ROTATE, req->pi.rotate);
+	reg |= FIELD_PREP(DBL_CFG_TGLEN, req->pi.tglen);
+	rvu_write64(rvu, blkaddr, PSW_AF_PFX_PIDBL_CFG(epf), reg);
+
+	reg = FIELD_PREP(DBL_CFG_MASK, req->ci.mask);
+	reg |= FIELD_PREP(DBL_CFG_LES, req->ci.les);
+	reg |= FIELD_PREP(DBL_CFG_ROTATE, req->ci.rotate);
+	reg |= FIELD_PREP(DBL_CFG_TGLEN, req->ci.tglen);
+	rvu_write64(rvu, blkaddr, PSW_AF_PFX_CIDBL_CFG(epf), reg);
+
+	return 0;
 }
 
 int rvu_mbox_handler_psw_fid_alloc_entry(struct rvu *rvu,
