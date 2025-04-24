@@ -6010,6 +6010,10 @@ int rvu_mbox_handler_nix_inline_ipsec_lf_cfg(struct rvu *rvu,
 		      (u64)req->ipsec_cfg0.sa_pow2_size << 16 |
 		      req->ipsec_cfg0.lenm1_max;
 
+		if (req->ipsec_cfg0_ext.res_addr_offset_valid)
+			val |= ((u64)req->ipsec_cfg0_ext.res_addr_offset << 48 |
+			       (u64)req->ipsec_cfg0_ext.res_addr_offset_valid << 56);
+
 		if (blkaddr == BLKADDR_NIX1)
 			val |= BIT_ULL(46);
 

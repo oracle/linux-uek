@@ -1640,6 +1640,10 @@ struct nix_inline_ipsec_lf_cfg {
 		u8 sa_idx_w;
 	} ipsec_cfg1;
 	u8 enable;
+	struct {
+		u8 res_addr_offset;
+		u8 res_addr_offset_valid;
+	} ipsec_cfg0_ext;
 };
 
 struct nix_hw_info {
