@@ -1649,6 +1649,12 @@ static void rmap_add(struct kvm_vcpu *vcpu, struct kvm_memory_slot *slot,
 		kvm_flush_remote_tlbs_with_address(
 				vcpu->kvm, sp->gfn, KVM_PAGES_PER_HPAGE(sp->role.level));
 	}
+
+	/* Page is present in RMAP */
+	if (slot && slot->present_bitmap) {
+		bitmap_set(slot->present_bitmap, gfn - slot->base_gfn,
+			   KVM_PAGES_PER_HPAGE(sp->role.level));
+	}
 }
 
 bool kvm_age_gfn(struct kvm *kvm, struct kvm_gfn_range *range)

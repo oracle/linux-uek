@@ -923,10 +923,20 @@ static void kvm_destroy_dirty_bitmap(struct kvm_memory_slot *memslot)
 	memslot->dirty_bitmap = NULL;
 }
 
+static void kvm_destroy_present_bitmap(struct kvm_memory_slot *memslot)
+{
+	if (!memslot->present_bitmap)
+		return;
+
+	kvfree(memslot->present_bitmap);
+	memslot->present_bitmap = NULL;
+}
+
 /* This does not remove the slot from struct kvm_memslots data structures */
 static void kvm_free_memslot(struct kvm *kvm, struct kvm_memory_slot *slot)
 {
 	kvm_destroy_dirty_bitmap(slot);
+	kvm_destroy_present_bitmap(slot);
 
 	kvm_arch_free_memslot(kvm, slot);
 
@@ -1327,6 +1337,17 @@ static int kvm_alloc_dirty_bitmap(struct kvm_memory_slot *memslot)
 
 	memslot->dirty_bitmap = __vcalloc(2, dirty_bytes, GFP_KERNEL_ACCOUNT);
 	if (!memslot->dirty_bitmap)
+		return -ENOMEM;
+
+	return 0;
+}
+
+static int kvm_alloc_present_bitmap(struct kvm_memory_slot *memslot)
+{
+	unsigned long present_bytes = kvm_dirty_bitmap_bytes(memslot);
+
+	memslot->present_bitmap = __vcalloc(2, present_bytes, GFP_KERNEL_ACCOUNT);
+	if (!memslot->present_bitmap)
 		return -ENOMEM;
 
 	return 0;
@@ -1954,6 +1975,15 @@ int __kvm_set_memory_region(struct kvm *kvm,
 	new->npages = npages;
 	new->flags = mem->flags;
 	new->userspace_addr = mem->userspace_addr;
+	if (old)
+		new->present_bitmap = old->present_bitmap;
+	if (!new->present_bitmap) {
+		r = kvm_alloc_present_bitmap(new);
+		if (r) {
+			kfree(new);
+			return r;
+		}
+	}
 
 	r = kvm_set_memslot(kvm, old, new, change);
 	if (r)
