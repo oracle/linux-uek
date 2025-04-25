@@ -229,6 +229,7 @@ kernel/drivers/misc/mei/mei-me.ko
 kernel/drivers/misc/pvpanic/pvpanic.ko
 kernel/drivers/misc/pvpanic/pvpanic-mmio.ko
 kernel/drivers/misc/vmw_vmci/vmw_vmci.ko
+kernel/drivers/mtd/mtd.ko
 kernel/drivers/net/bonding/bonding.ko
 kernel/drivers/net/dummy.ko
 kernel/drivers/net/ethernet/broadcom/bnxt/bnxt_en.ko
@@ -292,6 +293,7 @@ kernel/drivers/platform/x86/amd/amd_hsmp.ko
 kernel/drivers/powercap/intel_rapl_common.ko
 kernel/drivers/powercap/intel_rapl_msr.ko
 kernel/drivers/ptp/ptp_kvm.ko
+kernel/drivers/ptp/ptp_ocp.ko
 kernel/drivers/scsi/be2iscsi/be2iscsi.ko
 kernel/drivers/scsi/bnx2i/bnx2i.ko
 kernel/drivers/scsi/ch.ko
