@@ -19,6 +19,8 @@
 #define NPA_LF_AURA_OP_FREE0	0x20
 #define NPA_LF_AURA_OP_CNT	0x30
 #define SSO_FLUSH_RETRY_MAX	0xff
+#define SSO_AF_INT_MOD_THRESH	0x01
+#define SSO_AF_INT_MOD_TMO	(HZ / 2)
 
 #if defined(CONFIG_ARM64)
 #define rvu_sso_store_pair(val0, val1, addr) ({				\
@@ -55,6 +57,14 @@
 				    reg0);				\
 		rvu_write64(rvu, blkaddr, reg##X(i), reg0);		\
 	}
+
+struct rvu_sso_intr_mod {
+	struct rvu *rvu;
+	struct timer_list timer;
+	unsigned long timeout;
+	atomic_t count;
+	int vec_ena_off;
+} *sso_intr_mod;
 
 void rvu_sso_hwgrp_config_thresh(struct rvu *rvu, int blkaddr, int lf,
 				 struct sso_aq_thr *aq_thr)
@@ -1661,6 +1671,26 @@ err:
 	return ret;
 }
 
+static void rvu_sso_af_intr_moderate(int vector)
+{
+	struct rvu_sso_intr_mod *intr_mod = &sso_intr_mod[vector];
+
+	if (time_after(jiffies, intr_mod->timeout)) {
+		int blkaddr = rvu_get_blkaddr(intr_mod->rvu, BLKTYPE_SSO, 0);
+		int count = atomic_xchg(&intr_mod->count, 0);
+
+		if (count > SSO_AF_INT_MOD_THRESH) {
+			rvu_write64(intr_mod->rvu, blkaddr,
+				    intr_mod->vec_ena_off, 0ULL);
+			mod_timer(&intr_mod->timer, SSO_AF_INT_MOD_TMO);
+		} else {
+			intr_mod->timeout = jiffies + SSO_AF_INT_MOD_TMO;
+		}
+	} else {
+		atomic_inc(&intr_mod->count);
+	}
+}
+
 static irqreturn_t rvu_sso_af_err0_intr_handler(int irq, void *ptr)
 {
 	struct rvu *rvu = (struct rvu *)ptr;
@@ -1671,6 +1701,8 @@ static irqreturn_t rvu_sso_af_err0_intr_handler(int irq, void *ptr)
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
 	if (blkaddr < 0)
 		return IRQ_NONE;
+
+	rvu_sso_af_intr_moderate(SSO_AF_INT_VEC_ERR0);
 
 	block = &rvu->hw->block[blkaddr];
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_ERR0);
@@ -1788,6 +1820,8 @@ static irqreturn_t rvu_sso_af_err2_intr_handler(int irq, void *ptr)
 	if (ssow_blkaddr < 0)
 		return IRQ_NONE;
 
+	rvu_sso_af_intr_moderate(SSO_AF_INT_VEC_ERR2);
+
 	block = &rvu->hw->block[ssow_blkaddr];
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_ERR2);
 	dev_err_ratelimited(rvu->dev, "received SSO_AF_ERR2 irq : 0x%llx", reg);
@@ -1854,6 +1888,8 @@ static irqreturn_t rvu_sso_af_ras_intr_handler(int irq, void *ptr)
 	if (blkaddr < 0)
 		return IRQ_NONE;
 
+	rvu_sso_af_intr_moderate(SSO_AF_INT_VEC_RAS);
+
 	block = &rvu->hw->block[blkaddr];
 
 	reg = rvu_read64(rvu, blkaddr, SSO_AF_RAS);
@@ -1891,7 +1927,35 @@ void rvu_sso_unregister_interrupts(struct rvu *rvu)
 		if (rvu->irq_allocated[offs + i]) {
 			free_irq(pci_irq_vector(rvu->pdev, offs + i), rvu);
 			rvu->irq_allocated[offs + i] = false;
+			del_timer_sync(&sso_intr_mod[i].timer);
 		}
+}
+
+static void rvu_sso_intr_mod_cb(struct timer_list *t)
+{
+	struct rvu_sso_intr_mod *intr_mod = from_timer(intr_mod, t, timer);
+	struct rvu *rvu = intr_mod->rvu;
+	int blkaddr;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
+	if (blkaddr < 0) {
+		dev_err(rvu->dev, "Failed to get SSO block address\n");
+		return;
+	}
+
+	intr_mod->timeout = jiffies + SSO_AF_INT_MOD_TMO;
+	rvu_write64(rvu, blkaddr, intr_mod->vec_ena_off, ~0ULL);
+}
+
+static void rvu_sso_af_intr_mod_setup(struct rvu *rvu, int vector,
+				      int vec_ena_off)
+{
+	struct rvu_sso_intr_mod *intr_mod = &sso_intr_mod[vector];
+
+	intr_mod->rvu = rvu;
+	intr_mod->timeout = jiffies + SSO_AF_INT_MOD_TMO;
+	intr_mod->vec_ena_off = vec_ena_off;
+	timer_setup(&intr_mod->timer, rvu_sso_intr_mod_cb, 0);
 }
 
 int rvu_sso_register_interrupts(struct rvu *rvu)
@@ -1912,6 +1976,17 @@ int rvu_sso_register_interrupts(struct rvu *rvu)
 		return 0;
 	}
 
+	sso_intr_mod = devm_kzalloc(rvu->dev,
+				    sizeof(*sso_intr_mod) * SSO_AF_INT_VEC_CNT,
+				    GFP_KERNEL);
+	if (!sso_intr_mod) {
+		dev_err(rvu->dev,
+			"Failed to allocate memory for SSO AF INT moderation\n");
+		return -ENOMEM;
+	}
+
+	rvu_sso_af_intr_mod_setup(rvu, SSO_AF_INT_VEC_ERR0,
+				  SSO_AF_ERR0_ENA_W1S);
 	ret = rvu_sso_do_register_interrupt(rvu, offs + SSO_AF_INT_VEC_ERR0,
 					    rvu_sso_af_err0_intr_handler,
 					    "SSO_AF_ERR0");
@@ -1919,6 +1994,8 @@ int rvu_sso_register_interrupts(struct rvu *rvu)
 		goto err;
 	rvu_write64(rvu, blkaddr, SSO_AF_ERR0_ENA_W1S, ~0ULL);
 
+	rvu_sso_af_intr_mod_setup(rvu, SSO_AF_INT_VEC_ERR2,
+				  SSO_AF_ERR2_ENA_W1S);
 	ret = rvu_sso_do_register_interrupt(rvu, offs + SSO_AF_INT_VEC_ERR2,
 					    rvu_sso_af_err2_intr_handler,
 					    "SSO_AF_ERR2");
@@ -1926,6 +2003,7 @@ int rvu_sso_register_interrupts(struct rvu *rvu)
 		goto err;
 	rvu_write64(rvu, blkaddr, SSO_AF_ERR2_ENA_W1S, ~0ULL);
 
+	rvu_sso_af_intr_mod_setup(rvu, SSO_AF_INT_VEC_RAS, SSO_AF_RAS_ENA_W1S);
 	ret = rvu_sso_do_register_interrupt(rvu, offs + SSO_AF_INT_VEC_RAS,
 					    rvu_sso_af_ras_intr_handler,
 					    "SSO_AF_RAS");
