@@ -21,6 +21,18 @@ fi
 # VERSION is in X.Y format. Take only X for OS version.
 osver=$(echo $VERSION | cut -d'.' -f1)
 
+if ( [ "${kernelver: -2}" = "SL" ] || [ "${kernelver: -2}" = "PL" ] ); then
+cat >${output} <<EOF
+title ${NAME} ${osver} (${kernelver}) ${debugname}
+version ${kernelver}${debugid}
+linux ${bootprefix}/vmlinuz-${kernelver}
+options \$kernelopts
+id ${ID}-${date}-${kernelver}${debugid}
+grub_users \$grub_users
+grub_arg --unrestricted
+grub_class kernel${variant}
+EOF
+else
 cat >${output} <<EOF
 title ${NAME} ${osver} (${kernelver}) ${debugname}
 version ${kernelver}${debugid}
@@ -32,3 +44,4 @@ grub_users \$grub_users
 grub_arg --unrestricted
 grub_class kernel${variant}
 EOF
+fi

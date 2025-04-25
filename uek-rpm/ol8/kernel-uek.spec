@@ -119,6 +119,10 @@ Summary: Oracle Unbreakable Enterprise Kernel Release %{uek_release}
 %define with_embedded_debug %{with_debug}
 %endif
 
+# Disable Secure Launch unless explictly specified
+%define with_sl 0
+%define with_pl 0
+
 # verbose build, i.e. no silent rules and V=1
 %define with_verbose %{?_with_verbose:        1} %{?!_with_verbose:      0}
 
@@ -158,6 +162,10 @@ Summary: Oracle Unbreakable Enterprise Kernel Release %{uek_release}
 
 # should we do C=1 builds with sparse
 %define with_sparse	%{?_with_sparse:      1} %{?!_with_sparse:      0}
+
+# securelaunch (with embedded uroot initramfs)
+# Until we are fully integrated in the build tree use this flag 
+%define with_securelaunch 1
 
 # Set debugbuildsenabled to 1 for production (build separate debug kernels)
 #  and 0 for rawhide (all kernels are debug kernels).
@@ -277,6 +285,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release %{uek_release}
 %define with_compression 0
 %define with_headers 0
 %define with_bpftool 0
+%define with_sl 0
+%define with_pl 0
 %endif
 
 # Enable perf
@@ -290,6 +300,12 @@ Summary: Oracle Unbreakable Enterprise Kernel Release %{uek_release}
 %endif
 
 # Per-arch tweaks
+
+# Per-arch tweaks
+%ifnarch x86_64
+%define with_sl 0
+%define with_pl 0
+%endif
 
 %ifarch %{all_x86}
 %define asmarch x86
@@ -313,6 +329,28 @@ Summary: Oracle Unbreakable Enterprise Kernel Release %{uek_release}
 #
 %define container_cflags	EXTRA_CFLAGS="-Wa,-mx86-used-note=no"
 %endif
+
+# Securelaunch build configuration
+# Build only for x86_64 arch
+%if %{with_securelaunch}
+%define with_up 0
+%define with_container 0
+%define with_bpftool 0
+%define with_headers 0
+%define with_debug 0
+%define with_64k_ps 0
+%define with_64k_ps_debug 0
+%define with_embedded 0
+%define with_embedded_debug 0
+%define with_perf 0
+%define with_kabichk 0
+%define build_kernel_modules 0
+%define with_vdso_install 0
+%define with_debuginfo 0
+%define with_sl 1
+%define with_pl 1
+%endif
+
 %endif
 
 %ifarch %{arm}
@@ -488,6 +526,10 @@ BuildConflicts: rpm < 4.13.0.1-19
 
 %endif
 
+%if 0%{with_sl:1}%{with_pl:1} == 1 
+BuildRequires: u-root-sl u-root-pl
+%endif
+
 Source0: linux-%{kversion}.tar.bz2
 
 %if %{signkernel}%{signmodules}
@@ -522,6 +564,8 @@ Source1008: config-aarch64-debug
 Source1009: config-aarch64-container
 Source1010: config-aarch64-emb3
 Source1011: config-aarch64-emb3-debug
+Source1015: config-x86_64-sl
+Source1016: config-x86_64-pl
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -794,8 +838,10 @@ This package provides commonly used kernel modules for the %{?2:%{2}-}core kerne
 %package -n %{variant_name}\
 Summary: Kernel meta-package for the %{1} kernel\
 Group: System Environment/Kernel\
+%if %{build_kernel_modules}\
 Requires: %{variant_name}-core-uname-r = %{KVERREL}.%{1}\
 Requires: %{variant_name}-modules-uname-r = %{KVERREL}.%{1}\
+%endif\
 Provides: installonlypkg(kernel-uek)\
 %description -n %{variant_name}\
 The meta-package for the %{1} kernel\
@@ -851,6 +897,18 @@ This package includes Bluefield 3 kernel for aarch64 platform
 %kernel_variant_package -o emb3debug
 %description -n kernel%{?variant}emb3debug-core
 This package includes debug kernel  for Bluefield 3 platform
+
+%kernel_variant_package SL
+%description SL-core
+This package includes a version of the Linux kernel with support for Secure Launch.
+A Secure Launch kernel provides TPM measurement/attestation support as a part of the
+Trenchboot architecture.
+
+%kernel_variant_package PL
+%description PL-core
+This package includes a version of the Linux kernel with support for provisioning
+Secure Launch using TPM. A Secure Launch kernel provides TPM measurement/attestation
+support as a part of the Trenchboot architecture.
 
 %define variant_summary The Linux kernel compiled with extra debugging enabled
 %kernel_variant_package debug
@@ -1026,6 +1084,10 @@ ApplyPatch %{stable_patch_01}
 
 mkdir -p configs
 %ifarch x86_64
+%if 0%{?with_sl:1}%{?with_pl:1} != 0
+	cp %{SOURCE1015} configs/config-sl
+	cp %{SOURCE1016} configs/config-pl
+%endif
 	cp %{SOURCE1002} configs/config-container
 	cp %{SOURCE1001} configs/config-debug
 	cp %{SOURCE1000} configs/config
@@ -1115,10 +1177,6 @@ BuildKernel() {
     Flavour=$3
     InstallName=${4:-vmlinuz}
 
-%if %{build_kernel_modules}
-    MakeTarget=$MakeTarget modules
-%endif
-
     # Pick the right config file for the kernel we're building
     Config=kernel-%{version}-%{_target_cpu}${Flavour:+-${Flavour}}.config
     DevelDir=/usr/src/kernels/%{KVERREL}${Flavour:+.${Flavour}}
@@ -1169,6 +1227,16 @@ BuildKernel() {
     elif [ "$Flavour" == "emb3debug" ]; then
         cp configs/config-emb3-debug .config
 	modlistVariant=../kernel%{?variant}emb3debug
+    elif [ "$Flavour" == "SL" ]; then
+	cp configs/config-sl .config
+        # The following modlistVariant may not be necessary as SL
+        # kernel doesn't include modules
+	modlistVariant=../kernel%{?variant}${Flavour:+-${Flavour}}
+    elif [ "$Flavour" == "PL" ]; then
+	cp configs/config-pl .config
+        # The following modlistVariant may not be necessary as SL
+        # kernel doesn't include modules
+	modlistVariant=../kernel%{?variant}${Flavour:+-${Flavour}}
     else
 	cp configs/config .config
 	modlistVariant=../kernel%{?variant}${Flavour:+-${Flavour}}
@@ -1178,7 +1246,11 @@ BuildKernel() {
     echo USING ARCH=$Arch
     make %{?make_opts} ARCH=$Arch %{?_kernel_cc} olddefconfig > /dev/null
     if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb3" ] && [ "$Flavour" != "emb3debug" ]; then
-       make %{?make_opts} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
+       if ( [ "$Flavour" == "SL" ] || [ "$Flavour" == "PL" ] ); then
+          make -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} $MakeTarget %{?sparse_mflags} || exit 1
+       else
+          make %{?make_opts} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
+       fi
     else
        make %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
     fi
@@ -1192,7 +1264,7 @@ BuildKernel() {
 
 %if %{build_kernel_modules}
     cp Module.symvers Module.symvers.save
-    make -k %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} ctf %{?sparse_mflags}
+    make -k -s ARCH=$Arch V=1 %{?_kernel_cc} %{?_smp_mflags} ctf %{?sparse_mflags}
     mv -f Module.symvers.save Module.symvers
 %endif
 
@@ -1232,9 +1304,11 @@ BuildKernel() {
     cp $RPM_BUILD_ROOT/%{image_install_path}/.vmlinuz-$KernelVer.hmac $RPM_BUILD_ROOT/lib/modules/$KernelVer/.vmlinuz.hmac
 
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
+
 %if %{build_kernel_modules}
     make %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} INSTALL_MOD_PATH=$RPM_BUILD_ROOT modules_install KERNELRELEASE=$KernelVer
 %endif
+
     # check if the modules are being signed
 
 %ifarch %{vdso_arches}
@@ -1631,6 +1705,26 @@ BuildKernel %make_target %kernel_image emb3
 BuildKernel %make_target %kernel_image emb3debug
 %endif
 
+%if %{with_sl}
+# copy/gzip over the initramfs provided by the u-root package (for inclusion into kernel)
+gzip -c /boot/uroot-initramfs-sl.cpio >> ./uroot-initramfs.cpio.gz
+# copy over the policy file provided by the u-root package and version it.
+cp /boot/securelaunch.policy $RPM_BUILD_ROOT/boot/securelaunch.policy-%{KVERREL}
+BuildKernel %make_target %kernel_image SL
+%endif
+
+%if %{with_pl}
+# copy/gzip over the initramfs provided by the u-root package (for inclusion into kernel)
+gzip -c /boot/uroot-initramfs-pl.cpio >> ./uroot-initramfs.cpio.gz
+# copy over the policy file provided by the u-root package and version it.
+cp /boot/securelaunch-pl.policy $RPM_BUILD_ROOT/boot/securelaunch-pl.policy-%{KVERREL}
+cp samples/slaunch/rover-tpm-prov.sh $RPM_BUILD_ROOT/boot/rover-tpm-prov.sh
+cp samples/slaunch/sign-policy.sh $RPM_BUILD_ROOT/boot/sign-policy.sh
+BuildKernel %make_target %kernel_image PL
+%endif
+
+
+
 %global bpftool_make \
   make %{?make_opts} EXTRA_CFLAGS="${RPM_OPT_FLAGS//redhat-annobin-cc1/redhat-annobin-select-annobin-built-plugin}" EXTRA_LDFLAGS="%{__global_ldflags}" DESTDIR=$RPM_BUILD_ROOT
 %if %{with_bpftool}
@@ -1652,6 +1746,16 @@ make %{?make_opts} %{?_smp_mflags} htmldocs || %{doc_build_fail}
       mv certs/signing_key.pem.sign.debug certs/signing_key.pem \
       mv certs/signing_key.x509.sign.debug certs/signing_key.x509 \
       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.debug/ %{dgst} \
+    fi \
+    if [ "%{with_sl}" != "0" ]; then \
+      mv certs/signing_key.pem.sign.SL certs/signing_key.pem \
+      mv certs/signing_key.x509.sign.SL certs/signing_key.x509 \
+      %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}/ %{dgst} \
+    fi \
+    if [ "%{with_pl}" != "0" ]; then \
+      mv certs/signing_key.pem.sign.PL certs/signing_key.pem \
+      mv certs/signing_key.x509.sign.PL certs/signing_key.x509 \
+      %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}/ %{dgst} \
     fi \
     if [ "%{with_up}" != "0" ]; then \
       mv certs/signing_key.pem.sign certs/signing_key.pem \
@@ -1855,7 +1959,7 @@ fi\
 %{expand:%%posttrans -n kernel%{?variant}%{?1:%{!-o:-}%{1}}-core}\
 if [ -x /sbin/weak-modules ]\
 then\
-    /sbin/weak-modules --add-kernel %{KVERREL}%{?1:.%{1}} || exit $?\
+    /sbin/weak-modules --no-initramfs --add-kernel %{KVERREL}%{?1:.%{1}} || exit $?\
 fi\
 /bin/kernel-install add %{KVERREL}%{?1:.%{1}} /lib/modules/%{KVERREL}%{?1:.%{1}}/vmlinuz || exit $?\
 %{nil}
@@ -2030,6 +2134,16 @@ fi\
 %kernel_variant_postun -o emb3debug
 %kernel_variant_post -o -v emb3debug
 
+%kernel_variant_pre SL
+%kernel_variant_preun SL
+%kernel_variant_postun SL
+%kernel_variant_post -v SL
+
+%kernel_variant_pre PL
+%kernel_variant_preun PL
+%kernel_variant_postun PL
+%kernel_variant_post -v PL
+
 if [ -x /sbin/ldconfig ]
 then
     /sbin/ldconfig -X || exit $?
@@ -2103,15 +2217,15 @@ fi
 %define kernel_variant_files(k:o) \
 %if %{1}\
 %define variant_name kernel%{?variant}%{?2:%{!-o:-}%{2}}\
-%{expand:%%files -n %{variant_name}}\
+%{expand:%%files -n %{variant_name} -n %{variant_name}-core}\
 %if %{build_kernel_modules}\
 %{expand:%%files -f %{variant_name}-core.list -n %{variant_name}-core}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel/vmlinux.ctfa\
-%endif\
 %defattr(-,root,root)\
 %dir /etc/modprobe.d\
 %config(noreplace) /etc/modprobe.d/tcindex-disable.conf\
+%endif\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/%{?-k:%{-k*}}%{!?-k:vmlinuz}\
 %ghost /%{image_install_path}/%{?-k:%{-k*}}%{!?-k:vmlinuz}-%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/.vmlinuz.hmac \
@@ -2129,9 +2243,19 @@ fi
 /lib/modules/%{KVERREL}%{?2:.%{2}}/weak-updates\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/bls.conf\
 %{_datadir}/doc/kernel-keys/%{KVERREL}%{?2:.%{2}}/kernel-signing.cer\
+%if "%{2}" == SL\
+/boot/securelaunch.policy-%{KVERREL}\
+/boot/rover-tpm-prov.sh\
+/boot/sign-policy.sh\
+%endif\
+%if "%{2}" == PL\
+/boot/securelaunch-pl.policy-%{KVERREL}\
+%endif\
+%if 0%{?with_sl:1}%{?with_pl:1} == 0\
 %ifarch %{vdso_arches}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/vdso\
 %endif\
+/lib/modules/%{KVERREL}%{?2:.%{2}}/modules.*\
 /usr/libexec/perf.%{KVERREL}%{?2:.%{2}}\
 /usr/libexec/perf-core.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/perf\
@@ -2146,12 +2270,10 @@ fi
 /usr/sbin/turbostat\
 %endif\
 %ghost /boot/initramfs-%{KVERREL}%{?2:.%{2}}.img\
-%if %{build_kernel_modules}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.*\
 %{expand:%%files -f %{variant_name}-modules.list -n %{variant_name}-modules}\
 %{expand:%%files -f %{variant_name}-modules-extra.list -n %{variant_name}-modules-extra}\
 %config(noreplace) /etc/modprobe.d/*-blacklist.conf\
-%endif\
 %{expand:%%files -n %{variant_name}-devel}\
 %defattr(-,root,root)\
 %dir /usr/src/kernels\
@@ -2169,6 +2291,7 @@ fi
 %endif\
 %endif\
 %endif\
+%endif\
 %{nil}
 
 %kernel_variant_files %{with_up}
@@ -2182,4 +2305,6 @@ fi
 %kernel_variant_files -o %{with_embedded} emb3
 %kernel_variant_files -o %{with_embedded_debug} emb3debug
 
+%kernel_variant_files %{with_sl} SL
+%kernel_variant_files %{with_pl} PL
 %changelog
