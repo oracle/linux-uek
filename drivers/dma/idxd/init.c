@@ -593,7 +593,7 @@ static int idxd_enable_system_pasid(struct idxd_device *idxd)
 	 */
 	ret = iommu_attach_device_pasid(domain, dev, pasid, NULL);
 	if (ret) {
-		dev_err(dev, "failed to attach device pasid %d, domain type %d",
+		dev_dbg(dev, "failed to attach device pasid %d, domain type %d",
 			pasid, domain->type);
 		iommu_free_global_pasid(pasid);
 		return ret;
@@ -666,7 +666,7 @@ static int idxd_probe(struct idxd_device *idxd)
 
 			rc = idxd_enable_system_pasid(idxd);
 			if (rc)
-				dev_warn(dev, "No in-kernel DMA with PASID. %d\n", rc);
+				dev_dbg(dev, "No in-kernel DMA with PASID. %d\n", rc);
 			else
 				set_bit(IDXD_FLAG_PASID_ENABLED, &idxd->flags);
 		}
