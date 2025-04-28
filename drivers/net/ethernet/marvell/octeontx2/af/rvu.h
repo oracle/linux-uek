@@ -1192,6 +1192,8 @@ static inline bool is_cgx_vf(struct rvu *rvu, u16 pcifunc)
 }
 
 unsigned long cplt_prepare_lmac_bmap(struct rvu *rvu, u8 max_lmac, int n_cplts);
+void pf_bmap_to_cpltlmac(u16 pf2cpltlmac_map, u8 *chiplet_id,
+			 u8 *rpm_id, u8 *lmac_id);
 
 #define M(_name, _id, fn_name, req, rsp)				\
 int rvu_mbox_handler_ ## fn_name(struct rvu *, struct req *, struct rsp *);
