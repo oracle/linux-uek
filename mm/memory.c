@@ -952,9 +952,15 @@ static __always_inline void __copy_present_ptes(struct vm_area_struct *dst_vma,
 		pte_t pte, unsigned long addr, int nr)
 {
 	struct mm_struct *src_mm = src_vma->vm_mm;
+	bool is_exec_keep = !!(dst_vma->vm_flags & VM_EXEC_KEEP);
 
 	/* If it's a COW mapping, write protect it both processes. */
-	if (is_cow_mapping(src_vma->vm_flags) && pte_write(pte)) {
+	/*
+	 * But don't protect it if PTEs are being copied as part of preserving
+	 * memory across exec since the page may be pinned for DMA and must not
+	 * be COW'd.
+	 */
+	if (is_cow_mapping(src_vma->vm_flags) && pte_write(pte) && !is_exec_keep) {
 		wrprotect_ptes(src_mm, addr, src_pte, nr);
 		pte = pte_wrprotect(pte);
 	}
@@ -987,6 +993,7 @@ copy_present_ptes(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma
 	bool any_writable;
 	fpb_t flags = 0;
 	int err, nr;
+	bool is_exec_keep = !!(dst_vma->vm_flags & VM_EXEC_KEEP);
 
 	page = vm_normal_page(src_vma, addr, pte);
 	if (unlikely(!page))
@@ -1015,7 +1022,7 @@ copy_present_ptes(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma
 				return -EAGAIN;
 			}
 			rss[MM_ANONPAGES] += nr;
-			VM_WARN_ON_FOLIO(PageAnonExclusive(page), folio);
+			VM_WARN_ON_FOLIO(PageAnonExclusive(page) && !is_exec_keep, folio);
 		} else {
 			folio_dup_file_rmap_ptes(folio, page, nr);
 			rss[mm_counter_file(folio)] += nr;
@@ -1043,7 +1050,7 @@ copy_present_ptes(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma
 			return err ? err : 1;
 		}
 		rss[MM_ANONPAGES]++;
-		VM_WARN_ON_FOLIO(PageAnonExclusive(page), folio);
+		VM_WARN_ON_FOLIO(PageAnonExclusive(page) && !is_exec_keep, folio);
 	} else {
 		folio_dup_file_rmap_pte(folio, page);
 		rss[mm_counter_file(folio)]++;

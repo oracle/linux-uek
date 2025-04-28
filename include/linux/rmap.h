@@ -429,22 +429,22 @@ static __always_inline int __folio_try_dup_anon_rmap(struct folio *folio,
 		}
 
 		if (!folio_test_large(folio)) {
-			if (PageAnonExclusive(page))
+			if (PageAnonExclusive(page) && !is_exec_keep)
 				ClearPageAnonExclusive(page);
 			atomic_inc(&folio->_mapcount);
 			break;
 		}
 
 		do {
-			if (PageAnonExclusive(page))
+			if (PageAnonExclusive(page) && !is_exec_keep)
 				ClearPageAnonExclusive(page);
 			atomic_inc(&page->_mapcount);
 		} while (page++, --nr_pages > 0);
 		atomic_add(orig_nr_pages, &folio->_large_mapcount);
 		break;
 	case RMAP_LEVEL_PMD:
-		if (PageAnonExclusive(page)) {
-			if (unlikely(maybe_pinned) && likely(!is_exec_keep))
+		if (PageAnonExclusive(page) && !is_exec_keep) {
+			if (unlikely(maybe_pinned))
 				return -EBUSY;
 			ClearPageAnonExclusive(page);
 		}
