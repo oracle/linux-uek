@@ -113,6 +113,7 @@ struct kvm_sev_info {
 	void *guest_req_buf;    /* Bounce buffer for SNP Guest Request input */
 	void *guest_resp_buf;   /* Bounce buffer for SNP Guest Request output */
 	struct mutex guest_req_mutex; /* Must acquire before using bounce buffers */
+	bool snp_certs_enabled;	/* SNP certificate-fetching support. */
 };
 
 #define SEV_POLICY_NODBG	BIT_ULL(0)
