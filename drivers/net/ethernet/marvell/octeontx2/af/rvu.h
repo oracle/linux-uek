@@ -549,6 +549,7 @@ struct rvu_hwinfo {
 	u16	cpt_chan_base;	/* CPT base channel number */
 	u16	cplt_chan_base;	/* CPLT base channel number */
 	u8	cgx_links;
+	u8	cplt_links;
 	u8	lbk_links;
 	u8	sdp_links;
 	u8	cpt_links;	/* Number of CPT links */
@@ -1173,9 +1174,16 @@ static inline int rvu_get_pf(struct pci_dev *pdev, u16 pcifunc)
 }
 
 /* CGX APIs */
+
+static inline bool is_pf_cgxcpltmapped(struct rvu *rvu, u8 pf)
+{
+	return (pf >= PF_CPLTMAP_BASE && pf < (PF_CPLTMAP_BASE + 16));
+}
+
 static inline bool is_pf_cgxmapped(struct rvu *rvu, u8 pf)
 {
-	return (pf >= PF_CGXMAP_BASE && pf <= rvu->cgx_mapped_pfs) &&
+	return ((pf >= PF_CGXMAP_BASE && pf <= rvu->cgx_mapped_pfs) ||
+		is_pf_cgxcpltmapped(rvu, pf)) &&
 		!is_sdp_pf(rvu, rvu_make_pcifunc(rvu->pdev, pf, 0));
 }
 
@@ -1194,6 +1202,12 @@ static inline bool is_cgx_vf(struct rvu *rvu, u16 pcifunc)
 unsigned long cplt_prepare_lmac_bmap(struct rvu *rvu, u8 max_lmac, int n_cplts);
 void pf_bmap_to_cpltlmac(u16 pf2cpltlmac_map, u8 *chiplet_id,
 			 u8 *rpm_id, u8 *lmac_id);
+unsigned long get_active_cplt_lmac(struct rvu *rvu, int rpm, int *pf, int *n);
+
+static inline bool is_cnf20ka(struct pci_dev *pdev)
+{
+	return ((pdev->subsystem_device & 0xFFFF) == 0xC320);
+}
 
 #define M(_name, _id, fn_name, req, rsp)				\
 int rvu_mbox_handler_ ## fn_name(struct rvu *, struct req *, struct rsp *);

@@ -111,7 +111,8 @@ static void rvu_map_cgx_nix_block(struct rvu *rvu, int pf,
 	struct rvu_pfvf *pfvf = &rvu->pf[pf];
 	u8 p2x;
 
-	p2x = cgx_lmac_get_p2x(cgx_id, lmac_id);
+	if (!(is_cnf20ka(rvu->pdev) && cgx_id))
+		p2x = cgx_lmac_get_p2x(cgx_id, lmac_id);
 	/* Firmware sets P2X_SELECT as either NIX0 or NIX1 */
 	pfvf->nix_blkaddr = BLKADDR_NIX0;
 	if (is_rvu_supports_nix1(rvu) && p2x == CMR_P2X_SEL_NIX1)
@@ -151,7 +152,7 @@ static int rvu_map_cgx_lmac_pf(struct rvu *rvu)
 	int pf = PF_CGXMAP_BASE;
 	unsigned long lmac_bmap;
 	int cgx, lmac, iter;
-	int size;
+	int size, node = 0;
 
 	if (!cgx_cnt_max)
 		return 0;
@@ -163,7 +164,8 @@ static int rvu_map_cgx_lmac_pf(struct rvu *rvu)
 	 * An additional entry is required since PF id starts from 1 and
 	 * hence entry at offset 0 is invalid.
 	 */
-	size = (cgx_cnt_max * rvu->hw->lmac_per_cgx + 1) * sizeof(u8);
+	size = (rvu->hw->total_pfs * cgx_cnt_max * rvu->hw->lmac_per_cgx + 1) *
+		sizeof(u8);
 	rvu->pf2cgxlmac_map = devm_kmalloc(rvu->dev, size, GFP_KERNEL);
 	if (!rvu->pf2cgxlmac_map)
 		return -ENOMEM;
@@ -199,14 +201,25 @@ static int rvu_map_cgx_lmac_pf(struct rvu *rvu)
 non_mgmtport_mapping:
 
 	for (cgx = 0; cgx < cgx_cnt_max; cgx++) {
-		if (!rvu_cgx_pdata(cgx, rvu))
+		if (!rvu_cgx_pdata(cgx, rvu) && !is_cnf20ka(rvu->pdev))
 			continue;
-		lmac_bmap = cgx_get_lmac_bmap(rvu_cgx_pdata(cgx, rvu));
+		/* Assume CN20K has 1 compute chiplet with 4 LMACs */
+		if (is_cnf20ka(rvu->pdev) && cgx) {
+			lmac_bmap = get_active_cplt_lmac(rvu, cgx, &pf, &node);
+		} else {
+			if (!rvu_cgx_pdata(cgx, rvu))
+				continue;
+
+			lmac_bmap = cgx_get_lmac_bmap(rvu_cgx_pdata(cgx, rvu));
+		}
 		for_each_set_bit(iter, &lmac_bmap, rvu->hw->lmac_per_cgx) {
 			if (iter >= MAX_LMAC_COUNT)
 				continue;
-			lmac = cgx_get_lmacid(rvu_cgx_pdata(cgx, rvu),
-					      iter);
+			if (is_cnf20ka(rvu->pdev) && node)
+				lmac = iter;
+			else
+				lmac = cgx_get_lmacid(rvu_cgx_pdata(cgx, rvu),
+						      iter);
 			if (rvu_cgx_is_mgmt_port(rvu, cgx, lmac))
 				continue;
 			__rvu_map_cgx_lmac_pf(rvu, pf, cgx, lmac);
@@ -411,6 +424,16 @@ int rvu_cgx_init(struct rvu *rvu)
 		return 0;
 	}
 
+	if (is_cnf20ka(rvu->pdev) && rvu->fwdata->num_rpm_in_chiplet) {
+		if (!rvu->fwdata->csr_rpmx_cmr_num_lmacs[2][0])
+			rvu->cgx_cnt_max = rvu->cgx_cnt_max +
+				rvu->fwdata->num_rpm_in_chiplet;
+		else
+			rvu->cgx_cnt_max = rvu->cgx_cnt_max +
+				((NODE_MAX - 1) *
+				rvu->fwdata->num_rpm_in_chiplet);
+	}
+
 	rvu->cgx_idmap = devm_kzalloc(rvu->dev, rvu->cgx_cnt_max *
 				      sizeof(void *), GFP_KERNEL);
 	if (!rvu->cgx_idmap)
@@ -571,6 +594,9 @@ int rvu_cgx_config_rxtx(struct rvu *rvu, u16 pcifunc, bool start)
 	if (!is_cgx_config_permitted(rvu, pcifunc))
 		return LMAC_AF_ERR_PERM_DENIED;
 
+	if (is_pf_cgxcpltmapped(rvu, pf))
+		return 0;
+
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 	cgxd = rvu_cgx_pdata(cgx_id, rvu);
 	mac_ops = get_mac_ops(cgxd);
@@ -586,6 +612,9 @@ int rvu_cgx_tx_enable(struct rvu *rvu, u16 pcifunc, bool enable)
 	void *cgxd;
 
 	if (!is_cgx_config_permitted(rvu, pcifunc))
+		return 0;
+
+	if (is_pf_cgxcpltmapped(rvu, pf))
 		return 0;
 
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);

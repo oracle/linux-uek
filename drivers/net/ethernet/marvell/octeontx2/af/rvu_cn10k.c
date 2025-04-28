@@ -477,6 +477,24 @@ static void __rvu_nix_set_channels(struct rvu *rvu, int blkaddr)
 		cfg &= ~(NIX_AF_LINKX_BASE_MASK | NIX_AF_LINKX_RANGE_MASK);
 		cfg |=	FIELD_PREP(NIX_AF_LINKX_RANGE_MASK, ilog2(cgx_chans));
 		cfg |=	FIELD_PREP(NIX_AF_LINKX_BASE_MASK, start);
+		if (is_cnf20ka(rvu->pdev) && (link >= 4 &&
+					      link < hw->cplt_links + 4)) {
+			if (link == 4)
+				hw->cplt_chan_base = start;
+			cfg |=	FIELD_PREP(GENMASK_ULL(21, 20), 2);
+			cfg |=	FIELD_PREP(GENMASK_ULL(26, 25), 2);
+			if (!rvu->fwdata->csr_rpmx_cmr_num_lmacs[2][0] ||
+			    (link < (hw->cplt_links / 2 + 4))) {
+				cfg |=	FIELD_PREP(GENMASK_ULL(31, 30), 0);
+				cfg |=	FIELD_PREP(GENMASK_ULL(35, 32),
+						   link - 4);
+			} else {
+				cfg |=	FIELD_PREP(GENMASK_ULL(31, 30), 2);
+				cfg |=	FIELD_PREP(GENMASK_ULL(35, 32),
+						   link %
+						   (hw->cplt_links / 2 + 4));
+			}
+		}
 		rvu_write64(rvu, blkaddr, NIX_AF_LINKX_CFG(nix_link), cfg);
 		start += cgx_chans;
 	}
@@ -546,6 +564,8 @@ static void rvu_rpm_set_channels(struct rvu *rvu)
 
 	for (cgx = 0; cgx < rvu->cgx_cnt_max; cgx++) {
 		for (lmac = 0; lmac < hw->lmac_per_cgx; lmac++) {
+			if (is_cnf20ka(rvu->pdev) && cgx)
+				continue;
 			__rvu_rpm_set_channels(cgx, lmac, base);
 			base += 16;
 		}

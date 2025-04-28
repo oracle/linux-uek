@@ -51,8 +51,9 @@
 int rvu_cn20k_set_channels_base(struct rvu *rvu)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
-	int blkaddr, num_xcb, xcb_lmacs;
 	u64 nix_const, nix_const3;
+	int blkaddr, num_xcb;
+	int rpm_usx_cnt;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, 0);
 	if (blkaddr < 0)
@@ -66,8 +67,8 @@ int rvu_cn20k_set_channels_base(struct rvu *rvu)
 
 	/* CN20K supports RPM_USX along with RPM200 */
 	nix_const3 = rvu_read64(rvu, blkaddr, NIX_AF_CONST3);
-	if (nix_const & RPM_TYPES) {
-		int rpm_usx_cnt = (nix_const3 >> 44) & 0xFULL;
+	rpm_usx_cnt = (nix_const3 >> 44) & 0xFULL;
+	if ((nix_const & RPM_TYPES) && rpm_usx_cnt) {
 
 		/* lmac_per_cgx is used for the PF to (CGX,LMAC) mapping
 		 * and vice versa. Though the CN20k supports RPM200(with 4 lmacs)
@@ -82,8 +83,8 @@ int rvu_cn20k_set_channels_base(struct rvu *rvu)
 	 */
 	num_xcb = (nix_const3 >> 48) & 0xFULL;
 	if (num_xcb) {
-		xcb_lmacs = (nix_const3 >> 52) & 0xFULL;
-		hw->cgx_links += num_xcb * xcb_lmacs;
+		hw->cplt_links = (nix_const3 >> 56) & 0x1FULL;
+		hw->cgx_links += hw->cplt_links;
 	}
 
 	hw->lbk_links = (nix_const >> 24) & 0xFULL;
@@ -114,7 +115,8 @@ void rvu_cn20k_cpt_chan_cfg(struct rvu *rvu)
 	int blkaddr, nix_blkaddr;
 	u64 val;
 
-	if (!is_cn20k(rvu->pdev))
+	if (!is_cn20k(rvu->pdev) ||
+	    !is_block_implemented(rvu->hw, BLKADDR_CPT0))
 		return;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_CPT, 0);

@@ -50,6 +50,27 @@ static u64 cpltlmac_to_pfmap(struct rvu *rvu, u8 cplt_id, u8 rpm, u8 lmac)
 	return rvu->cplt_rpm->cpltlmac2pf_map[CPLT_OFFSET(cplt_id, rpm) + lmac];
 }
 
+/* Assume each chiplet has max 3 RPMs */
+static int rpm_to_cplt(int rpm)
+{
+	if (rpm >= 1 && rpm <= 12)
+		return (rpm - 1) / 3 + 1;
+
+	return 0;
+}
+
+unsigned long get_active_cplt_lmac(struct rvu *rvu, int rpm, int *pf, int *node)
+{
+	int eth;
+
+	*node = rpm_to_cplt(rpm);
+	eth = (rpm - 1) % 3;
+	if (rpm == 1)
+		*pf = PF_CPLTMAP_BASE;
+
+	return rvu->fwdata->csr_rpmx_cmr_num_lmacs[*node][eth];
+}
+
 void pf_bmap_to_cpltlmac(u16 pf2cpltlmac_map, u8 *chiplet_id,
 			 u8 *rpm_id, u8 *lmac_id)
 {
@@ -169,7 +190,7 @@ int rvu_mbox_handler_cplt_ptp_rx_enable(struct rvu *rvu,
 {
 	u8 chiplet_id, rpm_id, lmac_id;
 	u16 pcifunc = req->hdr.pcifunc;
-	int pf = rvu_get_pf(pcifunc);
+	int pf = rvu_get_pf(rvu->pdev, pcifunc);
 
 	pf_bmap_to_cpltlmac(rvu->cplt_rpm->pf2cpltlmac_map[pf], &chiplet_id,
 			    &rpm_id, &lmac_id);
