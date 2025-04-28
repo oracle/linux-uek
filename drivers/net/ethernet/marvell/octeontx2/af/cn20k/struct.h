@@ -21,8 +21,8 @@ enum rvu_mbox_pf_int_vec_e {
 	RVU_MBOX_PF_INT_VEC_VFPF_MBOX1	= 0x5,
 	RVU_MBOX_PF_INT_VEC_VFPF1_MBOX0	= 0x6,
 	RVU_MBOX_PF_INT_VEC_VFPF1_MBOX1	= 0x7,
-	RVU_MBOX_PF_INT_VEC_AFPF_MBOX	= 0x2e,
-	RVU_MBOX_PF_INT_VEC_CNT		= 0x2f,
+	RVU_MBOX_PF_INT_VEC_AFPF_MBOX	= 0x30,
+	RVU_MBOX_PF_INT_VEC_CNT		= 0x31,
 };
 
 /* RVU Admin function Interrupt Vector Enumeration */

@@ -24,7 +24,7 @@ static inline u64 pf_to_bitoff(u8 pf)
 /* Mbox Registers */
 /* RVU AF BAR0 Mbox registers for AF => PFx */
 #define RVU_MBOX_AF_PFX_ADDR(a)			(0x5000 | (a) << 4)
-#define RVU_MBOX_AF_AFPFX_TRIGX(a)		(0x9000 | (a) << 3)
+#define RVU_MBOX_AF_AFPFX_TRIGX(a)		(0x8000 | (a) << 3)
 #define RVU_MBOX_AF_PFAF_INT(a)			(0x2980 | (a) << 6)
 #define RVU_MBOX_AF_PFAF_INT_W1S(a)		(0x2988 | (a) << 6)
 #define RVU_MBOX_AF_PFAF_INT_ENA_W1S(a)		(0x2990 | (a) << 6)
