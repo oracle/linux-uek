@@ -75,6 +75,7 @@
 #define NPC_UDP_PORT_GENEVE	6081
 #define NPC_UDP_PORT_MPLS	6635
 #define NPC_UDP_PORT_ESP	4500
+#define NPC_UDP_PORT_ROCEV2     4791
 
 #define NPC_VXLANGPE_NP_IP	0x1
 #define NPC_VXLANGPE_NP_IP6	0x2
@@ -249,6 +250,7 @@ enum npc_kpu_parser_state {
 	NPC_S_KPU9_TU_MPLS_IN_IP,
 	NPC_S_KPU9_TU_MPLS_IN_UDP,
 	NPC_S_KPU9_TU_NSH_IN_GRE,
+	NPC_S_KPU9_ROCEV2,
 	NPC_S_KPU9_VXLAN,
 	NPC_S_KPU9_VXLANGPE,
 	NPC_S_KPU9_GENEVE,
@@ -6883,6 +6885,15 @@ static struct npc_kpu_profile_cam kpu8_cam_entries[] = {
 	},
 	{
 		NPC_S_KPU8_UDP, 0xff,
+		NPC_UDP_PORT_ROCEV2,
+		0xffff,
+		0x0000,
+		0x0000,
+		0x0000,
+		0x0000,
+	},
+	{
+		NPC_S_KPU8_UDP, 0xff,
 		NPC_UDP_PORT_VXLAN,
 		0xffff,
 		0x0000,
@@ -7729,6 +7740,15 @@ static struct npc_kpu_profile_cam kpu9_cam_entries[] = {
 	},
 	{
 		NPC_S_KPU9_TU_NSH_IN_GRE, 0xff,
+		0x0000,
+		0x0000,
+		0x0000,
+		0x0000,
+		0x0000,
+		0x0000,
+	},
+	{
+		NPC_S_KPU9_ROCEV2, 0xff,
 		0x0000,
 		0x0000,
 		0x0000,
@@ -14304,6 +14324,14 @@ static struct npc_kpu_profile_action kpu8_action_entries[] = {
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 2, 0, 0,
+		NPC_S_KPU9_ROCEV2, 8, 1,
+		NPC_LID_LD, NPC_LT_LD_UDP,
+		0,
+		0, 0, 0, 0,
+	},
+	{
+		NPC_ERRLEV_RE, NPC_EC_NOERR,
+		0, 0, 2, 0, 0,
 		NPC_S_KPU9_VXLAN, 8, 1,
 		NPC_LID_LD, NPC_LT_LD_UDP,
 		0,
@@ -15059,6 +15087,14 @@ static struct npc_kpu_profile_action kpu9_action_entries[] = {
 		0, 0, 0, 0, 1,
 		NPC_S_NA, 0, 1,
 		NPC_LID_LE, NPC_LT_LE_TU_NSH_IN_GRE,
+		0,
+		0, 0, 0, 0,
+	},
+	{
+		NPC_ERRLEV_RE, NPC_EC_NOERR,
+		0, 0, 0, 0, 1,
+		NPC_S_NA, 0, 0,
+		NPC_LID_LE, NPC_LT_LE_ROCEV2,
 		0,
 		0, 0, 0, 0,
 	},
