@@ -1020,10 +1020,20 @@ static int exec_mmap(struct linux_binprm *bprm)
 			up_write(&tsk->signal->exec_update_lock);
 			return -EINTR;
 		}
-		if (bprm->accepts_preserved_mem) {
+		if (unlikely(bprm->accepts_preserved_mem)) {
+			/*
+			 * Acquire the write lock to avoid changes to page
+			 * table entries while they are copied.
+			 */
+			mmap_read_unlock(old_mm);
+			ret = mmap_write_lock_killable(old_mm);
+			if (ret) {
+				up_write(&tsk->signal->exec_update_lock);
+				return ret;
+			}
 			ret = vma_dup_some(old_mm, mm);
 			if (ret) {
-				mmap_read_unlock(old_mm);
+				mmap_write_unlock(old_mm);
 				up_write(&tsk->signal->exec_update_lock);
 				return ret;
 			}
@@ -1053,7 +1063,10 @@ static int exec_mmap(struct linux_binprm *bprm)
 	vmacache_flush(tsk);
 	task_unlock(tsk);
 	if (old_mm) {
-		mmap_read_unlock(old_mm);
+		if (unlikely(bprm->accepts_preserved_mem))
+			mmap_write_unlock(old_mm);
+		else
+			mmap_read_unlock(old_mm);
 		BUG_ON(active_mm != old_mm);
 		setmax_mm_hiwater_rss(&tsk->signal->maxrss, old_mm);
 		mm_update_next_owner(old_mm);
