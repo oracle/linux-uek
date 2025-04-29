@@ -1903,11 +1903,8 @@ int vma_dup(struct vm_area_struct *old_vma, struct mm_struct *mm)
 	 * duplicate a vma from the outgoing mm into the mm of the new
 	 * process, this effectively transfers the accounting from the old
 	 * vma to new one.
-	 * exec holds the mmap read lock on the outgoing mm at this point
-	 * so __vm_flags_mod() is called here to avoid an assert that the
-	 * mmap write lock is held.
 	 */
-	__vm_flags_mod(old_vma, 0, VM_ACCOUNT);
+	vm_flags_clear(old_vma, VM_ACCOUNT);
 
 	ret = copy_page_range_exec(vma, old_vma);
 
