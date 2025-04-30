@@ -279,6 +279,11 @@ static int emit_patch(u8 **pprog, void *func, void *ip, u8 opcode)
 	return cnt;
 }
 
+static int emit_call(u8 **pprog, void *func, void *ip)
+{
+        return emit_patch(pprog, func, ip, 0xE8);
+}
+
 static int emit_jump(u8 **pprog, void *func, void *ip)
 {
         return emit_patch(pprog, func, ip, 0xE9);
@@ -509,6 +514,30 @@ static bool ex_handler_bpf(const struct exception_table_entry *x,
 	*(unsigned long *)((void *)regs + reg) = 0;
 	regs->ip += x->fixup & 0xff;
 	return true;
+}
+
+static int emit_spectre_bhb_barrier(u8 **pprog, u8 *ip,
+				    struct bpf_prog *bpf_prog)
+{
+	u8 *prog = *pprog;
+	int cnt = 0;
+	u8 *func;
+
+	if (cpu_feature_enabled(X86_FEATURE_CLEAR_BHB_LOOP)) {
+		/* The clearing sequence clobbers eax and ecx. */
+		EMIT1(0x50); /* push rax */
+		EMIT1(0x51); /* push rcx */
+		ip += 2;
+
+		func = (u8 *)clear_bhb_loop;
+
+		if (emit_call(&prog, func, ip))
+			return -EINVAL;
+		EMIT1(0x59); /* pop rcx */
+		EMIT1(0x58); /* pop rax */
+	}
+	*pprog = prog;
+	return 0;
 }
 
 static int do_jit(struct bpf_prog *bpf_prog, int *addrs, u8 *image,
@@ -1195,8 +1224,18 @@ emit_jmp:
 			seen_exit = true;
 			/* Update cleanup_addr */
 			ctx->cleanup_addr = proglen;
+
 			if (!bpf_prog_was_classic(bpf_prog))
 				EMIT1(0x5B); /* get rid of tail_call_cnt */
+
+			if (bpf_prog_was_classic(bpf_prog) &&
+			    !capable(CAP_SYS_ADMIN)) {
+				u8 *ip = image + addrs[i - 1];
+
+				if (emit_spectre_bhb_barrier(&prog, ip, bpf_prog))
+					return -EINVAL;
+			}
+
 			EMIT2(0x41, 0x5F);   /* pop r15 */
 			EMIT2(0x41, 0x5E);   /* pop r14 */
 			EMIT2(0x41, 0x5D);   /* pop r13 */
