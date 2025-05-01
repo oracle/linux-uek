@@ -954,6 +954,7 @@ copy_present_pte(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma,
 	unsigned long vm_flags = src_vma->vm_flags;
 	pte_t pte = *src_pte;
 	struct page *page;
+	bool is_exec_keep = !!(dst_vma->vm_flags & VM_EXEC_KEEP);
 
 	page = vm_normal_page(src_vma, addr, pte);
 	if (page) {
@@ -973,7 +974,12 @@ copy_present_pte(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma,
 	 * If it's a COW mapping, write protect it both
 	 * in the parent and the child
 	 */
-	if (is_cow_mapping(vm_flags) && pte_write(pte)) {
+	/*
+	 * But don't protect it if the PTE is being copied as part of
+	 * preserving memory across exec since the page may be pinned
+	 * for DMA and must not be COW'd.
+	 */
+	if (is_cow_mapping(vm_flags) && pte_write(pte) && !is_exec_keep) {
 		ptep_set_wrprotect(src_mm, addr, src_pte);
 		pte = pte_wrprotect(pte);
 	}
