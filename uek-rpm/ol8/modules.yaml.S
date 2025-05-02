@@ -599,6 +599,7 @@ modules-core:
 - intel_rapl_common
 - intel_rapl_msr
 - ioatdma
+- irqbypass
 - isci
 - isst_if_common
 - isst_if_mbox_msr
