@@ -200,7 +200,6 @@ struct cnf10k_rfoe_ndev_priv {
 	u32				clock_rate;
 	u32				clock_period;
 	u8				ptp_errata;
-
 	struct otx2_rfoe_stats		stats;
 } ____cacheline_aligned_in_smp;
 

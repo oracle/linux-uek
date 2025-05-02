@@ -27,6 +27,9 @@
 #define PTP_QUEUE_ID		0
 #define OTH_QUEUE_ID		1
 
+#define CNF10K_RFOE_RETRY_PACKET	1
+#define CNF10K_RFOE_RX_ERR		-1
+
 /* global driver ctx */
 struct cnf10k_rfoe_drv_ctx cnf10k_rfoe_drv_ctx[CNF10K_RFOE_MAX_INTF];
 
@@ -566,37 +569,43 @@ static void cnf10k_rfoe_dump_psw(struct cnf10k_rfoe_ndev_priv *priv, u8 *buf_ptr
 		netdev_err(priv->netdev, "psw(w%d)=0x%llx\n", i, *((u64 *)buf_ptr + i));
 }
 
-static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
-				       struct cnf10k_rx_ft_cfg *ft_cfg,
-				       int mbt_buf_idx)
+static int cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
+				      struct cnf10k_rx_ft_cfg *ft_cfg,
+				      int mbt_buf_idx)
 {
 	struct cnf10k_mhbw_jd_dma_cfg_word_0_s *jd_dma_cfg_word_0;
 	struct rfoe_psw_w2_ecpri_s *ecpri_psw_w2;
 	struct rfoe_psw_w2_roe_s *rfoe_psw_w2;
 	struct cnf10k_rfoe_ndev_priv *priv2;
+	u8 *buf_ptr, *jdt_ptr, *buf_ptr_psw;
 	struct cnf10k_rfoe_drv_ctx *drv_ctx;
 	u64 tstamp = 0, jdt_iova_addr, tsns;
 	int found = 0, idx, len, pkt_type;
 	struct rfoe_psw_s *psw = NULL;
 	struct net_device *netdev;
-	u8 *buf_ptr, *jdt_ptr;
 	struct sk_buff *skb;
 	u8 lmac_id;
 
 	buf_ptr = (u8 __force *)ft_cfg->mbt_virt_addr +
 				(ft_cfg->buf_size * mbt_buf_idx);
+	buf_ptr_psw = buf_ptr;
 	dma_rmb();
 
 	pkt_type = ft_cfg->pkt_type;
 
 	psw = (struct rfoe_psw_s *)buf_ptr;
+	/* Stop NAPI processing if psw len is zero,
+	 * and process the MBT index on the next NAPI schedule
+	 */
+	if (psw->pkt_len == 0)
+		return CNF10K_RFOE_RETRY_PACKET;
 	if (psw->pkt_type == CNF10K_ECPRI) {
 		jdt_iova_addr = (u64)psw->jd_ptr;
 		if (unlikely(!jdt_iova_addr)) {
 			netdev_err(priv->netdev, "JD_PTR was null at mbt_buf_idx %d\n",
 				   mbt_buf_idx);
 			cnf10k_rfoe_dump_psw(priv, buf_ptr);
-			return;
+			return CNF10K_RFOE_RX_ERR;
 		}
 		ecpri_psw_w2 = (struct rfoe_psw_w2_ecpri_s *)
 					&psw->proto_sts_word;
@@ -618,7 +627,7 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 			netdev_err(priv->netdev, "packet length was zero at mbt_buf_idx %d\n",
 				   mbt_buf_idx);
 			cnf10k_rfoe_dump_psw(priv, buf_ptr);
-			return;
+			return CNF10K_RFOE_RX_ERR;
 		}
 	}
 
@@ -635,7 +644,7 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 		priv2 = netdev_priv(netdev);
 	} else {
 		pr_err("netdev not found, something went wrong!\n");
-		return;
+		return CNF10K_RFOE_RX_ERR;
 	}
 
 	if (unlikely(psw->mac_err_sts || is_mcs_err(psw))) {
@@ -646,7 +655,7 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 					     psw->mcs_err_sts);
 		if (psw->mac_err_sts) {
 			cnf10k_rfoe_update_rx_drop_stats(priv2, pkt_type);
-			return;
+			return CNF10K_RFOE_RX_ERR;
 		}
 	}
 
@@ -657,7 +666,7 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 			  netdev->name, priv2->rfoe_num,
 			  priv2->lmac_id);
 		cnf10k_rfoe_update_rx_drop_stats(priv2, pkt_type);
-		return;
+		return CNF10K_RFOE_RX_ERR;
 	}
 
 	buf_ptr += (ft_cfg->pkt_offset * 16);
@@ -674,10 +683,12 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 	if (!skb) {
 		netif_err(priv2, rx_err, netdev, "Rx: alloc skb failed\n");
 		cnf10k_rfoe_update_rx_drop_stats(priv2, pkt_type);
-		return;
+		return CNF10K_RFOE_RX_ERR;
 	}
 
 	memcpy(skb->data, buf_ptr, len);
+	/* Memsetting the PSW to verify proper hardware write */
+	memset(buf_ptr_psw + 8, 0, 8);
 	skb_put(skb, len);
 	skb->protocol = eth_type_trans(skb, netdev);
 
@@ -696,10 +707,12 @@ static void cnf10k_rfoe_process_rx_pkt(struct cnf10k_rfoe_ndev_priv *priv,
 	cnf10k_rfoe_update_rx_stats(priv2, pkt_type, skb->len);
 
 	netif_receive_skb(skb);
+	return 0;
 }
 
 static int cnf10k_rfoe_process_rx_flow(struct cnf10k_rfoe_ndev_priv *priv,
-				       int pkt_type, int budget)
+				       int pkt_type, int budget,
+				       int *need_resched)
 {
 	struct otx2_bphy_cdev_priv *cdev_priv = priv->cdev_priv;
 	int count = 0, processed_pkts = 0;
@@ -747,15 +760,17 @@ static int cnf10k_rfoe_process_rx_flow(struct cnf10k_rfoe_ndev_priv *priv,
 		  *mbt_last_idx, count);
 
 	while (likely((processed_pkts < budget) && (processed_pkts < count))) {
-		cnf10k_rfoe_process_rx_pkt(priv, ft_cfg, *mbt_last_idx);
-
+		int processed = cnf10k_rfoe_process_rx_pkt(priv, ft_cfg,
+				*mbt_last_idx);
+		if (processed == CNF10K_RFOE_RETRY_PACKET) {
+			*need_resched = 1;
+			break;
+		}
 		(*mbt_last_idx)++;
 		if (*mbt_last_idx == ft_cfg->num_bufs)
 			*mbt_last_idx = 0;
-
 		processed_pkts++;
 	}
-
 	return processed_pkts;
 }
 
@@ -767,6 +782,7 @@ static int cnf10k_rfoe_napi_poll(struct napi_struct *napi, int budget)
 	int workdone = 0, pkt_type;
 	struct cnf10k_rx_ft_cfg *ft_cfg;
 	u64 intr_en, regval;
+	int need_resched = 0;
 
 	ft_cfg = container_of(napi, struct cnf10k_rx_ft_cfg, napi);
 	priv = ft_cfg->priv;
@@ -774,9 +790,11 @@ static int cnf10k_rfoe_napi_poll(struct napi_struct *napi, int budget)
 	pkt_type = ft_cfg->pkt_type;
 
 	/* pkt processing loop */
-	workdone += cnf10k_rfoe_process_rx_flow(priv, pkt_type, budget);
-
+	workdone += cnf10k_rfoe_process_rx_flow(priv, pkt_type, budget,
+			&need_resched);
 	if (workdone < budget) {
+		if (need_resched)
+			return budget;
 		napi_complete_done(napi, workdone);
 
 		/* Re enable the Rx interrupts */
