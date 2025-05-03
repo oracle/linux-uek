@@ -258,7 +258,12 @@ extern void clear_bhb_loop(void);
 
 #ifdef CONFIG_RETPOLINE
 
+#define ITS_THUNK_SIZE	64
+
 typedef u8 retpoline_thunk_t[RETPOLINE_THUNK_SIZE];
+typedef u8 its_thunk_t[ITS_THUNK_SIZE];
+extern retpoline_thunk_t __x86_indirect_thunk_array[];
+extern its_thunk_t	 __x86_indirect_its_thunk_array[];
 
 /*
  * The type of __x86_indirect_thunk_<reg> has changed to retpoline_thunk_t,
@@ -269,8 +274,6 @@ typedef u8 retpoline_thunk_t[RETPOLINE_THUNK_SIZE];
 	extern asmlinkage void __x86_indirect_thunk_ ## reg (void);
 #include <asm/GEN-for-each-reg.h>
 #undef GEN
-
-extern retpoline_thunk_t __x86_indirect_thunk_array[];
 
 #ifdef CONFIG_X86_64
 
