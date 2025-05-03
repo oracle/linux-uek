@@ -52,16 +52,18 @@ ENDPROC(__x86_retpoline_\reg)
 #define EXPORT_RETPOLINE(reg)  __EXPORT_THUNK(__x86_retpoline_ ## reg)
 
 #undef GEN
+
 #define GEN(reg) THUNK reg
 #include <asm/GEN-for-each-reg.h>
-
 #undef GEN
+
 #define GEN(reg) EXPORT_THUNK(reg)
 #include <asm/GEN-for-each-reg.h>
-
 #undef GEN
+
 #define GEN(reg) EXPORT_RETPOLINE(reg)
 #include <asm/GEN-for-each-reg.h>
+#undef GEN
 
 /*
  * This function name is magical and is used by -mfunction-return=thunk-extern
@@ -253,6 +255,40 @@ SYM_FUNC_START(entry_untrain_ret)
 		      "jmp srso_alias_untrain_ret", X86_FEATURE_SRSO_ALIAS
 SYM_FUNC_END(entry_untrain_ret)
 __EXPORT_THUNK(entry_untrain_ret)
+
+#ifdef CONFIG_MITIGATION_ITS
+
+.macro ITS_THUNK reg
+
+SYM_CODE_START(__x86_indirect_its_thunk_\reg)
+	ANNOTATE_RETPOLINE_SAFE
+	jmp *%\reg
+	int3
+	.align 32, 0xcc		/* fill to the end of the line */
+	.skip  32, 0xcc		/* skip to the next upper half */
+SYM_CODE_END(__x86_indirect_its_thunk_\reg)
+
+.endm
+
+/* ITS mitigation requires thunks be aligned to upper half of cacheline */
+.align 64, 0xcc
+.skip 32, 0xcc
+SYM_CODE_START(__x86_indirect_its_thunk_array)
+
+#define GEN(reg) ITS_THUNK reg
+#include <asm/GEN-for-each-reg.h>
+#undef GEN
+
+	.align 64, 0xcc
+SYM_CODE_END(__x86_indirect_its_thunk_array)
+
+#define EXPORT_ITS_THUNK(reg)	__EXPORT_THUNK(__x86_indirect_its_thunk_ ## reg)
+
+#define GEN(reg) EXPORT_ITS_THUNK(reg)
+#include <asm/GEN-for-each-reg.h>
+#undef GEN
+
+#endif
 
 SYM_CODE_START(__x86_return_thunk)
 	UNWIND_HINT_FUNC

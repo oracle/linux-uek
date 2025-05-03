@@ -498,6 +498,16 @@ INIT_PER_CPU(irq_stack_backing_store);
 
 #endif /* CONFIG_X86_32 */
 
+#if defined(CONFIG_X86_64)
+
+#if defined(CONFIG_MITIGATION_ITS) && !defined(CONFIG_DEBUG_FORCE_FUNCTION_ALIGN_64B)
+. = ASSERT(__x86_indirect_its_thunk_rax & 0x20, "__x86_indirect_thunk_rax not in second half of cacheline");
+. = ASSERT(((__x86_indirect_its_thunk_rcx - __x86_indirect_its_thunk_rax) % 64) == 0, "Indirect thunks are not cacheline apart");
+. = ASSERT(__x86_indirect_its_thunk_array == __x86_indirect_its_thunk_rax, "Gap in ITS thunk array");
+#endif
+
+#endif /* CONFIG_X86_64 */
+
 #ifdef CONFIG_KEXEC_CORE
 #include <asm/kexec.h>
 

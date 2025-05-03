@@ -107,8 +107,8 @@
 .macro JMP_NOSPEC reg:req
 #ifdef CONFIG_RETPOLINE
 	STATIC_JUMP_IF_TRUE .Lretpoline_jmp_\@, retpoline_enabled_key, def=0
-	ANNOTATE_RETPOLINE_SAFE
-	jmp	*%\reg
+	ALTERNATIVE __stringify(ANNOTATE_RETPOLINE_SAFE; jmp *%\reg),	\
+		__stringify(jmp __x86_indirect_its_thunk_\reg), X86_FEATURE_INDIRECT_THUNK_ITS
 .Lretpoline_jmp_\@:
 	ALTERNATIVE_2 __stringify(jmp __x86_retpoline_\reg),							\
 		__stringify(lfence; ANNOTATE_RETPOLINE_SAFE; jmp *%\reg; int3), X86_FEATURE_RETPOLINE_LFENCE,	\
@@ -121,8 +121,8 @@
 .macro CALL_NOSPEC reg:req
 #ifdef CONFIG_RETPOLINE
 	STATIC_JUMP_IF_TRUE .Lretpoline_call_\@, retpoline_enabled_key, def=0
-	ANNOTATE_RETPOLINE_SAFE
-	call	*%\reg
+	ALTERNATIVE __stringify(ANNOTATE_RETPOLINE_SAFE; call *%\reg),	\
+		__stringify(call __x86_indirect_its_thunk_\reg), X86_FEATURE_INDIRECT_THUNK_ITS
 	jmp	.Ldone_call_\@
 .Lretpoline_call_\@:
 	ALTERNATIVE_2 __stringify(ANNOTATE_RETPOLINE_SAFE; call *%\reg),	\
@@ -215,8 +215,11 @@
 	".long 901b - ., 902f - .\n"				\
 	_ASM_PTR "retpoline_enabled_key - .\n"			\
 	".popsection\n"						\
+	ALTERNATIVE(						\
 	ANNOTATE_RETPOLINE_SAFE					\
-	"	call *%[thunk_target]\n"			\
+	"call *%[thunk_target]\n",				\
+	"call __x86_indirect_its_thunk_%V[thunk_target];\n",	\
+	X86_FEATURE_INDIRECT_THUNK_ITS)				\
 	"	jmp  903f\n"					\
 	"	.align 16\n"					\
 	"902:"							\

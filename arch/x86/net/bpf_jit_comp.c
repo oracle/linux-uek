@@ -14,6 +14,7 @@
 #include <asm/nospec-branch.h>
 
 extern u8 *__x86_indirect_thunk_rax;
+extern u8 *__x86_indirect_its_thunk_rax;
 
 static u8 *emit_code(u8 *ptr, u32 bytes, unsigned int len)
 {
@@ -291,7 +292,9 @@ static int emit_indirect_jump_rax(u8 **pprog, u8 *ip)
 	int cnt = 0;
 
 #ifdef CONFIG_RETPOLINE
-	if (cpu_feature_enabled(X86_FEATURE_RETPOLINE_LFENCE)) {
+	if (cpu_feature_enabled(X86_FEATURE_INDIRECT_THUNK_ITS)) {
+		emit_jump(&prog, &__x86_indirect_its_thunk_rax, ip);
+	} else if (cpu_feature_enabled(X86_FEATURE_RETPOLINE_LFENCE)) {
 		EMIT_LFENCE();
 		EMIT2(0xFF, 0xE0);
 	} else if (cpu_feature_enabled(X86_FEATURE_RETPOLINE)) {

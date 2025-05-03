@@ -24,12 +24,19 @@ extern void cmpxchg8b_emu(void);
 #define DECL_RETPOLINE(reg) \
 	extern asmlinkage void __x86_retpoline_ ## reg (void);
 
+#define DECL_INDIRECT_ITS_THUNK(reg) \
+	extern asmlinkage void __x86_indirect_its_thunk_ ## reg (void);
+
 #undef GEN
 #define GEN(reg) DECL_INDIRECT_THUNK(reg)
 #include <asm/GEN-for-each-reg.h>
 
 #undef GEN
 #define GEN(reg) DECL_RETPOLINE(reg)
+#include <asm/GEN-for-each-reg.h>
+
+#undef GEN
+#define GEN(reg) DECL_INDIRECT_ITS_THUNK(reg)
 #include <asm/GEN-for-each-reg.h>
 
 #endif /* CONFIG_RETPOLINE */
