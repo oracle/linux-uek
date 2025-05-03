@@ -318,8 +318,10 @@ extern char __indirect_thunk_end[];
 
 #ifdef CONFIG_RETHUNK
 extern void __x86_return_thunk(void);
+extern void its_return_thunk(void);
 #else
 static inline void __x86_return_thunk(void) {}
+static inline void its_return_thunk(void) {}
 #endif
 
 extern void retbleed_return_thunk(void);

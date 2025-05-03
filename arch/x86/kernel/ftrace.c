@@ -813,7 +813,7 @@ create_trampoline(struct ftrace_ops *ops, unsigned int *tramp_size)
 	 * clause: IS_ENABLED(CONFIG_RETHUNK), but let's be explicit
 	 * that there are two clauses, the primary and the workaround.
 	 */
-	if (cpu_feature_enabled(X86_FEATURE_RETHUNK) ||
+	if (cpu_wants_rethunk_at(ip) ||
 		IS_ENABLED(CONFIG_RETHUNK)) {
 		unsigned char *new;
 
