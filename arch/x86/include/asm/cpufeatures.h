@@ -512,5 +512,14 @@
 #define X86_BUG_IBPB_NO_RET		X86_BUG(3) /* "ibpb_no_ret" IBPB omits return target predictions */
 /* X86_BUG(4) (X86_BUG_AMD_APIC_C1E) is not reused, it impacts AMD K8 which supports 64-bit */
 #define X86_BUG_ITS			X86_BUG(5) /* "its" CPU is affected by Indirect Target Selection */
+/* X86_BUG(6) (X86_BUG_FXSAVE_LEAK) is not reused, it can impact AMD in 64-bit mode */
+/* X86_BUG(7) (X86_BUG_CLFLUSH_MONITOR) is not reused, it impacts Intel Core 2 Dunnington, Nehalem, Westmere */
+/* X86_BUG(8) (X86_BUG_SYSRET_SS_ATTRS) is not reused, it impacts all AMD cpus */
+#define X86_BUG_ITS_NATIVE_ONLY		X86_BUG(9) /* "its" CPU is affected by Indirect Target Selection */
+/* X86_BUG(10) (X86_BUG_NULL_SEG) is not reused, it impacts AMD cpus */
+/* X86_BUG(11) (X86_BUG_SWAPGS_FENCE) is not reused, it impacts AMD K8 */
+/* X86_BUG(12) (X86_BUG_MONITOR) is not reused, it impacts Intel Goldmont */
+/* X86_BUG(13) (X86_BUG_AMD_E400) is not reused, it impacts AMD K8 */
+/* X86_BUG(14) and later cannot be reused, they impact recent CPUs */
 
 #endif /* _ASM_X86_CPUFEATURES_H */
