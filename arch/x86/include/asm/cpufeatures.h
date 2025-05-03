@@ -509,4 +509,7 @@
 #define X86_BUG_BHI			X86_BUG(1) /* CPU is affected by Branch History Injection */
 #define X86_BUG_RFDS			X86_BUG(2) /* CPU is vulnerable to Register File Data Sampling */
 #define X86_BUG_IBPB_NO_RET		X86_BUG(3) /* "ibpb_no_ret" IBPB omits return target predictions */
+/* X86_BUG(4) (X86_BUG_AMD_APIC_C1E) is not reused, it impacts AMD K8 which supports 64-bit */
+#define X86_BUG_ITS			X86_BUG(5) /* "its" CPU is affected by Indirect Target Selection */
+
 #endif /* _ASM_X86_CPUFEATURES_H */
