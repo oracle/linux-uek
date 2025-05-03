@@ -18,5 +18,7 @@ are configurable at compile, boot or run time.
    core-scheduling.rst
    processor_mmio_stale_data.rst
    cross-thread-rsb.rst
-   srso
    gather_data_sampling
+   srso
+   indirect-target-selection
+
