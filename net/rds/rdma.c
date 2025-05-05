@@ -157,20 +157,17 @@ EXPORT_SYMBOL_GPL(rds_rdma_drop_keys);
 static int rds_pin_pages(unsigned long user_addr, unsigned int nr_pages,
 			struct page **pages, int write)
 {
+	unsigned int gup_flags = FOLL_LONGTERM;
 	int ret;
-	struct mm_struct *mm = current->mm;
-	int gup_flags = FOLL_LONGTERM | (write ? FOLL_WRITE : 0);
 
-	mmgrab(mm);
-	down_read(&mm->mmap_lock);
-	ret = pin_user_pages(user_addr, nr_pages, gup_flags, pages);
+	if (write)
+		gup_flags |= FOLL_WRITE;
 
-	if (ret >= 0 && (unsigned) ret < nr_pages) {
+	ret = pin_user_pages_fast(user_addr, nr_pages, gup_flags, pages);
+	if (ret >= 0 && ret < nr_pages) {
 		unpin_user_pages(pages, ret);
 		ret = -EFAULT;
 	}
-	up_read(&mm->mmap_lock);
-	mmdrop(mm);
 
 	return ret;
 }
