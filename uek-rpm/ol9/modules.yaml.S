@@ -659,6 +659,7 @@ modules-core:
 - vmw_pvscsi
 - vmw_vmci
 - vmw_vsock_vmci_transport
+- vmxnet3
 - wmi
 - x86_pkg_temp_thermal
 - xen-acpi-processor
@@ -2253,7 +2254,6 @@ modules:
 - via_wdt
 - viafb
 - virtio_mem
-- vmxnet3
 - vt1211
 - w83627ehf
 - w83627hf
