@@ -132,15 +132,6 @@ void cpt_cn20k_rxc_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr)
 		if (cpt->cptpfvf_map[queue_idx] != pcifunc)
 			continue;
 
-		/* Reset CPT_AF_RXC_QUE(0..15)_X2P(0..1)_LINK_CFG to default */
-		rvu_write64(rvu, blkaddr,
-			    CPT_AF_RXC_QUEX_X2PX_LINK_CFG(queue_idx, 0),
-			    RXC_QUEX_X2PX_LINK_CFG_DEFAUT);
-
-		rvu_write64(rvu, blkaddr,
-			    CPT_AF_RXC_QUEX_X2PX_LINK_CFG(queue_idx, 1),
-			    RXC_QUEX_X2PX_LINK_CFG_DEFAUT);
-
 		/* Free queue except global queue and remove pf-func mapping */
 		__clear_bit(queue_idx, cpt->cpt_rx_queue_bitmap);
 		cpt->cptpfvf_map[queue_idx] = 0;

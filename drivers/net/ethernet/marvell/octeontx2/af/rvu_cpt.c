@@ -922,9 +922,9 @@ static void get_cn20k_rxc_sts(struct rvu *rvu, struct cpt_sts_rsp *rsp,
 	 * for single RXC queue, So CN20k provide first RXC queue information.
 	 */
 	rsp->x2p_link_cfg0 = rvu_read64(rvu, blkaddr,
-					CPT_AF_RXC_QUEX_X2PX_LINK_CFG(0, 0));
+					CPT_AF_RXC_QUE_X2PX_LINK_CFG(0));
 	rsp->x2p_link_cfg1 = rvu_read64(rvu, blkaddr,
-					CPT_AF_RXC_QUEX_X2PX_LINK_CFG(0, 1));
+					CPT_AF_RXC_QUE_X2PX_LINK_CFG(1));
 	rsp->rxc_time = rvu_read64(rvu, blkaddr, CPT_AF_RXC_TIME);
 	rsp->rxc_time_cfg = rvu_read64(rvu, blkaddr,
 				       CPT_AF_RXC_TIME_CFG);

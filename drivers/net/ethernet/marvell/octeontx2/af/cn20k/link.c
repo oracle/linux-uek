@@ -89,7 +89,7 @@ static void rvu_cn20k_x2p_p2x_link_cfg(struct rvu *rvu)
 
 void rvu_cn20k_cpt_chan_cfg(struct rvu *rvu)
 {
-	int blkaddr, qidx, nix_blkaddr;
+	int blkaddr, nix_blkaddr;
 	u64 val;
 
 	if (!is_cn20k(rvu->pdev))
@@ -103,18 +103,13 @@ void rvu_cn20k_cpt_chan_cfg(struct rvu *rvu)
 	if (nix_blkaddr < 0)
 		return;
 
-	/* Configure the X2P Link register with the cpt base channel number and
-	 * range of channels it should propagate to X2P
+	/* Configure the X2P Link register with the cpt base channel number.
+	 * Range of channels is fixed to 2^4=16
 	 */
-	val = (ilog2(CPT_AF_MAX_RXC_QUEUES) << 16);
-	val |= (u64)rvu->hw->cpt_chan_base;
+	val = (u64)rvu->hw->cpt_chan_base & 0xFFF;
 
-	for (qidx = 0; qidx < CPT_AF_MAX_RXC_QUEUES; qidx++) {
-		rvu_write64(rvu, blkaddr,
-			    CPT_AF_RXC_QUEX_X2PX_LINK_CFG(qidx, 0), val);
-		rvu_write64(rvu, blkaddr,
-			    CPT_AF_RXC_QUEX_X2PX_LINK_CFG(qidx, 1), val);
-	}
+	rvu_write64(rvu, blkaddr, CPT_AF_RXC_QUE_X2PX_LINK_CFG(0), val);
+	rvu_write64(rvu, blkaddr, CPT_AF_RXC_QUE_X2PX_LINK_CFG(1), val);
 
 	/* For 2nd pass
 	 * NIX_RX_PARSE_S[CHAN] =
