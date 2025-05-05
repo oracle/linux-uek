@@ -97,15 +97,35 @@ enum mcs_devtype {
 #define MCSX_PAB_TX_SLAVE_PORT_CFGX(a)			(0x2930ull + (a) * 0x40ull)
 
 /* PEX registers */
-#define MCSX_PEX_RX_SLAVE_VLAN_CFGX(a)		\
-	MCS_CHOOSE_OFFSET(0x3b58ull, -1, 0x1370ull)
-#define MCSX_PEX_TX_SLAVE_VLAN_CFGX(a)		\
-	MCS_CHOOSE_OFFSET(0x46f8ull, -1, 0x1888ull)
+#define MCSX_PEX_RX_SLAVE_VLAN_CFGX(a) ({	\
+	u64 offset;				\
+						\
+	offset = MCS_CHOOSE_OFFSET(0x3b58ull, -1, 0x1370ull);	\
+	offset += (a) * 0x8ull;			\
+	offset; })
+
+#define MCSX_PEX_TX_SLAVE_VLAN_CFGX(a)	({	\
+	u64 offset;				\
+						\
+	offset = MCS_CHOOSE_OFFSET(0x46f8ull, -1, 0x1888ull);	\
+	offset += (a) * 0x8ull;			\
+	offset; })
+
+#define MCSX_PEX_TX_SLAVE_PORT_CONFIG(a) ({	\
+	u64 offset;				\
+						\
+	offset = MCS_CHOOSE_OFFSET(0x4738ull, -1, 0x18c8ull);	\
+	offset += (a) * 0x8ull;			\
+	offset; })
+
+#define MCSX_PEX_RX_SLAVE_PORT_CFGX(a) ({	\
+	u64 offset;				\
+						\
+	offset = MCS_CHOOSE_OFFSET(0x3b98ull, -1, 0x13b0ull);	\
+	offset += (a) * 0x8ull;			\
+	offset; })
+
 #define MCSX_PEX_TX_SLAVE_CUSTOM_TAG_REL_MODE_SEL(a)	(0x788ull + (a) * 0x8ull)
-#define MCSX_PEX_TX_SLAVE_PORT_CONFIG(a)	\
-	MCS_CHOOSE_OFFSET(0x4738ull, -1, 0x18c8ull)
-#define MCSX_PEX_RX_SLAVE_PORT_CFGX(a)		\
-	MCS_CHOOSE_OFFSET(0x3b98ull, -1, 0x13b0ull)
 #define MCSX_PEX_RX_SLAVE_RULE_ETYPE_CFGX(a) ({	\
 	u64 offset;					\
 							\
