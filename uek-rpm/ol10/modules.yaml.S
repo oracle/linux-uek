@@ -605,7 +605,6 @@ modules-core:
 - edac_mce_amd
 - erst-dbg
 - ext4
-- fwctl
 - ghash-clmulni-intel
 - i10nm_edac
 - i2c-i801
@@ -637,7 +636,6 @@ modules-core:
 - md-cluster
 - mei-me
 - mii
-- mlx5_fwctl
 - mptbase
 - mptctl
 - mptsas
