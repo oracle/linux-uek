@@ -10,9 +10,9 @@ This repository contains the source for the Unbreakable Enterprise Kernel
 including a small number of Oracle additions which have not yet been accepted into the main 
 Linux kernel source tree. You can preview those changes, which are continually merged into
 the upstream Linux tree, in the `ueknext/latest` branch.
-(Binary RPMs for UEK-next are also available publicly.)[https://blogs.oracle.com/linux/post/uek-next]
+[Binary RPMs for UEK-next are also available publicly.](https://blogs.oracle.com/linux/post/uek-next)
 
-(The full Oracle Linux distribution, both sources and binaries, can be found at yum.oracle.com)[https://yum.oracle.com].
+[The full Oracle Linux distribution, both sources and binaries, can be found at yum.oracle.com](https://yum.oracle.com).
 
 ## Current Branches
 
