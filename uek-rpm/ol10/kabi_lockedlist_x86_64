@@ -155,6 +155,7 @@
 	clear_page_dirty_for_io
 	close_fd
 	complete
+	complete_all
 	const_pcpu_hot
 	d_add
 	d_alloc
@@ -552,6 +553,7 @@
 	vsprintf
 	vzalloc_node_noprof
 	vzalloc_noprof
+	wait_for_completion
 	wait_for_completion
 	wait_for_completion_interruptible
 	wait_for_completion_io_timeout
