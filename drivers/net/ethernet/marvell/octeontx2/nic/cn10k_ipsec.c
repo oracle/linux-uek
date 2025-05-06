@@ -819,6 +819,9 @@ free_mem:
 
 int cn10k_ipsec_send_queues_init(struct otx2_nic *pfvf)
 {
+	if (otx2_rep_dev(pfvf->pdev))
+		return 0;
+
 	if (pfvf->netdev->features & NETIF_F_HW_ESP)
 		return cn10k_ipsec_init_send_queues(pfvf);
 
@@ -827,6 +830,9 @@ int cn10k_ipsec_send_queues_init(struct otx2_nic *pfvf)
 
 void cn10k_ipsec_send_queues_cleanup(struct otx2_nic *pfvf)
 {
+	if (otx2_rep_dev(pfvf->pdev))
+		return;
+
 	if (pfvf->netdev->features & NETIF_F_HW_ESP)
 		cn10k_ipsec_cleanup_send_queues(pfvf);
 }
