@@ -367,8 +367,10 @@ extern its_thunk_t	 __x86_indirect_its_thunk_array[];
 
 #ifdef CONFIG_MITIGATION_RETHUNK
 extern void __x86_return_thunk(void);
+extern void its_return_thunk(void);
 #else
 static inline void __x86_return_thunk(void) {}
+static inline void its_return_thunk(void) {}
 #endif
 
 #ifdef CONFIG_MITIGATION_UNRET_ENTRY
