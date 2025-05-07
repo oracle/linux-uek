@@ -2055,11 +2055,7 @@ xfs_setsize_buftarg(
 		return -EINVAL;
 	}
 
-	/*
-	 * Flush the block device pagecache so our bios see anything dirtied
-	 * before mount.
-	 */
-	return sync_blockdev(btp->bt_bdev);
+	return 0;
 }
 
 int
@@ -2108,6 +2104,8 @@ xfs_alloc_buftarg(
 {
 	struct xfs_buftarg	*btp;
 	const struct dax_holder_operations *ops = NULL;
+	int			error;
+
 
 #if defined(CONFIG_FS_DAX) && defined(CONFIG_MEMORY_FAILURE)
 	ops = &xfs_dax_holder_operations;
@@ -2129,20 +2127,30 @@ xfs_alloc_buftarg(
 	}
 
 	/*
+	 * Flush and invalidate all devices' pagecaches before reading any
+	 * metadata because XFS doesn't use the bdev pagecache.
+	 */
+	error = sync_blockdev(btp->bt_bdev);
+	if (error)
+		goto error_free;
+
+	/*
 	 * When allocating the buftargs we have not yet read the super block and
 	 * thus don't know the file system sector size yet.
 	 */
-	if (xfs_setsize_buftarg(btp, bdev_logical_block_size(btp->bt_bdev)))
-		goto error_free;
-	if (xfs_init_buftarg(btp, bdev_logical_block_size(btp->bt_bdev),
-			mp->m_super->s_id))
+	btp->bt_meta_sectorsize = bdev_logical_block_size(btp->bt_bdev);
+	btp->bt_meta_sectormask = btp->bt_meta_sectorsize - 1;
+
+	error = xfs_init_buftarg(btp, btp->bt_meta_sectorsize,
+				mp->m_super->s_id);
+	if (error)
 		goto error_free;
 
 	return btp;
 
 error_free:
 	kfree(btp);
-	return NULL;
+	return ERR_PTR(error);
 }
 
 static inline void
