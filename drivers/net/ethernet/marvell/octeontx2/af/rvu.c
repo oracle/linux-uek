@@ -810,6 +810,9 @@ setup_vfmsix:
 	rvu->msix_base_iova = iova;
 	rvu->msixtr_base_phy = phy_addr;
 
+	if (is_rvu_otx2(rvu) || is_cn20k(rvu->pdev))
+		return 0;
+
 	altaf_intr_data = &rvu->fwdata->altaf_intr_info;
 	if (rvu->fwdata && altaf_intr_data->gint_paddr) {
 		iova = dma_map_resource(rvu->dev, altaf_intr_data->gint_paddr,
