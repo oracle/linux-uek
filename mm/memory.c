@@ -686,7 +686,7 @@ out:
 static inline unsigned long
 copy_one_pte(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 		pte_t *dst_pte, pte_t *src_pte, struct vm_area_struct *vma,
-		unsigned long addr, int *rss)
+		unsigned long addr, int *rss, bool is_exec_keep)
 {
 	unsigned long vm_flags = vma->vm_flags;
 	pte_t pte = *src_pte;
@@ -762,8 +762,13 @@ copy_one_pte(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 	/*
 	 * If it's a COW mapping, write protect it both
 	 * in the parent and the child
+	 * But don't protect it if the copying is being done to preserve
+	 * memory across exec. There will be no sharing since the source
+	 * VMA will be unmapped before exec completes, and though not
+	 * shared the page must not be COW'd by the new process since it
+	 * may be pinned for DMA.
 	 */
-	if (is_cow_mapping(vm_flags) && pte_write(pte)) {
+	if (is_cow_mapping(vm_flags) && pte_write(pte) && !is_exec_keep) {
 		ptep_set_wrprotect(src_mm, addr, src_pte);
 		pte = pte_wrprotect(pte);
 	}
@@ -801,6 +806,7 @@ static int copy_pte_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 	int progress = 0;
 	int rss[NR_MM_COUNTERS];
 	swp_entry_t entry = (swp_entry_t){0};
+	bool is_exec_keep = !!(new->vm_flags & VM_EXEC_KEEP);
 
 again:
 	init_rss_vec(rss);
@@ -831,7 +837,7 @@ again:
 			continue;
 		}
 		entry.val = copy_one_pte(dst_mm, src_mm, dst_pte, src_pte,
-							vma, addr, rss);
+						vma, addr, rss, is_exec_keep);
 		if (entry.val)
 			break;
 		progress += 8;
