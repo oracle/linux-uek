@@ -1068,9 +1068,11 @@ static int exec_mmap(struct linux_binprm *bprm)
 			return -EINTR;
 		}
 		if (bprm->accepts_preserved_mem) {
+			up_read(&old_mm->mmap_sem);
+			down_write(&old_mm->mmap_sem);
 			ret = vma_dup_some(old_mm, mm);
 			if (ret) {
-				up_read(&old_mm->mmap_sem);
+				up_write(&old_mm->mmap_sem);
 				up_write(&tsk->signal->exec_update_lock);
 				return ret;
 			}
@@ -1104,7 +1106,10 @@ static int exec_mmap(struct linux_binprm *bprm)
 	vmacache_flush(tsk);
 	task_unlock(tsk);
 	if (old_mm) {
-		up_read(&old_mm->mmap_sem);
+		if (unlikely(bprm->accepts_preserved_mem))
+			up_write(&old_mm->mmap_sem);
+		else
+			up_read(&old_mm->mmap_sem);
 		BUG_ON(active_mm != old_mm);
 		setmax_mm_hiwater_rss(&tsk->signal->maxrss, old_mm);
 		mm_update_next_owner(old_mm);
