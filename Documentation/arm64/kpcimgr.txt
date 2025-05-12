@@ -62,6 +62,7 @@ shmem area, and in the Pensando use case, the start address will be
 zero, which indicates that there is no persistent memory, and hence
 the driver will allocate its own memory to represent shmem. Of course
 in this case no kexec reboot is possible as no state will survive.
+Additional memory ranges may be added dynamically via a sysfs entry.
 
 If a non-zero address is given for shmem, then it specifies the
 physical address of the RAM reserved outside of linux memory. In this
@@ -93,20 +94,24 @@ elba asic.
 
 Service library module load and registration
 
-During this phase, an ELF file, possibly a kernel module, is loaded which
-contains the pciesvc library. When a kexec operation is initiated, the module
+During this phase, the service library (firmware) is loaded via one of the
+methods detailed below. When a kexec operation is initiated, the library
 code and data must be copied out to persistent memory. In order for this to
 work, the code must be examined to make sure it doesn't contain any references
-outside of the library. The module code is not part of the kpcimgr code, but
-kpcimgr provides an API for the module to call to convey information about its
-own code/data layout as well as addresses of its important entry points. These
-entry points are how the service library is connected to normal kernel services
-since it cannot make any such calls on its own.
+outside of the library. The library code is not part of the kpcimgr code, but
+kpcimgr provides an API through which the library can convey information about
+its own code/data layout as well as addresses of its important entry points.
+These entry points are how the service library is connected to normal kernel
+services since it cannot make any such calls on its own.
+
+Method 1: pciesvc.ko
+
+The library code is compiled into a loadable kernel module. Within the modules
+init function, it calls kpcimgr_module_register() and passes in a pointer to
+a mod struct and a pointer to the entry point structure (defined in
+kpcimgr_api.h)
 
 kpcimgr_module_register()
-
-The module calls this and passes in a pointer to a mod struct and a
-pointer to the entry point structure (defined in kpcimgr_api.h)
 
 Version numbers are checked. The module provides a version number which must
 match the version number of the kpcimgr code.  The version number can be
@@ -153,6 +158,65 @@ relocation to temporary (vmalloc) memory. This is mainly for testing
 as it is useful to prove that the module can be relocated and executed
 successfully without actually doing a kexec reboot.
 
+Method 2: pciesvc_loader.ko
+
+This method consists of two components; the service library compiled as a fully
+linked ELF file and a loader module. When the loader module is loaded, it
+creates three sysfs entries at /sys/kernel/pciesvc/ which are defined below:
+
+valid - when read, it returns a 1 or 0 depending on whether a valid ELF file
+ has been loaded or not.
+
+code - R/W binary interface that facilitates the loading of the service library
+ ELF file into kernel memory. When read, it outputs the contents of the
+ currently loaded service library.
+
+run - R/W bit. When written, it triggers the mechanism that loads the service
+ library ELF into kernel memory to be run. When read, it returns the address of
+ the service library code.
+
+To load a service library via this method the user will do the following
+procedure:
+  1. insmod pciesvc_loader.ko
+  2. Write pciesvc.lib into /sys/kernel/pciesvc/code
+  3. Trigger the load by writing to /sys/kernel/pciesvc/run
+  4. Validate the load was successful by reading /sys/kernel/pciesvc/valid or
+     checking dmesg
+
+When this method is used, the ELF file is read into memory, inspected for
+validity and then formatted into a mod struct. Then, kpcimgr_module_register()
+is called and a pointer to the newly created struct is passed in. At this
+point, the rest of the loading/verification process is identical to what's
+outlined in Method 1.
+
+Method 3: Firmware Loader Interface
+
+In this method, the service library ELF file (or a symbolic link to
+it) is placed in /lib/firmware/pciesvc.lib, and the kernel's firmware
+interface will look for it there. Kpcimgr provides a single write-only
+sysfs entry "fwload" which simply triggers the firmware load process.
+
+When a load is triggered, kpcimgr checks the signature of the file, and
+then calls prepare_firmware() to validate the elf object. Among other things,
+we check that:
+ - ELF sections are ordered as expected
+ - There is only one executable section (.text)
+ - The file contains debug information
+ - Our special .pciesvc_info section exists
+ - Various other error cases for ill-formed files
+
+Once the service library has been fully vetted, load_firmware() is called which
+performs the necessary work to switch kpcimgr to start running with the newly
+loaded firmware.
+
+The notable deviation from prior methods of loading is the addition of the
+.pciesvc_info section. This section contains a struct fw_info_t which is
+defined when the service library is compiled. The fw_into_t struct contains all
+of what's in struct kpcimgr_entry_points_t but adds information allowing for
+immediate access to important areas of the firmware. Additionally, since this
+struct is laid out in its own section, the library can be examined without
+needing to execute code to exchange information like in previous methods.
+
 
 SYSFS Interface
 
@@ -185,6 +249,14 @@ active_port - R/W access to internal active_port value
 command - R/W binary data to/from pciesvc, which provides a way
  for user land utilities (i.e. pciemgrd) to initiate action in
  the kernel side pciesvc library
+
+range - write-only, allows addition of a dynamic memory range
+in the format:
+   range_start, range_size
+A range_size of zero indicates that the range starting with range_start
+is to be deleted. A new range may not overlap any existing range in any way.
+
+ranges - read-only, produces a list of the currently defined ranges
 
 Execution during normal (virtual) mode
 
@@ -297,7 +369,7 @@ if the cpu has been "released".  When released, the service library concludes
 operations and gives control of the cpu back to the system. The way this
 happens differs between the two modes of operation:
 
-In spin table mode, the boot cpu sets a release address which is seen my the
+In spin table mode, the boot cpu sets a release address which is seen by the
 secondary cpu executing in the pciesvc code, and this simply indicates a place
 to jump which contains the code to bring the secondary back online.  At this
 point, the new kernel is already executing after the kexec, and right after it

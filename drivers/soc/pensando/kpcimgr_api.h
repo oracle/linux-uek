@@ -168,7 +168,42 @@ _Static_assert(sizeof(kstate_t) < SHMEM_KSTATE_SIZE,
 #define PFX KPCIMGR_NAME ": "
 #define KPCIMGR_KERNEL_VERSION 3
 
+#define FW_INFO_OFFSET   0x800
+#define FW_INFO_MAX_SIZE 0x800
+#define FW_INFO_MAGIC_V1 0xD0B05E18
+#define FW_INFO_MAGIC_V2 0x4FD0B05E
+
+/*
+ * Structure used when loading firmware to provide immediate access to points of interest within
+ * the code.
+ */
+struct fw_info_t {
+	unsigned long image_size;
+	unsigned long text_off;
+	unsigned long text_size;
+	unsigned long symtab_off;
+	unsigned long strtab_off;
+	unsigned long n_syms;
+	unsigned long features;
+	int expected_mgr_version;
+	int lib_version_major;
+	int lib_version_minor;
+	int valid;
+	char build_time[256];
+	void *code_offsets[K_NUM_ENTRIES];
+	unsigned long reserved[16];
+};
+_Static_assert(sizeof(struct fw_info_t) < FW_INFO_MAX_SIZE, "fw_info_t size too large");
+
+static inline struct fw_info_t *get_fw_info(void *image)
+{
+	return image + FW_INFO_OFFSET;
+}
+
 #ifdef __KERNEL__
+int contains_external_refs(unsigned long image_start, unsigned long image_end,
+			   unsigned long text_start, unsigned long text_end);
+int load_firmware(void *image);
 int kpcimgr_module_register(struct module *mod,
 			    struct kpcimgr_entry_points_t *ep, int relocate);
 void kpcimgr_start_running(void);

@@ -300,24 +300,21 @@ static int open_kpcimgr(struct inode *inode, struct file *filp)
 }
 
 /*
- * Examine code and look for calls (BL insn) and data references
- * (ADRP) to memory addresses outside of the bounds of the module. If
- * any are found, report them and return an error.
+ * Examine code and look for calls (BL insn) that are beyond the bounds of the text section, and
+ * data references (ADRP) to memory outside of the image. If any are found, report them and return
+ * an error.
  */
-int contains_external_refs(struct module *mod, void *code_end)
+int contains_external_refs(unsigned long image_start, unsigned long image_end,
+			   unsigned long text_start, unsigned long text_end)
 {
-	unsigned long start = (unsigned long)mod->core_layout.base;
 	char code_loc[KSYM_SYMBOL_LEN], target_ref[KSYM_SYMBOL_LEN];
 	int insn_count, call_count, adrp_count;
-	unsigned long size, target, insn_addr;
+	unsigned long target, insn_addr;
 	s32 offset;
 	u32 insn;
 
-	size = (unsigned long)code_end - start;
-
-	for (insn_addr = start, insn_count = 0, call_count = 0, adrp_count = 0;
-	     insn_addr < start + size;
-	     insn_addr += sizeof(u32)) {
+	for (insn_addr = text_start, insn_count = 0, call_count = 0, adrp_count = 0;
+	     insn_addr < text_end; insn_addr += sizeof(u32)) {
 		if (aarch64_insn_read((void *)insn_addr, &insn)) {
 			pr_err("Failed to read insn @ %lx\n", insn_addr);
 			return 1;
@@ -328,13 +325,13 @@ int contains_external_refs(struct module *mod, void *code_end)
 			offset = aarch64_get_branch_offset(insn);
 			target = insn_addr + offset;
 
-			if (within_module(target, mod))
+			if (target >= text_start && target < text_end)
 				continue;
 
 			sprint_symbol(code_loc, insn_addr);
 			sprint_symbol(target_ref, target);
 			pr_err("Found call to %s at %s (offset 0x%lx)\n",
-			       target_ref, code_loc, insn_addr - start);
+			       target_ref, code_loc, insn_addr - text_start);
 
 			call_count++;
 		}
@@ -343,7 +340,7 @@ int contains_external_refs(struct module *mod, void *code_end)
 			offset = aarch64_insn_adrp_get_offset(insn);
 			target = (insn_addr & PAGE_MASK) + offset;
 
-			if (within_module(target, mod))
+			if (target >= image_start && target < image_end)
 				continue;
 
 			sprint_symbol(code_loc, insn_addr);
@@ -351,7 +348,7 @@ int contains_external_refs(struct module *mod, void *code_end)
 			pr_err("Found approximate reference to %s at %s\n",
 			       target_ref, code_loc);
 			pr_err(" (Please check object file offset 0x%lx for exact reference)\n",
-				insn_addr - start);
+				insn_addr - text_start);
 			adrp_count++;
 		}
 	}
@@ -454,7 +451,8 @@ int kpcimgr_module_register(struct module *mod,
 		return -EINVAL;
 	}
 
-	if (contains_external_refs(mod, code_end)) {
+	if (contains_external_refs(start_addr, start_addr + mod->core_layout.size,
+				   start_addr, (unsigned long) code_end)) {
 		pr_err("KPCIMGR: relocation failed for '%s'\n", mod->name);
 		return -ENXIO;
 	}
@@ -606,6 +604,77 @@ void check_borrowed_cpu(kstate_t *ks)
 	/* finally, activate the borrowed cpu */
 	add_cpu(ks->running);
 	pr_info("KPCIMGR: return of CPU#%d complete\n", ks->running);
+}
+
+int load_firmware(void *image)
+{
+	kstate_t *ks = get_kstate();
+	struct fw_info_t *fw;
+	unsigned long iflags;
+	int i, was_running;
+
+	if (ks == NULL) {
+		pr_info("KPCIMGR: kpcimgr not running or failed to start\n");
+		return -ENODEV;
+	}
+
+	fw = get_fw_info(image);
+
+	pr_info("KPCIMGR: firmware expects mgr ver=%d, lib version=%d.%d\n",
+		fw->expected_mgr_version, fw->lib_version_major, fw->lib_version_minor);
+
+	if (fw->expected_mgr_version != KPCIMGR_KERNEL_VERSION) {
+		pr_info("KPCIMGR: firmware expects kernel version %d, incompatible with version %d\n",
+			fw->expected_mgr_version, KPCIMGR_KERNEL_VERSION);
+		return -EINVAL;
+	}
+
+	if (feature_check(fw->features))
+		return -EINVAL;
+
+	was_running = ks->running;
+	if (was_running) {
+		pr_info("%s: kpcimgr has stopped running\n", __func__);
+		kpcimgr_stop_running();
+	}
+
+	spin_lock_irqsave(&kpcimgr_lock, iflags);
+	ks->valid = 0;
+
+	/* Release old firmware */
+	if (ks->mod) {
+		module_put(ks->mod);
+		ks->mod = NULL;
+	} else {
+		module_memfree(ks->code_base);
+	}
+
+	/* Switch over to using the new firmware */
+	ks->code_base = image;
+	ks->code_size = fw->image_size;
+
+	for (i = 0; i < K_NUM_ENTRIES; i++)
+		ks->code_offsets[i] = (unsigned long) fw->code_offsets[i];
+
+	pr_info("KPCIMGR: service library: '%s', start=0x%lx, end=0x%lx, size=0x%lx\n",
+		fw->build_time, (unsigned long) ks->code_base,
+		(unsigned long) ks->code_base + ks->code_size, ks->code_size);
+
+	set_init_state(ks);
+	ks->valid = KSTATE_MAGIC;
+	ks->lib_version_major = fw->lib_version_major;
+	ks->lib_version_minor = fw->lib_version_minor;
+
+	/* Release lock and restart kpcimgr if we were running */
+	spin_unlock_irqrestore(&kpcimgr_lock, iflags);
+	if (was_running) {
+		kpcimgr_start_running();
+		pr_info("%s: kpcimgr will begin running\n", __func__);
+	} else {
+		reset_stats(ks);
+	}
+
+	return 0;
 }
 
 static void unmap_resources(void)
@@ -961,7 +1030,6 @@ static int kpcimgr_notify_reboot(struct notifier_block *this,
 	void (*reboot_fn)(long resv0, long resv1, long resv2, long resv3);
 
 	/* stop running regardless of why a reboot is happening */
-	free_intrs(ks->pfdev);
 	if (ks->valid != KSTATE_MAGIC) {
 		pr_err("KPCIMGR: halting due to invalid kstate\n");
 		ks->valid = 0;
