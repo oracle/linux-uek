@@ -444,7 +444,7 @@ u64 __vgic_v3_get_gic_config(void)
 	 * that to be able to set ICC_SRE_EL1.SRE to 0, all the
 	 * interrupt overrides must be set. You've got to love this.
 	 */
-	sysreg_clear_set(hcr_el2, 0, HCR_AMO | HCR_FMO | HCR_IMO);
+	sysreg_clear_set_hcr(0, HCR_AMO | HCR_FMO | HCR_IMO);
 	isb();
 	write_gicreg(0, ICC_SRE_EL1);
 	isb();
@@ -453,7 +453,7 @@ u64 __vgic_v3_get_gic_config(void)
 
 	write_gicreg(sre, ICC_SRE_EL1);
 	isb();
-	sysreg_clear_set(hcr_el2, HCR_AMO | HCR_FMO | HCR_IMO, 0);
+	sysreg_clear_set_hcr(HCR_AMO | HCR_FMO | HCR_IMO, 0);
 	isb();
 
 	if (has_vhe())

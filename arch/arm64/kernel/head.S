@@ -311,7 +311,7 @@ SYM_INNER_LABEL(init_el2, SYM_L_LOCAL)
 
 	orr	x0, x0, #HCR_E2H
 1:
-	msr	hcr_el2, x0
+	msr_hcr_el2 x0
 	isb
 
 	init_el2_state
