@@ -291,10 +291,9 @@ struct rds_conn_path {
 	unsigned int		cp_unacked_bytes;
 	unsigned int		cp_index;
 
-	/* when was this connection started */
-	uint64_t		cp_conn_start_jf;
-	uint64_t		cp_conn_ts_jf;
-	uint64_t		cp_conn_shutdown_jf;
+	unsigned long		cp_conn_start_jf;  /* when conn started */
+	unsigned long		cp_conn_ts_jf;     /* how long conn up/down */
+	unsigned long		cp_conn_shutdown_jf;  /* when conn shutdown */
 
 	/* Re-connect stall diagnostics */
 	unsigned long		cp_reconn_flags;
