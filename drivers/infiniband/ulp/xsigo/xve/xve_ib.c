@@ -63,8 +63,10 @@ struct xve_ah *xve_create_ah(struct net_device *dev,
 void xve_free_ah(struct kref *kref)
 {
 	struct xve_ah *ah = container_of(kref, struct xve_ah, ref);
+	struct xve_dev_priv *priv;
+
 	BUG_ON(ah == NULL);
-	struct xve_dev_priv *priv = netdev_priv(ah->dev);
+	priv = netdev_priv(ah->dev);
 
 	list_add_tail(&ah->list, &priv->dead_ahs);
 }
@@ -765,16 +767,19 @@ static inline int post_send(struct xve_dev_priv *priv,
 			    struct ib_ah *address, u32 qpn,
 			    struct xve_tx_buf *tx_req, void *head, int hlen)
 {
-	BUG_ON(tx_req == NULL || tx_req->skb == NULL);
-
 	const struct ib_send_wr *bad_wr;
 	struct ib_ud_wr *ud_wr = &priv->tx_wr;
-	int i, off;
-	struct sk_buff *skb = tx_req->skb;
-	skb_frag_t *frags = skb_shinfo(skb)->frags;
-	int nr_frags = skb_shinfo(skb)->nr_frags;
-	u64 *mapping = tx_req->mapping;
-	int total_size = 0;
+	struct sk_buff *skb;
+	skb_frag_t *frags;
+	u64 *mapping;
+	int i, off, nr_frags, total_size = 0;
+
+	BUG_ON(tx_req == NULL || tx_req->skb == NULL);
+
+	skb = tx_req->skb;
+	frags = skb_shinfo(skb)->frags;
+	nr_frags = skb_shinfo(skb)->nr_frags;
+	mapping = tx_req->mapping;
 
 	if (skb_headlen(skb)) {
 		priv->tx_sge[0].addr = mapping[0];
