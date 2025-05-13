@@ -1004,12 +1004,12 @@ static int xve_start_xmit(struct sk_buff *skb, struct net_device *dev)
 			if (!xve_is_edr(priv) && (xve_do_arp
 			    || (priv->netdev->mtu >
 				XVE_UD_MTU(priv->max_ib_mtu))))
-
 				bcast_skb = xve_generate_query(priv, skb);
-				if (bcast_skb != NULL)
-					ret = xve_mcast_send(dev,
-						       (void *)priv->bcast_mgid.
-						       raw, bcast_skb, 1);
+
+			if (bcast_skb != NULL)
+				ret = xve_mcast_send(dev,
+					       (void *)priv->bcast_mgid.
+					       raw, bcast_skb, 1);
 			/*
 			 * Now send the original packet also to over broadcast
 			 * Later add counters for flood mode
