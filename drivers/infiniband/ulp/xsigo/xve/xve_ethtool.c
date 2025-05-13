@@ -122,7 +122,6 @@ static int xve_get_sset_count(struct net_device *dev, int sset)
 static void xve_get_ethtool_stats(struct net_device *dev,
 				  struct ethtool_stats *stats, uint64_t *data)
 {
-	struct xve_dev_priv *priv = netdev_priv(dev);
 	int index = 0;
 
 	/* Get statistics */
