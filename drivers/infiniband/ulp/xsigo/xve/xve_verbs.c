@@ -291,10 +291,7 @@ out_free_recv_cq:
 	priv->recv_cq = NULL;
 
 out_free_mr:
-
 	xve_cm_dev_cleanup(dev);
-
-out_free_pd:
 	ib_dealloc_pd(priv->pd);
 	return -ENODEV;
 }
