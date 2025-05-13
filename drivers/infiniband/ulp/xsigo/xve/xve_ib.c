@@ -108,7 +108,7 @@ static void xve_ud_skb_put_frags(struct xve_dev_priv *priv,
 	else
 		size = length;
 
-		skb->tail += size;
+	skb->tail += size;
 	skb->len += size;
 	length -= size;
 
