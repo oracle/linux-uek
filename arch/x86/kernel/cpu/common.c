@@ -1390,7 +1390,7 @@ static bool __init vulnerable_to_its(u64 x86_arch_cap_msr)
 	if (boot_cpu_has(X86_FEATURE_HYPERVISOR))
 		return true;
 
-	if(cpu_matches(cpu_vuln_blacklist, ITS))
+	if (cpu_matches(cpu_vuln_blacklist, ITS))
 		return true;
 
 	return false;
