@@ -923,14 +923,6 @@ static void xve_napi_add(struct net_device *dev)
         netif_napi_add(dev, &priv->send_napi, xve_tx_poll, MAX_SEND_CQE);
 }
 
-static void xve_napi_del(struct net_device *dev)
-{
-        struct xve_dev_priv *priv = netdev_priv(dev);
-
-	netif_napi_del(&priv->recv_napi);
-	netif_napi_del(&priv->send_napi);
-}
-
 static int xve_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct sk_buff *bcast_skb = NULL;
