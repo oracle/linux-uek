@@ -952,8 +952,6 @@ static void xscore_add_one(struct ib_device *device)
 
 	return;
 
-err_pd:
-	ib_dealloc_pd(xs_dev->pd);
 free_dev:
 	kfree(xs_dev);
 }
