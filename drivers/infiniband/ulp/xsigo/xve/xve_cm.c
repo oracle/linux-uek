@@ -659,14 +659,18 @@ static void xve_cm_tx_buf_free(struct xve_dev_priv *priv,
 			       struct xve_cm_ctx *tx,
 			       uint32_t wr_id, uint32_t qp_num)
 {
+
+	struct sk_buff *skb;
+	u64 *mapping;
+	int i;
+	int off;
+
 	BUG_ON(tx_req == NULL);
 	BUG_ON(tx_req->skb == NULL);
 	BUG_ON(tx_req->mapping[0] == 0);
 
-	struct sk_buff *skb = tx_req->skb;
-	u64 *mapping = tx_req->mapping;
-	int i;
-	int off;
+	skb = tx_req->skb;
+	mapping = tx_req->mapping;
 
 	if(skb_headlen(skb)) {
 	ib_dma_unmap_single(priv->ca, mapping[0],
