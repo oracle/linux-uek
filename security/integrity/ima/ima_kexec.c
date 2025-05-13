@@ -129,6 +129,9 @@ void ima_add_kexec_buffer(struct kimage *image)
 	size_t kexec_segment_size;
 	int ret;
 
+	if (image->type == KEXEC_TYPE_CRASH)
+		return;
+
 	/*
 	 * Reserve an extra half page of memory for additional measurements
 	 * added during the kexec load.
