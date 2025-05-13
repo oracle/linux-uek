@@ -1731,15 +1731,6 @@ int xsvnic_set_coalesce(struct net_device *dev, struct ethtool_coalesce *coal)
 	return 0;
 }
 
-static struct ethtool_ops xsvnic_ethtool_ops = {
-	.get_link_ksettings = xsvnic_get_ksettings,
-	.get_drvinfo = xsvnic_get_drvinfo,
-	.get_link = ethtool_op_get_link,
-	.get_ringparam = xsvnic_get_ringparam,
-	.set_ringparam = xsvnic_set_ringparam,
-	.set_coalesce = xsvnic_set_coalesce,
-};
-
 static int xsvnic_ioctl(struct net_device *netdev, struct ifreq *ifr, int cmd)
 {
 	struct mii_ioctl_data *data = if_mii(ifr);
