@@ -140,6 +140,7 @@ modules-core:
 - gnss
 - grace
 - gre
+- gve
 - hid-hyperv
 - hv_balloon
 - hv_netvsc
@@ -2325,7 +2326,6 @@ modules-extra:
 - em_u32
 - ems_pci
 - ems_usb
-- gve
 - hid-sensor-accel-3d
 - hid-sensor-als
 - hid-sensor-gyro-3d
