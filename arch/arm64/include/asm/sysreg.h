@@ -1229,6 +1229,15 @@
 	__emit_inst(0xd5000000|(\sreg)|(.L__reg_num_\rt))
 	.endm
 
+	.macro	msr_hcr_el2, reg
+#if IS_ENABLED(CONFIG_AMPERE_ERRATUM_AC04_CPU_23)
+	dsb	nsh
+	msr	hcr_el2, \reg
+	isb
+#else
+	msr	hcr_el2, \reg
+#endif
+	.endm
 #else
 
 #include <linux/build_bug.h>
@@ -1315,11 +1324,29 @@
 		write_sysreg(__scs_new, sysreg);			\
 } while (0)
 
+#define sysreg_clear_set_hcr(clear, set) do {				\
+	u64 __scs_val = read_sysreg(hcr_el2);				\
+	u64 __scs_new = (__scs_val & ~(u64)(clear)) | (set);		\
+	if (__scs_new != __scs_val)					\
+		write_sysreg_hcr(__scs_new);			\
+} while (0)
+
 #define sysreg_clear_set_s(sysreg, clear, set) do {			\
 	u64 __scs_val = read_sysreg_s(sysreg);				\
 	u64 __scs_new = (__scs_val & ~(u64)(clear)) | (set);		\
 	if (__scs_new != __scs_val)					\
 		write_sysreg_s(__scs_new, sysreg);			\
+} while (0)
+
+#define write_sysreg_hcr(__val) do {					\
+	if (IS_ENABLED(CONFIG_AMPERE_ERRATUM_AC04_CPU_23) &&		\
+	   (!system_capabilities_finalized() ||				\
+	    cpus_have_const_cap(ARM64_WORKAROUND_AMPERE_AC04_CPU_23))) \
+		asm volatile("dsb nsh; msr hcr_el2, %x0; isb"		\
+			     : : "rZ" (__val));				\
+	else								\
+		asm volatile("msr hcr_el2, %x0"				\
+			     : : "rZ" (__val));				\
 } while (0)
 
 #define read_sysreg_par() ({						\

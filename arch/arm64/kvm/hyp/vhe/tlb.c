@@ -56,7 +56,7 @@ static void __tlb_switch_to_guest(struct kvm_s2_mmu *mmu,
 	__load_stage2(mmu, mmu->arch);
 	val = read_sysreg(hcr_el2);
 	val &= ~HCR_TGE;
-	write_sysreg(val, hcr_el2);
+	write_sysreg_hcr(val);
 	isb();
 }
 
@@ -67,7 +67,7 @@ static void __tlb_switch_to_host(struct tlb_inv_context *cxt)
 	 * view of HCR_EL2.
 	 */
 	write_sysreg(0, vttbr_el2);
-	write_sysreg(HCR_HOST_VHE_FLAGS, hcr_el2);
+	write_sysreg_hcr(HCR_HOST_VHE_FLAGS);
 	isb();
 
 	if (cpus_have_final_cap(ARM64_WORKAROUND_SPECULATIVE_AT)) {
