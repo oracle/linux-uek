@@ -1798,6 +1798,7 @@ int xve_set_dev_features(struct xve_dev_priv *priv, struct ib_device *hca)
 {
 	struct ib_device_attr device_attr;
 	int result = -ENOMEM;
+	struct ib_udata uhw = {.outlen = 0, .inlen = 0};
 
 	priv->netdev->watchdog_timeo = 1000 * HZ;
 	priv->netdev->tx_queue_len = priv->xve_sendq_size * 2;
@@ -1830,8 +1831,6 @@ int xve_set_dev_features(struct xve_dev_priv *priv, struct ib_device *hca)
 		return -EINVAL;
 
 	xve_set_netdev(priv->netdev);
-
-	struct ib_udata uhw = {.outlen = 0, .inlen = 0};
 
 	result = hca->ops.query_device(hca, &device_attr, &uhw);
 	if (result) {
