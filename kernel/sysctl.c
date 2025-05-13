@@ -127,7 +127,6 @@ extern proc_handler proc_neg_dentry_pc;
 static int sixty = 60;
 #endif
 
-static int zero;
 static int __maybe_unused neg_one = -1;
 static int __maybe_unused two = 2;
 static int __maybe_unused four = 4;
