@@ -394,6 +394,12 @@ int rvu_alloc_cint_qint_mem(struct rvu *rvu, struct rvu_pfvf *pfvf,
 	if (is_rvu_otx2(rvu) || is_cn20k(rvu->pdev))
 		return 0;
 
+	/* sanity check */
+	cfg = rvu_read64(rvu, BLKADDR_RVUM, RVU_PRIV_PFX_NIXX_CFG(0) |
+			 (RVU_AFPF << 16));
+	if (!cfg)
+		return 0;
+
 	ctx_cfg = rvu_read64(rvu, blkaddr, NIX_AF_CONST3);
 	/* Alloc memory for CQINT's HW contexts */
 	cfg = rvu_read64(rvu, blkaddr, NIX_AF_CONST2);
