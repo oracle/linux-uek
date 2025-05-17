@@ -542,8 +542,14 @@ struct module {
 	unsigned int num_ei_funcs;
 #endif
 
+#ifdef CONFIG_MITIGATION_ITS
+	UEK_KABI_USE(1, int its_num_pages)
+	UEK_KABI_USE(2, void **its_page_array)
+#else
 	UEK_KABI_RESERVE(1)
 	UEK_KABI_RESERVE(2)
+#endif
+
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
 } ____cacheline_aligned __randomize_layout;
