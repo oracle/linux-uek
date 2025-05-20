@@ -251,7 +251,7 @@ enum mcs_devtype {
 #define MCSX_PEX_RX_SLAVE_PEX_CONFIGURATION ({		\
 	u64 offset;					\
 							\
-	offset = MCS_CHOOSE_OFFSET(0x3b50ull, 0x4c0ull, 0x2b030ull);	\
+	offset = MCS_CHOOSE_OFFSET(0x3b50ull, 0x4c0ull, 0x1368ull);	\
 	offset; })
 
 /* CNF10K-B */
@@ -657,7 +657,7 @@ enum mcs_devtype {
 #define MCSX_CSE_RX_MEM_SLAVE_INPKTSCTRLPORTDISABLEDX(a) ({ \
 	u64 offset;					\
 							\
-	offset = MCS_CHOOSE_OFFSET(0xd680ull, 0xce18ull, -1);		\
+	offset = MCS_CHOOSE_OFFSET(0xd680ull, 0xce18ull, 0x5df8ull);		\
 	offset += (a) * 0x8ull;				\
 	offset; })
 

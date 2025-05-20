@@ -98,6 +98,7 @@ static void cn20k_mcs_flowid_secy_map(struct mcs *mcs,
 		reg = MCSX_CPM_RX_SLAVE_SECY_MAP_MEMX(map->flow_id);
 	} else {
 		val |= (map->sc & SC_MASK) << 8;
+		val |= map->flow_id  << 16;
 		reg = MCSX_CPM_TX_SLAVE_SECY_MAP_MEM_0X(map->flow_id);
 	}
 
@@ -109,27 +110,20 @@ static void cn20k_mcs_tx_sa_mem_map_write(struct mcs *mcs,
 {
 	u64 reg, val;
 
-	val = (map->sa_index0 & 0x7F) | (map->sa_index1 & 0x7F) << 7;
-
+	val = (map->sa_index0 & 0xFF) |
+	      (map->sa_index1 & 0xFF) << 8 |
+	      (map->rekey_ena & 0x1) << 16 |
+	      (map->sa_index0_vld & 0x1) << 17 |
+	      (map->sa_index1_vld & 0x1) << 18 |
+	      (map->tx_sa_active & 0x1) << 19 |
+	      map->sectag_sci << 20;
 	reg = MCSX_CPM_TX_SLAVE_SA_MAP_MEM_0X(map->sc_id);
 	mcs_reg_write(mcs, reg, val);
 
-	reg = MCSX_CPM_TX_SLAVE_AUTO_REKEY_ENABLE_0;
-	val = mcs_reg_read(mcs, reg);
-
-	if (map->rekey_ena)
-		val |= BIT_ULL(map->sc_id);
-	else
-		val &= ~BIT_ULL(map->sc_id);
-
+	val = map->sectag_sci >> 44;
+	reg = MCSX_CPM_TX_SLAVE_SA_MAP_MEM_1X(map->sc_id);
 	mcs_reg_write(mcs, reg, val);
 
-	mcs_reg_write(mcs, MCSX_CPM_TX_SLAVE_SA_INDEX0_VLDX(map->sc_id),
-		      map->sa_index0_vld);
-	mcs_reg_write(mcs, MCSX_CPM_TX_SLAVE_SA_INDEX1_VLDX(map->sc_id),
-		      map->sa_index1_vld);
-	mcs_reg_write(mcs, MCSX_CPM_TX_SLAVE_TX_SA_ACTIVEX(map->sc_id),
-		      map->tx_sa_active);
 }
 
 static void cn20k_mcs_rx_sa_mem_map_write(struct mcs *mcs,

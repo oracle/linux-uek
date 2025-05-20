@@ -103,12 +103,9 @@ void mcs_get_rx_secy_stats(struct mcs *mcs, struct mcs_secy_stats *stats, int id
 
 	reg = MCSX_CSE_RX_MEM_SLAVE_INOCTETSSECYVALIDATEX(id);
 	stats->octet_validated_cnt =  mcs_reg_read(mcs, reg);
-	if (!is_cn20k(mcs->pdev)) {
-		reg = MCSX_CSE_RX_MEM_SLAVE_INPKTSCTRLPORTDISABLEDX(id);
-		stats->pkt_port_disabled_cnt =  mcs_reg_read(mcs, reg);
-	} else {
-		stats->pkt_port_disabled_cnt =  0x0;
-	}
+
+	reg = MCSX_CSE_RX_MEM_SLAVE_INPKTSCTRLPORTDISABLEDX(id);
+	stats->pkt_port_disabled_cnt =  mcs_reg_read(mcs, reg);
 
 	reg = MCSX_CSE_RX_MEM_SLAVE_INPKTSSECYBADTAGX(id);
 	stats->pkt_badtag_cnt =  mcs_reg_read(mcs, reg);
