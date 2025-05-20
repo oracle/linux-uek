@@ -237,6 +237,7 @@ struct mcs_ops *cn20ka_get_mac_ops(void);
 void cn20k_mcs_get_port_cfg(struct mcs *mcs, struct mcs_port_cfg_get_req *req,
 			    struct mcs_port_cfg_get_rsp *rsp);
 void cn20k_mcs_set_port_cfg(struct mcs *mcs, struct mcs_port_cfg_set_req *req);
+void cn20k_mcs_pn_threshold_set(struct mcs *mcs, struct mcs_set_pn_threshold *pn);
 
 /* Stats APIs */
 void mcs_get_sc_stats(struct mcs *mcs, struct mcs_sc_stats *stats, int id, int dir);

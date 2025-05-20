@@ -25,6 +25,37 @@ static void cn20k_mcs_set_hw_capabilities(struct mcs *mcs)
 	hw->mcs_blks = 1;		/* MCS blocks */
 }
 
+#define MCS_PN_THR		GENMASK_ULL(31, 0)
+#define MCS_XPN_THR_0		GENMASK_ULL(63, 32)
+#define MCS_XPN_THR_1		GENMASK_ULL(31, 0)
+
+void cn20k_mcs_pn_threshold_set(struct mcs *mcs, struct mcs_set_pn_threshold *pn)
+{
+	u64 reg0, reg1, val;
+
+	if (pn->dir == MCS_RX) {
+		reg0 = MCSX_CPM_RX_SLAVE_PNX_THR_MEM0(pn->pn_id);
+		reg1 = MCSX_CPM_RX_SLAVE_PNX_THR_MEM1(pn->pn_id);
+		mcs_reg_write(mcs, MCSX_CPM_RX_SLAVE_SAX_PN_THR_MAP_MEM(pn->pn_id),
+			      pn->pn_id);
+	} else {
+		reg0 = MCSX_CPM_TX_SLAVE_PNX_THR_MEM0(pn->pn_id);
+		reg1 = MCSX_CPM_TX_SLAVE_PNX_THR_MEM1(pn->pn_id);
+	}
+
+	if (!pn->xpn) {
+		val = FIELD_PREP(MCS_PN_THR, pn->threshold);
+		mcs_reg_write(mcs, reg0, val);
+		return;
+	}
+
+	/* setting XPN */
+	val = FIELD_PREP(MCS_XPN_THR_0, pn->threshold);
+	mcs_reg_write(mcs, reg0, val);
+	val = FIELD_PREP(MCS_XPN_THR_1, (pn->threshold >> 32));
+	mcs_reg_write(mcs, reg1, val);
+}
+
 void cn20k_mcs_get_port_cfg(struct mcs *mcs, struct mcs_port_cfg_get_req *req,
 			    struct mcs_port_cfg_get_rsp *rsp)
 {

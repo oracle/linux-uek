@@ -1017,4 +1017,10 @@ enum mcs_devtype {
 #define MCSX_PEX_RX_SLAVE_PEX_CFG		0x1368
 #define MCSX_PEX_TX_SLAVE_PEX_CFG		0x1880
 #define MCSX_PEX_TX_SLAVE_PORT_CFGX(a)		(0x18c8 + (a) * 0x8)
+
+#define MCSX_CPM_RX_SLAVE_SAX_PN_THR_MAP_MEM(a)	(0x19e58 + (a) * 0x8)
+#define MCSX_CPM_RX_SLAVE_PNX_THR_MEM0(a)	(0x18e58 + (a) * 0x10)
+#define MCSX_CPM_RX_SLAVE_PNX_THR_MEM1(a)	(0x18e60 + (a) * 0x10)
+#define MCSX_CPM_TX_SLAVE_PNX_THR_MEM0(a)	(0x275e8 + (a) * 0x10)
+#define MCSX_CPM_TX_SLAVE_PNX_THR_MEM1(a)	(0x275f0 + (a) * 0x10)
 #endif

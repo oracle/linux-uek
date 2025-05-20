@@ -1312,6 +1312,9 @@ void mcs_pn_threshold_set(struct mcs *mcs, struct mcs_set_pn_threshold *pn)
 {
 	u64 reg;
 
+	if (is_cn20k(mcs->pdev))
+		return cn20k_mcs_pn_threshold_set(mcs, pn);
+
 	if (pn->dir == MCS_RX)
 		reg = pn->xpn ? MCSX_CPM_RX_SLAVE_XPN_THRESHOLD : MCSX_CPM_RX_SLAVE_PN_THRESHOLD;
 	else

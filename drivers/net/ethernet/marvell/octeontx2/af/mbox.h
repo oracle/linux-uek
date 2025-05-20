@@ -2761,7 +2761,9 @@ struct mcs_set_pn_threshold {
 	u8 xpn; /* '1' for setting xpn threshold */
 	u8 mcs_id;
 	u8 dir;
-	u64 rsvd;
+	u16 pn_id;
+	u16 rsvd;
+	u32 rsvd1;
 };
 
 enum mcs_ctrl_pkt_rulew_type {
