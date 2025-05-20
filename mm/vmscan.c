@@ -4641,16 +4641,18 @@ retry:
 
 	move_folios_to_lru(&list);
 
+	local_irq_disable();
 	walk = current->reclaim_state->mm_walk;
 	if (walk && walk->batched) {
 		walk->lruvec = lruvec;
+		spin_lock(&lruvec->lru_lock);
 		reset_batch_size(walk);
+		spin_unlock(&lruvec->lru_lock);
 	}
 
 	__mod_lruvec_state(lruvec, PGDEMOTE_KSWAPD + reclaimer_offset(),
 					stat.nr_demoted);
 
-	local_irq_disable();
 	item = PGSTEAL_KSWAPD + reclaimer_offset();
 	if (!cgroup_reclaim(sc))
 		__count_vm_events(item, reclaimed);
