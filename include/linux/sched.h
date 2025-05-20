@@ -339,8 +339,10 @@ extern int __must_check io_schedule_prepare(void);
 extern void io_schedule_finish(int token);
 extern long io_schedule_timeout(long timeout);
 extern void io_schedule(void);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 extern void hrtick_local_start(u64 delay);
 extern void update_stat_preempt_delayed(struct task_struct *t);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 /* wrapper function to trace from this header file */
 DECLARE_TRACEPOINT(sched_set_state_tp);
@@ -561,7 +563,9 @@ struct sched_statistics {
 	u64				nr_wakeups_affine_attempts;
 	u64				nr_wakeups_passive;
 	u64				nr_wakeups_idle;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 	u64				nr_preempt_delay_granted;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 #ifdef CONFIG_SCHED_CORE
 	u64				core_forceidle_sum;
@@ -955,9 +959,11 @@ struct task_struct {
 	struct plist_node		pushable_tasks;
 	struct rb_node			pushable_dl_tasks;
 #endif
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 #ifdef CONFIG_RSEQ
 	unsigned			rseq_sched_delay:1;
 #endif
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	struct mm_struct		*mm;
 	struct mm_struct		*active_mm;
@@ -2255,6 +2261,7 @@ static inline bool owner_on_cpu(struct task_struct *owner)
 unsigned long sched_cpu_util(int cpu);
 #endif /* CONFIG_SMP */
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 #ifdef CONFIG_RSEQ
 
 extern bool rseq_delay_resched(void);
@@ -2268,6 +2275,7 @@ static inline void rseq_delay_resched_fini(void) { }
 static inline void rseq_delay_resched_tick(void) { }
 
 #endif
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 #ifdef CONFIG_SCHED_CORE
 extern void sched_core_free(struct task_struct *tsk);
