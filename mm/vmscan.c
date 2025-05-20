@@ -1976,9 +1976,9 @@ static unsigned long shrink_inactive_list(unsigned long nr_to_scan,
 
 	move_folios_to_lru(&folio_list);
 
+	local_irq_disable();
 	__mod_lruvec_state(lruvec, PGDEMOTE_KSWAPD + reclaimer_offset(),
 					stat.nr_demoted);
-	local_irq_disable();
 	__mod_node_page_state(pgdat, NR_ISOLATED_ANON + file, -nr_taken);
 	item = PGSTEAL_KSWAPD + reclaimer_offset();
 	if (!cgroup_reclaim(sc))
