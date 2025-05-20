@@ -172,6 +172,15 @@ static inline bool lru_gen_is_active(struct lruvec *lruvec, int gen)
 	return gen == lru_gen_from_seq(max_seq) || gen == lru_gen_from_seq(max_seq - 1);
 }
 
+static inline void lru_gen_lruvec_update_size(struct lruvec *lruvec, int gen,
+					      int type, int zone, long delta)
+{
+	struct lru_gen_folio *lrugen = &lruvec->lrugen;
+
+	WRITE_ONCE(lrugen->nr_pages[gen][type][zone],
+		   lrugen->nr_pages[gen][type][zone] + delta);
+}
+
 static inline void lru_gen_update_size(struct lruvec *lruvec, struct folio *folio,
 				       int old_gen, int new_gen)
 {

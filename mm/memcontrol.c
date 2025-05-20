@@ -271,6 +271,10 @@ static void lruvec_reparent_relocate(struct mem_cgroup *src, struct mem_cgroup *
 		for_each_gen_type_zone(gen, type, zone) {
 			list_splice_tail_init(&src_lrugen->folios[gen][type][zone],
 					      &dst_lrugen->folios[gen][type][zone]);
+
+			long delta = src_lrugen->nr_pages[gen][type][zone];
+			lru_gen_lruvec_update_size(src_lruvec, gen, type, zone, -delta);
+			lru_gen_lruvec_update_size(dst_lruvec, gen, type, zone, delta);
 		}
 
 		mz_src = container_of(src_lruvec, struct mem_cgroup_per_node, lruvec);
