@@ -453,7 +453,7 @@
 #define X86_FEATURE_BHI_CTRL		(21*32+ 2) /* "" BHI_DIS_S HW control available */
 #define X86_FEATURE_CLEAR_BHB_HW	(21*32+ 3) /* "" BHI_DIS_S HW control enabled */
 #define X86_FEATURE_CLEAR_BHB_LOOP_ON_VMEXIT (21*32+ 4) /* "" Clear branch history at vmexit using SW loop */
-#define X86_FEATURE_INDIRECT_THUNK_ITS	(21*32 + 9) /* Use thunk for indirect branches in lower half of cacheline */
+#define X86_FEATURE_INDIRECT_THUNK_ITS	(21*32 + 9) /* "" Use thunk for indirect branches in lower half of cacheline */
 
 /*
  * BUG word(s)
@@ -515,7 +515,7 @@
 /* X86_BUG(6) (X86_BUG_FXSAVE_LEAK) is not reused, it can impact AMD in 64-bit mode */
 /* X86_BUG(7) (X86_BUG_CLFLUSH_MONITOR) is not reused, it impacts Intel Core 2 Dunnington, Nehalem, Westmere */
 /* X86_BUG(8) (X86_BUG_SYSRET_SS_ATTRS) is not reused, it impacts all AMD cpus */
-#define X86_BUG_ITS_NATIVE_ONLY		X86_BUG(9) /* "its" CPU is affected by Indirect Target Selection */
+#define X86_BUG_ITS_NATIVE_ONLY		X86_BUG(9) /* "its_native_only" CPU is affected by ITS, VMX is not affected */
 /* X86_BUG(10) (X86_BUG_NULL_SEG) is not reused, it impacts AMD cpus */
 /* X86_BUG(11) (X86_BUG_SWAPGS_FENCE) is not reused, it impacts AMD K8 */
 /* X86_BUG(12) (X86_BUG_MONITOR) is not reused, it impacts Intel Goldmont */
