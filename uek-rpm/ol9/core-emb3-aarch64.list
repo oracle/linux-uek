@@ -152,6 +152,7 @@ kernel/drivers/net/geneve.ko
 kernel/drivers/net/macsec.ko
 kernel/drivers/net/net_failover.ko
 kernel/drivers/net/virtio_net.ko
+kernel/drivers/net/phy/vitesse.ko
 kernel/drivers/nvdimm/libnvdimm.ko
 kernel/drivers/nvdimm/nd_blk.ko
 kernel/drivers/nvdimm/nd_btt.ko
