@@ -108,3 +108,10 @@ MODULE_ALIAS_CRYPTO("sha224");
 MODULE_ALIAS_CRYPTO("sha224-generic");
 MODULE_ALIAS_CRYPTO("sha256");
 MODULE_ALIAS_CRYPTO("sha256-generic");
+
+#ifdef FIPS_MODULE
+#undef EXPORT_SYMBOL
+#define EXPORT_SYMBOL(x)
+
+#include <../lib/crypto/sha256.c>
+#endif
