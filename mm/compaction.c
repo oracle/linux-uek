@@ -564,7 +564,6 @@ retry:
 		spin_unlock_irqrestore(&lruvec->lru_lock, *flags);
 		goto retry;
 	}
-	rcu_read_unlock();
 
 	return lruvec;
 }
