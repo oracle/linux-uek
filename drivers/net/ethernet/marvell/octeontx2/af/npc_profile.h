@@ -250,7 +250,6 @@ enum npc_kpu_parser_state {
 	NPC_S_KPU9_TU_MPLS_IN_IP,
 	NPC_S_KPU9_TU_MPLS_IN_UDP,
 	NPC_S_KPU9_TU_NSH_IN_GRE,
-	NPC_S_KPU9_ROCEV2,
 	NPC_S_KPU9_VXLAN,
 	NPC_S_KPU9_VXLANGPE,
 	NPC_S_KPU9_GENEVE,
@@ -288,6 +287,10 @@ enum npc_kpu_parser_state {
 	NPC_S_KPU16_UDP_DATA,
 	NPC_S_KPU16_UDP_PTP,
 	NPC_S_LAST /* has to be the last item */
+};
+
+enum npc_kpu9_extra_parser_state {
+	NPC_S_KPU9_ROCEV2 = NPC_S_LAST + 6,
 };
 
 enum npc_kpu_la_uflag {
