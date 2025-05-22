@@ -29,7 +29,6 @@
 #define NORMAL 1
 #define NUM_PHASES 2
 
-#define MSI_INDIRECT_IDX	0	/* indirect vector */
-#define MSI_NOTIFY_IDX		1	/* notify vector */
-#define MSI_NVECTORS		2
-
+#define PCIE_NPORTS  			8
+#define MSI_NVECTORS_COMPAT		2
+#define MSI_NVECTORS     		(PCIE_NPORTS * 2) /* 2 vectors per port, indirect and notify */

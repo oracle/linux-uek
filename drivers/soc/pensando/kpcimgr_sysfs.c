@@ -77,9 +77,15 @@ static ssize_t running_store(struct device *dev,
 		if (ks->running) {
 			pr_info("%s: kpcimgr is already running\n", __func__);
 		} else {
-			ks->active_port = ffs(kpcimgr_active_port) - 1;
-			pr_info("%s: kpcimgr will begin running on port %d\n",
-				__func__, ks->active_port);
+			/*
+			 * For compatibility with older versions of the pciesvc module,
+			 * we are setting active_port_compat to the actual port number.
+			 * For newer versions with bifurcation support, we have  active_port_mask
+			*/
+			ks->active_port_compat = ffs(kpcimgr_active_port) - 1;
+			ks->active_port_mask = kpcimgr_active_port;
+			pr_info("%s: kpcimgr will begin running with port mask 0x%x\n",
+				__func__, ks->active_port_mask);
 			kpcimgr_start_running();
 		}
 		ks->debug = val & 0xfff0;

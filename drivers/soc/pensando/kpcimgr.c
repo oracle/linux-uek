@@ -18,6 +18,15 @@
 #include <linux/of_fdt.h>
 #include <linux/delay.h>
 #include <asm/cpu_ops.h>
+#include <linux/version.h>
+
+#if (KERNEL_VERSION(5, 15, 0) > LINUX_VERSION_CODE)
+#define MSI_INDEX(desc)                 desc->platform.msi_index
+#define MSI_FOR_EACH_DESC(desc, dev)    for_each_msi_entry((desc), dev)
+#else
+#define MSI_INDEX(desc)                 desc->msi_index
+#define MSI_FOR_EACH_DESC(desc, dev)    msi_for_each_desc((desc), dev, MSI_DESC_ALL)
+#endif /* 5.15 */
 
 MODULE_LICENSE("GPL");
 
@@ -155,11 +164,17 @@ void kpcimgr_stop_running(void)
 	kstate_t *ks = get_kstate();
 	void (*shut_fn)(int n);
 	unsigned long flags;
+	int port;
 
 	spin_lock_irqsave(&kpcimgr_lock, flags);
 	if (ks->valid == KSTATE_MAGIC) {
 		shut_fn = ks->code_base + ks->code_offsets[K_ENTRY_SHUT];
-		shut_fn(ks->active_port);
+
+		for (port = 0; port < PCIE_NPORTS; port++) {
+			if (ks->active_port_mask & (1 << port)) {
+				shut_fn(port);
+			}
+		}
 	}
 	spin_unlock_irqrestore(&kpcimgr_lock, flags);
 
@@ -352,14 +367,21 @@ int contains_external_refs(struct module *mod, void *code_end)
 /*
  * feature_check
  *
- * Ensure pciesvc library supports features we need. Currently we
- * only are concerned with PSCI and GUEST, and in both cases we need
- * to disallow kexec if the library doesn't know about these, otherwise
- * it will either crash quickly or never return.
+ * Ensure pciesvc library supports features we need. In the cases of PSCI and
+ * GUEST, we need to disallow kexec if the library doesn't know about these,
+ * otherwise it will either crash quickly or never return. For BIFURCATION,
+ * we must fail to load a library that doesn't support it.
  */
+
 static int feature_check(long features)
 {
 	kstate_t *ks = get_kstate();
+	int apm = ks->active_port_mask;
+
+	if (apm && (apm & (apm - 1)) != 0 && (features & FLAG_PORT_BIFURCATION) == 0) {
+		pr_err("KPCIMGR: pciesvc module does not support port bifurcation\n");
+		return -1;
+	}
 
 	if (!ks->have_persistent_mem)
 		return 0;
@@ -378,7 +400,7 @@ static int feature_check(long features)
 	}
 
 	if (ks->features & FLAG_KEXEC)
-		pr_err("KPCIMGR: kexec capability enabled\n");
+		pr_info("KPCIMGR: kexec capability enabled\n");
 
 	return 0;
 }
@@ -663,7 +685,7 @@ static int map_resources(struct platform_device *pfdev)
 		if (ks == NULL)
 			return -ENOMEM;
 		memset((void *)ks, 0, sizeof(kstate_t));
-		ks->active_port = -1;
+		ks->active_port_compat = -1;
 		ks->have_persistent_mem = 0;
 		shmem = vmalloc(resource_size(&res));
 		if (shmem == NULL) {
@@ -687,7 +709,7 @@ static int map_resources(struct platform_device *pfdev)
 		}
 		if (ks->valid != KSTATE_MAGIC) {
 			kpci_memset((void *)ks, 0, sizeof(kstate_t));
-			ks->active_port = -1;
+			ks->active_port_compat = -1;
 		}
 
 		ks->kstate_paddr = kstate_res.start;
@@ -789,8 +811,9 @@ static int map_resources(struct platform_device *pfdev)
 static irqreturn_t kpcimgr_indirect_intr(int irq, void *arg)
 {
 	int (*intr_fn)(kstate_t *, int);
-	kstate_t *ks = (kstate_t *)arg;
-	int port, r = 0;
+	kstate_t *ks = get_kstate();
+	int port = (int)(uintptr_t)arg;
+	int r = 0;
 
 	spin_lock(&kpcimgr_lock);
 	if (ks->valid == KSTATE_MAGIC) {
@@ -798,7 +821,6 @@ static irqreturn_t kpcimgr_indirect_intr(int irq, void *arg)
 		intr_fn = ks->code_base +
 			ks->code_offsets[K_ENTRY_INDIRECT_INTR];
 
-		port = ks->active_port;
 		if (port >= 0)
 			r = intr_fn(ks, port);
 	}
@@ -813,15 +835,15 @@ static irqreturn_t kpcimgr_indirect_intr(int irq, void *arg)
 static irqreturn_t kpcimgr_notify_intr(int irq, void *arg)
 {
 	int (*intr_fn)(kstate_t *, int);
-	kstate_t *ks = (kstate_t *)arg;
-	int port, r = 0;
+	kstate_t *ks = get_kstate();
+	int port = (int)(uintptr_t)arg;
+	int r = 0;
 
 	spin_lock(&kpcimgr_lock);
 	if (ks->valid == KSTATE_MAGIC) {
 		ks->not_intr++;
 		intr_fn = ks->code_base + ks->code_offsets[K_ENTRY_NOTIFY_INTR];
 
-		port = ks->active_port;
 		if (port >= 0)
 			r = intr_fn(ks, port);
 	}
@@ -864,7 +886,7 @@ static u64 kpcimgr_upcall(int req, u64 arg1, u64 arg2, u64 arg3)
 static void set_msi_msg(struct msi_desc *desc, struct msi_msg *msg)
 {
 	kstate_t *ks = get_kstate();
-	struct msi_info *msi = &ks->msi[desc->msi_index];
+	msi_info_t *msi = &ks->msi[MSI_INDEX(desc)];
 
 	msi->msgaddr = ((u64)msg->address_hi << 32) | msg->address_lo;
 	msi->msgdata = msg->data;
@@ -895,21 +917,32 @@ static int alloc_intrs(struct platform_device *pfdev)
 	irqreturn_t (*isr)(int irq, void *arg);
 	struct device *dev = &pfdev->dev;
 	kstate_t *ks = get_kstate();
-	struct msi_desc *desc;
+	struct msi_desc *desc = NULL;
 	char *name;
-	int r;
+	int r, isr_select, port = 0;
 
 	r = platform_msi_domain_alloc_irqs(dev, MSI_NVECTORS, set_msi_msg);
 	if (r)
 		return r;
 
-	msi_for_each_desc(desc, dev, MSI_DESC_ALL) {
-		isr = kpcimgr_irq_table[desc->msi_index].isr;
-		name = kpcimgr_irq_table[desc->msi_index].name;
-		r = devm_request_irq(dev, desc->irq, isr, 0, name, (void *)ks);
+	MSI_FOR_EACH_DESC(desc, dev) {
+		isr_select = MSI_INDEX(desc) & 1;
+		isr = kpcimgr_irq_table[isr_select].isr;
+		name = devm_kasprintf(dev, GFP_KERNEL, "%s-%d",
+				      kpcimgr_irq_table[isr_select].name, port);
+		if (!name) {
+			r = -ENOMEM;
+			goto err_out;
+		}
+		r = devm_request_irq(dev, desc->irq, isr, 0, name, (void *)(uintptr_t)port);
+
 		if (r)
 			goto err_out;
+		port += isr_select;
 	}
+
+	// copy port 0 interrupts to original msi
+	kpci_memcpy(ks->msi_compat, ks->msi, sizeof(ks->msi_compat));
 	return 0;
 
  err_out:
