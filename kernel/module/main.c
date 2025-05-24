@@ -2425,9 +2425,6 @@ static struct module *layout_and_allocate(struct load_info *info, int flags)
 	/* Module has been copied to its final place now: return it. */
 	mod = (void *)info->sechdrs[info->index.mod].sh_addr;
 	kmemleak_load_module(mod, info);
-
-	mod->source_ptr = info->hdr;
-	mod->source_len = info->len;
 	return mod;
 }
 

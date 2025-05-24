@@ -418,10 +418,6 @@ struct module {
 	/* Unique handle for this module */
 	char name[MODULE_NAME_LEN];
 
-	/* Where in memory the module was loaded from (if known) */
-	void *source_ptr;
-	size_t source_len;
-
 #ifdef CONFIG_STACKTRACE_BUILD_ID
 	/* Module build ID */
 	unsigned char build_id[BUILD_ID_SIZE_MAX];
