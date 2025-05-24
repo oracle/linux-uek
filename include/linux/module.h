@@ -592,9 +592,6 @@ struct module {
 	struct _ddebug_info dyndbg_info;
 #endif
 
-	struct crypto_api_key *crypto_api_keys;
-	unsigned int num_crypto_api_keys;
-
 #ifdef CONFIG_CONSTRUCTORS
 	/* Constructor functions. */
 	UEK_KABI_USE(1, ctor_fn_t *ctors)
