@@ -43,7 +43,10 @@ kernel/crypto/sha3_generic.ko
 kernel/crypto/tcrypt.ko
 kernel/crypto/xor.ko
 kernel/crypto/zstd.ko
+kernel/drivers/acpi/acpi_ipmi.ko
 kernel/drivers/acpi/acpi_tad.ko
+kernel/drivers/acpi/apei/einj.ko
+kernel/drivers/acpi/button.ko
 kernel/drivers/block/loop.ko
 kernel/drivers/block/nbd.ko
 kernel/drivers/block/virtio_blk.ko
