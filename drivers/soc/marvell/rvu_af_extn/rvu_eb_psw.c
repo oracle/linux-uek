@@ -201,6 +201,7 @@ struct psw_rsrc {
 };
 
 struct psw_drvdata {
+	struct psw_dbg_ctx dbg_ctx;
 	struct psw_rsrc	rsrc;
 	int res_idx;
 };
@@ -1833,6 +1834,8 @@ static void *rvu_psw_probe(struct rvu *rvu, int blkaddr)
 		rvu_write64(rvu, blkaddr, PSW_AF_CLK_EN_PART0, 0x3f);
 		rvu_write64(rvu, blkaddr, PSW_AF_CLK_EN_PART1, 0x1ff);
 		rvu_eblock_reset(rvu, blkaddr, PSW_AF_BLK_RST);
+
+		rvu_psw_dbg_init(rvu, &data->dbg_ctx, blkaddr);
 		break;
 	default:
 		data = NULL;

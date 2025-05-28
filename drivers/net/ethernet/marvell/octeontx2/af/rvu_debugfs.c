@@ -14,6 +14,7 @@
 
 #include "rvu_struct.h"
 #include "rvu_reg.h"
+#include "rvu_eblock_reg.h"
 #include "rvu.h"
 #include "cgx.h"
 #include "lmac_common.h"

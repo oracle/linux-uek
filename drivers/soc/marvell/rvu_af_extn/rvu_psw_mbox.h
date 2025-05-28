@@ -281,6 +281,15 @@ struct psw_mbox_msix_cfg_req {
 	u16 rsvd[2];
 };
 
+/* PSW debugfs context structure */
+struct psw_dbg_ctx {
+	struct rvu *rvu;
+	struct dentry *psw;
+	int blkaddr;
+	u16 qid;
+	bool inb;
+};
+
 #define M(_name, _id, _fn, _req_t, _rsp_t)                              \
 	int rvu_mbox_handler_##_fn(struct rvu *, struct _req_t *,       \
 				   struct _rsp_t *);
@@ -295,5 +304,7 @@ enum {
 
 #define MBOX_EBLOCK_UP_PSW_MESSAGES					\
 M(PSW_HOST_FLR_NOTIFY,	0xF00, psw_host_flr_notify, psw_host_flr_info, msg_rsp)
+
+void rvu_psw_dbg_init(struct rvu *rvu, struct psw_dbg_ctx *dbg_ctx, int blkaddr);
 
 #endif /* __RVU_PSW_MBOX_H__ */
