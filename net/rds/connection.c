@@ -1404,6 +1404,46 @@ void rds_conn_path_trace_state_change(int changed, struct rds_conn_path *cp,
 EXPORT_SYMBOL_GPL(rds_conn_path_trace_state_change);
 
 /*
+ * Helper fn to check if a conn's sibling ToS lanes are not UP for >10min.
+ */
+static bool rds_conn_check_timer_reapable(struct rds_connection *conn)
+{
+	int npaths = (conn->c_trans->t_mp_capable ? RDS_MPATH_WORKERS : 1);
+	unsigned long now = ktime_get_real_seconds();
+	struct rds_connection *c;
+	struct rds_conn_path *cp;
+	struct hlist_head *head;
+	int i, ret = true;
+
+	rcu_read_lock();
+	for_each_conn_hash_bucket(conn->c_rns, head) {
+		hlist_for_each_entry_rcu(c, head, c_hash_node) {
+			if (ipv6_addr_equal(&c->c_laddr, &conn->c_laddr) &&
+			    ipv6_addr_equal(&c->c_faddr, &conn->c_faddr) &&
+			    c != conn) {
+				for (i = 0; i < npaths && ret; i++) {
+					cp = &c->c_path[i];
+					if (rds_conn_path_up(cp)) {
+						ret = false;
+						goto out;
+
+					}
+
+					if (now - cp->cp_reconnect_start <
+					    rds_sysctl_conn_reap_after_drop_secs) {
+						ret = false; /* not reapable, down for <10min */
+						goto out;
+					}
+				}
+			}
+		}
+	}
+out:
+	rcu_read_unlock();
+	return ret;
+}
+
+/*
  * Force a disconnect
  */
 void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err)
@@ -1473,13 +1513,18 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err)
 
 	rds_cond_queue_shutdown_work(cp);
 
-	/* Auto-reap dropped connections after non-zero sysctl seconds.
+	/* Auto-reap dropped connections after non-zero sysctl seconds and
+	 * checking sibling ToSes for this conn are reapable i.e. siblings
+	 * are not UP for sysctl duration. We will defer reaping until
+	 * all sibling ToSes pass this check.
+	 *
 	 * Only reap via cp0 as all possible c_paths have the same conn.
 	 * Ideally we would use a monotonic ktime_get_seconds() for comparison
 	 * here, but cp->cp_reconnect_start is based on CLOCK_REALTIME.
 	 */
 	if (rds_sysctl_conn_reap_after_drop_secs && (cp == &conn->c_path[0]) &&
-	    (now - cp->cp_reconnect_start >= rds_sysctl_conn_reap_after_drop_secs)) {
+	    (now - cp->cp_reconnect_start >= rds_sysctl_conn_reap_after_drop_secs) &&
+	    rds_conn_check_timer_reapable(conn)) {
 		rds_conn_reap(conn);
 	}
 }
