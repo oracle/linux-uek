@@ -570,7 +570,11 @@ static int rds_user_reset_or_reap(struct rds_sock *rs, int optname,
 	ipv6_addr_set_v4mapped(reset.dst.s_addr, &dst6);
 
 	/* Reset or reap all conns associated with source addr.
-	 * If reset.dst == 0, option reset.all_tos is ignored.
+	 * If reset.dst == 0, option reset.all_tos is ignored
+	 * and a reap is attempted for all reset.src addrs.
+	 *
+	 * Also we do not check if sibling ToS lanes are down
+	 * for user reap requests (unlike timer-based reaping).
 	 */
 	if (reset.all_tos || reset.dst.s_addr == 0) {
 		pr_info("RDS: %s ALL conns for Source %pI4 Destination %pI4\n",
@@ -637,7 +641,11 @@ static int rds6_user_reset_or_reap(struct rds_sock *rs, int optname,
 		return -EFAULT;
 
 	/* Reset or reap all conns associated with source addr.
-	 * If reset.dst == 0, option reset.all_tos is ignored.
+	 * If reset.dst == 0, option reset.all_tos is ignored
+	 * and a reap is attempted for all reset.src addrs.
+	 *
+	 * Also we do not check if sibling ToS lanes are down
+	 * for user reap requests (unlike timer-based reaping).
 	 */
 	if (reset.all_tos || ipv6_addr_any(&reset.dst)) {
 		pr_info("RDS: %s ALL conns for Source %pI6c Destination %pI6c\n",
