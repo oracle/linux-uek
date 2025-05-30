@@ -638,7 +638,14 @@ struct rvu_fwdata {
 	u32 ptp_ext_tstamp;
 	struct channel_fwdata channel_data;
 	struct altaf_intr_notify altaf_intr_info;
-#define FWDATA_RESERVED_MEM 946
+#define NODE_MAX 3
+#define NODE_ETH_MAX 3
+	u64 csr_rpmx_const[NODE_MAX][NODE_ETH_MAX];
+	/* Contains contents of RPMX_CMR_RX_LMACS/RPMX_CMR_TX_LMACS CSRs */
+	u64 csr_rpmx_cmr_num_lmacs[NODE_MAX][NODE_ETH_MAX];
+	u32 num_rpm_in_compute; /* Used to determine offset in eth_fw_data[_usx] */
+	u32 num_rpm_in_chiplet; /* Used to determine offset in eth_fw_data[_usx] */
+#define FWDATA_RESERVED_MEM 927
 	u64 reserved[FWDATA_RESERVED_MEM];
 #define CGX_MAX         9
 #define CGX_LMACS_MAX   4
