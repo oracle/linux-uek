@@ -571,6 +571,7 @@ modules-core:
 - cdrom
 - chacha-x86_64
 - coretemp
+- crc16
 - crc8
 - crypto_simd
 - curve25519-x86_64
