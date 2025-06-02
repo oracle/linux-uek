@@ -583,6 +583,9 @@ static int gve_tx_add_skb_no_copy_dqo(struct gve_tx_ring *tx,
 	 * - Hypervisor won't allow MTU larger than 9216.
 	 */
 
+	if (!pkt)
+		return -ENOMEM;
+
 	pkt->num_bufs = 0;
 	/* Map the linear portion of skb */
 	{
