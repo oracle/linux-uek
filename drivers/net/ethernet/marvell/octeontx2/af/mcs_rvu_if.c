@@ -47,8 +47,9 @@ void rvu_mcs_ptp_cfg(struct rvu *rvu, u8 rpm_id, u8 lmac_id, bool ena)
 	 * during packet parsing.
 	 */
 
+	mcs = mcs_get_pdata(0);
 	/* CNF10K-B */
-	if (rvu->mcs_blk_cnt > 1) {
+	if (mcs->hw->mcs_devtype == CNF10KB_MCS) {
 		mcs = mcs_get_pdata(rpm_id);
 		cfg = mcs_reg_read(mcs, MCSX_PEX_RX_SLAVE_PEX_CONFIGURATION);
 		if (ena)
@@ -59,7 +60,6 @@ void rvu_mcs_ptp_cfg(struct rvu *rvu, u8 rpm_id, u8 lmac_id, bool ena)
 		return;
 	}
 	/* CN10KB */
-	mcs = mcs_get_pdata(0);
 	port = (rpm_id * rvu->hw->lmac_per_cgx) + lmac_id;
 	cfg = mcs_reg_read(mcs, MCSX_PEX_RX_SLAVE_PORT_CFGX(port));
 	if (ena)
@@ -272,7 +272,7 @@ int rvu_mbox_handler_mcs_get_flowid_stats(struct rvu *rvu,
 	 * MCSX_MIL_GLOBAL.FORCE_CLK_EN_IP needs to be set
 	 * to get accurate statistics
 	 */
-	if (mcs->hw->mcs_blks > 1)
+	if (mcs->hw->mcs_devtype == CNF10KB_MCS)
 		mcs_set_force_clk_en(mcs, true);
 
 	mutex_lock(&mcs->stats_lock);
@@ -282,7 +282,7 @@ int rvu_mbox_handler_mcs_get_flowid_stats(struct rvu *rvu,
 	/* Clear MCSX_MIL_GLOBAL.FORCE_CLK_EN_IP after reading
 	 * the statistics
 	 */
-	if (mcs->hw->mcs_blks > 1)
+	if (mcs->hw->mcs_devtype == CNF10KB_MCS)
 		mcs_set_force_clk_en(mcs, false);
 
 	return 0;
@@ -298,7 +298,7 @@ int rvu_mbox_handler_mcs_get_secy_stats(struct rvu *rvu,
 
 	mcs = mcs_get_pdata(req->mcs_id);
 
-	if (mcs->hw->mcs_blks > 1)
+	if (mcs->hw->mcs_devtype == CNF10KB_MCS)
 		mcs_set_force_clk_en(mcs, true);
 
 	mutex_lock(&mcs->stats_lock);
@@ -310,7 +310,7 @@ int rvu_mbox_handler_mcs_get_secy_stats(struct rvu *rvu,
 
 	mutex_unlock(&mcs->stats_lock);
 
-	if (mcs->hw->mcs_blks > 1)
+	if (mcs->hw->mcs_devtype == CNF10KB_MCS)
 		mcs_set_force_clk_en(mcs, false);
 
 	return 0;
@@ -327,14 +327,14 @@ int rvu_mbox_handler_mcs_get_sc_stats(struct rvu *rvu,
 
 	mcs = mcs_get_pdata(req->mcs_id);
 
-	if (mcs->hw->mcs_blks > 1)
+	if (mcs->hw->mcs_devtype == CNF10KB_MCS)
 		mcs_set_force_clk_en(mcs, true);
 
 	mutex_lock(&mcs->stats_lock);
 	mcs_get_sc_stats(mcs, rsp, req->id, req->dir);
 	mutex_unlock(&mcs->stats_lock);
 
-	if (mcs->hw->mcs_blks > 1)
+	if (mcs->hw->mcs_devtype == CNF10KB_MCS)
 		mcs_set_force_clk_en(mcs, false);
 
 	return 0;
@@ -351,14 +351,14 @@ int rvu_mbox_handler_mcs_get_port_stats(struct rvu *rvu,
 
 	mcs = mcs_get_pdata(req->mcs_id);
 
-	if (mcs->hw->mcs_blks > 1)
+	if (mcs->hw->mcs_devtype == CNF10KB_MCS)
 		mcs_set_force_clk_en(mcs, true);
 
 	mutex_lock(&mcs->stats_lock);
 	mcs_get_port_stats(mcs, rsp, req->id, req->dir);
 	mutex_unlock(&mcs->stats_lock);
 
-	if (mcs->hw->mcs_blks > 1)
+	if (mcs->hw->mcs_devtype == CNF10KB_MCS)
 		mcs_set_force_clk_en(mcs, false);
 
 	return 0;
@@ -438,16 +438,8 @@ int rvu_mcs_flr_handler(struct rvu *rvu, u16 pcifunc)
 	struct mcs *mcs;
 	int mcs_id;
 
-	/* CNF10K-B mcs0-6 are mapped to RPM2-8*/
-	if (rvu->mcs_blk_cnt > 1) {
-		for (mcs_id = 0; mcs_id < rvu->mcs_blk_cnt; mcs_id++) {
-			mcs = mcs_get_pdata(mcs_id);
-			mcs_free_all_rsrc(mcs, MCS_RX, pcifunc);
-			mcs_free_all_rsrc(mcs, MCS_TX, pcifunc);
-		}
-	} else {
-		/* CN10K-B has only one mcs block */
-		mcs = mcs_get_pdata(0);
+	for (mcs_id = 0; mcs_id < rvu->mcs_blk_cnt; mcs_id++) {
+		mcs = mcs_get_pdata(mcs_id);
 		mcs_free_all_rsrc(mcs, MCS_RX, pcifunc);
 		mcs_free_all_rsrc(mcs, MCS_TX, pcifunc);
 	}
@@ -523,6 +515,9 @@ int rvu_mbox_handler_mcs_tx_sc_sa_map_write(struct rvu *rvu,
 
 	mcs = mcs_get_pdata(req->mcs_id);
 	mcs->mcs_ops->mcs_tx_sa_mem_map_write(mcs, req);
+
+	if (is_cn20k(mcs->pdev))
+		return 0;
 	mcs->tx_sa_active[req->sc_id] = req->tx_sa_active;
 
 	return 0;
@@ -749,6 +744,9 @@ int rvu_mbox_handler_mcs_alloc_ctrl_pkt_rule(struct rvu *rvu,
 
 	mcs = mcs_get_pdata(req->mcs_id);
 
+	if (is_cn20k(mcs->pdev))
+		return 0;
+
 	map = (req->dir == MCS_RX) ? &mcs->rx : &mcs->tx;
 
 	mutex_lock(&rvu->rsrc_lock);
@@ -856,8 +854,10 @@ int rvu_mcs_init(struct rvu *rvu)
 	if (!rvu->mcs_blk_cnt)
 		return 0;
 
+	mcs = mcs_get_pdata(0);
+
 	/* Needed only for CN10K-B */
-	if (rvu->mcs_blk_cnt == 1) {
+	if (mcs->hw->mcs_devtype == CN10KB_MCS) {
 		err = mcs_set_lmac_channels(0, hw->cgx_chan_base);
 		if (err)
 			return err;

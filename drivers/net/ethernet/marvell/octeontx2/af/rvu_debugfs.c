@@ -22,6 +22,7 @@
 #include "mcs.h"
 
 #include "cn20k/debugfs.h"
+#include "mcs_reg.h"
 
 #define DEBUGFS_DIR_NAME "octeontx2"
 
@@ -213,7 +214,7 @@ static int rvu_dbg_mcs_port_stats_display(struct seq_file *filp, void *unused, i
 		seq_printf(filp, "port%d: Tcam Miss: %lld\n", lmac, stats.tcam_miss_cnt);
 		seq_printf(filp, "port%d: Parser errors: %lld\n", lmac, stats.parser_err_cnt);
 
-		if (dir == MCS_RX && mcs->hw->mcs_blks > 1)
+		if (dir == MCS_RX && mcs->hw->mcs_devtype == CNF10KB_MCS)
 			seq_printf(filp, "port%d: Preempt error: %lld\n", lmac,
 				   stats.preempt_err_cnt);
 		if (dir == MCS_TX)
