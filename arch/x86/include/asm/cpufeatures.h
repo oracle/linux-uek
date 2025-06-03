@@ -464,7 +464,9 @@
 #define X86_BUG_FDIV			X86_BUG(1) /* FPU FDIV */
 #define X86_BUG_COMA			X86_BUG(2) /* Cyrix 6x86 coma */
 #define X86_BUG_AMD_TLB_MMATCH		X86_BUG(3) /* "tlb_mmatch" AMD Erratum 383 */
-#define X86_BUG_AMD_APIC_C1E		X86_BUG(4) /* "apic_c1e" AMD Erratum 400 */
+#ifdef WITHOUT_ORACLE_EXTENSIONS
+#define X86_BUG_AMD_APIC_C1E		X86_BUG(4) /* "" AMD Erratum 400 */
+#endif
 #define X86_BUG_11AP			X86_BUG(5) /* Bad local APIC aka 11AP */
 #define X86_BUG_FXSAVE_LEAK		X86_BUG(6) /* FXSAVE leaks FOP/FIP/FOP */
 #define X86_BUG_CLFLUSH_MONITOR		X86_BUG(7) /* AAI65, CLFLUSH required before MONITOR */
@@ -479,7 +481,9 @@
 #define X86_BUG_NULL_SEG		X86_BUG(10) /* Nulling a selector preserves the base */
 #define X86_BUG_SWAPGS_FENCE		X86_BUG(11) /* SWAPGS without input dep on GS */
 #define X86_BUG_MONITOR			X86_BUG(12) /* IPI required to wake up remote CPU */
-#define X86_BUG_AMD_E400		X86_BUG(13) /* CPU is among the affected by Erratum 400 */
+#ifdef WITHOUT_ORACLE_EXTENSIONS
+#define X86_BUG_AMD_E400		X86_BUG(13) /* "" CPU is among the affected by Erratum 400 */
+#endif
 #define X86_BUG_CPU_MELTDOWN		X86_BUG(14) /* CPU is affected by meltdown attack and needs kernel page table isolation */
 #define X86_BUG_SPECTRE_V1		X86_BUG(15) /* CPU is affected by Spectre variant 1 attack with conditional branches */
 #define X86_BUG_SPECTRE_V2		X86_BUG(16) /* CPU is affected by Spectre variant 2 attack with indirect branches */
@@ -510,7 +514,7 @@
 #define X86_BUG_BHI			X86_BUG(1) /* CPU is affected by Branch History Injection */
 #define X86_BUG_RFDS			X86_BUG(2) /* CPU is vulnerable to Register File Data Sampling */
 #define X86_BUG_IBPB_NO_RET		X86_BUG(3) /* "ibpb_no_ret" IBPB omits return target predictions */
-/* X86_BUG(4) (X86_BUG_AMD_APIC_C1E) is not reused, it impacts AMD K8 which supports 64-bit */
+/* X86_BUG(4) (X86_BUG_AMD_APIC_C1E) is available */
 #define X86_BUG_ITS			X86_BUG(5) /* "its" CPU is affected by Indirect Target Selection */
 /* X86_BUG(6) (X86_BUG_FXSAVE_LEAK) is not reused, it can impact AMD in 64-bit mode */
 /* X86_BUG(7) (X86_BUG_CLFLUSH_MONITOR) is not reused, it impacts Intel Core 2 Dunnington, Nehalem, Westmere */
@@ -519,7 +523,7 @@
 /* X86_BUG(10) (X86_BUG_NULL_SEG) is not reused, it impacts AMD cpus */
 /* X86_BUG(11) (X86_BUG_SWAPGS_FENCE) is not reused, it impacts AMD K8 */
 /* X86_BUG(12) (X86_BUG_MONITOR) is not reused, it impacts Intel Goldmont */
-/* X86_BUG(13) (X86_BUG_AMD_E400) is not reused, it impacts AMD K8 */
+/* X86_BUG(13) (X86_BUG_AMD_E400) is available */
 /* X86_BUG(14) and later cannot be reused, they impact recent CPUs */
 
 #endif /* _ASM_X86_CPUFEATURES_H */

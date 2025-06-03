@@ -750,8 +750,13 @@ static void early_init_amd(struct cpuinfo_x86 *c)
 	 * whether the machine is affected in arch_post_acpi_init(), which
 	 * sets the X86_BUG_AMD_APIC_C1E bug depending on the MSR check.
 	 */
-	if (cpu_has_amd_erratum(c, amd_erratum_400))
+	if (cpu_has_amd_erratum(c, amd_erratum_400)) {
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		pr_err_once("Obsolete processor, may not wake up from a sleep state");
+#else
 		set_cpu_bug(c, X86_BUG_AMD_E400);
+#endif
+	}
 
 	early_detect_mem_encrypt(c);
 

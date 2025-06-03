@@ -785,6 +785,7 @@ void __noreturn stop_this_cpu(void *dummy)
 	}
 }
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 /*
  * AMD Erratum 400 aware idle routine. We handle it the same way as C3 power
  * states (local apic timer and TSC stop).
@@ -815,6 +816,7 @@ static void amd_e400_idle(void)
 	tick_broadcast_exit();
 	raw_local_irq_enable();
 }
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 /*
  * Intel Core2 and older machines prefer MWAIT over HALT for C1.
@@ -875,10 +877,13 @@ void select_idle_routine(const struct cpuinfo_x86 *c)
 	if (x86_idle || boot_option_idle_override == IDLE_POLL)
 		return;
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	if (boot_cpu_has_bug(X86_BUG_AMD_E400)) {
 		pr_info("using AMD E400 aware idle routine\n");
 		x86_idle = amd_e400_idle;
-	} else if (prefer_mwait_c1_over_halt(c)) {
+	} else
+#endif
+	if (prefer_mwait_c1_over_halt(c)) {
 		pr_info("using mwait in idle threads\n");
 		x86_idle = mwait_idle;
 	} else
@@ -887,18 +892,23 @@ void select_idle_routine(const struct cpuinfo_x86 *c)
 
 void amd_e400_c1e_apic_setup(void)
 {
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	if (boot_cpu_has_bug(X86_BUG_AMD_APIC_C1E)) {
 		pr_info("Switch to broadcast mode on CPU%d\n", smp_processor_id());
 		local_irq_disable();
 		tick_broadcast_force();
 		local_irq_enable();
 	}
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 }
 
 void __init arch_post_acpi_subsys_init(void)
 {
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	return;
+#else
 	u32 lo, hi;
-
+ 
 	if (!boot_cpu_has_bug(X86_BUG_AMD_E400))
 		return;
 
@@ -916,6 +926,7 @@ void __init arch_post_acpi_subsys_init(void)
 	if (!boot_cpu_has(X86_FEATURE_NONSTOP_TSC))
 		mark_tsc_unstable("TSC halt in AMD C1E");
 	pr_info("System has AMD C1E enabled\n");
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 }
 
 static int __init idle_setup(char *str)
