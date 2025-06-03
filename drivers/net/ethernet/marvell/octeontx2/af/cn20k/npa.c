@@ -52,9 +52,9 @@ int npa_cn20k_dpc_alloc(struct rvu *rvu, struct npa_cn20k_dpc_alloc_req *req,
 			struct npa_cn20k_dpc_alloc_rsp *rsp)
 
 {
+	int i, lf, blkaddr, ridx, lf_ge_64;
 	struct rvu_hwinfo *hw = rvu->hw;
 	u16 pcifunc = req->hdr.pcifunc;
-	int i, lf, blkaddr, ridx;
 	struct rvu_block *block;
 	struct rvu_pfvf *pfvf;
 	u64 val, lfmask;
@@ -79,18 +79,15 @@ int npa_cn20k_dpc_alloc(struct rvu *rvu, struct npa_cn20k_dpc_alloc_req *req,
 	/* DPC counter config */
 	rvu_write64(rvu, blkaddr, NPA_AF_DPCX_CFG(i), req->dpc_conf);
 
-	ridx = lf % 32; /* 0 to 31 lfs -> idx 0, 32 - 63 lfs -> idx 1 */
-	lfmask = BIT_ULL(ridx ? lf - 32 : lf);
-
-	/* Map LF to this counter */
-	val = rvu_read64(rvu, blkaddr, NPA_AF_DPCX_LF_ENAX(i, ridx));
-	val |= lfmask;
-	rvu_write64(rvu, blkaddr, NPA_AF_DPCX_LF_ENAX(i, ridx), val);
+	/* Permit Reg Mapping (0,1)=>DPC0, (2,3)=>DPC1, ..., (62,63)=>DPC31) */
+	lf_ge_64 = lf >= NPA_DPC_LFS_PER_REG;
+	ridx = i * 2 + lf_ge_64;
+	lfmask = BIT_ULL(lf_ge_64 ? lf - NPA_DPC_LFS_PER_REG : lf);
 
 	/* Give permission for LF access */
-	val = rvu_read64(rvu, blkaddr, NPA_AF_DPC_PERMITX(i, ridx));
+	val = rvu_read64(rvu, blkaddr, NPA_AF_DPC_PERMITX(ridx));
 	val |= lfmask;
-	rvu_write64(rvu, blkaddr, NPA_AF_DPC_PERMITX(i, ridx), val);
+	rvu_write64(rvu, blkaddr, NPA_AF_DPC_PERMITX(ridx), val);
 
 	return 0;
 }
@@ -104,9 +101,9 @@ int rvu_mbox_handler_npa_cn20k_dpc_alloc(struct rvu *rvu,
 
 int npa_cn20k_dpc_free(struct rvu *rvu, struct npa_cn20k_dpc_free_req *req)
 {
+	int cntr, lf, blkaddr, ridx, lf_ge_64;
 	struct rvu_hwinfo *hw = rvu->hw;
 	u16 pcifunc = req->hdr.pcifunc;
-	int cntr, lf, blkaddr, ridx;
 	struct rvu_block *block;
 	struct rvu_pfvf *pfvf;
 	u64 val, lfmask;
@@ -122,24 +119,19 @@ int npa_cn20k_dpc_free(struct rvu *rvu, struct npa_cn20k_dpc_free_req *req)
 	if (lf < 0)
 		return NPA_AF_ERR_AF_LF_INVALID;
 
-	ridx = lf % NPA_DPC_LFS_PER_REG; /* LFs 0 to 63 -> 0, 64 to 127 -> 1 */
-	lfmask = BIT_ULL(ridx ? lf - NPA_DPC_LFS_PER_REG : lf);
+	/* Permit Reg Mapping (0,1)=>DPC0, (2,3)=>DPC1, ..., (62,63)=>DPC31) */
 	cntr = req->cntr_id;
-
-	/* Unmap LF for this counter */
-	val = rvu_read64(rvu, blkaddr, NPA_AF_DPCX_LF_ENAX(cntr, ridx));
-	if (!(val & lfmask)) /* Verify if this LF really owns this */
-		return NPA_AF_ERR_AF_LF_INVALID;
-	val &= ~lfmask;
-	rvu_write64(rvu, blkaddr, NPA_AF_DPCX_LF_ENAX(cntr, ridx), val);
+	lf_ge_64 = lf >= NPA_DPC_LFS_PER_REG;
+	ridx = cntr * 2 + lf_ge_64;
+	lfmask = BIT_ULL(lf_ge_64 ? lf - NPA_DPC_LFS_PER_REG : lf);
 
 	/* Revert permission */
-	val = rvu_read64(rvu, blkaddr, NPA_AF_DPC_PERMITX(cntr, ridx));
+	val = rvu_read64(rvu, blkaddr, NPA_AF_DPC_PERMITX(ridx));
 	val &= ~lfmask;
-	rvu_write64(rvu, blkaddr, NPA_AF_DPC_PERMITX(cntr, ridx), val);
+	rvu_write64(rvu, blkaddr, NPA_AF_DPC_PERMITX(ridx), val);
 
 	/* Free this counter */
-	rvu_free_rsrc(&rvu->npa_dpc, req->cntr_id);
+	rvu_free_rsrc(&rvu->npa_dpc, cntr);
 
 	return 0;
 }
