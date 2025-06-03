@@ -129,8 +129,10 @@ static void lapic_timer_check_state(int state, struct acpi_processor *pr,
 	if (cpu_has(&cpu_data(pr->id), X86_FEATURE_ARAT))
 		return;
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	if (boot_cpu_has_bug(X86_BUG_AMD_APIC_C1E))
 		type = ACPI_STATE_C1;
+#endif
 
 	/*
 	 * Check, if one of the previous states already marked the lapic
