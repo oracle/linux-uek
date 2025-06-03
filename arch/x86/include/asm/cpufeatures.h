@@ -438,7 +438,9 @@
 #define X86_BUG_FDIV			X86_BUG(1) /* FPU FDIV */
 #define X86_BUG_COMA			X86_BUG(2) /* Cyrix 6x86 coma */
 #define X86_BUG_AMD_TLB_MMATCH		X86_BUG(3) /* "tlb_mmatch" AMD Erratum 383 */
-#define X86_BUG_AMD_APIC_C1E		X86_BUG(4) /* "apic_c1e" AMD Erratum 400 */
+#ifdef WITHOUT_ORACLE_EXTENSIONS
+#define X86_BUG_AMD_APIC_C1E		X86_BUG(4) /* "" AMD Erratum 400 */
+#endif
 #define X86_BUG_11AP			X86_BUG(5) /* Bad local APIC aka 11AP */
 #define X86_BUG_FXSAVE_LEAK		X86_BUG(6) /* FXSAVE leaks FOP/FIP/FOP */
 #define X86_BUG_CLFLUSH_MONITOR		X86_BUG(7) /* AAI65, CLFLUSH required before MONITOR */
@@ -453,7 +455,9 @@
 #define X86_BUG_NULL_SEG		X86_BUG(10) /* Nulling a selector preserves the base */
 #define X86_BUG_SWAPGS_FENCE		X86_BUG(11) /* SWAPGS without input dep on GS */
 #define X86_BUG_MONITOR			X86_BUG(12) /* IPI required to wake up remote CPU */
-#define X86_BUG_AMD_E400		X86_BUG(13) /* CPU is among the affected by Erratum 400 */
+#ifdef WITHOUT_ORACLE_EXTENSIONS
+#define X86_BUG_AMD_E400		X86_BUG(13) /* "" CPU is among the affected by Erratum 400 */
+#endif
 #define X86_BUG_CPU_MELTDOWN		X86_BUG(14) /* CPU is affected by meltdown attack and needs kernel page table isolation */
 #define X86_BUG_SPECTRE_V1		X86_BUG(15) /* CPU is affected by Spectre variant 1 attack with conditional branches */
 #define X86_BUG_SPECTRE_V2		X86_BUG(16) /* CPU is affected by Spectre variant 2 attack with indirect branches */

@@ -80,8 +80,10 @@ static inline unsigned int acpi_processor_cstate_check(unsigned int max_cstate)
 	    boot_cpu_data.x86_model <= 0x05 &&
 	    boot_cpu_data.x86_stepping < 0x0A)
 		return 1;
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	else if (boot_cpu_has(X86_BUG_AMD_APIC_C1E))
 		return 1;
+#endif
 	else
 		return max_cstate;
 }
