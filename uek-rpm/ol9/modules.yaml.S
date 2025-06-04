@@ -111,6 +111,7 @@ modules-core:
 - einj
 - ena
 - enclosure
+- erofs
 - esp4
 - esp4_offload
 - esp6
