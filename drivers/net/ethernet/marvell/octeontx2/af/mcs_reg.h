@@ -13,6 +13,7 @@ enum mcs_devtype {
 	CN10KB_MCS,
 	CNF10KB_MCS,
 	CN20KA_MCS,
+	CNF20KA_MCS,
 };
 
 #define MCS_CHOOSE_OFFSET(a, b, c) ({\
@@ -26,6 +27,7 @@ enum mcs_devtype {
 	off = b;					\
 	break;						\
 	case CN20KA_MCS:				\
+	case CNF20KA_MCS:				\
 	off = c;					\
 	break;						\
 	}						\
@@ -390,6 +392,7 @@ enum mcs_devtype {
 	switch (mcs->hw->mcs_devtype) {			\
 	case CN10KB_MCS:				\
 	case CN20KA_MCS:				\
+	case CNF20KA_MCS:				\
 	offset += (a) * 0x10ull;			\
 	break;						\
 	case CNF10KB_MCS:				\
@@ -408,6 +411,7 @@ enum mcs_devtype {
 	mask = GENMASK_ULL(43, 28);			\
 	break;						\
 	case CN20KA_MCS:				\
+	case CNF20KA_MCS:				\
 	mask = GENMASK_ULL(44, 29);			\
 	break;						\
 	}						\
@@ -499,6 +503,7 @@ enum mcs_devtype {
 	switch (mcs->hw->mcs_devtype) {			\
 	case CN10KB_MCS:				\
 	case CN20KA_MCS:				\
+	case CNF20KA_MCS:				\
 	offset += (a) * 0x8ull;				\
 	break;						\
 	case CNF10KB_MCS:				\
@@ -528,6 +533,7 @@ enum mcs_devtype {
 	switch (mcs->hw->mcs_devtype) {			\
 	case CN10KB_MCS:				\
 	case CN20KA_MCS:				\
+	case CNF20KA_MCS:				\
 	offset += (a) * 0x10ull;			\
 	break;						\
 	case CNF10KB_MCS:				\

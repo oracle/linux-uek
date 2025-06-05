@@ -843,6 +843,61 @@ static void rvu_mcs_set_lmac_bmap(struct rvu *rvu)
 	mcs->hw->lmac_bmap = lmac_bmap;
 }
 
+static void rvu_cn20k_mcs_set_channel(struct rvu *rvu, u16 base)
+{
+	int mcs_id, lmac;
+	struct mcs *mcs;
+	u64 cfg;
+
+	for (mcs_id = 0; mcs_id < rvu->mcs_blk_cnt; mcs_id++) {
+		mcs = mcs_get_pdata(mcs_id);
+		if (!mcs)
+			continue;
+		for (lmac = 0; lmac < mcs->hw->lmac_cnt; lmac++) {
+			cfg = mcs_reg_read(mcs, MCSX_LINK_LMACX_CFG(lmac));
+			cfg &= ~(MCSX_LINK_LMAC_BASE_MASK | MCSX_LINK_LMAC_RANGE_MASK);
+			cfg |=	FIELD_PREP(MCSX_LINK_LMAC_RANGE_MASK, ilog2(16));
+			cfg |=	FIELD_PREP(MCSX_LINK_LMAC_BASE_MASK, base);
+			mcs_reg_write(mcs, MCSX_LINK_LMACX_CFG(lmac), cfg);
+			base += 16;
+		}
+	}
+}
+
+static void rvu_cn20ka_mcs_set_lmac_cnt(struct rvu *rvu)
+{
+	/* Set LMAC channel mapping for CN20KA MCS blocks */
+	rvu_cn20k_mcs_set_channel(rvu, rvu->hw->cgx_chan_base);
+
+	/* Populate LMAC bitmap based on MCS block setup */
+	rvu_mcs_set_lmac_bmap(rvu);
+	/* TODO: If RPM2 uses x2p2 config mcs1 */
+}
+
+#define CNF20KA_MCS_ID_WITH_SINGLE_LMAC 4
+#define CNF20KA_LMAC_COUNT 2
+
+static void rvu_cnf20ka_mcs_set_lmac_cnt(struct rvu *rvu)
+{
+	struct hwinfo *hw;
+	struct mcs *mcs;
+	u16 chan_base;
+	int mcs_id;
+
+	for (mcs_id = 0; mcs_id < rvu->mcs_blk_cnt; mcs_id++) {
+		mcs = mcs_get_pdata(mcs_id);
+		if (!mcs)
+			continue;
+		hw = mcs->hw;
+		hw->lmac_cnt = CNF20KA_LMAC_COUNT;
+		if (mcs_id == CNF20KA_MCS_ID_WITH_SINGLE_LMAC)
+			hw->lmac_cnt = 1;
+		hw->lmac_bmap = GENMASK_ULL(hw->lmac_cnt - 1, 0);
+	}
+	chan_base = rvu->hw->cgx_chan_base + (16 * 4);
+	rvu_cn20k_mcs_set_channel(rvu, chan_base);
+}
+
 int rvu_mcs_init(struct rvu *rvu)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
@@ -864,6 +919,11 @@ int rvu_mcs_init(struct rvu *rvu)
 		/* Set active lmacs */
 		rvu_mcs_set_lmac_bmap(rvu);
 	}
+	if (mcs->hw->mcs_devtype == CN20KA_MCS)
+		rvu_cn20ka_mcs_set_lmac_cnt(rvu);
+
+	if (mcs->hw->mcs_devtype == CNF20KA_MCS)
+		rvu_cnf20ka_mcs_set_lmac_cnt(rvu);
 
 	/* Install default tcam bypass entry and set port to operational mode */
 	for (mcs_id = 0; mcs_id < rvu->mcs_blk_cnt; mcs_id++) {

@@ -362,6 +362,7 @@ void mcs_rx_sc_cam_write(struct mcs *mcs, u64 sci, u64 secy, int sc_id)
 
 void mcs_secy_plcy_write(struct mcs *mcs, u64 plcy, int secy_id, int dir)
 {
+	u8 devtype = mcs->hw->mcs_devtype;
 	u64 reg, val;
 
 	if (dir == MCS_RX)
@@ -369,14 +370,14 @@ void mcs_secy_plcy_write(struct mcs *mcs, u64 plcy, int secy_id, int dir)
 	else
 		reg = MCSX_CPM_TX_SLAVE_SECY_PLCY_MEMX(secy_id);
 
-	if (mcs->hw->mcs_devtype == CN20KA_MCS && dir == MCS_TX) {
+	if ((devtype == CN20KA_MCS || devtype == CNF20KA_MCS) && dir == MCS_TX) {
 		val = plcy >> 21;
 		plcy &= GENMASK_ULL(21, 0);
 		plcy |= val << 22;
 	}
 	mcs_reg_write(mcs, reg, plcy);
 
-	if (mcs->hw->mcs_devtype != CNF10KB_MCS  && dir == MCS_RX)
+	if (devtype != CNF10KB_MCS  && dir == MCS_RX)
 		mcs_reg_write(mcs, MCSX_CPM_RX_SLAVE_SECY_PLCY_MEM_1X(secy_id), 0x0ull);
 }
 
@@ -1536,15 +1537,23 @@ static int mcs_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	mcs->pdev = pdev;
 	mcs->dev = &pdev->dev;
 
-	if (is_cn20k(pdev)) {
+	switch (pdev->subsystem_device) {
+	case PCI_SUBSYS_DEVID_CN20KA:
 		mcs->mcs_ops = cn20ka_get_mac_ops();
 		mcs->hw->mcs_devtype = CN20KA_MCS;
-	} else if (pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_B) {
+		break;
+	case PCI_SUBSYS_DEVID_CNF20KA:
+		mcs->mcs_ops = cn20ka_get_mac_ops();
+		mcs->hw->mcs_devtype = CNF20KA_MCS;
+		break;
+	case PCI_SUBSYS_DEVID_CN10K_B:
 		mcs->mcs_ops = &cn10kb_mcs_ops;
 		mcs->hw->mcs_devtype = CN10KB_MCS;
-	} else {
+		break;
+	case PCI_SUBSYS_DEVID_CNF10K_B:
 		mcs->mcs_ops = cnf10kb_get_mac_ops();
 		mcs->hw->mcs_devtype = CNF10KB_MCS;
+		break;
 	}
 
 	/* Set hardware capabilities */
