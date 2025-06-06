@@ -34,7 +34,11 @@ void __init reserve_crashkernel_cma(unsigned long long cma_size);
 #ifdef CONFIG_ARCH_HAS_GENERIC_CRASHKERNEL_RESERVATION
 #ifndef DEFAULT_CRASH_KERNEL_LOW_SIZE
 #ifdef __aarch64__
+#ifdef CONFIG_ARM64_64K_PAGES
+#define DEFAULT_CRASH_KERNEL_LOW_SIZE   (512UL << 20)
+#else
 #define DEFAULT_CRASH_KERNEL_LOW_SIZE   (256UL << 20)
+#endif
 #else
 #define DEFAULT_CRASH_KERNEL_LOW_SIZE	(128UL << 20)
 #endif
