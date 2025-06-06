@@ -40,7 +40,11 @@ static inline bool arch_add_crash_res_to_iomem(void)
 #endif
 #ifndef DEFAULT_CRASH_KERNEL_LOW_SIZE
 #ifdef __aarch64__
+#ifdef CONFIG_ARM64_64K_PAGES
+#define DEFAULT_CRASH_KERNEL_LOW_SIZE   (512UL << 20)
+#else
 #define DEFAULT_CRASH_KERNEL_LOW_SIZE   (256UL << 20)
+#endif
 #else
 #define DEFAULT_CRASH_KERNEL_LOW_SIZE	(128UL << 20)
 #endif
