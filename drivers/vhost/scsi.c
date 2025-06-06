@@ -51,7 +51,7 @@
  */
 #define VHOST_SCSI_MAX_RESP_IOVS sizeof(struct virtio_scsi_cmd_resp)
 
-static unsigned int vhost_scsi_inline_sg_cnt = VHOST_SCSI_PREALLOC_SGLS;
+static unsigned int vhost_scsi_inline_sg_cnt = UINT_MAX;
 
 #ifdef CONFIG_ARCH_NO_SG_CHAIN
 static int vhost_scsi_set_inline_sg_cnt(const char *buf,
@@ -203,10 +203,11 @@ enum {
 };
 
 #define VHOST_SCSI_MAX_TARGET	256
+#define VHOST_SCSI_DEF_IO_VQ	128
 #define VHOST_SCSI_MAX_IO_VQ	1024
 #define VHOST_SCSI_MAX_EVENT	128
 
-static unsigned vhost_scsi_max_io_vqs = 128;
+static unsigned vhost_scsi_max_io_vqs = UINT_MAX;
 module_param_named(max_io_vqs, vhost_scsi_max_io_vqs, uint, 0644);
 MODULE_PARM_DESC(max_io_vqs, "Set the max number of IO virtqueues a vhost scsi device can support. The default is 128. The max is 1024.");
 
@@ -2964,6 +2965,35 @@ static const struct target_core_fabric_ops vhost_scsi_ops = {
 static int __init vhost_scsi_init(void)
 {
 	int ret = -ENOMEM;
+
+
+	if (static_branch_unlikely(&on_exadata)) {
+		/*
+		 * We can't change the upstream default because existing users
+		 * with more than 1 queue will hit failures during device
+		 * setup. Exadata has never used vhost-scsi before so it's ok
+		 * to start them at 1 so they can use as little mem as possible
+		 * initially.
+		 */
+		if (vhost_scsi_max_io_vqs == UINT_MAX)
+			vhost_scsi_max_io_vqs = 1;
+		/*
+		 * We have not changed the upstream default because there's
+		 * a chance of a perf regression if there are users doing
+		 * muiltiple LUNs per vhost-scsi device and using high perf
+		 * devices for the backends. For exadata we use 0, because
+		 * their primary concern is memory use.
+		 */
+		if (vhost_scsi_inline_sg_cnt == UINT_MAX)
+			vhost_scsi_inline_sg_cnt = 0;
+	} else {
+		if (vhost_scsi_max_io_vqs == UINT_MAX)
+			vhost_scsi_max_io_vqs = VHOST_SCSI_DEF_IO_VQ;
+
+		if (vhost_scsi_inline_sg_cnt == UINT_MAX)
+			vhost_scsi_inline_sg_cnt = VHOST_SCSI_PREALLOC_SGLS;
+	}
+
 
 	pr_debug("TCM_VHOST fabric module %s on %s/%s"
 		" on "UTS_RELEASE"\n", VHOST_SCSI_VERSION, utsname()->sysname,
