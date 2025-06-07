@@ -633,6 +633,7 @@ modules-core:
 - ovmapi
 - pcc-cpufreq
 - pcspkr
+- pds_fwctl
 - poly1305-x86_64
 - power
 - ptp_kvm
