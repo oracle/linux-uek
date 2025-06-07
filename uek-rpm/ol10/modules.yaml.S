@@ -389,6 +389,7 @@ modules-core:
 - pci-hyperv
 - pci-hyperv-intf
 - pcrypt
+- pds_core
 - pkcs8_key_parser
 - pktgen
 - pm80xx
@@ -606,7 +607,6 @@ modules-core:
 - edac_mce_amd
 - erst-dbg
 - ext4
-- fwctl
 - ghash-clmulni-intel
 - i10nm_edac
 - i2c-i801
@@ -652,6 +652,7 @@ modules-core:
 - ovmapi
 - pcc-cpufreq
 - pcspkr
+- pds_fwctl
 - poly1305-x86_64
 - power
 - ptp_kvm
@@ -1164,7 +1165,6 @@ modules:
 - pcwd_usb
 - pdc_adma
 - pds-vfio-pci
-- pds_core
 - pds_vdpa
 - peak_pci
 - peak_pciefd
