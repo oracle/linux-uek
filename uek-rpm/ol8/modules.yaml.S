@@ -58,7 +58,6 @@ modules-core:
 - cnic
 - cordic
 - crc-itu-t
-- crc32_generic
 - crc32c_generic
 - crc7
 - cryptd
@@ -102,7 +101,6 @@ modules-core:
 - dm-zero
 - dns_resolver
 - drm
-- drm_client_lib
 - drm_kms_helper
 - drm_shmem_helper
 - drm_ttm_helper
@@ -876,8 +874,6 @@ modules:
 - hid-lcpower
 - hid-led
 - hid-lenovo
-- hid-logitech-dj
-- hid-logitech-hidpp
 - hid-multitouch
 - hid-nti
 - hid-ortek
@@ -2124,9 +2120,6 @@ modules:
 - pc87360
 - pc87413_wdt
 - pc87427
-- pcf50633
-- pcf50633-adc
-- pcf50633-gpio
 - pci
 - pinctrl-alderlake
 - pinctrl-broxton
@@ -2480,7 +2473,6 @@ modules-extra:
 - ppa
 - ptdma
 - ptp_vmw
-- rtc-pcf50633
 - snd-acp3x-pdm-dma
 - snd-acp5x-i2s
 - snd-acp5x-pcm-dma
@@ -3042,6 +3034,7 @@ modules-desktop:
 - rc-rc6-mce
 - rc-real-audio-220-32-keys
 - rc-reddo
+- rc-siemens-gigaset-rc20
 - rc-snapstream-firefly
 - rc-streamzap
 - rc-su3000
@@ -3126,6 +3119,7 @@ modules-desktop:
 - stk1160
 - streamzap
 - tda7432
+- tda9950
 - tda998x
 - tea575x
 - tifm_ms
@@ -3600,6 +3594,7 @@ modules-desktop:
 - snd-sof-intel-hda-common
 - snd-sof-intel-hda-generic
 - snd-sof-intel-hda-mlink
+- snd-sof-intel-hda-sdw-bpt
 - snd-sof-pci
 - snd-sof-pci-intel-apl
 - snd-sof-pci-intel-cnl
@@ -3820,6 +3815,7 @@ modules-usb:
 - usbsevseg
 - visor
 - whiteheat
+- xr_serial
 - xsens_mt
 - xusbatm
 
