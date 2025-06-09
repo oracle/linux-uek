@@ -93,6 +93,7 @@
 	_raw_spin_lock_bh
 	_raw_spin_lock_irq
 	_raw_spin_lock_irqsave
+	_raw_spin_trylock
 	_raw_spin_unlock
 	_raw_spin_unlock_bh
 	_raw_spin_unlock_irq
@@ -132,6 +133,7 @@
 	blk_mq_map_queues
 	blk_mq_pci_map_queues
 	blk_mq_requeue_request
+	blk_mq_run_hw_queues
 	blk_mq_start_request
 	blk_mq_start_stopped_hw_queues
 	blk_mq_stop_hw_queues
