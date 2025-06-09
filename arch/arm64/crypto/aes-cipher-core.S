@@ -123,10 +123,18 @@ CPU_BE(	rev		w7, w7		)
 	.endm
 
 SYM_FUNC_START(__aes_arm64_encrypt)
-	do_crypt	fround, crypto_ft_tab, crypto_ft_tab + 1, 2
+#ifdef FIPS_MODULE
+	do_crypt	fround, fips_crypto_ft_tab, fips_crypto_ft_tab + 1, 2
+#else
+	do_crypt	fround, nonfips_crypto_ft_tab, nonfips_crypto_ft_tab + 1, 2
+#endif
 SYM_FUNC_END(__aes_arm64_encrypt)
 
 	.align		5
 SYM_FUNC_START(__aes_arm64_decrypt)
-	do_crypt	iround, crypto_it_tab, crypto_aes_inv_sbox, 0
+#ifdef FIPS_MODULE
+	do_crypt	iround, fips_crypto_it_tab, crypto_aes_inv_sbox, 0
+#else
+	do_crypt	iround, nonfips_crypto_it_tab, crypto_aes_inv_sbox, 0
+#endif
 SYM_FUNC_END(__aes_arm64_decrypt)
