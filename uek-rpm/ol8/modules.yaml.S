@@ -49,7 +49,7 @@ modules-core:
 - cec
 - ch
 - chacha20poly1305
-- chacha_generic
+- chacha
 - cifs
 - cifs_arc4
 - cifs_md4
@@ -58,7 +58,7 @@ modules-core:
 - cnic
 - cordic
 - crc-itu-t
-- crc32c_generic
+- crc32c-cryptoapi
 - crc7
 - cryptd
 - crypto_engine
@@ -380,7 +380,7 @@ modules-core:
 - pkcs8_key_parser
 - pktgen
 - pm80xx
-- poly1305_generic
+- libpoly1305-generic
 - polynomial
 - psample
 - pvpanic
