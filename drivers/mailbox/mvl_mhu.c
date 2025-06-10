@@ -231,8 +231,8 @@ static int mhu_plat_setup_mbox(struct device *dev)
 		return ret;
 
 	mhu->payload = devm_ioremap_resource(dev, &res);
-	if (!mhu->payload)
-		return -ENOMEM;
+	if (IS_ERR(mhu->payload))
+		return PTR_ERR(mhu->payload);
 
 	chan = &mhu_mbox_ctrl.chans[0];
 	chan->con_priv = mhu;
