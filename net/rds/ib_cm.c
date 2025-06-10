@@ -74,8 +74,6 @@ static char *rds_ib_event_type_strings[] = {
 	RDS_IB_EVENT_STRING(LID_CHANGE),
 	RDS_IB_EVENT_STRING(PKEY_CHANGE),
 	RDS_IB_EVENT_STRING(SM_CHANGE),
-	RDS_IB_EVENT_STRING(SRQ_ERR),
-	RDS_IB_EVENT_STRING(SRQ_LIMIT_REACHED),
 	RDS_IB_EVENT_STRING(QP_LAST_WQE_REACHED),
 	RDS_IB_EVENT_STRING(CLIENT_REREGISTER),
 	RDS_IB_EVENT_STRING(GID_CHANGE),
@@ -375,14 +373,11 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	 * is complete, since ring layout is different from 3.0 to 3.1.
 	 */
 	rds_ib_send_init_ring(ic);
-
-	if (!rds_ib_srq_enabled)
-		rds_ib_recv_init_ring(ic);
+	rds_ib_recv_init_ring(ic);
 
 	/* Post receive buffers - as a side effect, this will update
 	 * the posted credit count. */
-	if (!rds_ib_srq_enabled)
-		RDS_IB_RECV_REFILL(conn, 1, GFP_KERNEL, s_ib_rx_refill_from_cm);
+	RDS_IB_RECV_REFILL(conn, 1, GFP_KERNEL, s_ib_rx_refill_from_cm);
 
 	rds_ib_check_rnr_timer(ic);
 
@@ -884,19 +879,6 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 	if (rds_conn_up(conn))
 		rds_ib_attempt_ack(ic);
 
-	if (rds_ib_srq_enabled) {
-		struct rds_ib_device *rds_ibdev = ic->rds_ibdev;
-		if (rds_ibdev &&
-		    (atomic_read(&rds_ibdev->srq->s_num_posted) < rds_ib_srq_hwm_refill) &&
-		    !test_and_set_bit(0, &rds_ibdev->srq->s_refill_gate))
-			rds_queue_delayed_work_on(&conn->c_path[0],
-						  ic->i_preferred_recv_cpu,
-						  conn->c_path[0].cp_wq,
-						  &rds_ibdev->srq->s_refill_w,
-						  0,
-						  "srq refill");
-	}
-
 	if (ic->i_rx_poll_cq >= RDS_IB_RX_LIMIT) {
 		ic->i_rx_w.ic = ic;
 		/* Delay 10 msecs until the RX worker starts reaping again */
@@ -1004,7 +986,6 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 		rdma_notify(ic->i_cm_id, IB_EVENT_COMM_EST);
 		break;
 	case IB_EVENT_QP_LAST_WQE_REACHED:
-		complete(&ic->i_last_wqe_complete);
 		break;
 	default:
 		rds_conn_drop(conn, DR_IB_QP_EVENT, 0);
@@ -1502,7 +1483,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 			&ic->i_rcq, &ic->i_rcq_entries,
 			rds_ib_cq_comp_handler_recv,
 			rds_ib_cq_event_handler, conn,
-			rds_ib_srq_enabled ? rds_ib_srq_max_wr - 1 : ic->i_recv_ring.w_nr,
+			ic->i_recv_ring.w_nr,
 			"recv", conn->c_tos);
 	if (IS_ERR(ic->i_rcq)) {
 		reason = "rds_ib_check_cq for recv failed";
@@ -1537,11 +1518,6 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	qp_attr.qp_type = IB_QPT_RC;
 	qp_attr.send_cq = ic->i_scq;
 	qp_attr.recv_cq = ic->i_rcq;
-
-	if (rds_ib_srq_enabled) {
-		qp_attr.cap.max_recv_wr = 0;
-		qp_attr.srq = rds_ibdev->srq->s_srq;
-	}
 
 	ic->i_hca_sge = rds_ibdev->max_sge;
 	/*
@@ -2528,17 +2504,6 @@ void rds_ib_conn_path_shutdown_prepare(struct rds_conn_path *cp)
 				ic->rds_ibdev->dev : NULL, ic->rds_ibdev,
 				conn, ic, "failed to disconnect", err);
 
-		} else if (rds_ib_srq_enabled && ic->rds_ibdev) {
-			/*
-			   wait for the last wqe to complete, then schedule
-			   the recv work to drain the RX CQ.
-			*/
-			wait_for_completion(&ic->i_last_wqe_complete);
-			if (rds_ib_preferred_cpu & RDS_IB_PREFER_CPU_TASKLET)
-				tasklet_schedule(&ic->i_rtasklet);
-			else
-				queue_work_on(smp_processor_id(),
-					      rds_evt_wq, &ic->i_recv_w);
 		}
 	}
 }
@@ -2723,12 +2688,9 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 
 	vfree(ic->i_sends);
 	ic->i_sends = NULL;
-	if (!rds_ib_srq_enabled)
-		vfree(ic->i_recvs);
+	vfree(ic->i_recvs);
 
 	ic->i_recvs = NULL;
-
-	reinit_completion(&ic->i_last_wqe_complete);
 
 	ic->i_active_side = 0;
 }
@@ -2807,8 +2769,6 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	 */
 	ic->conn = conn;
 	conn->c_transport_data = ic;
-
-	init_completion(&ic->i_last_wqe_complete);
 
 	INIT_DELAYED_WORK(&ic->i_rx_w.work, rds_ib_rx_handler);
 

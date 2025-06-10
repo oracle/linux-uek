@@ -26,9 +26,6 @@
 #define RDS_IB_DEFAULT_RECV_WR		1024
 #define RDS_IB_DEFAULT_SEND_WR		256
 #define RDS_IB_DEFAULT_FREG_WR		256
-#define RDS_IB_DEFAULT_SRQ_MAX_WR       4096
-#define RDS_IB_DEFAULT_SRQ_HWM_REFILL	(RDS_IB_DEFAULT_SRQ_MAX_WR/2)
-#define RDS_IB_DEFAULT_SRQ_LWM_REFILL	(RDS_IB_DEFAULT_SRQ_MAX_WR/10)
 
 #define RDS_IB_DEFAULT_RETRY_COUNT	1
 
@@ -43,8 +40,6 @@
 #define RDS_IB_DEFAULT_TIMEOUT          16 /* 4.096 * 2 ^ 16 = 260 msec */
 
 #define RDS_IB_SUPPORTED_PROTOCOLS	0x00000003	/* minor versions supported */
-
-#define RDS_IB_SRQ_POST_BATCH_COUNT     64
 
 #define RDS_IB_GID_FMT             "%2.2x%2.2x:%2.2x%2.2x"
 
@@ -203,7 +198,6 @@ struct rds_ib_recv_work {
 	struct ib_recv_wr	r_wr;
 	struct ib_sge		r_sge[RDS_IB_MAX_SGE];
 	struct rds_ib_connection	*r_ic;
-	int				r_posted;
 };
 
 struct rds_ib_work_ring {
@@ -371,8 +365,6 @@ struct rds_ib_connection {
 
 	atomic_t                i_cache_allocs;
 
-	struct completion       i_last_wqe_complete;
-
 	/* Active Bonding */
 	unsigned int		i_active_side;
 
@@ -430,21 +422,6 @@ struct rds_ib_ipaddr {
 	struct in6_addr		ipaddr;
 	struct rcu_head		rcu_head;
 };
-
-struct rds_ib_srq {
-	struct rds_ib_device       *rds_ibdev;
-	struct ib_srq              *s_srq;
-	struct ib_event_handler    s_event_handler;
-	struct rds_ib_recv_work    *s_recvs;
-	u32                        s_n_wr;
-	struct rds_header          *s_recv_hdrs;
-	u64                        s_recv_hdrs_dma;
-	atomic_t                   s_num_posted;
-	unsigned long              s_refill_gate;
-	struct delayed_work        s_refill_w;
-	struct delayed_work        s_rearm_w;
-};
-
 
 struct rds_ib_conn_drop_work {
 	struct delayed_work             work;
@@ -519,7 +496,6 @@ struct rds_ib_device {
 	unsigned int		max_initiator_depth;
 	unsigned int		max_responder_resources;
 	spinlock_t		spinlock;	/* protect the above */
-	struct rds_ib_srq       *srq;
 	struct rds_ib_port      *ports;
 	struct ib_event_handler event_handler;
 	int			*vector_load;
@@ -608,9 +584,6 @@ struct rds_ib_statistics {
 	uint64_t        s_ib_rdma_mr_1m_pool_flush;
 	uint64_t        s_ib_rdma_mr_1m_pool_depleted;
 	uint64_t	s_ib_rdma_flush_mr_pool_avoided;
-	uint64_t        s_ib_srq_lows;
-	uint64_t        s_ib_srq_refills;
-	uint64_t        s_ib_srq_empty_refills;
 	uint64_t	s_ib_recv_added_to_cache;
 	uint64_t	s_ib_recv_removed_from_cache;
 	uint64_t	s_ib_yield_yielding;
@@ -793,15 +766,7 @@ void rds_ib_recv_init_ack(struct rds_ib_connection *ic);
 void rds_ib_attempt_ack(struct rds_ib_connection *ic);
 void rds_ib_ack_send_complete(struct rds_ib_connection *ic);
 u64 rds_ib_piggyb_ack(struct rds_ib_connection *ic);
-void rds_ib_srq_refill(struct work_struct *work);
-int rds_ib_srq_prefill_ring(struct rds_ib_device *rds_ibdev);
-void rds_ib_srq_rearm(struct work_struct *work);
 void rds_ib_set_ack(struct rds_ib_connection *ic, u64 seq, int ack_required);
-void rds_ib_srq_process_recv(struct rds_connection *conn,
-			     struct rds_ib_recv_work *recv, u32 data_len,
-			     struct rds_ib_ack_state *state);
-int rds_ib_srq_init(struct rds_ib_device *rds_ibdev);
-void rds_ib_srq_exit(struct rds_ib_device *rds_ibdev);
 static inline int rds_ib_recv_acquire_refill(struct rds_connection *conn)
 {
 	return test_and_set_bit(RDS_RECV_REFILL, &conn->c_flags) == 0;
@@ -860,12 +825,6 @@ DECLARE_PER_CPU(struct rds_ib_statistics, rds_ib_stats);
 unsigned int rds_ib_stats_info_copy(struct rds_info_iterator *iter,
 				    unsigned int avail);
 void rds_ib_stats_print(const char *where);
-
-/* ib_recv.c */
-extern unsigned int rds_ib_srq_max_wr;
-extern unsigned int rds_ib_srq_hwm_refill;
-extern unsigned int rds_ib_srq_lwm_refill;
-extern unsigned int rds_ib_srq_enabled;
 
 /* ib_sysctl.c */
 int rds_ib_sysctl_init(void);
