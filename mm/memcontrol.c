@@ -306,10 +306,22 @@ static void lruvec_reparent_relocate(struct mem_cgroup *src, struct mem_cgroup *
 		 * to corresponding generation of the parent LRU lists.
 		 */
 		for_each_gen_type_zone(gen, type, zone) {
+			long delta = src_lrugen->nr_pages[gen][type][zone];
+			int lru = type * LRU_INACTIVE_FILE;
+
 			list_splice_tail_init(&src_lrugen->folios[gen][type][zone],
 					      &dst_lrugen->folios[gen][type][zone]);
 
-			long delta = src_lrugen->nr_pages[gen][type][zone];
+			if (lru_gen_is_active(src_lruvec, gen) !=
+					lru_gen_is_active(dst_lruvec, gen)) {
+				if (lru_gen_is_active(src_lruvec, gen)) {
+					__update_lru_size(src_lruvec, lru + LRU_ACTIVE, zone, -delta);
+					__update_lru_size(dst_lruvec, lru, zone, delta);
+				} else {
+					__update_lru_size(src_lruvec, lru, zone, -delta);
+					__update_lru_size(dst_lruvec, lru + LRU_ACTIVE, zone, delta);
+				}
+			}
 			lru_gen_lruvec_update_size(src_lruvec, gen, type, zone, -delta);
 			lru_gen_lruvec_update_size(dst_lruvec, gen, type, zone, delta);
 		}
