@@ -669,10 +669,6 @@ static void rds_ib_dev_free(struct work_struct *work)
 	bool last_to_free;
 	int allocated;
 
-	if (rds_ibdev->srq) {
-		rds_ib_srq_exit(rds_ibdev);
-		kfree(rds_ibdev->srq);
-	}
 	rds_ib_free_caches(rds_ibdev);
 
 	if (rds_ibdev->mr_8k_pool)
@@ -1401,12 +1397,6 @@ int rds_ib_add_one(struct ib_device *device)
 		error = PTR_ERR(rds_ibdev->mr_8k_pool);
 		rds_ibdev->mr_8k_pool = NULL;
 		reason = "reds_ib_create_mr_pool (8k) failed";
-		goto put_dev;
-	}
-
-	if (rds_ib_srq_init(rds_ibdev)) {
-		error = -EIO;
-		reason = "rds_ib_srq_init failed";
 		goto put_dev;
 	}
 
