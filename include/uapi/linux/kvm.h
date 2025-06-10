@@ -184,7 +184,8 @@ struct kvm_exit_snp_req_certs {
 #define KVM_EXIT_NOTIFY           37
 #define KVM_EXIT_LOONGARCH_IOCSR  38
 #define KVM_EXIT_MEMORY_FAULT     39
-#define KVM_EXIT_SNP_REQ_CERTS    40
+#define KVM_EXIT_TDX              40
+#define KVM_EXIT_SNP_REQ_CERTS    41
 
 /* For KVM_EXIT_INTERNAL_ERROR */
 /* Emulate instruction failed. */
@@ -456,6 +457,22 @@ struct kvm_run {
 		} memory_fault;
 		/* KVM_EXIT_SNP_REQ_CERTS */
 		struct kvm_exit_snp_req_certs snp_req_certs;
+		/* KVM_EXIT_TDX */
+		struct {
+			__u64 flags;
+			__u64 nr;
+			union {
+				struct {
+					__u64 ret;
+					__u64 data[5];
+				} unknown;
+				struct {
+					__u64 ret;
+					__u64 gpa;
+					__u64 size;
+				} get_quote;
+			};
+		} tdx;
 		/* Fix the size of the union. */
 		char padding[256];
 	};
