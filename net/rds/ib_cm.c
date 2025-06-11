@@ -95,12 +95,10 @@ void set_ib_conn_flag(unsigned long nr, struct rds_ib_connection *ic)
 	smp_mb__after_atomic();
 }
 
-#define ROUNDED_HDR_SIZE roundup_pow_of_two(sizeof(struct rds_header))
-#define HDRS_PER_PAGE 	(PAGE_SIZE / ROUNDED_HDR_SIZE)
 #define NMBR_SEND_HDR_PAGES \
-	((ic->i_send_ring.w_nr + HDRS_PER_PAGE - 1) / HDRS_PER_PAGE)
+	((ic->i_send_ring.w_nr + RDS_HDRS_PER_PAGE - 1) / RDS_HDRS_PER_PAGE)
 #define NMBR_RECV_HDR_PAGES \
-	((ic->i_recv_ring.w_nr + HDRS_PER_PAGE - 1) / HDRS_PER_PAGE)
+	((ic->i_recv_ring.w_nr + RDS_HDRS_PER_PAGE - 1) / RDS_HDRS_PER_PAGE)
 
 static void rds_ib_cancel_cm_watchdog(struct rds_ib_connection *ic, char *reason);
 
@@ -174,7 +172,12 @@ static u16 rds_ib_set_frag_size(struct rds_connection *conn, u16 dp_frag)
 
 	if (frag != dp_frag) {
 		frag = min_t(unsigned int, dp_frag, frag);
-		ic->i_frag_sz = rds_ib_get_frag(conn->c_version, frag);
+		if (is_power_of_2(frag))
+			/* don't need to work around peer bugs */
+			ic->i_frag_sz = rds_ib_get_frag(conn->c_version, frag);
+		else
+			/* use least common denominator */
+			ic->i_frag_sz = RDS_FRAG_SIZE;
 	} else {
 		ic->i_frag_sz = frag;
 	}
@@ -373,11 +376,14 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	 * is complete, since ring layout is different from 3.0 to 3.1.
 	 */
 	rds_ib_send_init_ring(ic);
-	rds_ib_recv_init_ring(ic);
 
-	/* Post receive buffers - as a side effect, this will update
-	 * the posted credit count. */
-	RDS_IB_RECV_REFILL(conn, 1, GFP_KERNEL, s_ib_rx_refill_from_cm);
+	if (rds_ib_prq_mode(ic)) {
+		rds_ib_recv_init_ring(ic);
+
+		/* Post receive buffers - as a side effect, this will update
+		 * the posted credit count. */
+		RDS_IB_RECV_REFILL(conn, 1, GFP_KERNEL, s_ib_rx_refill_from_cm);
+	}
 
 	rds_ib_check_rnr_timer(ic);
 
@@ -987,6 +993,9 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 		rdma_notify(ic->i_cm_id, IB_EVENT_COMM_EST);
 		break;
 	case IB_EVENT_QP_LAST_WQE_REACHED:
+		clear_bit_mb(RDS_IB_SRQ_IN_USE, &ic->i_flags);
+		if (test_bit(RDS_SHUTDOWN_WAITING, &conn->c_path->cp_flags))
+			mod_delayed_work(conn->c_path->cp_wq, &conn->c_path->cp_down_wait_w, 0);
 		break;
 	default:
 		rds_conn_drop(conn, DR_IB_QP_EVENT, 0);
@@ -1198,12 +1207,12 @@ static void rds_rdma_conn_delayed_free_worker(struct work_struct *work)
 	rds_ib_dev_put(rds_ibdev);
 }
 
-static void rds_ib_free_unmap_hdrs(struct ib_device *dev,
-				   struct rds_header ***_hdrs,
-				   dma_addr_t **_dma,
-				   struct scatterlist **_sg,
-				   const int nmbr_hdr_pages,
-				   enum dma_data_direction direction)
+void rds_ib_free_unmap_hdrs(struct ib_device *dev,
+			    struct rds_header ***_hdrs,
+			    dma_addr_t **_dma,
+			    struct scatterlist **_sg,
+			    const int nmbr_hdr_pages,
+			    enum dma_data_direction direction)
 {
 	struct rds_header **hdrs = *_hdrs;
 	struct scatterlist *sg = *_sg;
@@ -1224,14 +1233,14 @@ static void rds_ib_free_unmap_hdrs(struct ib_device *dev,
 	*_hdrs = NULL;
 }
 
-static int rds_ib_alloc_map_hdrs(struct ib_device *dev,
-				 struct rds_header ***_hdrs,
-				 dma_addr_t **_dma,
-				 struct scatterlist **_sg,
-				 char **reason,
-				 const int n,
-				 const int nmbr_hdr_pages,
-				 enum dma_data_direction direction)
+int rds_ib_alloc_map_hdrs(struct ib_device *dev,
+			  struct rds_header ***_hdrs,
+			  dma_addr_t **_dma,
+			  struct scatterlist **_sg,
+			  char **reason,
+			  const int n,
+			  const int nmbr_hdr_pages,
+			  enum dma_data_direction direction)
 {
 	struct rds_header **hdrs;
 	struct scatterlist *sg;
@@ -1286,12 +1295,12 @@ static int rds_ib_alloc_map_hdrs(struct ib_device *dev,
 		}
 	}
 
-	for (i = 0, j = 0; i < nmbr_hdr_pages; i++, j += HDRS_PER_PAGE)
-		for (k = 0; k < HDRS_PER_PAGE; k++) {
+	for (i = 0, j = 0; i < nmbr_hdr_pages; i++, j += RDS_HDRS_PER_PAGE)
+		for (k = 0; k < RDS_HDRS_PER_PAGE; k++) {
 			if (j + k >= n)
 				break;
-			hdrs[j + k] = (struct rds_header *)(sg_virt(sg + i) + k * ROUNDED_HDR_SIZE);
-			dma[j + k] = sg_dma_address(sg + i) + k * ROUNDED_HDR_SIZE;
+			hdrs[j + k] = (struct rds_header *)(sg_virt(sg + i) + k * RDS_ROUNDED_HDR_SIZE);
+			dma[j + k] = sg_dma_address(sg + i) + k * RDS_ROUNDED_HDR_SIZE;
 		}
 
 	return 0;
@@ -1519,6 +1528,8 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	qp_attr.qp_type = IB_QPT_RC;
 	qp_attr.send_cq = ic->i_scq;
 	qp_attr.recv_cq = ic->i_rcq;
+	if (rds_ibdev->srq)
+		qp_attr.srq = rds_ibdev->srq;
 
 	ic->i_hca_sge = rds_ibdev->max_sge;
 	/*
@@ -1600,6 +1611,9 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		reason = "ib_add_conn failed";
 		goto recv_hdrs_out;
 	}
+
+	if (!rds_ib_prq_mode(ic))
+		set_bit_mb(RDS_IB_SRQ_IN_USE, &ic->i_flags);
 
 	rdsdebug("conn %p pd %p mr %p cq %p\n", conn, ic->i_pd, ic->i_mr, ic->i_rcq);
 
@@ -2520,7 +2534,8 @@ unsigned long rds_ib_conn_path_shutdown_check_wait(struct rds_conn_path *cp)
 		 (atomic_read(&ic->i_signaled_sends) == 0) &&
 		 (atomic_read(&ic->i_fastreg_wrs) ==
 		  RDS_IB_DEFAULT_FREG_WR) &&
-		 !test_bit(IB_ACK_IN_FLIGHT, &ic->i_ack_flags))) ? 0
+		 !test_bit(IB_ACK_IN_FLIGHT, &ic->i_ack_flags) &&
+		 !test_bit(RDS_IB_SRQ_IN_USE, &ic->i_flags))) ? 0
 		: msecs_to_jiffies(1000);
 }
 
@@ -2533,7 +2548,8 @@ void rds_ib_conn_path_shutdown_tidy_up(struct rds_conn_path *cp)
 	    test_bit(IB_ACK_IN_FLIGHT, &ic->i_ack_flags))
 		rds_ib_tx(ic);
 
-	if (!rds_ib_ring_empty(&ic->i_recv_ring)) {
+	if (!rds_ib_prq_mode(ic) ||
+	    !rds_ib_ring_empty(&ic->i_recv_ring)) {
 		spin_lock_bh(&ic->i_rx_lock);
 		rds_ib_rx(ic);
 		spin_unlock_bh(&ic->i_rx_lock);
@@ -2552,6 +2568,16 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 	if (ic->i_cm_id) {
 		wait_event(ic->i_spawned_cm_handlers_wait,
 			   atomic_read(&ic->i_spawned_cm_handlers_count) == 0);
+
+		/* In SRQ-mode the CQ must be drained after
+		 * IB_EVENT_QP_LAST_WQE_REACHED and before
+		 * the QP is destroyed.
+		 */
+		if (!rds_ib_prq_mode(ic) && ic->i_cm_id->qp) {
+			spin_lock_bh(&ic->i_rx_lock);
+			rds_ib_rx(ic);
+			spin_unlock_bh(&ic->i_rx_lock);
+		}
 
 		cancel_delayed_work_sync(&ic->i_cq_follow_send_affinity_w);
 		cancel_delayed_work_sync(&ic->i_cq_follow_recv_affinity_w);
@@ -2647,6 +2673,8 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 	vfree(ic->i_recvs);
 
 	ic->i_recvs = NULL;
+
+	clear_bit_mb(RDS_IB_SRQ_IN_USE, &ic->i_flags);
 
 	ic->i_active_side = 0;
 }

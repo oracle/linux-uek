@@ -23,6 +23,7 @@
 #define RDS_IB_MAX_SGE			8
 #define RDS_IB_RECV_SGE			2
 
+#define RDS_IB_DEFAULT_SRQ_RECV_WR	1024
 #define RDS_IB_DEFAULT_RECV_WR		1024
 #define RDS_IB_DEFAULT_SEND_WR		256
 #define RDS_IB_DEFAULT_FREG_WR		256
@@ -75,7 +76,8 @@ static inline void clear_bit_mb(long nr, unsigned long *flags)
 enum rds_ib_conn_flags {
 	RDS_IB_CQ_ERR,			/* 0x01 */
 	RDS_IB_NEED_SHUTDOWN,		/* 0x02 */
-	RDS_IB_CQ_DESTROY		/* 0x04 */
+	RDS_IB_CQ_DESTROY,		/* 0x04 */
+	RDS_IB_SRQ_IN_USE,		/* 0x08 */
 };
 
 #define RDS_IB_DEFAULT_FREG_PORT_NUM	1
@@ -470,6 +472,16 @@ struct rds_ib_device {
 	struct list_head	conn_list;
 	struct ib_device	*dev;
 	struct ib_pd		*pd;
+
+	unsigned int		srq_max_wr;
+	struct ib_srq		*srq;
+	struct rds_header	**srq_recv_hdrs;
+	dma_addr_t		*srq_recv_hdrs_dma;
+	struct scatterlist	*srq_recv_hdrs_sg;
+	struct rds_ib_recv_work	*srq_recvs;
+	unsigned long		*srq_recvs_drained_bitmap;
+	struct delayed_work	srq_refill_work;
+
 	struct workqueue_struct	*rid_dev_wq; /* Device work queue */
 
 	bool			rid_mod_unload:1;
@@ -594,6 +606,8 @@ struct rds_ib_statistics {
 	uint64_t	s_ib_frag_pages_allocated;
 	uint64_t	s_ib_frag_pages_in_ib_recv_queue;
 	uint64_t	s_ib_frag_pages_in_caches;
+	uint64_t	s_ib_srq_refill_cq_failures;
+	uint64_t	s_ib_srq_refill_worker_failures;
 };
 
 extern struct workqueue_struct *rds_ib_wq;
@@ -645,6 +659,8 @@ static inline __s32 rds_qp_num(struct rds_connection *conn, int dst)
 }
 
 /* ib.c */
+extern bool rds_ib_srq_enabled;
+extern unsigned int rds_ib_srq_max_wr;
 extern struct workqueue_struct *rds_aux_wq;
 extern struct workqueue_struct *rds_evt_wq;
 extern struct rds_transport rds_ib_transport;
@@ -699,6 +715,20 @@ void rds_ib_conn_destroy_init(struct rds_connection *conn);
 void rds_ib_destroy_fastreg(struct rds_ib_device *rds_ibdev);
 int rds_ib_setup_fastreg(struct rds_ib_device *rds_ibdev);
 void rds_ib_reset_fastreg(struct work_struct *work);
+int rds_ib_alloc_map_hdrs(struct ib_device *dev,
+			  struct rds_header ***_hdrs,
+			  dma_addr_t **_dma,
+			  struct scatterlist **_sg,
+			  char **reason,
+			  const int n,
+			  const int nmbr_hdr_pages,
+			  enum dma_data_direction direction);
+void rds_ib_free_unmap_hdrs(struct ib_device *dev,
+			    struct rds_header ***_hdrs,
+			    dma_addr_t **_dma,
+			    struct scatterlist **_sg,
+			    const int nmbr_hdr_pages,
+			    enum dma_data_direction direction);
 void rds_ib_tasklet_fn_send(unsigned long data);
 void rds_ib_tasklet_fn_recv(unsigned long data);
 void rds_ib_conn_destroy_worker(struct work_struct *_work);
@@ -747,7 +777,15 @@ void rds_ib_recv_free_caches(struct rds_ib_connection *ic);
 void rds_ib_recv_rebuild_caches(struct rds_ib_connection *ic);
 void rds_ib_recv_free_frag(struct rds_page_frag *frag, int nent);
 void __rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp);
+void rds_ib_srq_refill_worker(struct work_struct *work);
+int rds_ib_recv_refill_one(struct rds_ib_device *rds_ibdev,
+			   struct rds_ib_connection *ic,
+			   struct rds_ib_recv_work *recv,
+			   gfp_t gfp);
 void rds_ib_inc_free(struct rds_incoming *inc);
+void rds_ib_recv_clear_one(struct rds_ib_device *rds_ibdev,
+			   struct rds_ib_connection *ic,
+			   struct rds_ib_recv_work *recv);
 int rds_ib_inc_copy_to_user(struct rds_sock *rs, struct rds_incoming *inc,
 			    struct iov_iter *to);
 void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
@@ -756,6 +794,8 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 			    struct list_head *inc_stash);
 void rds_ib_recv_init_ring(struct rds_ib_connection *ic);
 void rds_ib_recv_clear_ring(struct rds_ib_connection *ic);
+void rds_ib_recv_init_srq(struct rds_ib_device *rds_ibdev);
+void rds_ib_recv_clear_srq(struct rds_ib_device *rds_ibdev);
 void rds_ib_recv_init_ack(struct rds_ib_connection *ic);
 void rds_ib_attempt_ack(struct rds_ib_connection *ic);
 void rds_ib_ack_send_complete(struct rds_ib_connection *ic);
@@ -780,6 +820,11 @@ static inline int rds_ib_recv_acquire_refill(struct rds_connection *conn)
 		rds_cond_queue_recv_work(conn->c_path, 0);	\
 	}							\
 } while (false)
+
+static inline bool rds_ib_prq_mode(const struct rds_ib_connection *ic)
+{
+	return ic && !ic->rds_ibdev->srq;
+}
 
 /* ib_ring.c */
 void rds_ib_ring_init(struct rds_ib_work_ring *ring, u32 nr);

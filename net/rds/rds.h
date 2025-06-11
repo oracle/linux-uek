@@ -100,6 +100,9 @@ enum {
 #define ceil(x, y) \
 	({ unsigned long __x = (x), __y = (y); (__x + __y - 1) / __y; })
 
+#define RDS_ROUNDED_HDR_SIZE	roundup_pow_of_two(sizeof(struct rds_header))
+#define RDS_HDRS_PER_PAGE	(PAGE_SIZE / RDS_ROUNDED_HDR_SIZE)
+
 #define RDS_FRAG_SHIFT	12
 #define RDS_FRAG_SIZE	((unsigned int)(1 << RDS_FRAG_SHIFT))
 #define RDS_MAX_FRAG_SIZE	SZ_16K
@@ -606,6 +609,7 @@ struct rds_incoming {
 	struct list_head	i_item;
 	struct rds_connection	*i_conn;
 	struct rds_conn_path	*i_conn_path;
+	struct rds_transport	*i_trans;
 	struct rds_header	i_hdr;
 	unsigned long		i_rx_jiffies;
 	struct in6_addr		i_saddr;
@@ -1517,10 +1521,12 @@ int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
 void rds_page_exit(void);
 
 /* recv.c */
-void rds_inc_init(struct rds_incoming *inc, struct rds_connection *conn,
-		  struct in6_addr *saddr);
+void rds_inc_init(struct rds_incoming *inc,
+		  struct rds_connection *conn,
+		  struct rds_transport *trans,
+		  const struct in6_addr *saddr);
 void rds_inc_path_init(struct rds_incoming *inc, struct rds_conn_path *conn,
-		       struct in6_addr *saddr);
+		       const struct in6_addr *saddr);
 void rds_inc_addref(struct rds_incoming *inc);
 void rds_inc_put(struct rds_incoming *inc);
 void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
