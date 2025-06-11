@@ -299,7 +299,7 @@ int rvu_get_blkaddr(struct rvu *rvu, int blktype, u16 pcifunc)
 		devnum = rvu_get_hwvf(rvu, pcifunc);
 	} else {
 		is_pf = true;
-		devnum = rvu_get_pf(pcifunc);
+		devnum = rvu_get_pf(rvu->pdev, pcifunc);
 	}
 
 	/* Check if the 'pcifunc' has a NIX LF from 'BLKADDR_NIX0' or
@@ -364,7 +364,7 @@ static void rvu_update_rsrc_map(struct rvu *rvu, struct rvu_pfvf *pfvf,
 		devnum = rvu_get_hwvf(rvu, pcifunc);
 	} else {
 		is_pf = true;
-		devnum = rvu_get_pf(pcifunc);
+		devnum = rvu_get_pf(rvu->pdev, pcifunc);
 	}
 
 	block->fn_map[lf] = attach ? pcifunc : 0;
@@ -405,11 +405,6 @@ static void rvu_update_rsrc_map(struct rvu *rvu, struct rvu_pfvf *pfvf,
 	rvu_write64(rvu, BLKADDR_RVUM, reg | (devnum << 16), num_lfs);
 }
 
-inline int rvu_get_pf(u16 pcifunc)
-{
-	return (pcifunc >> RVU_PFVF_PF_SHIFT) & RVU_PFVF_PF_MASK;
-}
-
 void rvu_get_pf_numvfs(struct rvu *rvu, int pf, int *numvfs, int *hwvf)
 {
 	u64 cfg;
@@ -427,7 +422,7 @@ int rvu_get_hwvf(struct rvu *rvu, int pcifunc)
 	int pf, func;
 	u64 cfg;
 
-	pf = rvu_get_pf(pcifunc);
+	pf = rvu_get_pf(rvu->pdev, pcifunc);
 	func = pcifunc & RVU_PFVF_FUNC_MASK;
 
 	/* Get first HWVF attached to this PF */
@@ -442,7 +437,7 @@ struct rvu_pfvf *rvu_get_pfvf(struct rvu *rvu, int pcifunc)
 	if (pcifunc & RVU_PFVF_FUNC_MASK)
 		return &rvu->hwvf[rvu_get_hwvf(rvu, pcifunc)];
 	else
-		return &rvu->pf[rvu_get_pf(pcifunc)];
+		return &rvu->pf[rvu_get_pf(rvu->pdev, pcifunc)];
 }
 
 static bool is_pf_func_valid(struct rvu *rvu, u16 pcifunc)
@@ -450,7 +445,7 @@ static bool is_pf_func_valid(struct rvu *rvu, u16 pcifunc)
 	int pf, vf, nvfs;
 	u64 cfg;
 
-	pf = rvu_get_pf(pcifunc);
+	pf = rvu_get_pf(rvu->pdev, pcifunc);
 	if (pf >= rvu->hw->total_pfs)
 		return false;
 
@@ -1492,7 +1487,7 @@ int rvu_get_nix_blkaddr(struct rvu *rvu, u16 pcifunc)
 	pf = rvu_get_pfvf(rvu, pcifunc & ~RVU_PFVF_FUNC_MASK);
 
 	/* All CGX mapped PFs are set with assigned NIX block during init */
-	if (is_pf_cgxmapped(rvu, rvu_get_pf(pcifunc))) {
+	if (is_pf_cgxmapped(rvu, rvu_get_pf(rvu->pdev, pcifunc))) {
 		blkaddr = pf->nix_blkaddr;
 	} else if (is_lbk_vf(rvu, pcifunc)) {
 		vf = pcifunc - 1;
@@ -1506,7 +1501,7 @@ int rvu_get_nix_blkaddr(struct rvu *rvu, u16 pcifunc)
 	}
 
 	/* if SDP1 then the blkaddr is NIX1 */
-	if (is_sdp_pfvf(pcifunc) && pf->sdp_info->node_id == 1)
+	if (is_sdp_pfvf(rvu, pcifunc) && pf->sdp_info->node_id == 1)
 		blkaddr = BLKADDR_NIX1;
 
 	switch (blkaddr) {
@@ -2053,7 +2048,7 @@ int rvu_mbox_handler_vf_flr(struct rvu *rvu, struct msg_req *req,
 
 	vf = pcifunc & RVU_PFVF_FUNC_MASK;
 	cfg = rvu_read64(rvu, BLKADDR_RVUM,
-			 RVU_PRIV_PFX_CFG(rvu_get_pf(pcifunc)));
+			 RVU_PRIV_PFX_CFG(rvu_get_pf(rvu->pdev, pcifunc)));
 	numvfs = (cfg >> 12) & 0xFF;
 
 	if (vf && vf <= numvfs)
@@ -2276,9 +2271,8 @@ static void __rvu_mbox_handler(struct rvu_work *mwork, int type, bool poll)
 		/* Set which PF/VF sent this message based on mbox IRQ */
 		switch (type) {
 		case TYPE_AFPF:
-			msg->pcifunc &=
-				~(RVU_PFVF_PF_MASK << RVU_PFVF_PF_SHIFT);
-			msg->pcifunc |= (devid << RVU_PFVF_PF_SHIFT);
+			msg->pcifunc &= rvu_pcifunc_pf_mask(rvu->pdev);
+			msg->pcifunc |= rvu_make_pcifunc(rvu->pdev, devid, 0);
 			break;
 		case TYPE_AFVF:
 			msg->pcifunc &=
@@ -2296,7 +2290,7 @@ static void __rvu_mbox_handler(struct rvu_work *mwork, int type, bool poll)
 		if (msg->pcifunc & RVU_PFVF_FUNC_MASK)
 			dev_warn(rvu->dev, "Error %d when processing message %s (0x%x) from PF%d:VF%d\n",
 				 err, otx2_mbox_id2name(msg->id),
-				 msg->id, rvu_get_pf(msg->pcifunc),
+				 msg->id, rvu_get_pf(rvu->pdev, msg->pcifunc),
 				 (msg->pcifunc & RVU_PFVF_FUNC_MASK) - 1);
 		else
 			dev_warn(rvu->dev, "Error %d when processing message %s (0x%x) from PF%d\n",
@@ -2820,7 +2814,7 @@ static void rvu_flr_handler(struct work_struct *work)
 
 	cfg = rvu_read64(rvu, BLKADDR_RVUM, RVU_PRIV_PFX_CFG(pf));
 	numvfs = (cfg >> 12) & 0xFF;
-	pcifunc  = pf << RVU_PFVF_PF_SHIFT;
+	pcifunc  = rvu_make_pcifunc(rvu->pdev, pf, 0);
 
 	for (vf = 0; vf < numvfs; vf++)
 		__rvu_flr_handler(rvu, (pcifunc | (vf + 1)));
