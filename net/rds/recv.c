@@ -41,16 +41,20 @@
 
 #include "trace.h"
 
-void rds_inc_init(struct rds_incoming *inc, struct rds_connection *conn,
-		  struct in6_addr *saddr)
+void rds_inc_init(struct rds_incoming *inc,
+		  struct rds_connection *conn,
+		  struct rds_transport *trans,
+		  const struct in6_addr *saddr)
 {
 	int i;
 
 	atomic_set(&inc->i_refcount, 1);
 	INIT_LIST_HEAD(&inc->i_item);
-	rds_conn_get(conn);
+	if (conn)
+		rds_conn_get(conn);
 	inc->i_conn = conn;
 	inc->i_conn_path = NULL;
+	inc->i_trans = trans;
 	inc->i_saddr = *saddr;
 	inc->i_usercopy.rdma_cookie = 0;
 	inc->i_usercopy.rx_tstamp.tv_sec = 0;
@@ -65,7 +69,7 @@ void rds_inc_init(struct rds_incoming *inc, struct rds_connection *conn,
 EXPORT_SYMBOL_GPL(rds_inc_init);
 
 void rds_inc_path_init(struct rds_incoming *inc, struct rds_conn_path *cp,
-		       struct in6_addr *saddr)
+		       const struct in6_addr *saddr)
 {
 	int i;
 
@@ -74,6 +78,7 @@ void rds_inc_path_init(struct rds_incoming *inc, struct rds_conn_path *cp,
 	rds_conn_get(cp->cp_conn);
 	inc->i_conn = cp->cp_conn;
 	inc->i_conn_path = cp;
+	inc->i_trans = cp->cp_conn->c_trans;
 	inc->i_saddr = *saddr;
 	inc->i_usercopy.rdma_cookie = 0;
 	inc->i_usercopy.rx_tstamp.tv_sec = 0;
@@ -101,9 +106,10 @@ void rds_inc_put(struct rds_incoming *inc)
 		struct rds_connection *conn = inc->i_conn;
 		BUG_ON(!list_empty(&inc->i_item));
 
-		inc->i_conn->c_trans->inc_free(inc);
+		inc->i_trans->inc_free(inc);
 		/* get in rds_inc_init & rds_recv_incoming */
-		rds_conn_put(conn);
+		if (conn)
+			rds_conn_put(conn);
 	}
 }
 EXPORT_SYMBOL_GPL(rds_inc_put);
@@ -394,6 +400,7 @@ void rds_recv_incoming(struct rds_connection *conn, struct in6_addr *saddr,
 			rds_conn_put(inc->i_conn); /* i_conn overwritten */
 		rds_conn_get(conn);
 		inc->i_conn = conn;
+		inc->i_trans = conn->c_trans;
 	}
 	inc->i_rx_jiffies = jiffies;
 

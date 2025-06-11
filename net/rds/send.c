@@ -311,6 +311,7 @@ int rds_send_xmit(struct rds_conn_path *cp, enum rds_send_xmit_mode xmit_mode)
 			rm->m_inc.i_conn_path = cp;
 			rds_conn_get(cp->cp_conn);
 			rm->m_inc.i_conn = cp->cp_conn;
+			rm->m_inc.i_trans = cp->cp_conn->c_trans;
 
 			cp->cp_xmit_rm = rm;
 
@@ -1167,6 +1168,7 @@ static int rds_send_queue_rm(struct rds_sock *rs, struct rds_connection *conn,
 		rds_conn_get(conn);
 		rm->m_inc.i_conn = conn;
 		rm->m_inc.i_conn_path = cp;
+		rm->m_inc.i_trans = conn->c_trans;
 		rds_message_addref(rm);
 		list_add_tail(&rm->m_conn_item, &cp->cp_send_queue);
 		rm->m_inc.i_tx_lat = jiffies;
@@ -1816,6 +1818,7 @@ static int rds_send_probe(struct rds_conn_path *cp, __be16 sport,
 	rds_conn_get(cp->cp_conn);
 	rm->m_inc.i_conn = cp->cp_conn;
 	rm->m_inc.i_conn_path = cp;
+	rm->m_inc.i_trans = cp->cp_conn->c_trans;
 
 	rds_message_populate_header(&rm->m_inc.i_hdr, sport, dport,
 				    cp->cp_next_tx_seq);
