@@ -227,14 +227,16 @@ struct jit_context {
  * Number of bytes emitted for an indirect jump when retpoline is
  * enabled.
  *
- * When retpoline is enabled, instead of emitting a single jmp instruction,
- * the eBPF JIT compiler emits either:
+ * When retpoline or ITS is enabled, instead of emitting a single jmp
+ * instruction, the eBPF JIT compiler emits either:
  *
  * - if X86_FEATURE_RETPOLINE_LFENCE is enabled:  lfence ; jmp *rax
  *
  * - if X86_FEATURE_RETPOLINE is enabled:  jmp __x86_indirect_thunk_rax
  *
- * In both cases, the number of bytes emitted is the same (5 bytes).
+ * - if X86_FEATURE_INDIRECT_THUNK_ITS:  jmp __x86_indirect_its_thunk_rax
+ *
+ * In all cases, the number of bytes emitted is the same (5 bytes).
  */
 #define __RETPOLINE_RAX_BPF_JIT_SIZE 		5
 
@@ -300,7 +302,7 @@ static int emit_indirect_jump_rax(u8 **pprog, u8 *ip)
 
 #ifdef CONFIG_RETPOLINE
 	if (cpu_feature_enabled(X86_FEATURE_INDIRECT_THUNK_ITS)) {
-		emit_jump(&prog, &__x86_indirect_its_thunk_rax, ip);
+		cnt += emit_jump(&prog, &__x86_indirect_its_thunk_rax, ip);
 	} else if (cpu_feature_enabled(X86_FEATURE_RETPOLINE_LFENCE)) {
 		EMIT_LFENCE();
 		EMIT2(0xFF, 0xE0);
@@ -353,7 +355,8 @@ static void emit_bpf_tail_call(u8 **pprog, u8 *ip)
 	int RETPOLINE_RAX_BPF_JIT_SIZE;
 
 	if (cpu_feature_enabled(X86_FEATURE_RETPOLINE_LFENCE) ||
-		cpu_feature_enabled(X86_FEATURE_RETPOLINE)) {
+	    cpu_feature_enabled(X86_FEATURE_RETPOLINE) ||
+	    cpu_feature_enabled(X86_FEATURE_INDIRECT_THUNK_ITS)) {
 		RETPOLINE_RAX_BPF_JIT_SIZE =
 			__RETPOLINE_RAX_BPF_JIT_SIZE;
 	} else {
