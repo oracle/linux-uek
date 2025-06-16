@@ -155,7 +155,7 @@ verified:
  *
  * May also return -ENOMEM.
  */
-int pkcs7_validate_trust(struct pkcs7_message *pkcs7,
+int CRYPTO_API(pkcs7_validate_trust)(struct pkcs7_message *pkcs7,
 			 struct key *trust_keyring)
 {
 	struct pkcs7_signed_info *sinfo;
@@ -185,4 +185,4 @@ int pkcs7_validate_trust(struct pkcs7_message *pkcs7,
 
 	return cached_ret;
 }
-EXPORT_SYMBOL_GPL(pkcs7_validate_trust);
+DEFINE_CRYPTO_API(pkcs7_validate_trust);

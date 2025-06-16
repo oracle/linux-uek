@@ -16,7 +16,7 @@
 #include <keys/system_keyring.h>
 #include <keys/user-type.h>
 #include "asymmetric_keys.h"
-
+#include <crypto/api.h>
 
 const char *const key_being_used_for[NR__KEY_BEING_USED_FOR] = {
 	[VERIFYING_MODULE_SIGNATURE]		= "mod sig",
@@ -48,7 +48,7 @@ static DECLARE_RWSEM(asymmetric_key_parsers_sem);
  * exactly.  If both are missing, id_2 must match the sought key's third
  * identifier exactly.
  */
-struct key *find_asymmetric_key(struct key *keyring,
+struct key *CRYPTO_API(find_asymmetric_key)(struct key *keyring,
 				const struct asymmetric_key_id *id_0,
 				const struct asymmetric_key_id *id_1,
 				const struct asymmetric_key_id *id_2,
@@ -134,7 +134,7 @@ reject:
 	key_put(key);
 	return ERR_PTR(-EKEYREJECTED);
 }
-EXPORT_SYMBOL_GPL(find_asymmetric_key);
+DEFINE_CRYPTO_API(find_asymmetric_key);
 
 /**
  * asymmetric_key_generate_id: Construct an asymmetric key ID
@@ -145,7 +145,7 @@ EXPORT_SYMBOL_GPL(find_asymmetric_key);
  *
  * Construct an asymmetric key ID from a pair of binary blobs.
  */
-struct asymmetric_key_id *asymmetric_key_generate_id(const void *val_1,
+struct asymmetric_key_id *CRYPTO_API(asymmetric_key_generate_id)(const void *val_1,
 						     size_t len_1,
 						     const void *val_2,
 						     size_t len_2)
@@ -161,14 +161,15 @@ struct asymmetric_key_id *asymmetric_key_generate_id(const void *val_1,
 	memcpy(kid->data + len_1, val_2, len_2);
 	return kid;
 }
-EXPORT_SYMBOL_GPL(asymmetric_key_generate_id);
+DEFINE_CRYPTO_API(asymmetric_key_generate_id);
+
 
 /**
  * asymmetric_key_id_same - Return true if two asymmetric keys IDs are the same.
  * @kid1: The key ID to compare
  * @kid2: The key ID to compare
  */
-bool asymmetric_key_id_same(const struct asymmetric_key_id *kid1,
+bool CRYPTO_API(asymmetric_key_id_same)(const struct asymmetric_key_id *kid1,
 			    const struct asymmetric_key_id *kid2)
 {
 	if (!kid1 || !kid2)
@@ -177,7 +178,7 @@ bool asymmetric_key_id_same(const struct asymmetric_key_id *kid1,
 		return false;
 	return memcmp(kid1->data, kid2->data, kid1->len) == 0;
 }
-EXPORT_SYMBOL_GPL(asymmetric_key_id_same);
+DEFINE_CRYPTO_API(asymmetric_key_id_same);
 
 /**
  * asymmetric_key_id_partial - Return true if two asymmetric keys IDs
@@ -185,7 +186,7 @@ EXPORT_SYMBOL_GPL(asymmetric_key_id_same);
  * @kid1: The key ID to compare
  * @kid2: The key ID to compare
  */
-bool asymmetric_key_id_partial(const struct asymmetric_key_id *kid1,
+bool CRYPTO_API(asymmetric_key_id_partial)(const struct asymmetric_key_id *kid1,
 			       const struct asymmetric_key_id *kid2)
 {
 	if (!kid1 || !kid2)
@@ -195,7 +196,7 @@ bool asymmetric_key_id_partial(const struct asymmetric_key_id *kid1,
 	return memcmp(kid1->data + (kid1->len - kid2->len),
 		      kid2->data, kid2->len) == 0;
 }
-EXPORT_SYMBOL_GPL(asymmetric_key_id_partial);
+DEFINE_CRYPTO_API(asymmetric_key_id_partial);
 
 /**
  * asymmetric_match_key_ids - Search asymmetric key IDs 1 & 2
@@ -627,7 +628,7 @@ EXPORT_SYMBOL_GPL(key_type_asymmetric);
  * register_asymmetric_key_parser - Register a asymmetric key blob parser
  * @parser: The parser to register
  */
-int register_asymmetric_key_parser(struct asymmetric_key_parser *parser)
+int CRYPTO_API(register_asymmetric_key_parser)(struct asymmetric_key_parser *parser)
 {
 	struct asymmetric_key_parser *cursor;
 	int ret;
@@ -652,13 +653,13 @@ out:
 	up_write(&asymmetric_key_parsers_sem);
 	return ret;
 }
-EXPORT_SYMBOL_GPL(register_asymmetric_key_parser);
+DEFINE_CRYPTO_API(register_asymmetric_key_parser);
 
 /**
  * unregister_asymmetric_key_parser - Unregister a asymmetric key blob parser
  * @parser: The parser to unregister
  */
-void unregister_asymmetric_key_parser(struct asymmetric_key_parser *parser)
+void CRYPTO_API(unregister_asymmetric_key_parser)(struct asymmetric_key_parser *parser)
 {
 	down_write(&asymmetric_key_parsers_sem);
 	list_del(&parser->link);
@@ -666,7 +667,7 @@ void unregister_asymmetric_key_parser(struct asymmetric_key_parser *parser)
 
 	pr_notice("Asymmetric key parser '%s' unregistered\n", parser->name);
 }
-EXPORT_SYMBOL_GPL(unregister_asymmetric_key_parser);
+DEFINE_CRYPTO_API(unregister_asymmetric_key_parser);
 
 /*
  * Module stuff
@@ -683,3 +684,4 @@ static void __exit asymmetric_key_cleanup(void)
 
 module_init(asymmetric_key_init);
 module_exit(asymmetric_key_cleanup);
+MODULE_LICENSE("GPL");

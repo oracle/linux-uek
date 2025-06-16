@@ -10,6 +10,7 @@
 
 #include <linux/errno.h>
 #include <linux/types.h>
+#include <crypto/api.h>
 
 /*
  * Indicate that both builtin trusted keys and secondary trusted keys
@@ -26,6 +27,12 @@ static inline int system_keyring_id_check(u64 id)
 	return 0;
 }
 
+#ifndef FIPS_MODULE
+#define key_being_used_for nonfips_key_being_used_for
+#else
+#define key_being_used_for fips_key_being_used_for
+#endif
+
 /*
  * The use to which an asymmetric key is being put.
  */
@@ -38,6 +45,7 @@ enum key_being_used_for {
 	VERIFYING_UNSPECIFIED_SIGNATURE,
 	NR__KEY_BEING_USED_FOR
 };
+
 extern const char *const key_being_used_for[NR__KEY_BEING_USED_FOR];
 
 #ifdef CONFIG_SYSTEM_DATA_VERIFICATION

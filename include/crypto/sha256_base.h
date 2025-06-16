@@ -14,9 +14,11 @@
 #include <crypto/sha2.h>
 #include <linux/string.h>
 #include <linux/types.h>
+#include <crypto/api.h>
 
 typedef void (sha256_block_fn)(struct sha256_state *sst, u8 const *src,
 			       int blocks);
+DECLARE_CRYPTO_API(sha256_block_data_order, asmlinkage void, (u32 *digest, const void *data, unsigned int num_blks), (digest, data, num_blks));
 
 static inline int sha224_base_init(struct shash_desc *desc)
 {

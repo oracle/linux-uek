@@ -28,8 +28,7 @@ struct asymmetric_key_parser {
 	 */
 	int (*parse)(struct key_preparsed_payload *prep);
 };
-
-extern int register_asymmetric_key_parser(struct asymmetric_key_parser *);
-extern void unregister_asymmetric_key_parser(struct asymmetric_key_parser *);
+DECLARE_CRYPTO_API(register_asymmetric_key_parser, int, (struct asymmetric_key_parser *i), (i));
+DECLARE_CRYPTO_API(unregister_asymmetric_key_parser, void, (struct asymmetric_key_parser *i), (i));
 
 #endif /* _KEYS_ASYMMETRIC_PARSER_H */
