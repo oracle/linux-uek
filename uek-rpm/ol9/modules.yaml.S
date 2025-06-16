@@ -1081,7 +1081,6 @@ modules:
 - msdos
 - mt76
 - mt76-connac-lib
-- ptp_ocp
 - mtd
 - mtd_blkdevs
 - mtdblock
@@ -1192,6 +1191,7 @@ modules:
 - pptp
 - pstore_blk
 - pstore_zone
+- ptp_ocp
 - pvpanic-pci
 - qat_420xx
 - qcom-phy-lib
