@@ -57,8 +57,8 @@ struct crypto_rng {
 	struct crypto_tfm base;
 };
 
-int crypto_get_default_rng(struct crypto_rng **rng);
-void crypto_put_default_rng(struct crypto_rng **rng);
+DECLARE_CRYPTO_API(crypto_get_default_rng, int, (struct crypto_rng **rng), (rng));
+DECLARE_CRYPTO_API(crypto_put_default_rng, void, (struct crypto_rng **rng), (rng));
 
 /**
  * DOC: Random number generator API
@@ -87,7 +87,7 @@ void crypto_put_default_rng(struct crypto_rng **rng);
  * Return: allocated cipher handle in case of success; IS_ERR() is true in case
  *	   of an error, PTR_ERR() returns the error code.
  */
-struct crypto_rng *crypto_alloc_rng(const char *alg_name, u32 type, u32 mask);
+DECLARE_CRYPTO_API(crypto_alloc_rng, struct crypto_rng *, (const char *alg_name, u32 type, u32 mask), (alg_name, type, mask));
 
 static inline struct crypto_tfm *crypto_rng_tfm(struct crypto_rng *tfm)
 {
@@ -178,8 +178,8 @@ static inline int crypto_rng_get_bytes(struct crypto_rng *tfm,
  *
  * Return: 0 if the setting of the key was successful; < 0 if an error occurred
  */
-int crypto_rng_reset(struct crypto_rng *tfm, const u8 *seed,
-		     unsigned int slen);
+DECLARE_CRYPTO_API(crypto_rng_reset, int, (struct crypto_rng *tfm, const u8 *seed,
+		     unsigned int slen), (tfm, seed, slen));
 
 /**
  * crypto_rng_seedsize() - obtain seed size of RNG
