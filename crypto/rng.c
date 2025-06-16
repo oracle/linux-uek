@@ -25,7 +25,7 @@
 
 static DEFINE_MUTEX(crypto_default_rng_lock);
 struct crypto_rng *crypto_default_rng;
-EXPORT_SYMBOL_GPL(crypto_default_rng);
+DEFINE_CRYPTO_API(crypto_default_rng);
 static int crypto_default_rng_refcnt;
 
 int crypto_rng_reset(struct crypto_rng *tfm, const u8 *seed, unsigned int slen)
@@ -49,7 +49,7 @@ out:
 	kfree_sensitive(buf);
 	return err;
 }
-EXPORT_SYMBOL_GPL(crypto_rng_reset);
+DEFINE_CRYPTO_API(crypto_rng_reset);
 
 static int crypto_rng_init_tfm(struct crypto_tfm *tfm)
 {
@@ -100,15 +100,15 @@ static const struct crypto_type crypto_rng_type = {
 	.tfmsize = offsetof(struct crypto_rng, base),
 };
 
-struct crypto_rng *crypto_alloc_rng(const char *alg_name, u32 type, u32 mask)
+struct crypto_rng *CRYPTO_API(crypto_alloc_rng)(const char *alg_name, u32 type, u32 mask)
 {
 	return crypto_alloc_tfm(alg_name, &crypto_rng_type, type, mask);
 }
-EXPORT_SYMBOL_GPL(crypto_alloc_rng);
+DEFINE_CRYPTO_API(crypto_alloc_rng);
 
 static struct crypto_rng *crypto_default_rng;
 
-int crypto_get_default_rng(struct crypto_rng **result)
+int CRYPTO_API(crypto_get_default_rng)(void)
 {
 	struct crypto_rng *rng;
 	int err;
@@ -138,19 +138,19 @@ unlock:
 
 	return err;
 }
-EXPORT_SYMBOL_GPL(crypto_get_default_rng);
+DEFINE_CRYPTO_API(crypto_get_default_rng);
 
-void crypto_put_default_rng(struct crypto_rng **rng)
+void CRYPTO_API(crypto_put_default_rng)(void)
 {
 	mutex_lock(&crypto_default_rng_lock);
 	*rng = NULL;
 	crypto_default_rng_refcnt--;
 	mutex_unlock(&crypto_default_rng_lock);
 }
-EXPORT_SYMBOL_GPL(crypto_put_default_rng);
+DEFINE_CRYPTO_API(crypto_put_default_rng);
 
 #if defined(CONFIG_CRYPTO_RNG) || defined(CONFIG_CRYPTO_RNG_MODULE)
-int crypto_del_default_rng(void)
+int CRYPTO_API(crypto_del_default_rng)(void)
 {
 	int err = -EBUSY;
 
@@ -168,10 +168,10 @@ out:
 
 	return err;
 }
-EXPORT_SYMBOL_GPL(crypto_del_default_rng);
+DEFINE_CRYPTO_API(crypto_del_default_rng);
 #endif
 
-int crypto_register_rng(struct rng_alg *alg)
+int CRYPTO_API(crypto_register_rng)(struct rng_alg *alg)
 {
 	struct crypto_alg *base = &alg->base;
 
@@ -184,15 +184,15 @@ int crypto_register_rng(struct rng_alg *alg)
 
 	return crypto_register_alg(base);
 }
-EXPORT_SYMBOL_GPL(crypto_register_rng);
+DEFINE_CRYPTO_API(crypto_register_rng);
 
-void crypto_unregister_rng(struct rng_alg *alg)
+void CRYPTO_API(crypto_unregister_rng)(struct rng_alg *alg)
 {
 	crypto_unregister_alg(&alg->base);
 }
-EXPORT_SYMBOL_GPL(crypto_unregister_rng);
+DEFINE_CRYPTO_API(crypto_unregister_rng);
 
-int crypto_register_rngs(struct rng_alg *algs, int count)
+int CRYPTO_API(crypto_register_rngs)(struct rng_alg *algs, int count)
 {
 	int i, ret;
 
@@ -210,16 +210,16 @@ err:
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(crypto_register_rngs);
+DEFINE_CRYPTO_API(crypto_register_rngs);
 
-void crypto_unregister_rngs(struct rng_alg *algs, int count)
+void CRYPTO_API(crypto_unregister_rngs)(struct rng_alg *algs, int count)
 {
 	int i;
 
 	for (i = count - 1; i >= 0; --i)
 		crypto_unregister_rng(algs + i);
 }
-EXPORT_SYMBOL_GPL(crypto_unregister_rngs);
+DEFINE_CRYPTO_API(crypto_unregister_rngs);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Random Number Generator");

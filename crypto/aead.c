@@ -40,7 +40,7 @@ static int setkey_unaligned(struct crypto_aead *tfm, const u8 *key,
 	return ret;
 }
 
-int crypto_aead_setkey(struct crypto_aead *tfm,
+int CRYPTO_API(crypto_aead_setkey)(struct crypto_aead *tfm,
 		       const u8 *key, unsigned int keylen)
 {
 	unsigned long alignmask = crypto_aead_alignmask(tfm);
@@ -59,9 +59,9 @@ int crypto_aead_setkey(struct crypto_aead *tfm,
 	crypto_aead_clear_flags(tfm, CRYPTO_TFM_NEED_KEY);
 	return 0;
 }
-EXPORT_SYMBOL_GPL(crypto_aead_setkey);
+DEFINE_CRYPTO_API(crypto_aead_setkey);
 
-int crypto_aead_setauthsize(struct crypto_aead *tfm, unsigned int authsize)
+int CRYPTO_API(crypto_aead_setauthsize)(struct crypto_aead *tfm, unsigned int authsize)
 {
 	int err;
 
@@ -78,9 +78,9 @@ int crypto_aead_setauthsize(struct crypto_aead *tfm, unsigned int authsize)
 	tfm->authsize = authsize;
 	return 0;
 }
-EXPORT_SYMBOL_GPL(crypto_aead_setauthsize);
+DEFINE_CRYPTO_API(crypto_aead_setauthsize);
 
-int crypto_aead_encrypt(struct aead_request *req)
+int CRYPTO_API(crypto_aead_encrypt)(struct aead_request *req)
 {
 	struct crypto_aead *aead = crypto_aead_reqtfm(req);
 
@@ -89,9 +89,9 @@ int crypto_aead_encrypt(struct aead_request *req)
 
 	return crypto_aead_alg(aead)->encrypt(req);
 }
-EXPORT_SYMBOL_GPL(crypto_aead_encrypt);
+DEFINE_CRYPTO_API(crypto_aead_encrypt);
 
-int crypto_aead_decrypt(struct aead_request *req)
+int CRYPTO_API(crypto_aead_decrypt)(struct aead_request *req)
 {
 	struct crypto_aead *aead = crypto_aead_reqtfm(req);
 
@@ -103,7 +103,7 @@ int crypto_aead_decrypt(struct aead_request *req)
 
 	return crypto_aead_alg(aead)->decrypt(req);
 }
-EXPORT_SYMBOL_GPL(crypto_aead_decrypt);
+DEFINE_CRYPTO_API(crypto_aead_decrypt);
 
 static void crypto_aead_exit_tfm(struct crypto_tfm *tfm)
 {
@@ -187,26 +187,26 @@ static const struct crypto_type crypto_aead_type = {
 	.tfmsize = offsetof(struct crypto_aead, base),
 };
 
-int crypto_grab_aead(struct crypto_aead_spawn *spawn,
+int CRYPTO_API(crypto_grab_aead)(struct crypto_aead_spawn *spawn,
 		     struct crypto_instance *inst,
 		     const char *name, u32 type, u32 mask)
 {
 	spawn->base.frontend = &crypto_aead_type;
 	return crypto_grab_spawn(&spawn->base, inst, name, type, mask);
 }
-EXPORT_SYMBOL_GPL(crypto_grab_aead);
+DEFINE_CRYPTO_API(crypto_grab_aead);
 
-struct crypto_aead *crypto_alloc_aead(const char *alg_name, u32 type, u32 mask)
+struct crypto_aead *CRYPTO_API(crypto_alloc_aead)(const char *alg_name, u32 type, u32 mask)
 {
 	return crypto_alloc_tfm(alg_name, &crypto_aead_type, type, mask);
 }
-EXPORT_SYMBOL_GPL(crypto_alloc_aead);
+DEFINE_CRYPTO_API(crypto_alloc_aead);
 
-int crypto_has_aead(const char *alg_name, u32 type, u32 mask)
+int CRYPTO_API(crypto_has_aead)(const char *alg_name, u32 type, u32 mask)
 {
 	return crypto_type_has_alg(alg_name, &crypto_aead_type, type, mask);
 }
-EXPORT_SYMBOL_GPL(crypto_has_aead);
+DEFINE_CRYPTO_API(crypto_has_aead);
 
 static int aead_prepare_alg(struct aead_alg *alg)
 {
@@ -226,7 +226,7 @@ static int aead_prepare_alg(struct aead_alg *alg)
 	return 0;
 }
 
-int crypto_register_aead(struct aead_alg *alg)
+int CRYPTO_API(crypto_register_aead)(struct aead_alg *alg)
 {
 	struct crypto_alg *base = &alg->base;
 	int err;
@@ -237,15 +237,15 @@ int crypto_register_aead(struct aead_alg *alg)
 
 	return crypto_register_alg(base);
 }
-EXPORT_SYMBOL_GPL(crypto_register_aead);
+DEFINE_CRYPTO_API(crypto_register_aead);
 
-void crypto_unregister_aead(struct aead_alg *alg)
+void CRYPTO_API(crypto_unregister_aead)(struct aead_alg *alg)
 {
 	crypto_unregister_alg(&alg->base);
 }
-EXPORT_SYMBOL_GPL(crypto_unregister_aead);
+DEFINE_CRYPTO_API(crypto_unregister_aead);
 
-int crypto_register_aeads(struct aead_alg *algs, int count)
+int CRYPTO_API(crypto_register_aeads)(struct aead_alg *algs, int count)
 {
 	int i, ret;
 
@@ -263,18 +263,18 @@ err:
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(crypto_register_aeads);
+DEFINE_CRYPTO_API(crypto_register_aeads);
 
-void crypto_unregister_aeads(struct aead_alg *algs, int count)
+void CRYPTO_API(crypto_unregister_aeads)(struct aead_alg *algs, int count)
 {
 	int i;
 
 	for (i = count - 1; i >= 0; --i)
 		crypto_unregister_aead(&algs[i]);
 }
-EXPORT_SYMBOL_GPL(crypto_unregister_aeads);
+DEFINE_CRYPTO_API(crypto_unregister_aeads);
 
-int aead_register_instance(struct crypto_template *tmpl,
+int CRYPTO_API(aead_register_instance)(struct crypto_template *tmpl,
 			   struct aead_instance *inst)
 {
 	int err;
@@ -288,7 +288,7 @@ int aead_register_instance(struct crypto_template *tmpl,
 
 	return crypto_register_instance(tmpl, aead_crypto_instance(inst));
 }
-EXPORT_SYMBOL_GPL(aead_register_instance);
+DEFINE_CRYPTO_API(aead_register_instance);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Authenticated Encryption with Associated Data (AEAD)");

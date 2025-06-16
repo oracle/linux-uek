@@ -100,7 +100,7 @@ static int skcipher_done_slow(struct skcipher_walk *walk, unsigned int bsize)
 	return 0;
 }
 
-int skcipher_walk_done(struct skcipher_walk *walk, int err)
+int CRYPTO_API(skcipher_walk_done)(struct skcipher_walk *walk, int err)
 {
 	unsigned int n = walk->nbytes;
 	unsigned int nbytes = 0;
@@ -175,9 +175,9 @@ finish:
 out:
 	return err;
 }
-EXPORT_SYMBOL_GPL(skcipher_walk_done);
+DEFINE_CRYPTO_API(skcipher_walk_done);
 
-void skcipher_walk_complete(struct skcipher_walk *walk, int err)
+void CRYPTO_API(skcipher_walk_complete)(struct skcipher_walk *walk, int err)
 {
 	struct skcipher_walk_buffer *p, *tmp;
 
@@ -211,7 +211,7 @@ done:
 	if (walk->page)
 		free_page((unsigned long)walk->page);
 }
-EXPORT_SYMBOL_GPL(skcipher_walk_complete);
+DEFINE_CRYPTO_API(skcipher_walk_complete);
 
 static void skcipher_queue_write(struct skcipher_walk *walk,
 				 struct skcipher_walk_buffer *p)
@@ -477,7 +477,7 @@ static int skcipher_walk_skcipher(struct skcipher_walk *walk,
 	return skcipher_walk_first(walk);
 }
 
-int skcipher_walk_virt(struct skcipher_walk *walk,
+int CRYPTO_API(skcipher_walk_virt)(struct skcipher_walk *walk,
 		       struct skcipher_request *req, bool atomic)
 {
 	int err;
@@ -492,9 +492,9 @@ int skcipher_walk_virt(struct skcipher_walk *walk,
 
 	return err;
 }
-EXPORT_SYMBOL_GPL(skcipher_walk_virt);
+DEFINE_CRYPTO_API(skcipher_walk_virt);
 
-int skcipher_walk_async(struct skcipher_walk *walk,
+int CRYPTO_API(skcipher_walk_async)(struct skcipher_walk *walk,
 			struct skcipher_request *req)
 {
 	walk->flags |= SKCIPHER_WALK_PHYS;
@@ -503,7 +503,7 @@ int skcipher_walk_async(struct skcipher_walk *walk,
 
 	return skcipher_walk_skcipher(walk, req);
 }
-EXPORT_SYMBOL_GPL(skcipher_walk_async);
+DEFINE_CRYPTO_API(skcipher_walk_async);
 
 static int skcipher_walk_aead_common(struct skcipher_walk *walk,
 				     struct aead_request *req, bool atomic)
@@ -547,16 +547,16 @@ static int skcipher_walk_aead_common(struct skcipher_walk *walk,
 	return err;
 }
 
-int skcipher_walk_aead_encrypt(struct skcipher_walk *walk,
+int CRYPTO_API(skcipher_walk_aead_encrypt)(struct skcipher_walk *walk,
 			       struct aead_request *req, bool atomic)
 {
 	walk->total = req->cryptlen;
 
 	return skcipher_walk_aead_common(walk, req, atomic);
 }
-EXPORT_SYMBOL_GPL(skcipher_walk_aead_encrypt);
+DEFINE_CRYPTO_API(skcipher_walk_aead_encrypt);
 
-int skcipher_walk_aead_decrypt(struct skcipher_walk *walk,
+int CRYPTO_API(skcipher_walk_aead_decrypt)(struct skcipher_walk *walk,
 			       struct aead_request *req, bool atomic)
 {
 	struct crypto_aead *tfm = crypto_aead_reqtfm(req);
@@ -565,7 +565,7 @@ int skcipher_walk_aead_decrypt(struct skcipher_walk *walk,
 
 	return skcipher_walk_aead_common(walk, req, atomic);
 }
-EXPORT_SYMBOL_GPL(skcipher_walk_aead_decrypt);
+DEFINE_CRYPTO_API(skcipher_walk_aead_decrypt);
 
 static void skcipher_set_needkey(struct crypto_skcipher *tfm)
 {
@@ -629,9 +629,9 @@ out:
 	crypto_skcipher_clear_flags(tfm, CRYPTO_TFM_NEED_KEY);
 	return 0;
 }
-EXPORT_SYMBOL_GPL(crypto_skcipher_setkey);
+DEFINE_CRYPTO_API(crypto_skcipher_setkey);
 
-int crypto_skcipher_encrypt(struct skcipher_request *req)
+int CRYPTO_API(crypto_skcipher_encrypt)(struct skcipher_request *req)
 {
 	struct crypto_skcipher *tfm = crypto_skcipher_reqtfm(req);
 	struct skcipher_alg *alg = crypto_skcipher_alg(tfm);
@@ -642,9 +642,9 @@ int crypto_skcipher_encrypt(struct skcipher_request *req)
 		return crypto_lskcipher_encrypt_sg(req);
 	return alg->encrypt(req);
 }
-EXPORT_SYMBOL_GPL(crypto_skcipher_encrypt);
+DEFINE_CRYPTO_API(crypto_skcipher_encrypt);
 
-int crypto_skcipher_decrypt(struct skcipher_request *req)
+int CRYPTO_API(crypto_skcipher_decrypt)(struct skcipher_request *req)
 {
 	struct crypto_skcipher *tfm = crypto_skcipher_reqtfm(req);
 	struct skcipher_alg *alg = crypto_skcipher_alg(tfm);
@@ -655,7 +655,7 @@ int crypto_skcipher_decrypt(struct skcipher_request *req)
 		return crypto_lskcipher_decrypt_sg(req);
 	return alg->decrypt(req);
 }
-EXPORT_SYMBOL_GPL(crypto_skcipher_decrypt);
+DEFINE_CRYPTO_API(crypto_skcipher_decrypt);
 
 static int crypto_lskcipher_export(struct skcipher_request *req, void *out)
 {
@@ -693,7 +693,7 @@ static int skcipher_noimport(struct skcipher_request *req, const void *in)
 	return 0;
 }
 
-int crypto_skcipher_export(struct skcipher_request *req, void *out)
+int CRYPTO_API(crypto_skcipher_export)(struct skcipher_request *req, void *out)
 {
 	struct crypto_skcipher *tfm = crypto_skcipher_reqtfm(req);
 	struct skcipher_alg *alg = crypto_skcipher_alg(tfm);
@@ -702,9 +702,9 @@ int crypto_skcipher_export(struct skcipher_request *req, void *out)
 		return crypto_lskcipher_export(req, out);
 	return alg->export(req, out);
 }
-EXPORT_SYMBOL_GPL(crypto_skcipher_export);
+DEFINE_CRYPTO_API(crypto_skcipher_export);
 
-int crypto_skcipher_import(struct skcipher_request *req, const void *in)
+int CRYPTO_API(crypto_skcipher_import)(struct skcipher_request *req, const void *in)
 {
 	struct crypto_skcipher *tfm = crypto_skcipher_reqtfm(req);
 	struct skcipher_alg *alg = crypto_skcipher_alg(tfm);
@@ -713,7 +713,7 @@ int crypto_skcipher_import(struct skcipher_request *req, const void *in)
 		return crypto_lskcipher_import(req, in);
 	return alg->import(req, in);
 }
-EXPORT_SYMBOL_GPL(crypto_skcipher_import);
+DEFINE_CRYPTO_API(crypto_skcipher_import);
 
 static void crypto_skcipher_exit_tfm(struct crypto_tfm *tfm)
 {
@@ -821,23 +821,23 @@ static const struct crypto_type crypto_skcipher_type = {
 	.tfmsize = offsetof(struct crypto_skcipher, base),
 };
 
-int crypto_grab_skcipher(struct crypto_skcipher_spawn *spawn,
+int CRYPTO_API(crypto_grab_skcipher)(struct crypto_skcipher_spawn *spawn,
 			 struct crypto_instance *inst,
 			 const char *name, u32 type, u32 mask)
 {
 	spawn->base.frontend = &crypto_skcipher_type;
 	return crypto_grab_spawn(&spawn->base, inst, name, type, mask);
 }
-EXPORT_SYMBOL_GPL(crypto_grab_skcipher);
+DEFINE_CRYPTO_API(crypto_grab_skcipher);
 
-struct crypto_skcipher *crypto_alloc_skcipher(const char *alg_name,
+struct crypto_skcipher *CRYPTO_API(crypto_alloc_skcipher)(const char *alg_name,
 					      u32 type, u32 mask)
 {
 	return crypto_alloc_tfm(alg_name, &crypto_skcipher_type, type, mask);
 }
-EXPORT_SYMBOL_GPL(crypto_alloc_skcipher);
+DEFINE_CRYPTO_API(crypto_alloc_skcipher);
 
-struct crypto_sync_skcipher *crypto_alloc_sync_skcipher(
+struct crypto_sync_skcipher *CRYPTO_API(crypto_alloc_sync_skcipher)(
 				const char *alg_name, u32 type, u32 mask)
 {
 	struct crypto_skcipher *tfm;
@@ -859,13 +859,13 @@ struct crypto_sync_skcipher *crypto_alloc_sync_skcipher(
 
 	return (struct crypto_sync_skcipher *)tfm;
 }
-EXPORT_SYMBOL_GPL(crypto_alloc_sync_skcipher);
+DEFINE_CRYPTO_API(crypto_alloc_sync_skcipher);
 
-int crypto_has_skcipher(const char *alg_name, u32 type, u32 mask)
+int CRYPTO_API(crypto_has_skcipher)(const char *alg_name, u32 type, u32 mask)
 {
 	return crypto_type_has_alg(alg_name, &crypto_skcipher_type, type, mask);
 }
-EXPORT_SYMBOL_GPL(crypto_has_skcipher);
+DEFINE_CRYPTO_API(crypto_has_skcipher);
 
 int skcipher_prepare_alg_common(struct skcipher_alg_common *alg)
 {
@@ -911,7 +911,7 @@ static int skcipher_prepare_alg(struct skcipher_alg *alg)
 	return 0;
 }
 
-int crypto_register_skcipher(struct skcipher_alg *alg)
+int CRYPTO_API(crypto_register_skcipher)(struct skcipher_alg *alg)
 {
 	struct crypto_alg *base = &alg->base;
 	int err;
@@ -922,15 +922,15 @@ int crypto_register_skcipher(struct skcipher_alg *alg)
 
 	return crypto_register_alg(base);
 }
-EXPORT_SYMBOL_GPL(crypto_register_skcipher);
+DEFINE_CRYPTO_API(crypto_register_skcipher);
 
-void crypto_unregister_skcipher(struct skcipher_alg *alg)
+void CRYPTO_API(crypto_unregister_skcipher)(struct skcipher_alg *alg)
 {
 	crypto_unregister_alg(&alg->base);
 }
-EXPORT_SYMBOL_GPL(crypto_unregister_skcipher);
+DEFINE_CRYPTO_API(crypto_unregister_skcipher);
 
-int crypto_register_skciphers(struct skcipher_alg *algs, int count)
+int CRYPTO_API(crypto_register_skciphers)(struct skcipher_alg *algs, int count)
 {
 	int i, ret;
 
@@ -948,18 +948,18 @@ err:
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(crypto_register_skciphers);
+DEFINE_CRYPTO_API(crypto_register_skciphers);
 
-void crypto_unregister_skciphers(struct skcipher_alg *algs, int count)
+void CRYPTO_API(crypto_unregister_skciphers)(struct skcipher_alg *algs, int count)
 {
 	int i;
 
 	for (i = count - 1; i >= 0; --i)
 		crypto_unregister_skcipher(&algs[i]);
 }
-EXPORT_SYMBOL_GPL(crypto_unregister_skciphers);
+DEFINE_CRYPTO_API(crypto_unregister_skciphers);
 
-int skcipher_register_instance(struct crypto_template *tmpl,
+int CRYPTO_API(skcipher_register_instance)(struct crypto_template *tmpl,
 			   struct skcipher_instance *inst)
 {
 	int err;
@@ -973,7 +973,7 @@ int skcipher_register_instance(struct crypto_template *tmpl,
 
 	return crypto_register_instance(tmpl, skcipher_crypto_instance(inst));
 }
-EXPORT_SYMBOL_GPL(skcipher_register_instance);
+DEFINE_CRYPTO_API(skcipher_register_instance);
 
 static int skcipher_setkey_simple(struct crypto_skcipher *tfm, const u8 *key,
 				  unsigned int keylen)
@@ -1030,7 +1030,7 @@ static void skcipher_free_instance_simple(struct skcipher_instance *inst)
  * Return: a pointer to the new instance, or an ERR_PTR().  The caller still
  *	   needs to register the instance.
  */
-struct skcipher_instance *skcipher_alloc_instance_simple(
+struct skcipher_instance *CRYPTO_API(skcipher_alloc_instance_simple)(
 	struct crypto_template *tmpl, struct rtattr **tb)
 {
 	u32 mask;
@@ -1081,7 +1081,7 @@ err_free_inst:
 	skcipher_free_instance_simple(inst);
 	return ERR_PTR(err);
 }
-EXPORT_SYMBOL_GPL(skcipher_alloc_instance_simple);
+DEFINE_CRYPTO_API(skcipher_alloc_instance_simple);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Symmetric key cipher type");
