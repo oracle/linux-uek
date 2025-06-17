@@ -53,7 +53,7 @@ int CRYPTO_API(crypto_cipher_setkey)(struct crypto_cipher *tfm,
 
 	return cia->cia_setkey(crypto_cipher_tfm(tfm), key, keylen);
 }
-DEFINE_CRYPTO_API(crypto_cipher_setkey, CRYPTO_INTERNAL);
+DEFINE_CRYPTO_API(crypto_cipher_setkey);
 
 static inline void cipher_crypt_one(struct crypto_cipher *tfm,
 				    u8 *dst, const u8 *src, bool enc)
@@ -81,14 +81,14 @@ void CRYPTO_API(crypto_cipher_encrypt_one)(struct crypto_cipher *tfm,
 {
 	cipher_crypt_one(tfm, dst, src, true);
 }
-DEFINE_CRYPTO_API(crypto_cipher_encrypt_one, CRYPTO_INTERNAL);
+DEFINE_CRYPTO_API(crypto_cipher_encrypt_one);
 
 void CRYPTO_API(crypto_cipher_decrypt_one)(struct crypto_cipher *tfm,
 			       u8 *dst, const u8 *src)
 {
 	cipher_crypt_one(tfm, dst, src, false);
 }
-DEFINE_CRYPTO_API(crypto_cipher_decrypt_one, CRYPTO_INTERNAL);
+DEFINE_CRYPTO_API(crypto_cipher_decrypt_one);
 
 struct crypto_cipher *CRYPTO_API(crypto_clone_cipher)(struct crypto_cipher *cipher)
 {

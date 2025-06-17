@@ -24,11 +24,17 @@
 #include "internal.h"
 
 static DEFINE_MUTEX(crypto_default_rng_lock);
-struct crypto_rng *crypto_default_rng;
-DEFINE_CRYPTO_API(crypto_default_rng);
+
+#ifdef FIPS_MODULE
+struct crypto_rng *fips_crypto_default_rng;
+EXPORT_SYMBOL_GPL(fips_crypto_default_rng);
+#else
+struct crypto_rng *nonfips_crypto_default_rng;
+EXPORT_SYMBOL_GPL(nonfips_crypto_default_rng);
+#endif
 static int crypto_default_rng_refcnt;
 
-int crypto_rng_reset(struct crypto_rng *tfm, const u8 *seed, unsigned int slen)
+int CRYPTO_API(crypto_rng_reset)(struct crypto_rng *tfm, const u8 *seed, unsigned int slen)
 {
 	u8 *buf = NULL;
 	int err;
@@ -108,7 +114,7 @@ DEFINE_CRYPTO_API(crypto_alloc_rng);
 
 static struct crypto_rng *crypto_default_rng;
 
-int CRYPTO_API(crypto_get_default_rng)(void)
+int CRYPTO_API(crypto_get_default_rng)(struct crypto_rng **result)
 {
 	struct crypto_rng *rng;
 	int err;
@@ -140,7 +146,7 @@ unlock:
 }
 DEFINE_CRYPTO_API(crypto_get_default_rng);
 
-void CRYPTO_API(crypto_put_default_rng)(void)
+void CRYPTO_API(crypto_put_default_rng)(struct crypto_rng **rng)
 {
 	mutex_lock(&crypto_default_rng_lock);
 	*rng = NULL;
