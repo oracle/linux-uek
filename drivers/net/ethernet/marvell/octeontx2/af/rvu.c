@@ -2620,7 +2620,11 @@ static int rvu_mbox_init(struct rvu *rvu, struct mbox_wq_info *mw,
 		mwork->rvu = rvu;
 		INIT_WORK(&mwork->work, mbox_up_handler);
 	}
-	goto free_regions;
+
+	kfree(mbox_regions);
+	bitmap_free(pf_bmap);
+
+	return 0;
 
 exit:
 	destroy_workqueue(mw->mbox_wq);
