@@ -31,9 +31,6 @@
  *
  */
 #include <linux/highmem.h>
-#include <linux/gfp.h>
-#include <linux/cpu.h>
-#include <linux/export.h>
 
 #include "rds.h"
 
@@ -42,15 +39,54 @@ struct rds_page_remainder {
 	unsigned long	r_offset;
 };
 
-static
-DEFINE_PER_CPU_SHARED_ALIGNED(struct rds_page_remainder, rds_page_remainders);
+DEFINE_PER_CPU(struct rds_page_remainder, rds_page_remainders) ____cacheline_aligned;
 
-/**
- * rds_page_remainder_alloc - build up regions of a message.
+/*
+ * returns 0 on success or -errno on failure.
  *
- * @scat: Scatter list for message
- * @bytes: the number of bytes needed.
- * @gfp: the waiting behaviour of the allocation
+ * We don't have to worry about flush_dcache_page() as this only works
+ * with private pages.  If, say, we were to do directed receive to pinned
+ * user pages we'd have to worry more about cache coherence.  (Though
+ * the flush_dcache_page() in get_user_pages() would probably be enough).
+ */
+int rds_page_copy_user(struct page *page, unsigned long offset,
+		       void __user *ptr, unsigned long bytes,
+		       int to_user)
+{
+	unsigned long ret;
+	void *addr;
+
+	if (to_user)
+		rds_stats_add(s_copy_to_user, bytes);
+	else
+		rds_stats_add(s_copy_from_user, bytes);
+
+	addr = kmap_atomic(page, KM_USER0);
+	if (to_user)
+		ret = __copy_to_user_inatomic(ptr, addr + offset, bytes);
+	else
+		ret = __copy_from_user_inatomic(addr + offset, ptr, bytes);
+	kunmap_atomic(addr, KM_USER0);
+
+	if (ret) {
+		addr = kmap(page);
+		if (to_user)
+			ret = copy_to_user(ptr, addr + offset, bytes);
+		else
+			ret = copy_from_user(addr + offset, ptr, bytes);
+		kunmap(page);
+		if (ret)
+			return -EFAULT;
+	}
+
+	return 0;
+}
+
+/*
+ * Message allocation uses this to build up regions of a message.
+ *
+ * @bytes - the number of bytes needed.
+ * @gfp - the waiting behaviour of the allocation
  *
  * @gfp is always ored with __GFP_HIGHMEM.  Callers must be prepared to
  * kmap the pages, etc.
@@ -78,7 +114,7 @@ int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
 	/* jump straight to allocation if we're trying for a huge page */
 	if (bytes >= PAGE_SIZE) {
 		page = alloc_page(gfp);
-		if (!page) {
+		if (page == NULL) {
 			ret = -ENOMEM;
 		} else {
 			sg_set_page(scat, page, PAGE_SIZE, 0);
@@ -106,8 +142,8 @@ int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
 			if (rem->r_offset != 0)
 				rds_stats_inc(s_page_remainder_hit);
 
-			rem->r_offset += ALIGN(bytes, 8);
-			if (rem->r_offset >= PAGE_SIZE) {
+			rem->r_offset += bytes;
+			if (rem->r_offset == PAGE_SIZE) {
 				__free_page(rem->r_page);
 				rem->r_page = NULL;
 			}
@@ -124,7 +160,7 @@ int rds_page_remainder_alloc(struct scatterlist *scat, unsigned long bytes,
 		rem = &per_cpu(rds_page_remainders, get_cpu());
 		local_irq_save(flags);
 
-		if (!page) {
+		if (page == NULL) {
 			ret = -ENOMEM;
 			break;
 		}
@@ -148,20 +184,38 @@ out:
 		 ret ? 0 : scat->length);
 	return ret;
 }
-EXPORT_SYMBOL_GPL(rds_page_remainder_alloc);
 
-void rds_page_exit(void)
+static int rds_page_remainder_cpu_notify(struct notifier_block *self,
+					 unsigned long action, void *hcpu)
 {
-	unsigned int cpu;
+	struct rds_page_remainder *rem;
+	long cpu = (long)hcpu;
 
-	for_each_possible_cpu(cpu) {
-		struct rds_page_remainder *rem;
+	rem = &per_cpu(rds_page_remainders, cpu);
 
-		rem = &per_cpu(rds_page_remainders, cpu);
-		rdsdebug("cpu %u\n", cpu);
+	rdsdebug("cpu %ld action 0x%lx\n", cpu, action);
 
+	switch (action) {
+	case CPU_DEAD:
 		if (rem->r_page)
 			__free_page(rem->r_page);
 		rem->r_page = NULL;
+		break;
 	}
+
+	return 0;
+}
+
+static struct notifier_block rds_page_remainder_nb = {
+	.notifier_call = rds_page_remainder_cpu_notify,
+};
+
+void rds_page_exit(void)
+{
+	int i;
+
+	for_each_possible_cpu(i)
+		rds_page_remainder_cpu_notify(&rds_page_remainder_nb,
+					      (unsigned long)CPU_DEAD,
+					      (void *)(long)i);
 }

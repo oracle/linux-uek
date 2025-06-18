@@ -32,9 +32,7 @@
  */
 #include <linux/percpu.h>
 #include <linux/seq_file.h>
-#include <linux/slab.h>
 #include <linux/proc_fs.h>
-#include <linux/export.h>
 
 #include "rds.h"
 
@@ -77,11 +75,10 @@ void rds_info_register_func(int optname, rds_info_func func)
 	BUG_ON(optname < RDS_INFO_FIRST || optname > RDS_INFO_LAST);
 
 	spin_lock(&rds_info_lock);
-	BUG_ON(rds_info_funcs[offset]);
+	BUG_ON(rds_info_funcs[offset] != NULL);
 	rds_info_funcs[offset] = func;
 	spin_unlock(&rds_info_lock);
 }
-EXPORT_SYMBOL_GPL(rds_info_register_func);
 
 void rds_info_deregister_func(int optname, rds_info_func func)
 {
@@ -94,7 +91,6 @@ void rds_info_deregister_func(int optname, rds_info_func func)
 	rds_info_funcs[offset] = NULL;
 	spin_unlock(&rds_info_lock);
 }
-EXPORT_SYMBOL_GPL(rds_info_deregister_func);
 
 /*
  * Typically we hold an atomic kmap across multiple rds_info_copy() calls
@@ -103,8 +99,8 @@ EXPORT_SYMBOL_GPL(rds_info_deregister_func);
  */
 void rds_info_iter_unmap(struct rds_info_iterator *iter)
 {
-	if (iter->addr) {
-		kunmap_atomic(iter->addr);
+	if (iter->addr != NULL) {
+		kunmap_atomic(iter->addr, KM_USER0);
 		iter->addr = NULL;
 	}
 }
@@ -118,8 +114,8 @@ void rds_info_copy(struct rds_info_iterator *iter, void *data,
 	unsigned long this;
 
 	while (bytes) {
-		if (!iter->addr)
-			iter->addr = kmap_atomic(*iter->pages);
+		if (iter->addr == NULL)
+			iter->addr = kmap_atomic(*iter->pages, KM_USER0);
 
 		this = min(bytes, PAGE_SIZE - iter->offset);
 
@@ -134,14 +130,13 @@ void rds_info_copy(struct rds_info_iterator *iter, void *data,
 		iter->offset += this;
 
 		if (iter->offset == PAGE_SIZE) {
-			kunmap_atomic(iter->addr);
+			kunmap_atomic(iter->addr, KM_USER0);
 			iter->addr = NULL;
 			iter->offset = 0;
 			iter->pages++;
 		}
 	}
 }
-EXPORT_SYMBOL_GPL(rds_info_copy);
 
 /*
  * @optval points to the userspace buffer that the information snapshot
@@ -162,6 +157,7 @@ int rds_info_getsockopt(struct socket *sock, int optname, char __user *optval,
 	struct rds_info_lengths lens;
 	unsigned long nr_pages = 0;
 	unsigned long start;
+	unsigned long i;
 	rds_info_func func;
 	struct page **pages = NULL;
 	int ret;
@@ -175,7 +171,7 @@ int rds_info_getsockopt(struct socket *sock, int optname, char __user *optval,
 
 	/* check for all kinds of wrapping and the like */
 	start = (unsigned long)optval;
-	if (len < 0 || len > INT_MAX - PAGE_SIZE + 1 || start + len < start) {
+	if (len < 0 || len + PAGE_SIZE - 1 < len || start + len < start) {
 		ret = -EINVAL;
 		goto out;
 	}
@@ -187,12 +183,15 @@ int rds_info_getsockopt(struct socket *sock, int optname, char __user *optval,
 	nr_pages = (PAGE_ALIGN(start + len) - (start & PAGE_MASK))
 			>> PAGE_SHIFT;
 
-	pages = kmalloc_array(nr_pages, sizeof(struct page *), GFP_KERNEL);
-	if (!pages) {
+	pages = kmalloc(nr_pages * sizeof(struct page *), GFP_KERNEL);
+	if (pages == NULL) {
 		ret = -ENOMEM;
 		goto out;
 	}
-	ret = pin_user_pages_fast(start, nr_pages, FOLL_WRITE, pages);
+	down_read(&current->mm->mmap_sem);
+	ret = get_user_pages(current, current->mm, start, nr_pages, 1, 0,
+			     pages, NULL);
+	up_read(&current->mm->mmap_sem);
 	if (ret != nr_pages) {
 		if (ret > 0)
 			nr_pages = ret;
@@ -206,7 +205,7 @@ int rds_info_getsockopt(struct socket *sock, int optname, char __user *optval,
 
 call_func:
 	func = rds_info_funcs[optname - RDS_INFO_FIRST];
-	if (!func) {
+	if (func == NULL) {
 		ret = -ENOPROTOOPT;
 		goto out;
 	}
@@ -234,8 +233,8 @@ call_func:
 		ret = -EFAULT;
 
 out:
-	if (pages)
-		unpin_user_pages(pages, nr_pages);
+	for (i = 0; pages != NULL && i < nr_pages; i++)
+		put_page(pages[i]);
 	kfree(pages);
 
 	return ret;
