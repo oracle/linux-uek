@@ -18,10 +18,13 @@
 #include <linux/types.h>
 #include <linux/time.h>
 #include <linux/uidgid.h>
+#include <linux/uek_kabi.h>
 
 struct kstat {
 	u32		result_mask;	/* What fields the user got */
 	umode_t		mode;
+	UEK_KABI_FILL_HOLE(u8	atomic_write_unit_max_opt)
+	/* free u8 of space */
 	unsigned int	nlink;
 	uint32_t	blksize;	/* Preferred I/O size */
 	u64		attributes;
@@ -56,7 +59,6 @@ struct kstat {
 	u64		subvol;
 	u32		atomic_write_unit_min;
 	u32		atomic_write_unit_max;
-	u32		atomic_write_unit_max_opt;
 	u32		atomic_write_segments_max;
 };
 

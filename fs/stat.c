@@ -113,7 +113,18 @@ void generic_fill_statx_atomic_writes(struct kstat *stat,
 	if (unit_min) {
 		stat->atomic_write_unit_min = unit_min;
 		stat->atomic_write_unit_max = unit_max;
-		stat->atomic_write_unit_max_opt = unit_max_opt;
+		/*
+		 * Use ilog2() to encode unit_max_opt, as we don't have enough
+		 * space. unit_max_opt must be a power-of-2.
+		 *
+		 * For unit_max_opt == 0, just encode as 0. It would not make
+		 * sense to have unit_max_opt == 1, so we decode
+		 * atomic_write_unit_max_opt == 0 or 1 both as 0.
+		 */
+		if (unit_max_opt == 0)
+			stat->atomic_write_unit_max_opt = 0;
+		else
+			stat->atomic_write_unit_max_opt = ilog2(unit_max_opt);
 		/* Initially only allow 1x segment */
 		stat->atomic_write_segments_max = 1;
 
@@ -707,7 +718,8 @@ cp_statx(const struct kstat *stat, struct statx __user *buffer)
 	tmp.stx_atomic_write_unit_min = stat->atomic_write_unit_min;
 	tmp.stx_atomic_write_unit_max = stat->atomic_write_unit_max;
 	tmp.stx_atomic_write_segments_max = stat->atomic_write_segments_max;
-	tmp.stx_atomic_write_unit_max_opt = stat->atomic_write_unit_max_opt;
+	if (stat->atomic_write_unit_max_opt > 0)
+		tmp.stx_atomic_write_unit_max_opt = 1 << stat->atomic_write_unit_max_opt;
 
 	return copy_to_user(buffer, &tmp, sizeof(tmp)) ? -EFAULT : 0;
 }
