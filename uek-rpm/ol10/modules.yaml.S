@@ -1222,6 +1222,7 @@ modules:
 - rockchip
 - rocker
 - rotary_encoder
+- rp2
 - rtc-bq32k
 - rtc-ds1286
 - rtc-ds1307
