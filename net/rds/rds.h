@@ -394,8 +394,6 @@ struct rds_connection {
 	struct rds_conn_path	*c_path;
 	wait_queue_head_t	c_hs_waitq; /* handshake waitq */
 
-
-	struct list_head	c_laddr_node;
 	struct hlist_node	c_faddr_node;
 
 	/* for rds_conn_ha_changed_task */
@@ -1135,6 +1133,18 @@ void rds_cong_exit(void);
 struct rds_message *rds_cong_update_alloc(struct rds_connection *conn);
 
 /* conn.c */
+#define RDS_CONNECTION_HASH_BITS 12
+#define RDS_CONNECTION_HASH_ENTRIES (1 << RDS_CONNECTION_HASH_BITS)
+#define RDS_CONNECTION_HASH_MASK (RDS_CONNECTION_HASH_ENTRIES - 1)
+extern struct hlist_head rds_conn_hash[RDS_CONNECTION_HASH_ENTRIES];
+/* Loop through the rds_conn_hash table and set head to the hlist_head
+ * of each element.
+ */
+#define	for_each_conn_hash_bucket(head)				\
+    for ((head) = rds_conn_hash;				\
+	 (head) < rds_conn_hash + ARRAY_SIZE(rds_conn_hash);	\
+	 (head)++)
+
 int rds_conn_init(void);
 void rds_conn_exit(void);
 struct rds_connection *rds_conn_create(struct net *net,
@@ -1166,9 +1176,6 @@ int  rds_conn_reap(struct rds_connection *conn);
 void rds_conn_faddr_ha_changed(const struct in6_addr *faddr,
 			       const unsigned char *ha,
 			       unsigned ha_len);
-void rds_conn_addr_list(struct net *net, struct in6_addr *laddr,
-			struct in6_addr *faddr,
-			struct list_head *laddr_conns);
 void rds_conn_connect_if_down(struct rds_connection *conn);
 void rds_conn_path_connect_if_down(struct rds_conn_path *conn);
 void rds_check_all_paths(struct rds_connection *conn);
