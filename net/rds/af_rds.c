@@ -36,7 +36,6 @@
 #include <linux/kernel.h>
 #include <linux/in.h>
 #include <linux/ipv6.h>
-#include <linux/mutex.h>
 #include <linux/poll.h>
 #include <linux/version.h>
 #include <linux/random.h>
@@ -81,11 +80,6 @@ struct rt_debug_tp {
 	int flag;
 	const char *tps[10];
 };
-
-/* Protecting the non-reentrant list handling in connection reset when
- * destination address is zero
- */
-DEFINE_MUTEX(conn_reset_zero_dest);
 
 /* Map from RDS_RTD_ flag to replacement tracepoints. */
 static struct rt_debug_tp rt_debug_tp_map[] = {
@@ -558,7 +552,7 @@ static int rds_user_reset_or_reap(struct rds_sock *rs, int optname,
 	struct rds_reset reset = {};
 	struct rds_connection *conn;
 	struct in6_addr src6, dst6;
-	LIST_HEAD(s_addr_conns);
+	struct hlist_head *head;
 	int ret = 0, reap_ret = 0;
 
 	if (optname == RDS_CONN_REAP && !rds_sysctl_conn_user_reap_enable)
@@ -579,30 +573,27 @@ static int rds_user_reset_or_reap(struct rds_sock *rs, int optname,
 	 * If reset.dst == 0, option reset.all_tos is ignored.
 	 */
 	if (reset.all_tos || reset.dst.s_addr == 0) {
-	       pr_info("RDS: %s ALL conns for Source %pI4 Destination %pI4\n",
-		       (optname == RDS_CONN_RESET ? "Reset" : "Reap"),
-		       &reset.src.s_addr, &reset.dst.s_addr);
+		pr_info("RDS: %s ALL conns for Source %pI4 Destination %pI4\n",
+			(optname == RDS_CONN_RESET ? "Reset" : "Reap"),
+			&reset.src.s_addr, &reset.dst.s_addr);
 
-		mutex_lock(&conn_reset_zero_dest);
-		rds_conn_addr_list(rs->rs_rns, &src6,
-				   (reset.dst.s_addr == 0) ? NULL : &dst6,
-				   &s_addr_conns);
-		if (list_empty(&s_addr_conns)) {
-			mutex_unlock(&conn_reset_zero_dest);
-			goto done;
-		}
-
-		list_for_each_entry(conn, &s_addr_conns, c_laddr_node) {
-			if (optname == RDS_CONN_RESET) {
-				rds_user_conn_paths_drop(conn);
-			} else if (optname == RDS_CONN_REAP) {
-				reap_ret = rds_conn_reap(conn);
-				ret = ret ? : reap_ret;
+		rcu_read_lock();
+		for_each_conn_hash_bucket(rs->rs_rns, head) {
+			hlist_for_each_entry_rcu(conn, head, c_hash_node) {
+				if (ipv6_addr_equal(&conn->c_laddr, &src6) &&
+				    (reset.dst.s_addr ?
+				     ipv6_addr_equal(&conn->c_faddr, &dst6) : 1)) {
+					if (optname == RDS_CONN_RESET) {
+						rds_user_conn_paths_drop(conn);
+					} else if (optname == RDS_CONN_REAP) {
+						reap_ret = rds_conn_reap(conn);
+						ret = ret ? : reap_ret;
+					}
+				}
 			}
-			rds_conn_put(conn); /* for rds_conn_laddr_list */
 		}
-		mutex_unlock(&conn_reset_zero_dest);
-		goto done;
+		rcu_read_unlock();
+		return ret;
 	}
 
 	conn = rds_conn_find(rs->rs_rns, &src6, &dst6,
@@ -622,7 +613,6 @@ static int rds_user_reset_or_reap(struct rds_sock *rs, int optname,
 		}
 		rds_conn_put(conn); /* for rds_conn_find */
 	}
-done:
 	return ret;
 }
 
@@ -632,7 +622,7 @@ static int rds6_user_reset_or_reap(struct rds_sock *rs, int optname,
 {
 	struct rds6_reset reset = {};
 	struct rds_connection *conn;
-	LIST_HEAD(s_addr_conns);
+	struct hlist_head *head;
 	int ret = 0, reap_ret = 0;
 
 	if (optname == RDS6_CONN_REAP && !rds_sysctl_conn_user_reap_enable)
@@ -654,26 +644,23 @@ static int rds6_user_reset_or_reap(struct rds_sock *rs, int optname,
 			(optname == RDS6_CONN_RESET ? "Reset" : "Reap"),
 			&reset.src, &reset.dst);
 
-		mutex_lock(&conn_reset_zero_dest);
-		rds_conn_addr_list(rs->rs_rns, &reset.src,
-				   ipv6_addr_any(&reset.dst) ? NULL : &reset.dst,
-				   &s_addr_conns);
-		if (list_empty(&s_addr_conns)) {
-			mutex_unlock(&conn_reset_zero_dest);
-			goto done;
-		}
-
-		list_for_each_entry(conn, &s_addr_conns, c_laddr_node) {
-			if (optname == RDS6_CONN_RESET) {
-				rds_user_conn_paths_drop(conn);
-			} else if (optname == RDS6_CONN_REAP) {
-				reap_ret = rds_conn_reap(conn);
-				ret = ret ? : reap_ret;
+		rcu_read_lock();
+		for_each_conn_hash_bucket(rs->rs_rns, head) {
+			hlist_for_each_entry_rcu(conn, head, c_hash_node) {
+				if (ipv6_addr_equal(&conn->c_laddr, &reset.src) &&
+				    ipv6_addr_any(&reset.dst) ? 1 :
+				    ipv6_addr_equal(&conn->c_faddr, &reset.dst)) {
+					if (optname == RDS6_CONN_RESET) {
+						rds_user_conn_paths_drop(conn);
+					} else if (optname == RDS6_CONN_REAP) {
+						reap_ret = rds_conn_reap(conn);
+						ret = ret ? : reap_ret;
+					}
+				}
 			}
-			rds_conn_put(conn); /* for rds_conn_laddr_list */
 		}
-		mutex_unlock(&conn_reset_zero_dest);
-		goto done;
+		rcu_read_unlock();
+		return ret;
 	}
 
 	conn = rds_conn_find(rs->rs_rns, &reset.src, &reset.dst,
@@ -693,7 +680,6 @@ static int rds6_user_reset_or_reap(struct rds_sock *rs, int optname,
 		}
 		rds_conn_put(conn); /* for rds_conn_find */
 	}
-done:
 	return ret;
 }
 #endif
