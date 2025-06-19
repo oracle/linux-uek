@@ -40,10 +40,6 @@
 
 #include "trace.h"
 
-#define RDS_CONNECTION_HASH_BITS 12
-#define RDS_CONNECTION_HASH_ENTRIES (1 << RDS_CONNECTION_HASH_BITS)
-#define RDS_CONNECTION_HASH_MASK (RDS_CONNECTION_HASH_ENTRIES - 1)
-
 #define RDS_CONN_FADDR_HASH_ENTRIES 256
 
 static bool rds_wq_strictly_ordered;
@@ -52,14 +48,6 @@ module_param(rds_wq_strictly_ordered, bool, 0644);
 /* converting this to RCU is a chore for another day.. */
 static struct hlist_head rds_conn_faddr_hash[RDS_CONN_FADDR_HASH_ENTRIES];
 static struct kmem_cache *rds_conn_slab;
-
-/* Loop through the rns_conn_hash table and set head to the hlist_head
- * of each element.
- */
-#define	for_each_conn_hash_bucket(rns, head)				\
-	for ((head) = (rns)->rns_conn_hash;				\
-	     (head) < (rns)->rns_conn_hash + RDS_CONNECTION_HASH_ENTRIES; \
-	     (head)++)
 
 static void rds_conn_ha_changed_task(struct work_struct *work);
 static void rds_conn_shutdown_check_wait(struct work_struct *work);
@@ -138,28 +126,6 @@ static struct rds_connection *rds_conn_lookup(struct hlist_head *head,
 	}
 	rdsdebug("returning conn %p for %pI6c -> %pI6c\n", ret, laddr, faddr);
 	return ret;
-}
-
-void rds_conn_addr_list(struct rds_net *rns, struct in6_addr *laddr,
-			struct in6_addr *faddr,
-			struct list_head *laddr_conns)
-{
-	struct rds_connection *conn;
-	struct hlist_head *head;
-
-	rcu_read_lock();
-
-	/* Optional faddr can be NULL */
-	for_each_conn_hash_bucket(rns, head) {
-		hlist_for_each_entry_rcu(conn, head, c_hash_node)
-			if (ipv6_addr_equal(&conn->c_laddr, laddr) &&
-			    (faddr ? ipv6_addr_equal(&conn->c_faddr, faddr) : 1)) {
-				rds_conn_get(conn);
-				list_add(&conn->c_laddr_node, laddr_conns);
-			}
-	}
-
-	rcu_read_unlock();
 }
 
 /*
