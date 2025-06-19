@@ -4248,7 +4248,7 @@ void lru_gen_online_memcg(struct mem_cgroup *memcg)
 	}
 }
 
-void lru_gen_offline_memcg(struct mem_cgroup *memcg)
+void lru_gen_release_memcg(struct mem_cgroup *memcg)
 {
 	int gen;
 	int nid;
@@ -4898,8 +4898,8 @@ restart:
 		lruvec = container_of(lrugen, struct lruvec, lrugen);
 		memcg = lruvec_memcg(lruvec);
 
-		if (!mem_cgroup_tryget_online(memcg)) {
-			lru_gen_offline_memcg(memcg);
+		if (!mem_cgroup_tryget(memcg)) {
+			lru_gen_release_memcg(memcg);
 			memcg = NULL;
 			continue;
 		}
