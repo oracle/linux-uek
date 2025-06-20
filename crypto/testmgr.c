@@ -142,6 +142,13 @@ struct kpp_test_suite {
  */
 #define FIPS_ALLOWED		1
 
+/*
+ * Algorithm is not considered a cryptographic algorithm from
+ * a FIPS point of view and may be used for non-cryptographic
+ * purposes.
+ */
+#define FIPS_NON_CRYPTOGRAPHIC	2
+
 struct alg_test_desc {
 	const char *alg;
 	const char *generic_driver;
@@ -4695,28 +4702,28 @@ static const struct alg_test_desc alg_test_descs[] = {
 	}, {
 		.alg = "crc32",
 		.test = alg_test_hash,
-		.fips_allowed = FIPS_ALLOWED,
+		.fips_allowed = FIPS_ALLOWED | FIPS_NON_CRYPTOGRAPHIC,
 		.suite = {
 			.hash = __VECS(crc32_tv_template)
 		}
 	}, {
 		.alg = "crc32c",
 		.test = alg_test_crc32c,
-		.fips_allowed = FIPS_ALLOWED,
+		.fips_allowed = FIPS_ALLOWED | FIPS_NON_CRYPTOGRAPHIC,
 		.suite = {
 			.hash = __VECS(crc32c_tv_template)
 		}
 	}, {
 		.alg = "crc64-rocksoft",
 		.test = alg_test_hash,
-		.fips_allowed = FIPS_ALLOWED,
+		.fips_allowed = FIPS_ALLOWED | FIPS_NON_CRYPTOGRAPHIC,
 		.suite = {
 			.hash = __VECS(crc64_rocksoft_tv_template)
 		}
 	}, {
 		.alg = "crct10dif",
 		.test = alg_test_hash,
-		.fips_allowed = FIPS_ALLOWED,
+		.fips_allowed = FIPS_ALLOWED | FIPS_NON_CRYPTOGRAPHIC,
 		.suite = {
 			.hash = __VECS(crct10dif_tv_template)
 		}
@@ -4839,7 +4846,7 @@ static const struct alg_test_desc alg_test_descs[] = {
 	}, {
 		.alg = "deflate",
 		.test = alg_test_comp,
-		.fips_allowed = FIPS_ALLOWED,
+		.fips_allowed = FIPS_ALLOWED | FIPS_NON_CRYPTOGRAPHIC,
 		.suite = {
 			.comp = {
 				.comp = __VECS(deflate_comp_tv_template),
@@ -4849,7 +4856,7 @@ static const struct alg_test_desc alg_test_descs[] = {
 	}, {
 		.alg = "deflate-iaa",
 		.test = alg_test_comp,
-		.fips_allowed = FIPS_ALLOWED,
+		.fips_allowed = FIPS_ALLOWED | FIPS_NON_CRYPTOGRAPHIC,
 		.suite = {
 			.comp = {
 				.comp = __VECS(deflate_comp_tv_template),
@@ -5390,7 +5397,7 @@ static const struct alg_test_desc alg_test_descs[] = {
 	}, {
 		.alg = "lz4",
 		.test = alg_test_comp,
-		.fips_allowed = FIPS_ALLOWED,
+		.fips_allowed = FIPS_ALLOWED | FIPS_NON_CRYPTOGRAPHIC,
 		.suite = {
 			.comp = {
 				.comp = __VECS(lz4_comp_tv_template),
@@ -5400,7 +5407,7 @@ static const struct alg_test_desc alg_test_descs[] = {
 	}, {
 		.alg = "lz4hc",
 		.test = alg_test_comp,
-		.fips_allowed = FIPS_ALLOWED,
+		.fips_allowed = FIPS_ALLOWED | FIPS_NON_CRYPTOGRAPHIC,
 		.suite = {
 			.comp = {
 				.comp = __VECS(lz4hc_comp_tv_template),
@@ -5410,7 +5417,7 @@ static const struct alg_test_desc alg_test_descs[] = {
 	}, {
 		.alg = "lzo",
 		.test = alg_test_comp,
-		.fips_allowed = FIPS_ALLOWED,
+		.fips_allowed = FIPS_ALLOWED | FIPS_NON_CRYPTOGRAPHIC,
 		.suite = {
 			.comp = {
 				.comp = __VECS(lzo_comp_tv_template),
@@ -5420,7 +5427,7 @@ static const struct alg_test_desc alg_test_descs[] = {
 	}, {
 		.alg = "lzo-rle",
 		.test = alg_test_comp,
-		.fips_allowed = FIPS_ALLOWED,
+		.fips_allowed = FIPS_ALLOWED | FIPS_NON_CRYPTOGRAPHIC,
 		.suite = {
 			.comp = {
 				.comp = __VECS(lzorle_comp_tv_template),
@@ -5780,7 +5787,7 @@ static const struct alg_test_desc alg_test_descs[] = {
 	}, {
 		.alg = "zstd",
 		.test = alg_test_comp,
-		.fips_allowed = FIPS_ALLOWED,
+		.fips_allowed = FIPS_ALLOWED | FIPS_NON_CRYPTOGRAPHIC,
 		.suite = {
 			.comp = {
 				.comp = __VECS(zstd_comp_tv_template),
