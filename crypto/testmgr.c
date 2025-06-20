@@ -5873,6 +5873,17 @@ static int alg_fips_disabled(const char *driver, const char *alg)
 	return -ECANCELED;
 }
 
+static int alg_test_fips_disabled(const struct alg_test_desc *desc)
+{
+	if (!fips_enabled)
+		return 0;
+
+	/*
+	 * Only allow FIPS-allowed algorithms to be tested.
+	 */
+	return !(desc->fips_allowed & FIPS_ALLOWED);
+}
+
 int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
 {
 	int i;
@@ -5897,7 +5908,7 @@ int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
 		if (i < 0)
 			goto notest;
 
-		if (fips_enabled && !alg_test_descs[i].fips_allowed)
+		if (alg_test_fips_disabled(&alg_test_descs[i]))
 			goto non_fips_alg;
 
 		rc = alg_test_cipher(alg_test_descs + i, driver, type, mask);
@@ -5910,10 +5921,9 @@ int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
 		goto notest;
 
 	if (fips_enabled) {
-		if (j >= 0 && !alg_test_descs[j].fips_allowed)
+		if (j >= 0 && alg_test_fips_disabled(&alg_test_descs[j]))
 			return -EINVAL;
-
-		if (i >= 0 && !alg_test_descs[i].fips_allowed)
+		if (i >= 0 && alg_test_fips_disabled(&alg_test_descs[i]))
 			goto non_fips_alg;
 	}
 
@@ -5958,7 +5968,7 @@ notest:
 		if (i < 0)
 			goto notest2;
 
-		if (fips_enabled && !alg_test_descs[i].fips_allowed)
+		if (alg_test_fips_disabled(&alg_test_descs[i]))
 			goto non_fips_alg;
 
 		rc = alg_test_skcipher(alg_test_descs + i, driver, type, mask);
