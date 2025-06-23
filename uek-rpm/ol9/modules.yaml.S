@@ -649,6 +649,7 @@ modules-core:
 - skx_edac
 - skx_edac_common
 - sr_mod
+- tpm_svsm
 - twofish-avx-x86_64
 - twofish-x86_64
 - twofish-x86_64-3way
