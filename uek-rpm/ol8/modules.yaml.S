@@ -108,6 +108,7 @@ modules-core:
 - dm-snapshot
 - dm-switch
 - dm-thin-pool
+- dm-vdo
 - dm-verity
 - dm-writecache
 - dm-zero
@@ -217,6 +218,8 @@ modules-core:
 - ixgbe
 - ixgbevf
 - khazad
+- krb5
+- krb5enc
 - libarc4
 - libceph
 - libchacha
@@ -730,6 +733,7 @@ modules:
 - adt7475
 - adt7x10
 - ahci_platform
+- air_en8811h
 - alim7101_wdt
 - altera-stapl
 - altera_ps2
@@ -810,6 +814,7 @@ modules:
 - cortina
 - cramfs
 - csiostor
+- curve25519-generic
 - cx82310_eth
 - cxgb
 - cxgb4vf
@@ -828,6 +833,7 @@ modules:
 - dp83848
 - dp83867
 - dp83tc811
+- dp83tg720
 - drbd
 - ds1621
 - ds620
@@ -985,6 +991,7 @@ modules:
 - jffs2
 - jme
 - jsm
+- kafs
 - kalmia
 - kaweth
 - keyspan_remote
@@ -1173,6 +1180,8 @@ modules:
 - peak_pciefd
 - peak_usb
 - pegasus
+- pfr_telemetry
+- pfr_update
 - phy-generic
 - physmap
 - pi3usb30532
@@ -1262,6 +1271,7 @@ modules:
 - rtl8150
 - rtsx_pci
 - rtsx_usb
+- rxrpc
 - sata_mv
 - sata_sil24
 - sc92031
@@ -1441,6 +1451,7 @@ modules:
 - typec_ucsi
 - uPD60620
 - ubi
+- ublk_drv
 - ucd9000
 - ucd9200
 - ucsi_acpi
@@ -2769,6 +2780,7 @@ modules-desktop:
 - bt878
 - btbcm
 - btintel
+- btintel_pcie
 - btmrvl
 - btmrvl_sdio
 - btrtl
@@ -2806,6 +2818,7 @@ modules-desktop:
 - drm_buddy
 - drm_display_helper
 - drm_exec
+- drm_gpusvm
 - drm_gpuvm
 - drm_panel_backlight_quirks
 - drm_suballoc_helper
@@ -2881,9 +2894,16 @@ modules-desktop:
 - hci_vhci
 - hdpvr
 - hid-asus
+- hid-cougar
 - hid-emsff
+- hid-evision
+- hid-letsketch
 - hid-picolcd
 - hid-prodikeys
+- hid-sigmamicro
+- hid-tivo
+- hid-wiimote
+- hid-xiaomi
 - hidp
 - hopper
 - iguanair
@@ -3162,6 +3182,7 @@ modules-desktop:
 - wm8739
 - wm8775
 - xc2028
+- xe
 
 /* modules-desktop: */
 #ifdef Arch_aarch64
@@ -3945,6 +3966,7 @@ modules-wireless:
 - ath10k_pci
 - ath11k
 - ath11k_pci
+- ath12k
 - ath9k
 - ath9k_common
 - ath9k_htc
