@@ -1930,8 +1930,10 @@ modules:
 - cirrusfb
 - ck804xrom
 - classmate-laptop
+- clk-tps68470
 - cmdlinepart
 - compal-laptop
+- counter
 - dax_cxl
 - dcdbas
 - de2104x
@@ -1979,6 +1981,7 @@ modules:
 - fujitsu-tablet
 - gpio-generic
 - gpio-ich
+- gpio-tps68470
 - gru
 - hangcheck-timer
 - hdaps
@@ -2040,9 +2043,12 @@ modules:
 - int3403_thermal
 - int340x_thermal_zone
 - intel-hid
+- intel-ishtp_eclite
 - intel-oaktrail
+- intel-qep
 - intel-rng
 - intel-rst
+- intel-sdsi
 - intel-smartconnect
 - intel-tpmi_power_domains
 - intel-uncore-frequency
@@ -2057,7 +2063,19 @@ modules:
 - intel_pmc_core
 - intel_pmc_core_pltdrv
 - intel_rapl_tpmi
+- intel_skl_int3472_common
+- intel_skl_int3472_discrete
+- intel_skl_int3472_tps68470
 - intel_soc_dts_iosf
+- intel_tcc_cooling
+- intel_th
+- intel_th_acpi
+- intel_th_gth
+- intel_th_msu
+- intel_th_msu_sink
+- intel_th_pci
+- intel_th_pti
+- intel_th_sth
 - isst_tpmi
 - isst_tpmi_core
 - it87
@@ -2080,6 +2098,11 @@ modules:
 - max1586
 - mdev
 - mdio-bcm-unimac
+- mei-gsc
+- mei-vsc
+- mei-vsc-hw
+- mei_gsc_proxy
+- mei_pxp
 - mei_wdt
 - mena21_wdt
 - mlx-platform
@@ -2270,6 +2293,7 @@ modules:
 - tps65023-regulator
 - tps6507x-regulator
 - tsm_report
+- tps68470-regulator
 - tulip
 - typhoon
 - uio_hv_generic
@@ -2451,7 +2475,6 @@ modules-extra:
 - aic79xx
 - aic7xxx
 - bfa
-- counter
 - ds2780_battery
 - ds2781_battery
 - hid-sensor-custom
@@ -2460,7 +2483,6 @@ modules-extra:
 - imm
 - industrialio-triggered-buffer
 - intel-xhci-usb-role-switch
-- intel_th
 - ips
 - kfifo_buf
 - kvmgt
@@ -3518,9 +3540,6 @@ modules-desktop:
 - i915
 - intel-ipu6
 - intel-ipu6-isys
-- intel_skl_int3472_common
-- intel_skl_int3472_discrete
-- intel_skl_int3472_tps68470
 - intel_vpu
 - isp1704_charger
 - ivsc-ace
@@ -3531,9 +3550,6 @@ modules-desktop:
 - max17040_battery
 - max17042_battery
 - max8903_charger
-- mei-vsc
-- mei-vsc-hw
-- mei_gsc_proxy
 - mt9m111
 - pinctrl-cs42l43
 - pinctrl-intel-platform
