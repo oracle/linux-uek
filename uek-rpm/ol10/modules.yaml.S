@@ -3137,6 +3137,15 @@ modules-desktop:
 - soundwire-cadence
 - soundwire-generic-allocation
 - soundwire-intel
+- speakup
+- speakup_acntsa
+- speakup_audptr
+- speakup_bns
+- speakup_dectlk
+- speakup_ltlk
+- speakup_soft
+- speakup_spkout
+- speakup_txprt
 - stk1160
 - streamzap
 - tda7432
