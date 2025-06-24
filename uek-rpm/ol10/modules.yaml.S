@@ -3849,6 +3849,7 @@ modules-usb:
 - empeg
 - ezusb
 - f81534
+- fsa4480
 - garmin_gps
 - huawei_cdc_ncm
 - idmouse
@@ -3888,6 +3889,7 @@ modules-usb:
 - spcp8x5
 - ssu100
 - symbolserial
+- thunderbolt_net
 - ti_usb_3410_5052
 - ueagle-atm
 - upd78f0730
@@ -3900,6 +3902,7 @@ modules-usb:
 - usbsevseg
 - visor
 - whiteheat
+- xr_serial
 - xsens_mt
 - xusbatm
 
