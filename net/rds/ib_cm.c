@@ -2634,6 +2634,9 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 		set_ib_conn_flag(RDS_IB_CQ_DESTROY, ic);
 
 	if (ic->i_cm_id) {
+		wait_event(ic->i_spawned_cm_handlers_wait,
+			   atomic_read(&ic->i_spawned_cm_handlers_count) == 0);
+
 		cancel_delayed_work_sync(&ic->i_cq_follow_send_affinity_w);
 		cancel_delayed_work_sync(&ic->i_cq_follow_recv_affinity_w);
 
@@ -2813,6 +2816,9 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	init_completion(&ic->i_last_wqe_complete);
 
 	INIT_DELAYED_WORK(&ic->i_rx_w.work, rds_ib_rx_handler);
+
+	atomic_set(&ic->i_spawned_cm_handlers_count, 0);
+	init_waitqueue_head(&ic->i_spawned_cm_handlers_wait);
 
 	spin_lock_irqsave(&ib_nodev_conns_lock, flags);
 	list_add_tail(&ic->ib_node, &ib_nodev_conns);

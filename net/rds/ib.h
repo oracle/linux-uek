@@ -387,6 +387,8 @@ struct rds_ib_connection {
 	spinlock_t              i_rx_lock;
 	unsigned int            i_rx_wait_for_handler;
 	atomic_t                i_worker_has_rx;
+	atomic_t		i_spawned_cm_handlers_count;
+	wait_queue_head_t	i_spawned_cm_handlers_wait;
 	int			i_preferred_send_cpu;
 	int			i_preferred_recv_cpu;
 	int			i_preferred_recv_sibling;
