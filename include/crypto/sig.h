@@ -40,7 +40,7 @@ struct crypto_sig {
  * Return: allocated handle in case of success; IS_ERR() is true in case
  *	   of an error, PTR_ERR() returns the error code.
  */
-struct crypto_sig *crypto_alloc_sig(const char *alg_name, u32 type, u32 mask);
+DECLARE_CRYPTO_API(crypto_alloc_sig, struct crypto_sig *, (const char *alg_name, u32 type, u32 mask), (alg_name, type, mask));
 
 static inline struct crypto_tfm *crypto_sig_tfm(struct crypto_sig *tfm)
 {
@@ -69,7 +69,7 @@ static inline void crypto_free_sig(struct crypto_sig *tfm)
  *
  * @tfm:	signature tfm handle allocated with crypto_alloc_sig()
  */
-int crypto_sig_maxsize(struct crypto_sig *tfm);
+DECLARE_CRYPTO_API(crypto_sig_maxsize, int, (struct crypto_sig *tfm), (tfm));
 
 /**
  * crypto_sig_sign() - Invoke signing operation
@@ -84,9 +84,9 @@ int crypto_sig_maxsize(struct crypto_sig *tfm);
  *
  * Return: zero on success; error code in case of error
  */
-int crypto_sig_sign(struct crypto_sig *tfm,
+DECLARE_CRYPTO_API(crypto_sig_sign, int, (struct crypto_sig *tfm,
 		    const void *src, unsigned int slen,
-		    void *dst, unsigned int dlen);
+		    void *dst, unsigned int dlen), (tfm, src, slen, dst, dlen));
 
 /**
  * crypto_sig_verify() - Invoke signature verification
@@ -102,9 +102,9 @@ int crypto_sig_sign(struct crypto_sig *tfm,
  *
  * Return: zero on verification success; error code in case of error.
  */
-int crypto_sig_verify(struct crypto_sig *tfm,
+DECLARE_CRYPTO_API(crypto_sig_verify, int, (struct crypto_sig *tfm,
 		      const void *src, unsigned int slen,
-		      const void *digest, unsigned int dlen);
+		      const void *digest, unsigned int dlen), (tfm, src, slen, digest, dlen));
 
 /**
  * crypto_sig_set_pubkey() - Invoke set public key operation
@@ -119,8 +119,8 @@ int crypto_sig_verify(struct crypto_sig *tfm,
  *
  * Return: zero on success; error code in case of error
  */
-int crypto_sig_set_pubkey(struct crypto_sig *tfm,
-			  const void *key, unsigned int keylen);
+DECLARE_CRYPTO_API(crypto_sig_set_pubkey, int, (struct crypto_sig *tfm,
+			  const void *key, unsigned int keylen), (tfm, key, keylen));
 
 /**
  * crypto_sig_set_privkey() - Invoke set private key operation
@@ -135,6 +135,6 @@ int crypto_sig_set_pubkey(struct crypto_sig *tfm,
  *
  * Return: zero on success; error code in case of error
  */
-int crypto_sig_set_privkey(struct crypto_sig *tfm,
-			   const void *key, unsigned int keylen);
+DECLARE_CRYPTO_API(crypto_sig_set_privkey, int, (struct crypto_sig *tfm,
+			   const void *key, unsigned int keylen), (tfm, key, keylen));
 #endif
