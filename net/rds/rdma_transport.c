@@ -388,8 +388,12 @@ static void rds_rdma_cm_event_handler_worker(struct work_struct *work)
 	struct rds_rdma_cm_event_handler_info *info = container_of(work,
 								   struct rds_rdma_cm_event_handler_info,
 								   work);
+	struct rds_ib_connection *ic = info->conn ? info->conn->c_transport_data : NULL;
 
 	rds_rdma_cm_event_handler_cmn(info->cm_id, &info->event, info->conn, info->isv6);
+
+	if (ic && atomic_dec_and_test(&ic->i_spawned_cm_handlers_count))
+		wake_up(&ic->i_spawned_cm_handlers_wait);
 
 	kfree(info);
 }
@@ -418,6 +422,9 @@ static void rds_spawn_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 		rds_rdma_cm_event_handler_cmn(cm_id, event, conn, isv6);
 		return;
 	}
+
+	if (ic)
+		atomic_inc(&ic->i_spawned_cm_handlers_count);
 
 	INIT_WORK(&info->work, rds_rdma_cm_event_handler_worker);
 
