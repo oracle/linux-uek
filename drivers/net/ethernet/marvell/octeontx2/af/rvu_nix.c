@@ -894,9 +894,7 @@ static int nix_bp_enable(struct rvu *rvu,
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
 
-	bpid_base = rvu_nix_get_bpid(rvu, req, type, chan_id);
 	chan_base = pfvf->rx_chan_base + req->chan_base;
-	bpid = bpid_base;
 
 	if (cpt_link) {
 		type = NIX_INTF_TYPE_CPT;
@@ -906,6 +904,8 @@ static int nix_bp_enable(struct rvu *rvu,
 		if (cfg != 2)
 			chan_base = rvu->hw->cpt_chan_base;
 	}
+	bpid_base = rvu_nix_get_bpid(rvu, req, type, chan_id);
+	bpid = bpid_base;
 
 	for (chan = chan_base; chan < (chan_base + req->chan_cnt); chan++) {
 		if (bpid < 0) {
