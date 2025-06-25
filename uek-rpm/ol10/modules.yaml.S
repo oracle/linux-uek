@@ -2230,7 +2230,7 @@ modules:
 - tpm_nsc
 - tps65023-regulator
 - tps6507x-regulator
-- tsm
+- tsm_report
 - tulip
 - typhoon
 - uio_hv_generic
