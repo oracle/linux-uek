@@ -2912,6 +2912,9 @@ modules-desktop:
 - imon
 - imon_raw
 - inexio
+- intel-m10-bmc-core
+- intel-m10-bmc-hwmon
+- intel-m10-bmc-spi
 - ir-imon-decoder
 - ir-jvc-decoder
 - ir-kbd-i2c
@@ -3093,6 +3096,7 @@ modules-desktop:
 - redrat3
 - regmap-sdw
 - regmap-sdw-mbq
+- regmap-spi-avmm
 - rfcomm
 - rtsx_pci_sdmmc
 - rtsx_usb_ms
@@ -3524,6 +3528,8 @@ modules-desktop:
 - cfag12864bfb
 - chromeos_laptop
 - chromeos_pstore
+- cs42l43
+- cs42l43-sdw
 - cs_dsp
 - cy8ctmg110_ts
 - ds2782_battery
@@ -3531,10 +3537,12 @@ modules-desktop:
 - gpio-charger
 - gpio_mouse
 - hampshire
+- hi556
 - hid-cp2112
 - i915
 - intel-ipu6
 - intel-ipu6-isys
+- ipu-bridge
 - isp1704_charger
 - ivsc-ace
 - ivsc-csi
@@ -3545,7 +3553,15 @@ modules-desktop:
 - max17042_battery
 - max8903_charger
 - mt9m111
+- ov01a10
+- ov13858
+- ov13b10
+- ov2740
+- ov5675
+- ov8856
+- pinctrl-cs42l43
 - pinctrl-intel-platform
+- pinctrl-meteorlake
 - pinctrl-meteorpoint
 - ps2mult
 - qt2160
@@ -3565,6 +3581,7 @@ modules-desktop:
 - snd-acp-sof-mach
 - snd-acp3x-rn
 - snd-acp63
+- snd-acp6x-pdm-dma
 - snd-acp70
 - snd-amd-sdw-acpi
 - snd-es1968
@@ -3580,9 +3597,12 @@ modules-desktop:
 - snd-hda-scodec-tas2781-i2c
 - snd-intel-sst-acpi
 - snd-intel-sst-core
+- snd-pci-acp6x
 - snd-pci-ps
 - snd-ps-pdm-dma
 - snd-ps-sdw-dma
+- snd-rpl-pci-acp6x
+- snd-soc-acp6x-mach
 - snd-soc-acpi
 - snd-soc-acpi-amd-match
 - snd-soc-acpi-intel-match
@@ -3615,6 +3635,8 @@ modules-desktop:
 - snd-soc-cs35l56-shared
 - snd-soc-cs35l56-spi
 - snd-soc-cs42l42-sdw
+- snd-soc-cs42l43
+- snd-soc-cs42l43-sdw
 - snd-soc-da7219
 - snd-soc-ehl-rt5660
 - snd-soc-es8326
@@ -3695,6 +3717,8 @@ modules-desktop:
 - snd-sof-probes
 - snd-sof-utils
 - snd-sof-xtensa-dsp
+- soundwire-amd
+- spi-cs42l43
 - tca6416-keypad
 - toshiba_acpi
 - toshiba_bluetooth
