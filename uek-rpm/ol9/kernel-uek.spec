@@ -108,6 +108,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define with_doc       1
 # kernel-headers
 %define with_headers   1
+# fips-module
+%define with_fips_build 1
 # bpftools
 %define with_bpftool   1
 # tools
@@ -430,6 +432,16 @@ BuildRequires: slang-devel
 BuildRequires: sparse >= 0.4.1
 %endif
 
+%global GOLDEN_VERSION 6.12.0-100.28.2.fipsdracut.el9uek.v1
+%global FIPS140_HMAC_KEY Sphinx of black quartz, judge my vow
+%if !%{with_fips_build}
+%if %{with_debug}
+BuildRequires: kernel%{?variant}-debug-fips-build-support = %{GOLDEN_VERSION}
+%else
+BuildRequires: kernel%{?variant}-fips-build-support = %{GOLDEN_VERSION}
+%endif
+%endif
+
 %ifarch x86_64 aarch64
 BuildRequires: libcap-devel
 %endif
@@ -579,6 +591,22 @@ Group: Development/System
 AutoReq: no
 %description  -n kernel%{variant}-container-debug
 Container kernel config file and System.map
+%endif
+
+#
+# This macro creates a kernel%%{?variant}-<subpackage>-debuginfo package.
+#       %%kernel_debuginfo_package [-o] <subpackage>
+# -o flag omits the hyphen preceding <subpackage> in the package name
+#
+%if %{with_fips_build}
+%define kernel_buildsupport_package(o) \
+%define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
+%package -n %{variant_name}-fips-build-support\
+Summary: Debug information for package %{variant_name}\
+Group: Development/Debug\
+AutoReqProv: no\
+%description -n %{variant_name}-fips-build-support\
+This package is only for building fips module
 %endif
 
 %if %{with_headers}
@@ -850,6 +878,7 @@ The meta-package for the %{1} kernel.\
 %package -n %{variant_name}-core\
 Summary: %{variant_summary}\
 Group: System Environment/Kernel\
+Requires: dracut-uek-fips >= 20250701\
 Provides: %{variant_name}-core-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: installonlypkg(%{installonly_variant_name}-core)\
 %ifarch x86_64\
@@ -871,6 +900,7 @@ Provides: kernel-ueknano = %{KVERREL}%{?1:.%{1}}\
 %{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s usb %{?1:%{1}}}\
 %{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s wireless %{?1:%{1}}}\
 %{expand:%%kernel_debuginfo_package %{-o:-o} %{?1:%{1}}}\
+%{expand:%%kernel_buildsupport_package %{-o:-o} %{?1:%{1}}}\
 %{nil}
 
 # Now, each variant package.
@@ -961,6 +991,7 @@ echo 'CONFIG_DTRACE=y' >> configs/config-debug
 for i in configs/config*; do
   sed -i 's/CONFIG_CRYPTO_FIPS_NAME="_FIPS_CONTAINER_KERNEL_"/CONFIG_CRYPTO_FIPS_NAME="%{ol_release_name} Container Kernel Cryptographic Module for %{uek_release_name}"/' $i
   sed -i 's/CONFIG_CRYPTO_FIPS_NAME="_FIPS_KERNEL_"/CONFIG_CRYPTO_FIPS_NAME="%{ol_release_name} %{uek_release_name_full} Crypto API"/' $i
+  sed -i 's/\(CONFIG_CRYPTO_FIPS140_HMAC_KEY\)="_FIPS_HMAC_KEY_"/\1="%{FIPS140_HMAC_KEY}"/' $i
 done
 %endif
 
@@ -1112,6 +1143,49 @@ BuildKernel() {
     # This ensures build-ids are unique to allow parallel debuginfo
     perl -p -i -e "s/^CONFIG_BUILD_SALT.*/CONFIG_BUILD_SALT=\"%{KVERREL}\"/" .config
 
+%if %{with_fips_build}
+    # Prepare for building out-of-tree modules
+    %{make} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} modules_prepare
+
+    # Build fips140.ko
+    %{make} ARCH=$Arch M=fips/ KBUILD_MODPOST_WARN=1
+
+    # Copy fips140.ko in preparation for stripping
+    mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer/fips
+    install -D fips/fips140.ko $RPM_BUILD_ROOT/lib/modules/$KernelVer/fips
+
+    # Extract debuginfo for (and strip) fips140.ko
+    /usr/bin/find-debuginfo %{?_smp_mflags} --strict-build-id -n -i --keep-section .BTF -p '.*/fips140\.ko|.*/fips140\.ko.\debug' -o fips-debuginfo-$KernelVer.list --remove-section .gnu.build.attributes $RPM_BUILD_ROOT/lib/modules/$KernelVer/fips
+
+    # Generate fips140.hmac and .vmlinuz-*-fips.hmac of the _stripped_ fips140.ko
+    openssl dgst -sha256 -hmac "%{FIPS140_HMAC_KEY}" -binary -out $RPM_BUILD_ROOT/lib/modules/$KernelVer/fips/fips140.hmac $RPM_BUILD_ROOT/lib/modules/$KernelVer/fips/fips140.ko
+    openssl dgst -sha256 -hmac "%{FIPS140_HMAC_KEY}" -out $RPM_BUILD_ROOT/lib/modules/$KernelVer/.vmlinuz-$KernelVer-fips.hmac < $RPM_BUILD_ROOT/lib/modules/$KernelVer/fips/fips140.ko
+
+    cp $RPM_BUILD_ROOT/lib/modules/$KernelVer/fips/fips-debuginfo-$KernelVer.list ../
+
+    # Copy (stripped) fips140.ko and fips140.hmac back into the kernel
+    # source tree for integration into vmlinux
+    cp $RPM_BUILD_ROOT/lib/modules/$KernelVer/fips/fips140.ko crypto/
+    cp $RPM_BUILD_ROOT/lib/modules/$KernelVer/fips/fips140.hmac crypto/
+
+    # Save stripped fips140.ko, fips140.ko.debug, and fips140.hmac for
+    # -fips-build-support subpackage RPM
+    FIPSDir=%{buildroot}/usr/lib/fips-build-support
+    mkdir -p ${FIPSDir}
+    mkdir -p ${FIPSDir}/$KernelVer/fips/
+    install -m 755 fips/fips140.ko ${FIPSDir}/$KernelVer/fips140.ko
+    install -m 755 $RPM_BUILD_ROOT/lib/modules/$KernelVer/fips/fips140.hmac ${FIPSDir}/$KernelVer/
+    cp -p $RPM_BUILD_ROOT%{debuginfodir}/lib/modules/$KernelVer/fips/fips140.ko.debug ${FIPSDir}/$KernelVer/
+%else
+    fips_golden_module_path=/usr/lib/fips-build-support/%{GOLDEN_VERSION}.%{_target_cpu}${Flavour:+.${Flavour}}
+    cp -p $fips_golden_module_path/fips140.hmac crypto/fips140.hmac
+    cp -p $fips_golden_module_path/fips140.ko crypto/fips140.ko
+
+    # Add fips140.hmac to /lib/modules for verification
+    mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer/
+    openssl dgst -sha256 -hmac "%{FIPS140_HMAC_KEY}" < $fips_golden_module_path/fips140.ko -out $RPM_BUILD_ROOT/lib/modules/$KernelVer/.vmlinuz-$KernelVer-fips.hmac
+%endif
+
     if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ]; then
        %{make} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
     else
@@ -1175,6 +1249,35 @@ BuildKernel() {
     # gcno references to sources can use absolute paths (e.g. in out-of-tree builds)
     # sysfs symlink targets (set up at compile time) use absolute paths to BUILD dir
     find . \( -name '*.gcno' -o -name '*.[chS]' \) -exec install -D '{}' "$RPM_BUILD_ROOT/$(pwd)/{}" \;
+%endif
+
+    # TODO : FIXME : trim then even before ?
+    rm -rf $RPM_BUILD_ROOT/lib/modules/$KernelVer/fips/*
+
+%if %{with_fips_build}
+    # Collect FIPS source code for the -fips-build-support subpackage RPM
+    mkdir -p ${FIPSDir}/usr/src/debug/kernel-%{version}/linux-%{kversion}-%{release}/fips
+    cd $RPM_BUILD_ROOT/usr/src/debug/kernel-%{version}/linux-%{kversion}-%{release}/fips
+    find -type f -name '*.[chS]' -exec cp --parents -t ${FIPSDir}/usr/src/debug/kernel-%{version}/linux-%{kversion}-%{release}/fips/ '{}' +
+    cd -
+
+    # Find the sources now check if this needs to go inside with_fips thing
+    find ${FIPSDir}/usr/src/debug/kernel-%{version}/linux-%{kversion}-%{release}/fips/ -type f -name '*.[chS]' | sed "s#%{buildroot}##" > fips-src-build-support.list
+    pwd
+    cp fips-src-build-support.list ../
+%else
+    FIPSDir=/usr/lib/fips-build-support
+
+    # Copy the .debuginfo files from build support package
+    mkdir -p $RPM_BUILD_ROOT%{debuginfodir}/lib/modules/$KernelVer/fips
+    fips_golden_module_path=/usr/lib/fips-build-support/%{GOLDEN_VERSION}.%{_target_cpu}${Flavour:+.${Flavour}}
+    cp -p ${fips_golden_module_path}/fips140.ko.debug $RPM_BUILD_ROOT%{debuginfodir}/lib/modules/$KernelVer/fips/
+
+    # Copy the source files from golden version to the debuginfo-common package
+    mkdir -p $RPM_BUILD_ROOT/usr/src/debug/kernel-%{version}/linux-%{kversion}-%{release}/fips/
+    cd ${FIPSDir}/usr/src/debug/kernel-%{version}/linux-%{GOLDEN_VERSION}/fips/
+    find -type f -name '*.[chS]' -exec cp --parents -t $RPM_BUILD_ROOT/usr/src/debug/kernel-%{version}/linux-%{kversion}-%{release}/fips/ '{}' +
+    cd -
 %endif
 
 %ifarch %{vdso_arches}
@@ -1316,6 +1419,7 @@ BuildKernel() {
 %if %{with_debuginfo}
     mkdir -p $RPM_BUILD_ROOT%{debuginfodir}/lib/modules/$KernelVer
     cp vmlinux $RPM_BUILD_ROOT%{debuginfodir}/lib/modules/$KernelVer
+
     # also include Symtypes.build for kABI maintenance
     [ -f Symtypes.build ] && gzip -c9 < Symtypes.build > $RPM_BUILD_ROOT%{debuginfodir}/lib/modules/$KernelVer/Symtypes.build.gz
 %endif
@@ -2148,6 +2252,7 @@ fi
 %ghost /boot/initramfs-%{KVERREL}%{?2:.%{2}}.img\
 %ghost /boot/config-%{KVERREL}%{?2:.%{2}}\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.packages\
+/lib/modules/%{KVERREL}%{?2:.%{2}}/.vmlinuz-%{KVERREL}%{?2:.%{2}}-fips.hmac\
 %{expand:%%files -f %{variant_name}-modules-core.list -n %{variant_name}-modules-core}\
 %dir /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/kernel/vmlinux.ctfa\
@@ -2186,6 +2291,14 @@ fi
 %endif\
 %{debuginfodir}/lib/modules/%{KVERREL}%{?2:.%{2}}\
 %{debuginfodir}/usr/src/kernels/%{KVERREL}%{?2:.%{2}}\
+%if %{with_fips_build}\
+%{expand:%%files -f fips-debuginfo-%{KVERREL}%{?2:.%{2}}.list}\
+%{expand:%%files -f fips-src-build-support.list -n %{variant_name}-fips-build-support}\
+%dir /usr/lib/fips-build-support\
+/usr/lib/fips-build-support/%{KVERREL}%{?2:.%{2}}/fips140.ko\
+/usr/lib/fips-build-support/%{KVERREL}%{?2:.%{2}}/fips140.ko.debug\
+/usr/lib/fips-build-support/%{KVERREL}%{?2:.%{2}}/fips140.hmac\
+%endif\
 %endif\
 %endif\
 %endif\
