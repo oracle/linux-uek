@@ -162,7 +162,7 @@
 #define PSW_AF_EPFX_PCIE_CFG(a)             (0x70C0000ull | ((a) << 3))
 #define PSW_AF_EPFX_EVFX_PCIE_CFG(a, b)     (0x70D0000ull | ((a) << 10) | \
 					     ((b) << 3))
-#define PSW_AF_MSIX_VEC_STAT(a)             (0x7400000ull | ((a) << 3))
+#define PSW_AF_MSIX_VECX_STAT(a)            (0x7400000ull | ((a) << 3))
 #define PSW_AF_MSIX_VECX_EPF_FUNC(a)        (0x7800000ull | ((a) << 3))
 #define PSW_AF_API_NOTIF_QC(a)              (0x8000000ull | ((a) << 3))
 #define PSW_AF_API_NOTIF_QCX(a)             (0x8000000ull | ((a) << 3))

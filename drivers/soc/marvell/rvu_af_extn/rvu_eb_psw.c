@@ -826,6 +826,25 @@ err:
 	return ret;
 }
 
+int rvu_mbox_handler_psw_mbox_msix_cfg(struct rvu *rvu, struct psw_mbox_msix_cfg_req *req,
+				       struct msg_rsp *rsp)
+{
+	struct psw_rsrc *psw = rvu->hw->psw;
+	int blkaddr = BLKADDR_PSW;
+	u8 pf, epf;
+
+	pf = rvu_get_pf(rvu->pdev, req->hdr.pcifunc);
+	epf = psw->pf2epf_map[pf];
+
+	if (req->evf_id == 0)
+		rvu_write64(rvu, blkaddr, PSW_AF_LF_EPFX_MBOX_MSIX(epf), req->mbox_msix & 0x1ff);
+	else
+		rvu_write64(rvu, blkaddr, PSW_AF_LF_EPFX_EVFX_MBOX_MSIX(epf, req->evf_id - 1),
+			    req->mbox_msix & 0x1ff);
+
+	return 0;
+}
+
 int rvu_mbox_handler_psw_tpt_cfg(struct rvu *rvu, struct psw_tpt_cfg_req *req,
 				 struct psw_tpt_cfg_rsp *rsp)
 {
