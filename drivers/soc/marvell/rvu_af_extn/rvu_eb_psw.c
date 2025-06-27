@@ -23,7 +23,79 @@
 		((((port) & 0x1) << 14) | (((epf) & 0x7) << 9) | \
 		((vf_id) & 0xFF))
 #define PSW_ECC_INT_BITS 37
+#define PSW_MAX_RID_CNT_PER_FUNC 260
+#define PSW_MAX_QUEUES 4096
+
 #define CONST_MAX_EPFS  GENMASK_ULL(63, 48)
+#define CONST1_MAX_GID  GENMASK_ULL(63, 48)
+
+#define PSW_PEM_ID(epf) (((epf) < PSW_EPFS_PER_PORT) ? 0 : 1)
+#define PSW_PEM_EPF(epf) (((epf) < PSW_EPFS_PER_PORT) ? (epf) : (epf) - PSW_EPFS_PER_PORT)
+
+#define gid_entry0_w(link, mid, qid, mvalid, iqvalid, oqvalid)      \
+({                                                                  \
+	u64 reg;                                                    \
+								    \
+	reg = FIELD_PREP(GID_ENT_LINK, link);                       \
+	reg |= FIELD_PREP(GID_ENT_MID, mid);                        \
+	reg |= FIELD_PREP(GID_ENT_QID, qid);                        \
+	reg |= FIELD_PREP(GID_ENT_MVALID, mvalid);                  \
+	reg |= FIELD_PREP(GID_ENT_IQVALID, iqvalid);                \
+	reg |= FIELD_PREP(GID_ENT_OQVALID, oqvalid);                \
+	rvu_write64(rvu, BLKADDR_PSW, PSW_AF_GID_ENTRY0_W, reg);    \
+})
+
+#define gid_entry1_w(wnum, rid, epffunc)                            \
+({                                                                  \
+	u64 reg;                                                    \
+								    \
+	reg = FIELD_PREP(GID_ENT_WNUM, wnum);                       \
+	reg |= FIELD_PREP(GID_ENT_RID, rid);                        \
+	reg |= FIELD_PREP(GID_ENT_EPFFUNC, epffunc);                \
+	rvu_write64(rvu, BLKADDR_PSW, PSW_AF_GID_ENTRY1_W, reg);    \
+})
+
+#define GID_LU_EPFFUNC	GENMASK_ULL(15, 0)
+#define GID_LU_RID	GENMASK_ULL(24, 16)
+
+#define GID_BKT_RSLT_BVALID GENMASK_ULL(0, 0)
+#define GID_BKT_RSLT_BSTART GENMASK_ULL(29, 16)
+#define GID_BKT_RSLT_BHASH  GENMASK_ULL(45, 32)
+
+#define GID_ENT_OQVALID GENMASK_ULL(0, 0)
+#define GID_ENT_IQVALID GENMASK_ULL(1, 1)
+#define GID_ENT_MVALID  GENMASK_ULL(2, 2)
+#define GID_ENT_QID     GENMASK_ULL(29, 16)
+#define GID_ENT_MID     GENMASK_ULL(45, 32)
+#define GID_ENT_LINK    GENMASK_ULL(61, 48)
+
+#define GID_ENT_EPFFUNC	GENMASK_ULL(15, 0)
+#define GID_ENT_RID	GENMASK_ULL(24, 16)
+#define GID_ENT_WNUM	GENMASK_ULL(45, 32)
+
+#define GID_BKT_BVALID  GENMASK_ULL(0, 0)
+#define GID_BKT_BSTART  GENMASK_ULL(29, 16)
+
+#define GID_ENT_RSLT1_MLL_ERR   GENMASK_ULL(0, 0)
+#define GID_ENT_RSLT1_LL_LENGTH GENMASK_ULL(31, 16)
+#define GID_ENT_RSLT1_PREV_LINK GENMASK_ULL(47, 32)
+#define GID_ENT_RSLT1_MATCH_LINK GENMASK_ULL(63, 48)
+
+#define GID_PARAM_LL_DEPTH GENMASK_ULL(31, 16)
+
+struct gid_key {
+	u16 epffunc;
+	u16 rid;
+};
+
+struct gid_action {
+	u16 link;
+	u16 mid;
+	u16 qid;
+	bool mvalid;
+	bool iqvalid;
+	bool oqvalid;
+};
 
 struct psw_rsrc {
 	u8 *pf2epf_map;
@@ -31,6 +103,9 @@ struct psw_rsrc {
 	u64 const1;
 	u64 const2;
 	u8 num_epfs;
+	struct rsrc_bmap gid_t;
+	struct rsrc_bmap qid_t;
+	struct rsrc_bmap mid_t;
 };
 
 struct psw_drvdata {
@@ -96,6 +171,7 @@ static irqreturn_t psw_ras_intr_handler(int irq, void *ptr)
 		cap_reg = rvu_read64(rvu, blkaddr, PSW_AF_FID_NOMATCH_CAPTURE);
 		dev_err_ratelimited(rvu->dev, "PSW_AF_FID_NOMATCH_CAPTURE: 0x%llx",
 				    cap_reg);
+		rvu_write64(rvu, blkaddr, PSW_AF_FID_NOMATCH_CAPTURE, 0x0);
 	}
 	if (reg & BIT_ULL(7)) {
 		dev_err_ratelimited(rvu->dev,
@@ -207,6 +283,356 @@ static int rvu_psw_check_rsrc_availability(struct rvu *rvu,
 	}
 
 	return 0;
+}
+
+static inline bool lookup_gid_entry(struct rvu *rvu, struct gid_key *key,
+				    u64 *result, u64 *result1, u64 *result0)
+{
+	u64 reg;
+
+	reg = FIELD_PREP(GID_LU_EPFFUNC, key->epffunc);
+	reg |= FIELD_PREP(GID_LU_RID, key->rid);
+	rvu_write64(rvu, BLKADDR_PSW, PSW_AF_GID_LU, reg);
+
+	*result = rvu_read64(rvu, BLKADDR_PSW, PSW_AF_GID_BUCKET_RESULT);
+	if (!FIELD_GET(GID_BKT_RSLT_BVALID, *result))
+		return false;
+
+	*result1 = rvu_read64(rvu, BLKADDR_PSW, PSW_AF_GID_ENTRY_RESULT1);
+	*result0 = rvu_read64(rvu, BLKADDR_PSW, PSW_AF_GID_ENTRY_RESULT0);
+
+	return true;
+}
+
+static inline void handle_first_entry(struct rvu *rvu, u16 bkt_id,
+				      u16 match_link, u16 rslt_link)
+{
+	u64 reg;
+
+	if (match_link == rslt_link) {
+		reg = FIELD_PREP(GID_BKT_BVALID, 0);
+		reg |= FIELD_PREP(GID_BKT_BSTART, 0);
+	} else {
+		/* Direct bucket to next link */
+		reg = FIELD_PREP(GID_BKT_BVALID, 1);
+		reg |= FIELD_PREP(GID_BKT_BSTART, rslt_link);
+	}
+	rvu_write64(rvu, BLKADDR_PSW, PSW_AF_GID_BUCKET(bkt_id), reg);
+}
+
+static inline void update_previous_link(struct rvu *rvu, u16 prev_link,
+					u16 match_link, u16 rslt_link)
+{
+	u16 link = (match_link == rslt_link) ? prev_link : rslt_link;
+	u64 prev_entry;
+
+	prev_entry = rvu_read64(rvu, BLKADDR_PSW, PSW_AF_GID_ENTRY0(prev_link));
+	gid_entry0_w(link, FIELD_GET(GID_ENT_MID, prev_entry),
+		     FIELD_GET(GID_ENT_QID, prev_entry),
+		     FIELD_GET(GID_ENT_MVALID, prev_entry),
+		     FIELD_GET(GID_ENT_IQVALID, prev_entry),
+		     FIELD_GET(GID_ENT_OQVALID, prev_entry));
+
+	prev_entry = rvu_read64(rvu, BLKADDR_PSW, PSW_AF_GID_ENTRY1(prev_link));
+	gid_entry1_w(prev_link, FIELD_GET(GID_ENT_RID, prev_entry),
+		     FIELD_GET(GID_ENT_EPFFUNC, prev_entry));
+}
+
+static int psw_gid_delete(struct rvu *rvu, struct gid_key *key,
+			  struct gid_action *action)
+{
+	u64 result, result1, result0;
+	u8 iqvalid, oqvalid, mvalid;
+	u16 match_link, rslt_link;
+	u16 bkt_id, prev_link;
+	u64 match_entry;
+
+	if (!lookup_gid_entry(rvu, key, &result, &result1, &result0))
+		return PSW_AF_ERR_GID_NOENT;
+
+	if (FIELD_GET(GID_ENT_RSLT1_MLL_ERR, result1))
+		return PSW_AF_ERR_GID_MLL;
+
+	iqvalid = FIELD_GET(GID_ENT_IQVALID, result0);
+	oqvalid = FIELD_GET(GID_ENT_OQVALID, result0);
+	mvalid = FIELD_GET(GID_ENT_MVALID, result0);
+
+	if (!iqvalid && !oqvalid && !mvalid)
+		return PSW_AF_ERR_GID_NOENT;
+
+	match_link = FIELD_GET(GID_ENT_RSLT1_MATCH_LINK, result1);
+	prev_link = FIELD_GET(GID_ENT_RSLT1_PREV_LINK, result1);
+	rslt_link = FIELD_GET(GID_ENT_LINK, result0);
+
+	match_entry = rvu_read64(rvu, BLKADDR_PSW, PSW_AF_GID_ENTRY1(match_link));
+	if (FIELD_GET(GID_ENT_RID, match_entry) != key->rid ||
+	    FIELD_GET(GID_ENT_EPFFUNC, match_entry) != key->epffunc)
+		return PSW_AF_ERR_GID_NOENT;
+
+	bkt_id = FIELD_GET(GID_BKT_RSLT_BHASH, result);
+
+	action->qid = FIELD_GET(GID_ENT_QID, result0);
+	action->mid = FIELD_GET(GID_ENT_MID, result0);
+	action->iqvalid = iqvalid;
+	action->oqvalid = oqvalid;
+	action->mvalid = mvalid;
+
+	if (FIELD_GET(GID_ENT_RSLT1_LL_LENGTH, result1) == 1)
+		/* Match is on first entry */
+		handle_first_entry(rvu, bkt_id, match_link, rslt_link);
+	else
+		update_previous_link(rvu, prev_link, match_link, rslt_link);
+
+	/* Clear matched entry */
+	gid_entry0_w(0, 0, 0, 0, 0, 0);
+	gid_entry1_w(match_link, 0, 0);
+
+	mutex_lock(&rvu->rsrc_lock);
+	rvu_free_rsrc(&rvu->hw->psw->gid_t, match_link);
+	mutex_unlock(&rvu->rsrc_lock);
+
+	return 0;
+}
+
+static int psw_gid_insert(struct rvu *rvu, struct gid_key *key,
+			  struct gid_action *action)
+{
+	struct psw_rsrc *psw = rvu->hw->psw;
+	u16 link, bkt_id, max_ll_depth;
+	u64 result, result1, result0;
+	u8 iqvalid, oqvalid, mvalid;
+	u64 temp0, temp1, rslt_link;
+	u64 reg;
+
+	link = action->link;
+	if (!lookup_gid_entry(rvu, key, &result, &result1, &result0)) {
+		/* Bucket doesn't exist, insert entry to table */
+		gid_entry0_w(link, action->mid, action->qid, action->mvalid,
+			     action->iqvalid, action->oqvalid);
+		gid_entry1_w(link, key->rid, key->epffunc);
+
+		reg = FIELD_PREP(GID_BKT_BVALID, 1);
+		reg |= FIELD_PREP(GID_BKT_BSTART, link);
+
+		bkt_id = FIELD_GET(GID_BKT_RSLT_BHASH, result);
+		rvu_write64(rvu, BLKADDR_PSW, PSW_AF_GID_BUCKET(bkt_id), reg);
+	} else {
+		if (FIELD_GET(GID_ENT_RSLT1_MLL_ERR, result1)) {
+			rvu_free_rsrc(&psw->gid_t, action->link);
+			return PSW_AF_ERR_GID_MLL;
+		}
+
+		iqvalid = FIELD_GET(GID_ENT_IQVALID, result0);
+		oqvalid = FIELD_GET(GID_ENT_OQVALID, result0);
+		mvalid = FIELD_GET(GID_ENT_MVALID, result0);
+
+		if (iqvalid || oqvalid || mvalid) {
+			rvu_free_rsrc(&psw->gid_t, action->link);
+			return PSW_AF_ERR_GID_EXIST;
+		}
+
+		reg = rvu_read64(rvu, BLKADDR_PSW, PSW_AF_GID_PARAM);
+		max_ll_depth = FIELD_GET(GID_PARAM_LL_DEPTH, reg);
+		if (FIELD_GET(GID_ENT_RSLT1_LL_LENGTH, result1) ==
+		    max_ll_depth)  {
+			reg = FIELD_PREP(GID_PARAM_LL_DEPTH, max_ll_depth + 1);
+			rvu_write64(rvu, BLKADDR_PSW, PSW_AF_GID_PARAM, reg);
+		}
+		gid_entry0_w(link, action->mid, action->qid, action->mvalid,
+			     action->iqvalid, action->oqvalid);
+		gid_entry1_w(link, key->rid, key->epffunc);
+
+		rslt_link = FIELD_GET(GID_ENT_LINK, result0);
+		temp0 = rvu_read64(rvu, BLKADDR_PSW, PSW_AF_GID_ENTRY0(rslt_link));
+		temp1 = rvu_read64(rvu, BLKADDR_PSW, PSW_AF_GID_ENTRY1(rslt_link));
+
+		temp0 &= ~GID_ENT_LINK;
+		temp0 |= FIELD_PREP(GID_ENT_LINK, link);
+
+		temp1 &= ~GID_ENT_WNUM;
+		temp1 |= FIELD_PREP(GID_ENT_WNUM, rslt_link);
+
+		rvu_write64(rvu, BLKADDR_PSW, PSW_AF_GID_ENTRY0_W, temp0);
+		rvu_write64(rvu, BLKADDR_PSW, PSW_AF_GID_ENTRY1_W, temp1);
+	}
+
+	return 0;
+}
+
+static int gid_insert(struct rvu *rvu, u16 epffunc, u16 rid, u16 gid, u16 qid,
+		      u16 mid, u8 mvalid, u8 iqvalid, u8 oqvalid)
+{
+	struct gid_action action;
+	struct gid_key key;
+
+	key.rid = rid;
+	key.epffunc = epffunc;
+	action.link = gid;
+	action.qid = qid;
+	action.mid = mid;
+	action.mvalid = mvalid;
+	action.iqvalid = iqvalid;
+	action.oqvalid = oqvalid;
+	if (mvalid)
+		rvu_write64(rvu, BLKADDR_PSW, PSW_AF_MSIX_VECX_EPF_FUNC(mid), epffunc);
+
+	return psw_gid_insert(rvu, &key, &action);
+}
+
+static int gid_alloc_resources(struct rvu *rvu, u16 rid_base, int min_cnt,
+			       int max_cnt, int inb_qs, int outb_qs,
+			       u16 epffunc)
+{
+	struct psw_rsrc *psw = rvu->hw->psw;
+	u16 gid_idx, qid_idx, msid_idx, cnt;
+	u8 iqvalid = 0, oqvalid = 0;
+	struct gid_action action;
+	u16 rid, gid, qid, mid;
+	struct gid_key key;
+	int ret;
+
+	cnt = min_cnt;
+	gid_idx = rvu_alloc_rsrc_contig(&psw->gid_t, cnt);
+	qid_idx = rvu_alloc_rsrc_contig(&psw->qid_t, cnt);
+	msid_idx = rvu_alloc_rsrc_contig(&psw->mid_t, cnt);
+
+	for (rid = 0, gid = gid_idx, qid = qid_idx, mid = msid_idx; rid < min_cnt;
+	     rid++, gid++, qid++, mid++) {
+		ret = gid_insert(rvu, epffunc, rid + rid_base, gid, qid, mid, 1, 1, 1);
+		if (ret)
+			goto err;
+	}
+	cnt = 0;
+	if (inb_qs != outb_qs) {
+		cnt = abs(inb_qs - outb_qs);
+		iqvalid = inb_qs > outb_qs ? 1 : 0;
+		oqvalid = inb_qs > outb_qs ? 0 : 1;
+	}
+	gid_idx = rvu_alloc_rsrc_contig(&psw->gid_t, cnt);
+	qid_idx = rvu_alloc_rsrc_contig(&psw->qid_t, cnt);
+	msid_idx = rvu_alloc_rsrc_contig(&psw->mid_t, cnt);
+
+	for (gid = gid_idx, qid = qid_idx, mid = msid_idx; rid < (cnt + min_cnt);
+	     rid++, gid++, qid++, mid++) {
+		ret = gid_insert(rvu, epffunc, rid + rid_base, gid, qid, mid, 1,
+				 iqvalid, oqvalid);
+		if (ret)
+			goto err;
+	}
+
+	cnt = max_cnt - rid;
+	gid_idx = rvu_alloc_rsrc_contig(&psw->gid_t, cnt);
+	msid_idx = rvu_alloc_rsrc_contig(&psw->mid_t, cnt);
+
+	for (gid = gid_idx, mid = msid_idx; rid < max_cnt; rid++, gid++, mid++) {
+		ret = gid_insert(rvu, epffunc, rid + rid_base, gid, 0, mid, 1, 0, 0);
+		if (ret)
+			goto err;
+	}
+	return 0;
+
+err:
+	rid--;
+	key.epffunc = epffunc;
+	for (; rid >= 0; rid--) {
+		key.rid = rid + rid_base;
+		psw_gid_delete(rvu, &key, &action);
+
+		mutex_lock(&rvu->rsrc_lock);
+		if (action.iqvalid || action.oqvalid)
+			rvu_free_rsrc(&psw->qid_t, action.qid);
+		rvu_free_rsrc(&psw->mid_t, action.mid);
+
+		mutex_unlock(&rvu->rsrc_lock);
+	}
+	mutex_lock(&rvu->rsrc_lock);
+	rvu_free_rsrc_contig(&psw->gid_t, cnt, gid_idx);
+	rvu_free_rsrc_contig(&psw->qid_t, cnt, qid_idx);
+	rvu_free_rsrc_contig(&psw->mid_t, cnt, msid_idx);
+	mutex_unlock(&rvu->rsrc_lock);
+
+	return ret;
+}
+
+int rvu_mbox_handler_psw_gid_free(struct rvu *rvu,
+				  struct psw_gid_free_req *req,
+				  struct msg_rsp *rsp)
+{
+	struct psw_rsrc *psw = rvu->hw->psw;
+	u16 nb_rids = req->nb_rids, rid;
+	struct gid_action action;
+	struct gid_key key;
+	u8 pf, epf, port;
+	int ret;
+
+	pf = rvu_get_pf(rvu->pdev, req->hdr.pcifunc);
+	epf = psw->pf2epf_map[pf];
+	port = PSW_PEM_ID(epf);
+	epf = PSW_PEM_EPF(epf);
+	key.epffunc = PSW_EPFFUNC(port, epf, req->evf_id);
+
+	for (rid = req->rid_base; rid < nb_rids; rid++) {
+		key.rid = rid;
+		ret = psw_gid_delete(rvu, &key, &action);
+		if (ret)
+			return ret;
+
+		mutex_lock(&rvu->rsrc_lock);
+		if (action.iqvalid || action.oqvalid)
+			rvu_free_rsrc(&psw->qid_t, action.qid);
+		rvu_free_rsrc(&psw->mid_t, action.mid);
+
+		mutex_unlock(&rvu->rsrc_lock);
+	}
+
+	return 0;
+}
+
+int rvu_mbox_handler_psw_gid_alloc(struct rvu *rvu,
+				   struct psw_gid_alloc_req *req,
+				   struct msg_rsp *rsp)
+{
+	struct psw_rsrc *psw = rvu->hw->psw;
+	u16 min_cnt, max_cnt, max_q_cnt;
+	u16 outb_qs = req->nb_outb_qs;
+	u16 inb_qs = req->nb_inb_qs;
+	u16 nb_msid = req->nb_mid;
+	u8 pf, epf, port;
+	u16 epffunc;
+	int ret;
+
+	min_cnt = min(inb_qs, outb_qs);
+	min_cnt = min(nb_msid, min_cnt);
+
+	max_q_cnt = max(inb_qs, outb_qs);
+	if (nb_msid < max_q_cnt)
+		return PSW_AF_ERR_PARAM;
+	max_cnt = max(nb_msid, max_q_cnt);
+	if (max_cnt > PSW_MAX_RID_CNT_PER_FUNC)
+		return PSW_AF_ERR_PARAM;
+
+	pf = rvu_get_pf(rvu->pdev, req->hdr.pcifunc);
+	epf = psw->pf2epf_map[pf];
+	port = PSW_PEM_ID(epf);
+	epf = PSW_PEM_EPF(epf);
+	epffunc = PSW_EPFFUNC(port, epf, req->evf_id);
+
+	mutex_lock(&rvu->rsrc_lock);
+	if (!rvu_rsrc_check_contig(&psw->gid_t, max_cnt))
+		return PSW_AF_ERR_NOSPC;
+
+	if (!rvu_rsrc_check_contig(&psw->qid_t, max_q_cnt))
+		return PSW_AF_ERR_NOSPC;
+
+	if (!rvu_rsrc_check_contig(&psw->mid_t, max_cnt))
+		return PSW_AF_ERR_NOSPC;
+
+	ret = gid_alloc_resources(rvu, req->rid_base, min_cnt, max_cnt, inb_qs,
+				  outb_qs, epffunc);
+
+	mutex_unlock(&rvu->rsrc_lock);
+
+	return ret;
 }
 
 int rvu_mbox_handler_psw_caps_get(struct rvu *rvu, struct msg_req *req,
@@ -512,6 +938,39 @@ free_bmap:
 	return ret;
 }
 
+static int psw_gid_setup(struct rvu *rvu, struct psw_rsrc *psw, int blkaddr)
+{
+	int ret;
+	u64 reg;
+
+	psw->gid_t.max = FIELD_GET(CONST1_MAX_GID, psw->const1);
+
+	ret = rvu_alloc_bitmap(&psw->gid_t);
+	if (ret)
+		return ret;
+
+	psw->qid_t.max = PSW_MAX_QUEUES;
+	ret = rvu_alloc_bitmap(&psw->qid_t);
+	if (ret)
+		goto gid_t_free;
+
+	psw->mid_t.max = psw->gid_t.max;
+	ret = rvu_alloc_bitmap(&psw->mid_t);
+	if (ret)
+		goto qid_t_free;
+
+	reg = FIELD_PREP(GID_PARAM_LL_DEPTH, 5);
+	rvu_write64(rvu, BLKADDR_PSW, PSW_AF_GID_PARAM, reg);
+
+	return 0;
+
+qid_t_free:
+	kfree(psw->qid_t.bmap);
+gid_t_free:
+	kfree(psw->gid_t.bmap);
+	return ret;
+}
+
 static int rvu_psw_init_block(struct rvu_block *block, void *data)
 {
 	struct psw_drvdata *drvdata = data;
@@ -556,7 +1015,7 @@ static int rvu_psw_init_block(struct rvu_block *block, void *data)
 	psw->num_epfs = epf_id;
 	psw->pf2epf_map = pf2epf_map;
 
-	return 0;
+	return psw_gid_setup(rvu, psw, blkaddr);
 }
 
 static void *rvu_psw_probe(struct rvu *rvu, int blkaddr)
@@ -585,9 +1044,17 @@ static void *rvu_psw_probe(struct rvu *rvu, int blkaddr)
 	return data;
 }
 
-static void rvu_psw_remove(struct rvu_block *hwblock, void *data)
+static void rvu_psw_remove(struct rvu_block *block, void *data)
 {
-	devm_kfree(hwblock->rvu->dev, data);
+	struct rvu *rvu = block->rvu;
+	struct psw_rsrc *psw;
+
+	psw = rvu->hw->psw;
+
+	kfree(psw->gid_t.bmap);
+	kfree(psw->qid_t.bmap);
+	kfree(psw->mid_t.bmap);
+	devm_kfree(block->rvu->dev, data);
 }
 
 static int rvu_psw_mbox_handler(struct otx2_mbox *mbox, int devid,

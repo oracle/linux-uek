@@ -20,6 +20,8 @@ M(PSW_FREE_RSRC_CNT,	0x1202, psw_free_rsrc_cnt, msg_req,             \
 M(PSW_MSIX_OFFSET,	0x1203, psw_msix_offset, msg_req,               \
 				psw_msix_offset_rsp)                    \
 M(PSW_CAPS_GET,      0x1204, psw_caps_get, msg_req, psw_caps_get_rsp)	\
+M(PSW_GID_ALLOC,     0x1205, psw_gid_alloc, psw_gid_alloc_req, msg_rsp)	\
+M(PSW_GID_FREE,      0x1206, psw_gid_free, psw_gid_free_req, msg_rsp)	\
 
 /* PSW mailbox error codes
  * Range 1301 - 1400.
@@ -27,6 +29,10 @@ M(PSW_CAPS_GET,      0x1204, psw_caps_get, msg_req, psw_caps_get_rsp)	\
 enum psw_af_status {
 	PSW_AF_ERR_PARAM		= -1301,
 	PSW_AF_ERR_LF_INVALID           = -1302,
+	PSW_AF_ERR_NOSPC                = -1303,
+	PSW_AF_ERR_GID_MLL              = -1304,
+	PSW_AF_ERR_GID_EXIST            = -1305,
+	PSW_AF_ERR_GID_NOENT            = -1306,
 };
 
 struct psw_rsrc_attach_req {
@@ -73,6 +79,40 @@ struct psw_caps_get_rsp {
 	 */
 	u64 fid_type_const[PSW_TYPE_COUNT];
 	u64 rsvd1[7];
+};
+
+/* Setups GID table and provides resources for the requested number of
+ * queues.
+ *
+ * GID_ENTRY[X]: PF_FUNC = EPF_FUNC, RID = rid_base, QID = A1;
+ * GID_ENTRY[X+1]: PF_FUNC = EPF_FUNC, RID = rid_base + 1, QID = A2;
+ * GID_ENTRY[X+2]: PF_FUNC = EPF_FUNC, RID = rid_base + 2, QID = A3;
+ * ...
+ * ...
+ * GID_ENTRY[X + nb_inb_qs - 1]: PF_FUNC = EPF_FUNC, RID = nb_inb_qs - 1,
+ * QID = AN;
+ */
+struct psw_gid_alloc_req {
+	struct mbox_msghdr hdr;
+	u16 evf_id;  /* Host VF ID */
+	u16 nb_inb_qs; /* Number of inbound queues */
+	u16 nb_outb_qs; /* Number of outbound queues */
+	u16 nb_mid; /* Number of MSIX ID's */
+	u16 rid_base; /* Base RID */
+	u16 rsvd1[3];
+	u64 rsvd2;
+};
+
+/* Frees up GID table all entries for requested epf_func.
+ * and releases the associated HIB, SHIB, HOB, SHOB.
+ */
+struct psw_gid_free_req {
+	struct mbox_msghdr hdr;
+	u16 evf_id; /* Host VF ID */
+	u16 nb_rids;
+	u16 rid_base;
+	u16 rsvd1;
+	u64 rsvd2;
 };
 
 #define M(_name, _id, _fn, _req_t, _rsp_t)                              \
