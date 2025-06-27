@@ -31,6 +31,11 @@ M(PSW_EPFVF_MAP_CFG,    0x120A, psw_epfvf_map_cfg, psw_epfvf_map_cfg_req, \
 				msg_rsp)				\
 M(PSW_EPFVF_PCIE_CFG,   0x120B, psw_epfvf_pcie_cfg, psw_epfvf_pcie_cfg_req, \
 				msg_rsp)				\
+M(PSW_TPT_CFG,          0x120C, psw_tpt_cfg, psw_tpt_cfg_req, psw_tpt_cfg_rsp)	\
+M(PSW_TST_ADD_ENTRY,    0x120D, psw_tst_add_entry, psw_tst_add_entry_req, \
+				psw_tst_add_entry_rsp)			\
+M(PSW_TST_MODIFY_ENTRY, 0x120E, psw_tst_modify_entry, psw_tst_modify_entry_req, \
+				msg_rsp)				\
 
 /* PSW mailbox error codes
  * Range 1301 - 1400.
@@ -194,6 +199,67 @@ struct psw_epfvf_pcie_cfg_req {
 	u16 evf_id; /* Host VF ID */
 	u8 msix_enable; /* Enable or disable MSIX */
 	u8 master_enable; /* Enable or disable master */
+	u32 rsvd1;
+	u64 rsvd2;
+};
+
+/* Adds, modifies or removes a entry in timer profile table. */
+struct psw_tpt_cfg_req {
+	struct mbox_msghdr hdr;
+#define PSW_TPT_ENTRY_ADD 0x1
+#define PSW_TPT_ENTRY_MODIFY 0x2
+#define PSW_TPT_ENTRY_REMOVE 0x3
+	/* Operation to be performed on tpt entry */
+	u8 op;
+	/* Timer profile table(TPT) entry ID incase of MODIFY and REMOVE */
+	u8 tpt_id;
+	/* Number of timer ticks between polling structure transfers */
+	u16 target;
+	/* Profile start delay */
+	u8 start_dly;
+	u8 rsvd1[3];
+	u64 rsvd2;
+};
+
+struct psw_tpt_cfg_rsp {
+	struct mbox_msghdr hdr;
+	/* Allocated Timer profile table entry ID incase of op:ADD */
+	u16 tpt_id;
+	u16 rsvd[3];
+};
+
+struct psw_timed_polling_s {
+	u64 w0;
+	u64 w1;
+	u64 w2;
+	u64 w3;
+};
+
+/* Adds a entry in timer select table. */
+struct psw_tst_add_entry_req {
+	struct mbox_msghdr hdr;
+	/* Timer profile table(TPT) entry ID to be used for a tst */
+	u8 tpt_id;
+	u8 rsvd1[7];
+	struct psw_timed_polling_s entry;
+	u64 rsvd2;
+};
+
+struct psw_tst_add_entry_rsp {
+	struct mbox_msghdr hdr;
+	/* Allocated Timer select table entry ID incase of op:ADD */
+	u16 tst_id;
+	u16 rsvd[3];
+};
+
+/* Modifies or removes a entry in timer select table. */
+struct psw_tst_modify_entry_req {
+	struct mbox_msghdr hdr;
+	u8 enable;
+	/* Timer profile table(TPT) entry ID to be used for a tst */
+	u8 tpt_id;
+	/* Timer select table entry ID incase of MODIFY and REMOVE */
+	u16 tst_id;
 	u32 rsvd1;
 	u64 rsvd2;
 };

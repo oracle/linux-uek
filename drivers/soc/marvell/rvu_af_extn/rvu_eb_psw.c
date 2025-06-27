@@ -25,9 +25,12 @@
 #define PSW_ECC_INT_BITS 37
 #define PSW_MAX_RID_CNT_PER_FUNC 260
 #define PSW_MAX_QUEUES 4096
+#define PSW_PST_ENTRY_SZ 32
 
 #define CONST_MAX_EPFS  GENMASK_ULL(63, 48)
 #define CONST1_MAX_GID  GENMASK_ULL(63, 48)
+#define CONST2_NUM_TPT  GENMASK_ULL(23, 16)
+#define CONST2_NUM_TST  GENMASK_ULL(39, 24)
 
 #define PSW_PEM_ID(epf) (((epf) < PSW_EPFS_PER_PORT) ? 0 : 1)
 #define PSW_PEM_EPF(epf) (((epf) < PSW_EPFS_PER_PORT) ? (epf) : (epf) - PSW_EPFS_PER_PORT)
@@ -112,6 +115,11 @@
 #define PCIE_CFG_MASTERENA  GENMASK_ULL(2, 2)
 #define PCIE_CFG_MSIXENA    GENMASK_ULL(0, 0)
 
+#define TPT_TARGET     GENMASK_ULL(11, 0)
+#define TPT_START_DLY  GENMASK_ULL(23, 16)
+#define TST_PROFILE GENMASK_ULL(4, 0)
+#define TST_ENABLE  GENMASK_ULL(7, 7)
+
 struct gid_key {
 	u16 epffunc;
 	u16 rid;
@@ -136,6 +144,10 @@ struct psw_rsrc {
 	struct rsrc_bmap qid_t;
 	struct rsrc_bmap mid_t;
 	struct rsrc_bmap fid_t;
+	struct rsrc_bmap tpt_t;
+	struct rsrc_bmap tst_t;
+	void *pst_base_addr;
+	dma_addr_t pst_dma_addr;
 };
 
 struct psw_drvdata {
@@ -313,6 +325,61 @@ static int rvu_psw_check_rsrc_availability(struct rvu *rvu,
 	}
 
 	return 0;
+}
+
+static int psw_tps_pause_and_update(struct rvu *rvu, int blkaddr, u64 reg,
+				    u64 offset)
+{
+	u64 reg_pause;
+	int ret;
+
+	reg_pause = rvu_read64(rvu, blkaddr, PSW_AF_TPS_PAUSE);
+	rvu_write64(rvu, blkaddr, PSW_AF_TPS_PAUSE, reg_pause | BIT_ULL(0));
+	ret = rvu_poll_reg(rvu, blkaddr, PSW_AF_TPS_PAUSE, BIT_ULL(1), false);
+	if (ret) {
+		dev_err(rvu->dev, "PSW AF TPS PAUSE timeout\n");
+		return ret;
+	}
+	rvu_write64(rvu, blkaddr, offset, reg);
+
+	reg_pause = rvu_read64(rvu, blkaddr, PSW_AF_TPS_PAUSE);
+	rvu_write64(rvu, blkaddr, PSW_AF_TPS_PAUSE, reg_pause & ~BIT_ULL(0));
+
+	return 0;
+}
+
+static int psw_tpt_entry_add(struct rvu *rvu, struct psw_rsrc *psw, int blkaddr,
+			     struct psw_tpt_cfg_req *req,
+			     struct psw_tpt_cfg_rsp *rsp)
+{
+	u8 tpt_id;
+	u64 reg;
+
+	tpt_id = rvu_alloc_rsrc(&psw->tpt_t);
+	if (tpt_id < 0)
+		return PSW_AF_ERR_NOSPC;
+
+	reg = FIELD_PREP(TPT_TARGET, req->target);
+	reg |= FIELD_PREP(TPT_START_DLY, req->start_dly);
+	rvu_write64(rvu, blkaddr, PSW_AF_TIMER_PROFILE_TBL(tpt_id), reg);
+	rsp->tpt_id = tpt_id;
+
+	return 0;
+}
+
+static int psw_tpt_entry_modify(struct rvu *rvu, struct psw_rsrc *psw,
+				int blkaddr, struct psw_tpt_cfg_req *req)
+{
+	u64 reg;
+
+	if (req->tpt_id >= psw->tpt_t.max)
+		return PSW_AF_ERR_PARAM;
+
+	reg = FIELD_PREP(TPT_TARGET, req->target);
+	reg |= FIELD_PREP(TPT_START_DLY, req->start_dly);
+	return psw_tps_pause_and_update(rvu, blkaddr,
+					PSW_AF_TIMER_PROFILE_TBL(req->tpt_id),
+					reg);
 }
 
 static inline bool lookup_gid_entry(struct rvu *rvu, struct gid_key *key,
@@ -582,6 +649,90 @@ err:
 	mutex_unlock(&rvu->rsrc_lock);
 
 	return ret;
+}
+
+int rvu_mbox_handler_psw_tpt_cfg(struct rvu *rvu, struct psw_tpt_cfg_req *req,
+				 struct psw_tpt_cfg_rsp *rsp)
+{
+	struct psw_rsrc *psw = rvu->hw->psw;
+	int blkaddr = BLKADDR_PSW, ret;
+
+	if (!psw->pst_base_addr)
+		return 0;
+
+	switch (req->op) {
+	case PSW_TPT_ENTRY_ADD:
+		return psw_tpt_entry_add(rvu, psw, blkaddr, req, rsp);
+	case PSW_TPT_ENTRY_MODIFY:
+		return psw_tpt_entry_modify(rvu, psw, blkaddr, req);
+	case PSW_TPT_ENTRY_REMOVE:
+		ret = psw_tpt_entry_modify(rvu, psw, blkaddr, req);
+		rvu_free_rsrc(&psw->tpt_t, req->tpt_id);
+		return ret;
+	default:
+		return PSW_AF_ERR_PARAM;
+	}
+}
+
+int rvu_mbox_handler_psw_tst_add_entry(struct rvu *rvu,
+				       struct psw_tst_add_entry_req *req,
+				       struct psw_tst_add_entry_rsp *rsp)
+{
+	struct psw_rsrc *psw = rvu->hw->psw;
+	struct psw_timed_polling_s *addr;
+	int blkaddr = BLKADDR_PSW, ret;
+	u16 tst_id;
+	u64 reg;
+
+	if (!psw->pst_base_addr)
+		return 0;
+
+	tst_id = rvu_alloc_rsrc(&psw->tst_t);
+	if (tst_id < 0)
+		return PSW_AF_ERR_NOSPC;
+
+	addr = psw->pst_base_addr;
+	addr[tst_id] = req->entry;
+
+	reg = FIELD_PREP(TST_PROFILE, req->tpt_id);
+	reg |= FIELD_PREP(TST_ENABLE, 1);
+
+	ret = psw_tps_pause_and_update(rvu, blkaddr,
+				       PSW_AF_TIMER_SEL_TBL(tst_id), reg);
+	if (ret)
+		return ret;
+
+	rsp->tst_id = tst_id;
+
+	return 0;
+}
+
+int rvu_mbox_handler_psw_tst_modify_entry(struct rvu *rvu,
+					  struct psw_tst_modify_entry_req *req,
+					  struct msg_rsp *rsp)
+{
+	struct psw_rsrc *psw = rvu->hw->psw;
+	int blkaddr = BLKADDR_PSW, ret;
+	u64 reg;
+
+	if (!psw->pst_base_addr)
+		return 0;
+
+	if (req->tst_id >= psw->tst_t.max)
+		return PSW_AF_ERR_PARAM;
+
+	reg = FIELD_PREP(TST_PROFILE, req->tpt_id);
+	reg |= FIELD_PREP(TST_ENABLE, req->enable);
+
+	ret = psw_tps_pause_and_update(rvu, blkaddr,
+				       PSW_AF_TIMER_SEL_TBL(req->tst_id), reg);
+	if (ret)
+		return ret;
+
+	if (!req->enable)
+		rvu_free_rsrc(&psw->tst_t, req->tst_id);
+
+	return 0;
 }
 
 int rvu_mbox_handler_psw_epfvf_pcie_cfg(struct rvu *rvu,
@@ -1107,6 +1258,80 @@ free_bmap:
 	return ret;
 }
 
+static void psw_tsp_free(struct rvu *rvu, struct psw_rsrc *psw)
+{
+	u32 pst_sz;
+
+	if (!rvu->fwdata)
+		return;
+	pst_sz = psw->tst_t.max * PSW_PST_ENTRY_SZ;
+	dma_unmap_single(rvu->dev, psw->pst_dma_addr, pst_sz,
+			 DMA_BIDIRECTIONAL);
+	devm_kfree(rvu->dev, psw->pst_base_addr);
+	kfree(psw->tst_t.bmap);
+	kfree(psw->tpt_t.bmap);
+}
+
+static int psw_tsp_setup(struct rvu *rvu, int blkaddr)
+{
+	struct psw_rsrc *psw = rvu->hw->psw;
+	dma_addr_t pst_dma_addr;
+	u32 threshold, pst_sz;
+	void *pst_base_addr;
+	u64 reg;
+	int ret;
+
+	if (!rvu->fwdata) {
+		dev_info(rvu->dev, "sclk is not available, skipping psw tsp setup\n");
+		return 0;
+	}
+	psw->tpt_t.max = FIELD_GET(CONST2_NUM_TPT, psw->const2);
+	ret = rvu_alloc_bitmap(&psw->tpt_t);
+	if (ret)
+		return ret;
+	psw->tst_t.max = FIELD_GET(CONST2_NUM_TST, psw->const2);
+	ret = rvu_alloc_bitmap(&psw->tst_t);
+	if (ret)
+		goto tpt_t_free;
+
+	pst_sz = psw->tst_t.max * PSW_PST_ENTRY_SZ;
+	pst_base_addr = devm_kzalloc(rvu->dev, pst_sz, GFP_KERNEL);
+	if (!pst_base_addr) {
+		ret = -ENOMEM;
+		goto tst_t_free;
+	}
+	pst_dma_addr = dma_map_single(rvu->dev, pst_base_addr, pst_sz,
+				      DMA_BIDIRECTIONAL);
+	if (dma_mapping_error(rvu->dev, pst_dma_addr)) {
+		dev_err(rvu->dev, "DMA mapping failed for PSW PST\n");
+		ret = -EFAULT;
+		goto pst_base_addr_free;
+	}
+	rvu_write64(rvu, blkaddr, PSW_AF_PST_BASE_ADDR, pst_dma_addr);
+	psw->pst_base_addr = pst_base_addr;
+	psw->pst_dma_addr = pst_dma_addr;
+
+	/* Enable tick timer for timed structure polling */
+	reg = rvu_read64(rvu, blkaddr, PSW_AF_TIMER_TICK_CFG);
+	/* Configuring timer threshold to 1ms * sclk frequency */
+	threshold =  rvu->fwdata->sclk * 1000;
+	reg |= FIELD_PREP(GENMASK_ULL(31, 0), threshold);
+	rvu_write64(rvu, blkaddr, PSW_AF_TIMER_TICK_CFG, reg);
+
+	/* Activate the timers */
+	rvu_write64(rvu, blkaddr, PSW_AF_TPS_PAUSE, 0x0);
+
+	return 0;
+
+pst_base_addr_free:
+	devm_kfree(rvu->dev, pst_base_addr);
+tst_t_free:
+	kfree(psw->tst_t.bmap);
+tpt_t_free:
+	kfree(psw->tpt_t.bmap);
+	return ret;
+}
+
 static int psw_gid_setup(struct rvu *rvu, struct psw_rsrc *psw, int blkaddr)
 {
 	int ret;
@@ -1194,8 +1419,14 @@ static int rvu_psw_init_block(struct rvu_block *block, void *data)
 	if (ret)
 		goto gid_free;
 
+	ret = psw_tsp_setup(rvu, blkaddr);
+	if (ret)
+		goto fid_free;
+
 	return 0;
 
+fid_free:
+	kfree(psw->fid_t.bmap);
 gid_free:
 	kfree(psw->gid_t.bmap);
 	kfree(psw->qid_t.bmap);
@@ -1236,7 +1467,7 @@ static void rvu_psw_remove(struct rvu_block *block, void *data)
 	struct psw_rsrc *psw;
 
 	psw = rvu->hw->psw;
-
+	psw_tsp_free(rvu, psw);
 	kfree(psw->fid_t.bmap);
 	kfree(psw->gid_t.bmap);
 	kfree(psw->qid_t.bmap);
