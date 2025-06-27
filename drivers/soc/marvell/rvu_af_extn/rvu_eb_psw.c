@@ -22,11 +22,20 @@
 #define PSW_EPFFUNC(port, epf, vf_id)	\
 		((((port) & 0x1) << 14) | (((epf) & 0x7) << 9) | \
 		((vf_id) & 0xFF))
+#define PSW_EPF(epffunc)                \
+		(((epffunc >> 14) & 0x1) ? (PSW_EPFS_PER_PORT + ((epffunc >> 9) & 0x7)) : \
+		((epffunc >> 9) & 0x7))
 #define PSW_ECC_INT_BITS 37
 #define PSW_MAX_RID_CNT_PER_FUNC 260
 #define PSW_MAX_QUEUES 4096
 #define PSW_PST_ENTRY_SZ 32
 #define PSW_LF_MAX_NQS 8
+
+#define PSW_NOTIF_DESC_TYPE_WRITE_CFG 0x2
+#define PSW_ANQ_NUM_DESC 4096
+#define PSW_ANQ_DESC_SZ  8
+#define ANQ_DESC_SZ(x) (x * PSW_ANQ_DESC_SZ)
+#define ANQ_DESC_PTR_OFF(b, i, o) ((u64 *)(((uintptr_t)b) + ANQ_DESC_SZ(i) + (o)))
 
 #define CONST_MAX_EPFS  GENMASK_ULL(63, 48)
 #define CONST1_MAX_GID  GENMASK_ULL(63, 48)
@@ -35,6 +44,26 @@
 
 #define PSW_PEM_ID(epf) (((epf) < PSW_EPFS_PER_PORT) ? 0 : 1)
 #define PSW_PEM_EPF(epf) (((epf) < PSW_EPFS_PER_PORT) ? (epf) : (epf) - PSW_EPFS_PER_PORT)
+
+#define M(_name, _id, _fn_name, _req_type, _rsp_type)			\
+static struct _req_type __maybe_unused					\
+*otx2_mbox_alloc_msg_ ## _fn_name(struct rvu *rvu, int devid)		\
+{									\
+	struct _req_type *req;						\
+									\
+	req = (struct _req_type *)otx2_mbox_alloc_msg_rsp(		\
+		&rvu->afpf_wq_info.mbox_up, devid, sizeof(struct _req_type), \
+		sizeof(struct _rsp_type));				\
+	if (!req)							\
+		return NULL;						\
+	req->hdr.sig = OTX2_MBOX_REQ_SIG;				\
+	req->hdr.id = _id;						\
+	trace_otx2_msg_alloc(rvu->pdev, _id, sizeof(*req), 0);		\
+	return req;							\
+}
+
+MBOX_EBLOCK_UP_PSW_MESSAGES
+#undef M
 
 #define gid_entry0_w(link, mid, qid, mvalid, iqvalid, oqvalid)      \
 ({                                                                  \
@@ -121,6 +150,18 @@
 #define TST_PROFILE GENMASK_ULL(4, 0)
 #define TST_ENABLE  GENMASK_ULL(7, 7)
 
+#define PSW_ANQ_ALIGN   64
+#define ANQ_BASE_ADDR GENMASK_ULL(63, 6)
+#define ANQ_LOG2QS    GENMASK_ULL(11, 8)
+#define ANQ_LOG2DS    GENMASK_ULL(6, 4)
+#define ANQ_ENABLE    GENMASK_ULL(0, 0)
+
+#define ANQ_DESC_DTYPE	  GENMASK_ULL(3, 1)
+#define ANQ_DESC_DATA	  GENMASK_ULL(7, 4)
+#define ANQ_DESC_BE	  GENMASK_ULL(15, 8)
+#define ANQ_DESC_EPFFUNC  GENMASK_ULL(31, 16)
+#define ANQ_DESC_ADDR     GENMASK_ULL(63, 32)
+
 struct gid_key {
 	u16 epffunc;
 	u16 rid;
@@ -137,6 +178,7 @@ struct gid_action {
 
 struct psw_rsrc {
 	u8 *pf2epf_map;
+	u8 *epf2pf_map;
 	u64 const0;
 	u64 const1;
 	u64 const2;
@@ -149,6 +191,13 @@ struct psw_rsrc {
 	struct rsrc_bmap tst_t;
 	void *pst_base_addr;
 	dma_addr_t pst_dma_addr;
+
+	void *anq_base;
+	void *anq_base_align;
+	dma_addr_t anq_dma_addr;
+
+	struct rvu_work notif_work;
+	struct workqueue_struct *notif_wq;
 };
 
 struct psw_drvdata {
@@ -156,15 +205,89 @@ struct psw_drvdata {
 	int res_idx;
 };
 
+static void psw_epfvf_host_flr_handler(struct rvu *rvu, struct psw_rsrc *psw, u16 epffunc)
+{
+	struct psw_host_flr_info *req;
+	u16 rvu_pf, epf;
+
+	epf = PSW_EPF(epffunc);
+	rvu_pf = psw->epf2pf_map[epf];
+
+	mutex_lock(&rvu->mbox_lock);
+	req = otx2_mbox_alloc_msg_psw_host_flr_notify(rvu, rvu_pf);
+	if (!req)
+		return;
+
+	req->epffunc = epffunc;
+
+	otx2_mbox_wait_for_zero(&rvu->afpf_wq_info.mbox_up, rvu_pf);
+	otx2_mbox_msg_send_up(&rvu->afpf_wq_info.mbox_up, rvu_pf);
+	otx2_mbox_wait_for_rsp(&rvu->afpf_wq_info.mbox_up, rvu_pf);
+	mutex_unlock(&rvu->mbox_lock);
+}
+
+static void psw_api_notif_wqe_handler(struct work_struct *work)
+{
+	struct rvu_work *notif_work = container_of(work, struct rvu_work, work);
+	struct rvu *rvu = notif_work->rvu;
+	int blkaddr = BLKADDR_PSW;
+	struct psw_rsrc *psw;
+	u64 desc_data, data;
+	void *anq_base;
+	u8 dtype, be;
+	u16 epffunc;
+	u16 pi, ci;
+	u32 addr;
+
+	psw = rvu->hw->psw;
+	pi = rvu_read64(rvu, blkaddr, PSW_AF_API_NOTIF_QCX(2)) & 0xFFFF;
+	ci = rvu_read64(rvu, blkaddr, PSW_AF_API_NOTIF_QCX(3)) & 0xFFFF;
+	anq_base = psw->anq_base_align;
+
+	while (ci != pi) {
+		desc_data = *ANQ_DESC_PTR_OFF(anq_base, ci, 0);
+		addr = FIELD_GET(ANQ_DESC_ADDR, desc_data);
+		epffunc = FIELD_GET(ANQ_DESC_EPFFUNC, desc_data);
+		data = FIELD_GET(ANQ_DESC_DATA, desc_data);
+		dtype = FIELD_GET(ANQ_DESC_DTYPE, desc_data);
+		be = FIELD_GET(ANQ_DESC_BE, desc_data);
+
+		if (dtype != PSW_NOTIF_DESC_TYPE_WRITE_CFG) {
+			dev_err_ratelimited(rvu->dev, "Received Incorrect Notif Descriptor %u",
+					    dtype);
+			ci = (ci + 1) & (PSW_ANQ_NUM_DESC - 1);
+			continue;
+		}
+		ci = (ci + 1) & (PSW_ANQ_NUM_DESC - 1);
+		desc_data = *ANQ_DESC_PTR_OFF(anq_base, ci, 0);
+		data |= (desc_data & ~0xF);
+		if (addr == 0x78 && (data & BIT_ULL(15)))
+			psw_epfvf_host_flr_handler(rvu, psw, epffunc);
+
+		ci = (ci + 1) & (PSW_ANQ_NUM_DESC - 1);
+	}
+	rvu_write64(rvu, blkaddr, PSW_AF_API_NOTIF_QCX(3), ci);
+}
+
 static irqreturn_t psw_api_notif_intr_handler(int irq, void *ptr)
 {
 	struct rvu_block *block = ptr;
 	struct rvu *rvu = block->rvu;
+	struct psw_rsrc *psw = rvu->hw->psw;
 	int blkaddr = block->addr;
+	u16 ci, pi;
 	u64 reg;
 
 	reg = rvu_read64(rvu, blkaddr, PSW_AF_APINOTIF_INT);
 
+	pi = rvu_read64(rvu, blkaddr, PSW_AF_API_NOTIF_QCX(2)) & 0xFFFF;
+	ci = rvu_read64(rvu, blkaddr, PSW_AF_API_NOTIF_QCX(3)) & 0xFFFF;
+	if (pi == ci)
+		goto exit;
+
+	queue_work(psw->notif_wq, &psw->notif_work.work);
+
+exit:
 	rvu_write64(rvu, blkaddr, PSW_AF_APINOTIF_INT, reg);
 
 	return IRQ_HANDLED;
@@ -1406,6 +1529,84 @@ free_bmap:
 	return ret;
 }
 
+static int
+psw_af_api_notif_q_init(struct rvu *rvu, struct psw_rsrc *psw, int blkaddr)
+{
+	dma_addr_t anq_dma_addr;
+	u64 reg = 0x0ULL;
+	u32 q_sz;
+	int ret;
+
+	q_sz = (PSW_ANQ_DESC_SZ * PSW_ANQ_NUM_DESC) + PSW_ANQ_ALIGN;
+	psw->anq_base = devm_kzalloc(rvu->dev, q_sz, GFP_KERNEL);
+	if (!psw->anq_base)
+		return -ENOMEM;
+
+	anq_dma_addr = dma_map_single(rvu->dev, psw->anq_base, q_sz,
+				      DMA_BIDIRECTIONAL);
+	if (dma_mapping_error(rvu->dev, anq_dma_addr)) {
+		dev_err(rvu->dev, "DMA mapping failed for PSW PST\n");
+		ret = -EFAULT;
+		goto anq_base_free;
+	}
+
+	psw->notif_wq = alloc_ordered_workqueue("psw_af_api_notif",
+						WQ_HIGHPRI | WQ_MEM_RECLAIM);
+	if (!psw->notif_wq) {
+		ret = -ENOMEM;
+		goto anq_dma_addr_unmap;
+	}
+	psw->notif_work.rvu = rvu;
+	INIT_WORK(&psw->notif_work.work, psw_api_notif_wqe_handler);
+
+	psw->anq_dma_addr = anq_dma_addr;
+	anq_dma_addr = PTR_ALIGN(anq_dma_addr, PSW_ANQ_ALIGN);
+	psw->anq_base_align = PTR_ALIGN(psw->anq_base, PSW_ANQ_ALIGN);
+
+	rvu_write64(rvu, blkaddr, PSW_AF_API_NOTIF_QCX(4), reg);
+	rvu_write64(rvu, blkaddr, PSW_AF_API_NOTIF_QCX(5), reg);
+	rvu_write64(rvu, blkaddr, PSW_AF_API_NOTIF_QCX(6), reg);
+	rvu_write64(rvu, blkaddr, PSW_AF_API_NOTIF_QCX(7), reg);
+
+	rvu_write64(rvu, blkaddr, PSW_AF_API_NOTIF_QCX(3), reg);
+	rvu_write64(rvu, blkaddr, PSW_AF_API_NOTIF_QCX(2), reg);
+
+	reg = FIELD_PREP(ANQ_BASE_ADDR, anq_dma_addr >> 6);
+	rvu_write64(rvu, blkaddr, PSW_AF_API_NOTIF_QCX(1), reg);
+
+	reg = FIELD_PREP(ANQ_LOG2QS, ilog2(PSW_ANQ_NUM_DESC) - 1);
+	reg |= FIELD_PREP(ANQ_LOG2DS, ilog2(PSW_ANQ_DESC_SZ) - 3);
+	reg |= FIELD_PREP(ANQ_ENABLE, 1);
+	rvu_write64(rvu, blkaddr, PSW_AF_API_NOTIF_QCX(0), reg);
+
+	return 0;
+
+anq_dma_addr_unmap:
+	dma_unmap_single(rvu->dev, anq_dma_addr, q_sz, DMA_BIDIRECTIONAL);
+anq_base_free:
+	devm_kfree(rvu->dev, psw->anq_base);
+	return ret;
+}
+
+static void
+psw_af_api_notif_q_fini(struct rvu *rvu, struct psw_rsrc *psw, int blkaddr)
+{
+	u32 q_sz;
+	u64 reg;
+
+	/* Disable API notification queue */
+	reg = rvu_read64(rvu, blkaddr, PSW_AF_API_NOTIF_QCX(0));
+	reg &= ~BIT_ULL(0);
+	rvu_write64(rvu, blkaddr, PSW_AF_API_NOTIF_QCX(0), reg);
+
+	destroy_workqueue(psw->notif_wq);
+
+	q_sz = (PSW_ANQ_DESC_SZ * PSW_ANQ_NUM_DESC) + PSW_ANQ_ALIGN;
+	dma_unmap_single(rvu->dev, psw->anq_dma_addr, q_sz,
+			 DMA_BIDIRECTIONAL);
+	devm_kfree(rvu->dev, psw->anq_base);
+}
+
 static void psw_tsp_free(struct rvu *rvu, struct psw_rsrc *psw)
 {
 	u32 pst_sz;
@@ -1517,11 +1718,11 @@ static int rvu_psw_init_block(struct rvu_block *block, void *data)
 {
 	struct psw_drvdata *drvdata = data;
 	struct rvu *rvu = block->rvu;
+	u8 *pf2epf_map, *epf2pf_map;
 	int blkaddr = block->addr;
 	struct rvu_hwinfo *hw;
 	struct psw_rsrc *psw;
 	u16 pf_id, epf_id;
-	u8 *pf2epf_map;
 	u16 max_epfs;
 	u64 cfg;
 	int ret;
@@ -1543,6 +1744,11 @@ static int rvu_psw_init_block(struct rvu_block *block, void *data)
 	psw->const2 = rvu_read64(rvu, blkaddr, PSW_AF_CONST2);
 	max_epfs = FIELD_GET(CONST_MAX_EPFS, psw->const0);
 
+	epf2pf_map = devm_kcalloc(rvu->dev, max_epfs, sizeof(uint8_t),
+				  GFP_KERNEL);
+	if (!epf2pf_map)
+		return -ENOMEM;
+
 	for (pf_id = 0, epf_id = 0; pf_id < hw->total_pfs && epf_id < max_epfs; pf_id++) {
 		cfg = rvu_read64(rvu, BLKADDR_RVUM, RVU_PRIV_PFX_CFG(pf_id));
 		if (!(cfg & BIT_ULL(20)))
@@ -1551,12 +1757,14 @@ static int rvu_psw_init_block(struct rvu_block *block, void *data)
 		cfg = rvu_read64(rvu, BLKADDR_RVUM, RVU_PRIV_PFX_ID_CFG(pf_id));
 		if ((cfg & 0xFF) == PCI_DEVID_PSW_PF) {
 			pf2epf_map[pf_id] = epf_id;
+			epf2pf_map[epf_id] = pf_id;
 			epf_id++;
 			dev_info(rvu->dev, "pf2epf_map[%u]: %u\n", pf_id, pf2epf_map[pf_id]);
 		}
 	}
 	psw->num_epfs = epf_id;
 	psw->pf2epf_map = pf2epf_map;
+	psw->epf2pf_map = epf2pf_map;
 
 	ret = psw_gid_setup(rvu, psw, BLKADDR_PSW);
 	if (ret)
@@ -1571,8 +1779,13 @@ static int rvu_psw_init_block(struct rvu_block *block, void *data)
 	if (ret)
 		goto fid_free;
 
+	ret = psw_af_api_notif_q_init(rvu, psw, BLKADDR_PSW);
+	if (ret)
+		goto tsp_free;
 	return 0;
 
+tsp_free:
+	psw_tsp_free(rvu, psw);
 fid_free:
 	kfree(psw->fid_t.bmap);
 gid_free:
@@ -1615,6 +1828,7 @@ static void rvu_psw_remove(struct rvu_block *block, void *data)
 	struct psw_rsrc *psw;
 
 	psw = rvu->hw->psw;
+	psw_af_api_notif_q_fini(rvu, psw, block->addr);
 	psw_tsp_free(rvu, psw);
 	kfree(psw->fid_t.bmap);
 	kfree(psw->gid_t.bmap);

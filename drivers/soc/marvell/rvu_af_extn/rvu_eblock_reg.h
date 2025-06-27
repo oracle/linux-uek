@@ -165,6 +165,8 @@
 #define PSW_AF_MSIX_VEC_STAT(a)             (0x7400000ull | ((a) << 3))
 #define PSW_AF_MSIX_VECX_EPF_FUNC(a)        (0x7800000ull | ((a) << 3))
 #define PSW_AF_API_NOTIF_QC(a)              (0x8000000ull | ((a) << 3))
+#define PSW_AF_API_NOTIF_QCX(a)             (0x8000000ull | ((a) << 3))
+#define PSW_AF_API_NOTIF_QC(a)              (0x8000000ull | ((a) << 3))
 #define PSW_AF_API_TO_TH                    0x8000100ull
 #define PSW_AF_API_NQE_CAPTURE              0x8000110ull
 #define PSW_AF_API_AQE_CAPTURE              0x8000120ull

@@ -37,6 +37,7 @@ M(PSW_TST_ADD_ENTRY,    0x120D, psw_tst_add_entry, psw_tst_add_entry_req, \
 M(PSW_TST_MODIFY_ENTRY, 0x120E, psw_tst_modify_entry, psw_tst_modify_entry_req, \
 				msg_rsp)				\
 
+
 /* PSW mailbox error codes
  * Range 1301 - 1400.
  */
@@ -264,6 +265,13 @@ struct psw_tst_modify_entry_req {
 	u64 rsvd2;
 };
 
+struct psw_host_flr_info {
+	struct mbox_msghdr hdr;
+	u16 epffunc;
+	u16 rsvd1[3];
+	u64 rsvd2;
+};
+
 #define M(_name, _id, _fn, _req_t, _rsp_t)                              \
 	int rvu_mbox_handler_##_fn(struct rvu *, struct _req_t *,       \
 				   struct _rsp_t *);
@@ -275,5 +283,8 @@ enum {
 	MBOX_EBLOCK_PSW_MESSAGES
 #undef M
 };
+
+#define MBOX_EBLOCK_UP_PSW_MESSAGES					\
+M(PSW_HOST_FLR_NOTIFY,	0xF00, psw_host_flr_notify, psw_host_flr_info, msg_rsp)
 
 #endif /* __RVU_PSW_MBOX_H__ */
