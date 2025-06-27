@@ -2015,6 +2015,8 @@ modules:
 - hp-bioscfg
 - hp-wmi
 - hp_accel
+- hsmp_acpi
+- hsmp_common
 - i2c-amd756
 - i2c-amd756-s4882
 - i2c-amd8111
