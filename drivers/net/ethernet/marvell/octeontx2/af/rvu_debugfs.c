@@ -4860,6 +4860,7 @@ create:
 	rvu_dbg_cpt_init(rvu, BLKADDR_CPT1);
 	rvu_dbg_mcs_init(rvu);
 	rvu_dbg_sso_init(rvu);
+	rvu_dbg_sdp_init(rvu);
 }
 
 void rvu_dbg_exit(struct rvu *rvu)

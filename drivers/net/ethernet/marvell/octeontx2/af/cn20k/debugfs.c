@@ -555,6 +555,104 @@ void print_npa_cn20k_pool_ctx(struct seq_file *m,
 	seq_printf(m, "W8: fc_msh_dst\t\t%d\n", pool->fc_msh_dst);
 }
 
+static int sdp_ring_alloc_show(struct seq_file *s, void *unused)
+{
+	struct rvu *rvu = s->private;
+	struct sdp_rsrc *sdp;
+	int ring = 0;
+	u16 pcifunc;
+	int pf, vf;
+
+	sdp = &rvu->hw->sdp;
+
+	seq_puts(s, "\nHW Ring\t\t\tRemote Host PFVF\n");
+	for_each_set_bit(ring, sdp->rings.bmap, sdp->rings.max) {
+		pcifunc = sdp->fn_map[ring];
+		pf = rvu_get_pf(rvu->pdev, pcifunc);
+		vf = pcifunc & RVU_PFVF_FUNC_MASK;
+
+		if (vf)
+			seq_printf(s, "%d\t\t\tPF%dVF%d\n", ring, pf, vf - 1);
+		else
+			seq_printf(s, "%d\t\t\tPF%d\n", ring, pf);
+	}
+
+	return 0;
+}
+
+DEFINE_SHOW_ATTRIBUTE(sdp_ring_alloc);
+
+static int sdp_ring_stats_show(struct seq_file *s, void *unused)
+{
+	struct rvu *rvu = s->private;
+	struct sdp_rsrc *sdp;
+	int ring = 0;
+
+	sdp = &rvu->hw->sdp;
+
+	mutex_lock(&sdp->cfg_lock);
+
+	for_each_set_bit(ring, sdp->rings.bmap, sdp->rings.max) {
+		seq_printf(s, "====== Ring %d stats ======\n", ring);
+		seq_printf(s, "IN packets to SDP:%lld\n",
+			   rvu_read64(rvu, BLKADDR_SDP,
+				      SDP_AF_RX_IN_PKT_CNT(ring)));
+		seq_printf(s, "IN bytes to SDP:%lld\n",
+			   rvu_read64(rvu, BLKADDR_SDP,
+				      SDP_AF_RX_IN_BYTE_CNT(ring)));
+		seq_printf(s, "IN dropped packets to SDP:%lld\n",
+			   rvu_read64(rvu, BLKADDR_SDP,
+				      SDP_AF_RX_IN_DROP_PKT_CNT(ring)));
+		seq_printf(s, "IN dropped bytes to SDP:%lld\n",
+			   rvu_read64(rvu, BLKADDR_SDP,
+				      SDP_AF_RX_IN_DROP_BYTE_CNT(ring)));
+		seq_printf(s, "IN PTP packets to SDP:%lld\n",
+			   rvu_read64(rvu, BLKADDR_SDP,
+				      SDP_AF_RX_IN_PTP_STATS(ring)));
+		seq_printf(s, "OUT packets from SDP:%lld\n",
+			   rvu_read64(rvu, BLKADDR_SDP,
+				      SDP_AF_RX_OUT_PKT_CNT(ring)));
+		seq_printf(s, "OUT bytes from SDP:%lld\n",
+			   rvu_read64(rvu, BLKADDR_SDP,
+				      SDP_AF_RX_OUT_BYTE_CNT(ring)));
+		seq_printf(s, "OUT dropped packets from SDP:%lld\n",
+			   rvu_read64(rvu, BLKADDR_SDP,
+				      SDP_AF_RX_OUT_DROP_PKT_CNT(ring)));
+		seq_printf(s, "OUT dropped bytes from SDP:%lld\n",
+			   rvu_read64(rvu, BLKADDR_SDP,
+				      SDP_AF_RX_OUT_DROP_BYTE_CNT(ring)));
+		seq_printf(s, "OUT PTP packets from SDP:%lld\n\n",
+			   rvu_read64(rvu, BLKADDR_SDP,
+				      SDP_AF_RX_OUT_PTP_STATS(ring)));
+	}
+
+	mutex_unlock(&sdp->cfg_lock);
+
+	return 0;
+}
+
+DEFINE_SHOW_ATTRIBUTE(sdp_ring_stats);
+
+void rvu_dbg_sdp_init(struct rvu *rvu)
+{
+	struct dentry *sdp_dentry;
+
+	if (!is_cn20k(rvu->pdev))
+		return;
+
+	rvu->rvu_dbg.sdp = debugfs_create_dir("sdp", rvu->rvu_dbg.root);
+
+	sdp_dentry = debugfs_create_file("ring_alloc", 0444, rvu->rvu_dbg.sdp, rvu,
+					 &sdp_ring_alloc_fops);
+	if (!sdp_dentry)
+		dev_err(rvu->dev, "Could not create sdp debugfs file\n");
+
+	sdp_dentry = debugfs_create_file("ring_stats", 0444, rvu->rvu_dbg.sdp, rvu,
+					 &sdp_ring_stats_fops);
+	if (!sdp_dentry)
+		dev_err(rvu->dev, "Could not create sdp stats file\n");
+}
+
 void print_npa_cn20k_halo_ctx(struct seq_file *m, struct npa_aq_enq_rsp *rsp)
 {
 	struct npa_cn20k_aq_enq_rsp *cn20k_rsp;

@@ -32,4 +32,6 @@ void rvu_cn20ka_handle_port_mapped_stats(struct rvu *rvu, struct mcs *mcs, int d
 
 int npc_cn20k_debugfs_init(struct rvu *rvu);
 void npc_cn20k_debugfs_deinit(struct rvu *rvu);
+void rvu_dbg_sdp_init(struct rvu *rvu);
+
 #endif
