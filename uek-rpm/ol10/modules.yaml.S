@@ -2911,6 +2911,9 @@ modules-desktop:
 - imon
 - imon_raw
 - inexio
+- intel-m10-bmc-core
+- intel-m10-bmc-hwmon
+- intel-m10-bmc-spi
 - ir-imon-decoder
 - ir-jvc-decoder
 - ir-kbd-i2c
@@ -3093,6 +3096,7 @@ modules-desktop:
 - redrat3
 - regmap-sdw
 - regmap-sdw-mbq
+- regmap-spi-avmm
 - rfcomm
 - rtsx_pci_sdmmc
 - rtsx_usb_ms
@@ -3537,11 +3541,13 @@ modules-desktop:
 - gpio-ljca
 - gpio_mouse
 - hampshire
+- hi556
 - hid-cp2112
 - i2c-ljca
 - i915
 - intel-ipu6
 - intel-ipu6-isys
+- ipu-bridge
 - intel_vpu
 - isp1704_charger
 - ivsc-ace
@@ -3553,6 +3559,12 @@ modules-desktop:
 - max17042_battery
 - max8903_charger
 - mt9m111
+- ov01a10
+- ov13858
+- ov13b10
+- ov2740
+- ov5675
+- ov8856
 - pinctrl-cs42l43
 - pinctrl-intel-platform
 - pinctrl-meteorlake
@@ -3576,6 +3588,7 @@ modules-desktop:
 - snd-acp-sof-mach
 - snd-acp3x-rn
 - snd-acp63
+- snd-acp6x-pdm-dma
 - snd-acp70
 - snd-amd-acpi-mach
 - snd-amd-sdw-acpi
@@ -3592,9 +3605,12 @@ modules-desktop:
 - snd-hda-scodec-tas2781-i2c
 - snd-intel-sst-acpi
 - snd-intel-sst-core
+- snd-pci-acp6x
 - snd-pci-ps
 - snd-ps-pdm-dma
 - snd-ps-sdw-dma
+- snd-rpl-pci-acp6x
+- snd-soc-acp6x-mach
 - snd-soc-acpi
 - snd-soc-acpi-amd-match
 - snd-soc-acpi-intel-match
@@ -3717,6 +3733,7 @@ modules-desktop:
 - snd-sof-probes
 - snd-sof-utils
 - snd-sof-xtensa-dsp
+- soundwire-amd
 - spi-cs42l43
 - spi-ljca
 - tca6416-keypad
