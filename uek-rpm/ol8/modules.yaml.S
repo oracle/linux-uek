@@ -2458,7 +2458,6 @@ modules-extra:
 - vrf
 - w1_ds2780
 - w1_ds2781
-- wwan
 - xsk_diag
 
 /* modules-extra: */
@@ -4007,6 +4006,7 @@ modules-wireless:
 - brcmutil
 - btcoexist
 - carl9170
+- iosm
 - iwl3945
 - iwl4965
 - iwldvm
@@ -4015,6 +4015,8 @@ modules-wireless:
 - iwlwifi
 - libertas
 - mac80211_hwsim
+- mhi_wwan_ctrl
+- mhi_wwan_mbim
 - mt76-usb
 - mt7601u
 - mt76x0-common
@@ -4027,7 +4029,10 @@ modules-wireless:
 - mt76x2u
 - mt7921-common
 - mt7921e
+- mt7925-common
+- mt7925e
 - mt792x-lib
+- mtk_t7xx
 - mwifiex
 - mwifiex_pcie
 - mwifiex_sdio
@@ -4070,12 +4075,24 @@ modules-wireless:
 - rtw88_8821ce
 - rtw88_8822b
 - rtw88_8822be
+- rtw88_8822bu
 - rtw88_8822c
 - rtw88_8822ce
 - rtw88_core
 - rtw88_pci
+- rtw88_usb
+- rtw89_8852a
+- rtw89_8852ae
+- rtw89_8852b
+- rtw89_8852b_common
+- rtw89_8852be
+- rtw89_8852c
+- rtw89_8852ce
+- rtw89_core
+- rtw89_pci
 - usb8xxx
 - wil6210
+- wwan
 - zd1211rw
 
 /* modules-wireless: */
