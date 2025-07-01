@@ -89,7 +89,11 @@ const char *mptcp_get_scheduler(const struct net *net)
 
 static void mptcp_pernet_set_defaults(struct mptcp_pernet *pernet)
 {
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	pernet->mptcp_enabled = 0;
+#else
 	pernet->mptcp_enabled = 1;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	pernet->add_addr_timeout = TCP_RTO_MAX;
 	pernet->blackhole_timeout = 3600;
 	atomic_set(&pernet->active_disable_times, 0);
