@@ -159,6 +159,105 @@ TRACE_EVENT(otx2_parse_dump,
 		      __entry->w3, __entry->w4, __entry->w5)
 );
 
+TRACE_EVENT(otx2_npc_mcam_alloc_entries,
+	    TP_PROTO(u16 pcifunc,
+		     struct npc_mcam_alloc_entry_req *req,
+		     struct npc_mcam_alloc_entry_rsp *rsp),
+	    TP_ARGS(pcifunc, req, rsp),
+	    TP_STRUCT__entry(__field(u16, pcifunc)
+			     __field(u8, contig)
+			     __field(u8, ref_prio)
+			     __field(u16, ref_entry)
+			     __field(u16, req_count)
+			     __field(u8, kw_type)
+			     __field(u8, virt)
+			     __field(u16, start_mcam_idx)
+			     __field(u16, rsp_count)
+			     __field(u16, free_count)
+	    ),
+	    TP_fast_assign(__entry->contig = req->contig;
+			   __entry->ref_prio = req->ref_prio;
+			   __entry->ref_entry = req->ref_entry;
+			   __entry->req_count = req->count;
+			   __entry->kw_type = req->kw_type;
+			   __entry->virt = req->virt;
+			   __entry->start_mcam_idx = rsp->entry;
+			   __entry->rsp_count = rsp->count;
+			   __entry->free_count = rsp->free_count;
+	    ),
+	    TP_printk("pcifunc:%d req_contig:%d req_ref_prio:%d req->ref_entry:%d req->req_count:%d req->kw_type:%d req->virt:%d rsp_start_mcam_idx:%d rsp_count:%d rsp_free_count:%d\n",
+		      __entry->pcifunc, __entry->contig, __entry->ref_prio,
+		      __entry->ref_entry, __entry->req_count, __entry->kw_type,
+		      __entry->virt, __entry->start_mcam_idx, __entry->rsp_count,
+		      __entry->free_count)
+);
+
+TRACE_EVENT(otx2_npc_enable_mcam_entry,
+	    TP_PROTO(u16 index, u8 enable),
+	    TP_ARGS(index, enable),
+	    TP_STRUCT__entry(__field(u16, mcam_index)
+			     __field(u8, ena)
+	    ),
+	    TP_fast_assign(__entry->mcam_index = index;
+			   __entry->ena = enable;
+	    ),
+	    TP_printk("mcam_index:%d enable:%d\n", __entry->mcam_index, __entry->ena)
+);
+
+TRACE_EVENT(otx2_npc_cam,
+	    TP_PROTO(u16 index, u8 bank,
+		     u64 w0_cam0,
+		     u64 w0_cam1,
+		     u64 w1_cam0,
+		     u64 w1_cam1),
+	    TP_ARGS(index, bank,
+		    w0_cam0, w0_cam1,
+		    w1_cam0, w1_cam1),
+	    TP_STRUCT__entry(__field(u16, mcam_index)
+			     __field(u8, bank)
+			     __field(u64, w0_cam0)
+			     __field(u64, w0_cam1)
+			     __field(u64, w1_cam0)
+			     __field(u64, w1_cam1)
+	    ),
+	    TP_fast_assign(__entry->mcam_index = index;
+			   __entry->bank = bank;
+			   __entry->w0_cam0 = w0_cam0;
+			   __entry->w0_cam1 = w0_cam1;
+			   __entry->w1_cam0 = w1_cam0;
+			   __entry->w1_cam1 = w1_cam1;
+	    ),
+	    TP_printk("mcam_index:%d bank:%d w0_cam0:0x%llx w0_cam1:0x%llx, w1_cam0:0x%llx, w1_cam1:0x%llx\n",
+		      __entry->mcam_index, __entry->bank, __entry->w0_cam0, __entry->w0_cam1,
+		      __entry->w1_cam0, __entry->w1_cam1)
+);
+
+TRACE_EVENT(otx2_npc_action,
+	    TP_PROTO(u16 index, u8 bank,
+		     u8 tx_intf, u8 enable,
+		     u64 act, u64 vtag_act),
+	    TP_ARGS(index, bank,
+		    tx_intf, enable,
+		    act, vtag_act),
+	    TP_STRUCT__entry(__field(u16, mcam_index)
+			     __field(u8, bank)
+			     __field(u8, tx_intf)
+			     __field(u8, enable)
+			     __field(u64, act)
+			     __field(u64, vtag_act)
+	    ),
+	    TP_fast_assign(__entry->mcam_index = index;
+			   __entry->bank = bank;
+			   __entry->tx_intf = tx_intf;
+			   __entry->enable = enable;
+			   __entry->act = act;
+			   __entry->vtag_act = vtag_act;
+	    ),
+	    TP_printk("mcam_index:%d bank:%d tx_intf:%d enable:%d action:0x%llx vtag_action:0x%llx\n",
+		      __entry->mcam_index, __entry->bank, __entry->tx_intf,
+		      __entry->enable, __entry->act, __entry->vtag_act)
+);
+
 #endif /* __RVU_TRACE_H */
 
 #undef TRACE_INCLUDE_PATH
