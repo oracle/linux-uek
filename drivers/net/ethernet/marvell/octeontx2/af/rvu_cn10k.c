@@ -477,8 +477,8 @@ static void __rvu_nix_set_channels(struct rvu *rvu, int blkaddr)
 		cfg &= ~(NIX_AF_LINKX_BASE_MASK | NIX_AF_LINKX_RANGE_MASK);
 		cfg |=	FIELD_PREP(NIX_AF_LINKX_RANGE_MASK, ilog2(cgx_chans));
 		cfg |=	FIELD_PREP(NIX_AF_LINKX_BASE_MASK, start);
-		if (is_cnf20ka(rvu->pdev) && (link >= 4 &&
-					      link < hw->cplt_links + 4)) {
+		if (is_cnf20ka(rvu->pdev) && rvu->fwdata &&
+		    (link >= 4 && link < hw->cplt_links + 4)) {
 			if (link == 4)
 				hw->cplt_chan_base = start;
 			cfg |=	FIELD_PREP(GENMASK_ULL(21, 20), 2);
