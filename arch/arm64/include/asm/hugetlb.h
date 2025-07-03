@@ -10,6 +10,7 @@
 #ifndef __ASM_HUGETLB_H
 #define __ASM_HUGETLB_H
 
+#include <asm/mte.h>
 #include <asm/page.h>
 
 #ifdef CONFIG_ARCH_ENABLE_HUGEPAGE_MIGRATION
@@ -20,6 +21,11 @@ extern bool arch_hugetlb_migration_supported(struct hstate *h);
 static inline void arch_clear_hugepage_flags(struct page *page)
 {
 	clear_bit(PG_dcache_clean, &page->flags);
+
+#ifdef CONFIG_ARM64_MTE
+	if (system_supports_mte())
+		clear_bit(PG_mte_tagged, &page->flags);
+#endif
 }
 #define arch_clear_hugepage_flags arch_clear_hugepage_flags
 

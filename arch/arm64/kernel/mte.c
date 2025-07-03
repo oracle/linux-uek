@@ -68,6 +68,19 @@ void mte_sync_tags(pte_t old_pte, pte_t pte)
 	bool check_swap = nr_pages == 1;
 	bool pte_is_tagged = pte_tagged(pte);
 
+	if (PageHuge(page)) {
+		/* Hugetlb has MTE flags set on head page only */
+		if (!test_and_set_bit(PG_mte_tagged, &(compound_head(page)->flags))) {
+			for (i = 0; i < nr_pages; i++, page++)
+				mte_clear_page_tags(page_address(page));
+		}
+
+		/* ensure the tags are visible before the PTE is set */
+		smp_wmb();
+
+		return;
+	}
+
 	/* Early out if there's nothing to do */
 	if (!check_swap && !pte_is_tagged)
 		return;

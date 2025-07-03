@@ -1060,7 +1060,9 @@ long kvm_vm_ioctl_mte_copy_tags(struct kvm *kvm,
 		maddr = page_address(page);
 
 		if (!write) {
-			if (test_bit(PG_mte_tagged, &page->flags))
+			if ((PageHuge(page) &&
+			     test_bit(PG_mte_tagged, &(compound_head(page)->flags))) ||
+			    test_bit(PG_mte_tagged, &page->flags))
 				num_tags = mte_copy_tags_to_user(tags, maddr,
 							MTE_GRANULES_PER_PAGE);
 			else
@@ -1076,8 +1078,12 @@ long kvm_vm_ioctl_mte_copy_tags(struct kvm *kvm,
 			 * Set the flag after checking the write
 			 * completed fully
 			 */
-			if (num_tags == MTE_GRANULES_PER_PAGE)
-				set_bit(PG_mte_tagged, &page->flags);
+			if (num_tags == MTE_GRANULES_PER_PAGE) {
+				if (PageHuge(page))
+					set_bit(PG_mte_tagged, &(compound_head(page)->flags));
+				else
+					set_bit(PG_mte_tagged, &page->flags);
+			}
 
 			kvm_release_pfn_dirty(pfn);
 		}

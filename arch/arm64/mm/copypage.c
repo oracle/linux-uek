@@ -18,12 +18,30 @@ void copy_highpage(struct page *to, struct page *from)
 {
 	void *kto = page_address(to);
 	void *kfrom = page_address(from);
+	unsigned int i, nr_pages;
 
 	copy_page(kto, kfrom);
 
 	page_kasan_tag_reset(to);
 
-	if (system_supports_mte() && test_bit(PG_mte_tagged, &from->flags)) {
+	if (!system_supports_mte())
+		return;
+
+	if (PageHuge(from) && test_bit(PG_mte_tagged, &compound_head(from)->flags)) {
+		from = compound_head(from);
+		to = compound_head(to);
+		nr_pages = compound_nr(from);
+		set_bit(PG_mte_tagged, &to->flags);
+		/*
+		 * See comment below
+		 */
+		smp_wmb();
+		for (i = 0; i < nr_pages; from++, to++) {
+			kfrom = page_address(from);
+			kto = page_address(to);
+			mte_copy_page_tags(kto, kfrom);
+		}
+	} else if (test_bit(PG_mte_tagged, &from->flags)) {
 		set_bit(PG_mte_tagged, &to->flags);
 		/*
 		 * We need smp_wmb() in between setting the flags and clearing the

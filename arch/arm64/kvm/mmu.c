@@ -962,6 +962,18 @@ static int sanitise_mte_tags(struct kvm *kvm, kvm_pfn_t pfn,
 	if (!page)
 		return -EFAULT;
 
+	if (PageHuge(page)) {
+		/* Hugetlb has MTE flags set on head page only */
+		if (test_bit(PG_mte_tagged, &(compound_head(page)->flags))) {
+			unsigned int nr = compound_nr(page);
+
+			for (i = 0; i < nr; i++, page++)
+				mte_clear_page_tags(page_address(page));
+			set_bit(PG_mte_tagged, &(compound_head(page)->flags));
+		}
+		return 0;
+	}
+
 	for (i = 0; i < nr_pages; i++, page++) {
 		if (!test_bit(PG_mte_tagged, &page->flags)) {
 			mte_clear_page_tags(page_address(page));
