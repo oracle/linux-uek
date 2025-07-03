@@ -1702,4 +1702,10 @@ void __meminit vmemmap_populate_print_last(void)
 		node_start = 0;
 	}
 }
-#endif
+
+void vmemmap_sync_pgtables(unsigned long start, unsigned long end)
+{
+	sync_global_pgds(start, end - 1);
+}
+
+#endif /* CONFIG_SPARSEMEM_VMEMMAP */

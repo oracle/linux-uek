@@ -329,7 +329,7 @@ static int __meminit vmemmap_populate_compound_pages(unsigned long start_pfn,
 {
 	unsigned long size, addr;
 	pte_t *pte;
-	int rc;
+	int rc = 0;
 
 	if (reuse_compound_section(start_pfn, pgmap)) {
 		pte = compound_section_tail_page(start);
@@ -340,8 +340,11 @@ static int __meminit vmemmap_populate_compound_pages(unsigned long start_pfn,
 		 * Reuse the page that was populated in the prior iteration
 		 * with just tail struct pages.
 		 */
-		return vmemmap_populate_range(start, end, node, NULL,
-					      pte_page(*pte));
+		rc = vmemmap_populate_range(start, end, node, NULL,
+					    pte_page(*pte));
+		if (rc)
+			return -ENOMEM;
+		goto out;
 	}
 
 	size = min(end - start, pgmap_vmemmap_nr(pgmap) * sizeof(struct page));
@@ -370,6 +373,8 @@ static int __meminit vmemmap_populate_compound_pages(unsigned long start_pfn,
 			return -ENOMEM;
 	}
 
+out:
+	vmemmap_sync_pgtables(start, end);
 	return 0;
 }
 
