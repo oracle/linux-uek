@@ -3131,6 +3131,7 @@ static inline bool __vmemmap_can_optimize(struct vmem_altmap *altmap,
 	 */
 	return !altmap && (nr_vmemmap_pages > VMEMMAP_RESERVE_NR);
 }
+
 /*
  * If we don't have an architecture override, use the generic rule
  */
@@ -3143,6 +3144,12 @@ static inline bool vmemmap_can_optimize(struct vmem_altmap *altmap,
 					   struct dev_pagemap *pgmap)
 {
 	return false;
+}
+#endif
+
+#ifndef vmemmap_sync_pgtables
+static inline void vmemmap_sync_pgtables(unsigned long start, unsigned long end)
+{
 }
 #endif
 
