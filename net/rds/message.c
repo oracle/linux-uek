@@ -142,8 +142,10 @@ void rds_cfu_fini_cache(void)
  */
 static void rds_message_purge(struct rds_message *rm)
 {
-	atomic_t *nmbr_entries_ptr = per_cpu_ptr(&rds_cfu_entries, rm->m_alloc_cpu);
-	union lfstack *stack = per_cpu_ptr(&rds_cfu_cache, rm->m_alloc_cpu);
+	atomic_t *nmbr_entries_ptr = (rm->m_alloc_cpu != NUMA_NO_NODE) ?
+		per_cpu_ptr(&rds_cfu_entries, rm->m_alloc_cpu) : NULL;
+	union lfstack *stack = (rm->m_alloc_cpu != NUMA_NO_NODE) ?
+		per_cpu_ptr(&rds_cfu_cache, rm->m_alloc_cpu) : NULL;
 	struct lfstack_el *first = NULL;
 	unsigned int cache_puts = 0;
 	struct lfstack_el *last;
