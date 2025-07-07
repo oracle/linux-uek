@@ -535,9 +535,8 @@ static int emit_spectre_bhb_barrier(u8 **pprog, u8 *ip,
 		ip += 2;
 
 		func = (u8 *)clear_bhb_loop;
+		emit_call(&prog, func, ip);
 
-		if (emit_call(&prog, func, ip))
-			return -EINVAL;
 		EMIT1(0x59); /* pop rcx */
 		EMIT1(0x58); /* pop rax */
 	}
