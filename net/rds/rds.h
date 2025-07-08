@@ -1235,11 +1235,13 @@ static inline bool rds_cond_queue_reconnect_work(struct rds_conn_path *cp, unsig
 	unsigned long mod_delay = max(delay,
 				      msecs_to_jiffies(rds_sysctl_reconnect_max_jiffies));
 
-	if (!test_and_set_bit(RDS_RECONNECT_PENDING, &cp->cp_flags)) {
+	if (!cp->cp_conn->c_destroy_in_prog &&
+	    !test_and_set_bit(RDS_RECONNECT_PENDING, &cp->cp_flags)) {
 		rds_queue_delayed_work(cp, cp->cp_wq, &cp->cp_up_or_down_w,
 				       delay, "reconnect work");
 		return true;
-	} else if (!test_bit(RDS_SHUTDOWN_WORK_QUEUED, &cp->cp_flags) &&
+	} else if (!cp->cp_conn->c_destroy_in_prog &&
+		   !test_bit(RDS_SHUTDOWN_WORK_QUEUED, &cp->cp_flags) &&
 		   (cp->cp_up_or_down_w.timer.expires > 0) &&
 		   (cp->cp_up_or_down_w.timer.expires < KTIME_MAX) &&
 		   time_after(cp->cp_up_or_down_w.timer.expires,
