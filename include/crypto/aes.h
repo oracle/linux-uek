@@ -37,22 +37,6 @@ struct crypto_aes_ctx {
 #define crypto_it_tab fips_crypto_it_tab
 #endif
 
-DECLARE_CRYPTO_API(neon_aes_ecb_encrypt, void, (u8 out[], u8 const in[], u32 const rk[],
-				     int rounds, int blocks), (out, in, rk, rounds, blocks));
-DECLARE_CRYPTO_API(neon_aes_cbc_encrypt, void, (u8 out[], u8 const in[], u32 const rk[],
-				     int rounds, int blocks, u8 iv[]), (out, in, rk, rounds, blocks, iv));
-
-
-DECLARE_CRYPTO_API(neon_aes_ctr_encrypt, void, (u8 out[], u8 const in[], u32 const rk[],
-				     int rounds, int bytes, u8 ctr[]), (out, in, rk, rounds, bytes, ctr));
-
-DECLARE_CRYPTO_API(neon_aes_xts_encrypt, asmlinkage void, (u8 out[], u8 const in[],
-				     u32 const rk1[], int rounds, int bytes,
-				     u32 const rk2[], u8 iv[], int first), (out, in, rk1, rounds, bytes, rk2, iv, first));
-DECLARE_CRYPTO_API(neon_aes_xts_decrypt, asmlinkage void, (u8 out[], u8 const in[],
-				     u32 const rk1[], int rounds, int bytes,
-				     u32 const rk2[], u8 iv[], int first), (out, in, rk1, rounds, bytes, rk2, iv, first));
-
 extern const u32 crypto_ft_tab[4][256] ____cacheline_aligned;
 extern const u32 crypto_it_tab[4][256] ____cacheline_aligned;
 
