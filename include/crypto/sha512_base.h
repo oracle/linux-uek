@@ -13,14 +13,11 @@
 #include <linux/crypto.h>
 #include <linux/module.h>
 #include <linux/string.h>
-#include <crypto/api.h>
 
 #include <linux/unaligned.h>
 
 typedef void (sha512_block_fn)(struct sha512_state *sst, u8 const *src,
 			       int blocks);
-DECLARE_CRYPTO_API(sha512_block_data_order, asmlinkage void, (u64 *digest, const void *data, unsigned int num_blks),
-                (digest, data, num_blks));
 
 static inline int sha384_base_init(struct shash_desc *desc)
 {
