@@ -222,14 +222,15 @@ static int cn20k_sdp_rings_init(struct rvu *rvu)
 	if (!sdp->vf_rsrc_map)
 		return  -ENOMEM;
 
+	cfg = rvu_read64(rvu, BLKADDR_SDP, SDP_AF_CONST);
+	max_rings = FIELD_GET(SDP_AF_CONST_RINGS, cfg);
+
 	sdp->fn_map = kcalloc(max_rings, sizeof(u16), GFP_KERNEL);
 	if (!sdp->fn_map) {
 		err =  -ENOMEM;
 		goto free_vf_rsrc_map;
 	}
 
-	cfg = rvu_read64(rvu, BLKADDR_SDP, SDP_AF_CONST);
-	max_rings = FIELD_GET(SDP_AF_CONST_RINGS, cfg);
 
 	mutex_init(&sdp->cfg_lock);
 
@@ -722,6 +723,12 @@ static int sdp_get_mbox_regions(struct rvu *rvu, void **mbox_addr,
 	u64 bar;
 
 	bar = rvu_read64(rvu, blkaddr, SDP_AF_EPFX_SCRATCH(0));
+	if (!bar) {
+		dev_warn(rvu->dev,
+			 "PEM BAR Mbox region not configured\n");
+		goto error;
+	}
+
 	if (type == TYPE_AFEPF) {
 		for (region = 0; region < num; region++) {
 			if (!test_bit(region, pf_bmap))
@@ -998,14 +1005,14 @@ static int rvu_sdp_init_block(struct rvu_block *block, void *data)
 		return err;
 	}
 
-	sdp_mbox_init(rvu, &sdp_data.afepf_wq_info, TYPE_AFEPF,
-		      SDP_MAX_EPF, block->addr, rvu_afepf_mbox_handler,
-		      rvu_afepf_mbox_up_handler);
+	err = sdp_mbox_init(rvu, &sdp_data.afepf_wq_info, TYPE_AFEPF,
+			    SDP_MAX_EPF, block->addr, rvu_afepf_mbox_handler,
+			    rvu_afepf_mbox_up_handler);
 
 	/* Now that mbox frame work setup, allow access from EPF */
-	rvu_write64(rvu, block->addr, SDP_AF_ACCESS_CTL, 0xDF);
-
-	return 0;
+	if (!err)
+		rvu_write64(rvu, block->addr, SDP_AF_ACCESS_CTL, 0xDF);
+	return err;
 }
 
 static int rvu_setup_sdp_hw_resource(struct rvu_block *block, void *data)
