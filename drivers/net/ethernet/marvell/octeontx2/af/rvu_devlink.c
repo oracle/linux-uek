@@ -11,6 +11,7 @@
 #include "rvu_reg.h"
 #include "rvu_struct.h"
 #include "rvu_npc_hash.h"
+#include "rvu_switch.h"
 #include "cn20k/npc.h"
 
 #define DRV_NAME "octeontx2-af"

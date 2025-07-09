@@ -12,6 +12,7 @@
 #include "npc.h"
 #include "rvu_npc_fs.h"
 #include "rvu_npc_hash.h"
+#include "rvu_switch.h"
 #include "cn20k/npc.h"
 
 static const char * const npc_flow_names[] = {
@@ -1883,7 +1884,7 @@ process_flow:
 	}
 
 	/* ignore chan_mask in case pf func is not AF, revisit later */
-	if (!is_pffunc_af(req->hdr.pcifunc))
+	if (!req->set_chanmask && !is_pffunc_af(req->hdr.pcifunc))
 		req->chan_mask = rvu_get_cpt_chan_mask(rvu);
 
 	err = npc_check_unsupported_flows(rvu, req->features, req->intf);

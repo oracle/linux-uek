@@ -13,6 +13,7 @@
 
 #include "rvu.h"
 #include "rvu_reg.h"
+#include "rvu_switch.h"
 
 #define M(_name, _id, _fn_name, _req_type, _rsp_type)			\
 static struct _req_type __maybe_unused					\
@@ -173,7 +174,7 @@ int rvu_mbox_handler_nix_lf_stats(struct rvu *rvu,
 	return 0;
 }
 
-static u16 rvu_rep_get_vlan_id(struct rvu *rvu, u16 pcifunc)
+u16 rvu_rep_get_vlan_id(struct rvu *rvu, u16 pcifunc)
 {
 	int id;
 
@@ -435,6 +436,7 @@ int rvu_mbox_handler_esw_cfg(struct rvu *rvu, struct esw_cfg_req *req,
 	if (req->hdr.pcifunc != rvu->rep_pcifunc)
 		return 0;
 
+	memcpy(rvu->rswitch.switch_id, req->switch_id, MAX_PHYS_ITEM_ID_LEN);
 	rvu->rep_mode = req->ena;
 
 	if (!rvu->rep_mode)

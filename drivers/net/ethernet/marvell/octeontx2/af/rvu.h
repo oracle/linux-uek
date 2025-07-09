@@ -704,6 +704,10 @@ struct rvu_switch {
 	u16 *entry2pcifunc;
 	u16 mode;
 	u16 start_entry;
+	unsigned char switch_id[MAX_PHYS_ITEM_ID_LEN];
+#define RVU_SWITCH_FLAG_FW_READY BIT_ULL(0)
+	u64 flags;
+	u16 pcifunc;
 };
 
 struct rep_evtq_ent {
@@ -1429,6 +1433,7 @@ void rvu_afvf_queue_flr_work(struct rvu *rvu, int start_vf, int numvfs);
 
 /* CN10K NIX */
 void rvu_nix_block_cn10k_init(struct rvu *rvu, struct nix_hw *nix_hw);
+int nix_get_tx_link(struct rvu *rvu, u16 pcifunc);
 
 /* CN10K RVU - LMT*/
 void rvu_reset_lmt_map_tbl(struct rvu *rvu, u16 pcifunc);
@@ -1462,6 +1467,8 @@ void rvu_switch_enable(struct rvu *rvu);
 void rvu_switch_disable(struct rvu *rvu);
 void rvu_switch_update_rules(struct rvu *rvu, u16 pcifunc, bool ena);
 void rvu_switch_enable_lbk_link(struct rvu *rvu, u16 pcifunc, bool ena);
+/* RVU REP */
+int rvu_rep_notify_representee_state(struct rvu *rvu, u16 pcifunc, bool enable);
 
 int rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
 			   u64 pkind, u8 var_len_off, u8 var_len_off_mask,
@@ -1491,4 +1498,6 @@ void rvu_set_msix_offset(struct rvu *rvu, struct rvu_pfvf *pfvf,
 u16 rvu_get_msix_offset(struct rvu *rvu, struct rvu_pfvf *pfvf, int blkaddr,
 			int lf);
 void __rvu_flr_handler(struct rvu *rvu, u16 pcifunc);
+u16 rvu_rep_get_vlan_id(struct rvu *rvu, u16 pcifunc);
+
 #endif /* RVU_H */
