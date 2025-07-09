@@ -15,6 +15,7 @@
 #include "otx2_ptp.h"
 #include "cn10k.h"
 #include "cn10k_ipsec.h"
+#include "switch/sw_nb.h"
 
 #define DRV_NAME	"rvu_nicvf"
 #define DRV_STRING	"Marvell RVU NIC Virtual Function Driver"
@@ -180,6 +181,7 @@ static int otx2vf_process_mbox_msg_up(struct otx2_nic *vf,
 							   (struct cgx_ptp_rx_info_msg *)req
 							   , rsp);
 		return err;
+
 	case MBOX_MSG_SDP_RINGS_UPDATE:
 		rsp = (struct msg_rsp *)otx2_mbox_alloc_msg(&vf->mbox.mbox_up,
 						0, sizeof(struct msg_rsp));
@@ -208,6 +210,13 @@ static int otx2vf_process_mbox_msg_up(struct otx2_nic *vf,
 							  (struct sdp_create_vfs_req *)req
 							  , rsp);
 		return err;
+
+	case MBOX_MSG_AF2PF_FDB_REFRESH:
+		err = otx2_mbox_up_handler_af2pf_fdb_refresh(vf,
+							     (struct af2pf_fdb_refresh_req *)req,
+							     rsp);
+		return err;
+
 	default:
 		otx2_reply_invalid_msg(&vf->mbox.mbox_up, 0, 0, req->id);
 		return -ENODEV;

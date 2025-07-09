@@ -460,6 +460,7 @@ int otx2_rss_init(struct otx2_nic *pfvf)
 	rss->enable = true;
 	return 0;
 }
+EXPORT_SYMBOL(otx2_rss_init);
 
 /* Setup UDP segmentation algorithm in HW */
 static void otx2_setup_udp_segmentation(struct nix_lso_format_cfg *lso, bool v4)

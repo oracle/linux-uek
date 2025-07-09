@@ -25,6 +25,7 @@
 #include "otx2_ptp.h"
 #include "cn10k.h"
 #include "qos.h"
+#include "switch/sw_nb.h"
 #include <rvu_trace.h>
 #include "cn10k_ipsec.h"
 #include "otx2_xsk.h"
@@ -1024,6 +1025,7 @@ static int otx2_process_mbox_msg_up(struct otx2_nic *pf,
 MBOX_UP_CGX_MESSAGES
 MBOX_UP_MCS_MESSAGES
 MBOX_UP_REP_MESSAGES
+MBOX_UP_AF2PF_FDB_REFRESH_MESSAGES
 #undef M
 		break;
 	default:
@@ -1084,7 +1086,6 @@ irqreturn_t otx2_pfaf_mbox_intr_handler(int irq, void *pf_irq)
 	/* Clear the IRQ */
 	otx2_write64(pf, RVU_PF_INT, BIT_ULL(0));
 
-
 	mbox_data = otx2_read64(pf, RVU_PF_PFAF_MBOX0);
 
 	if (mbox_data & MBOX_UP_MSG) {
@@ -1127,6 +1128,7 @@ irqreturn_t otx2_pfaf_mbox_intr_handler(int irq, void *pf_irq)
 
 	return IRQ_HANDLED;
 }
+EXPORT_SYMBOL(otx2_pfaf_mbox_intr_handler);
 
 void otx2_disable_mbox_intr(struct otx2_nic *pf)
 {
