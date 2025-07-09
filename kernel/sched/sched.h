@@ -983,7 +983,8 @@ struct rq {
 	 * one CPU and if it got migrated afterwards it may decrease
 	 * it on another CPU. Always updated under the runqueue lock:
 	 */
-	unsigned int		nr_uninterruptible;
+	UEK_KABI_REPLACE_UNSAFE_SIZE(unsigned int nr_uninterruptible,
+		unsigned long nr_uninterruptible, 1)
 
 	struct task_struct __rcu	*curr;
 	struct task_struct	*idle;
