@@ -871,6 +871,7 @@ modules:
 - gm12u320
 - governor_simpleondemand
 - gpio-amdpt
+- gpio-ljca
 - gpio-viperboard
 - gpio_keys
 - gpu-sched
@@ -954,6 +955,7 @@ modules:
 - i2c-gpio
 - i2c-hid
 - i2c-hid-acpi
+- i2c-ljca
 - i2c-mux
 - i2c-mux-mlxcpld
 - i2c-nforce2
@@ -1005,7 +1007,9 @@ modules:
 - ledtrig-backlight
 - ledtrig-camera
 - ledtrig-default-on
+- ledtrig-gpio
 - ledtrig-heartbeat
+- ledtrig-netdev
 - ledtrig-oneshot
 - ledtrig-timer
 - ledtrig-transient
@@ -1060,6 +1064,7 @@ modules:
 - mac80211
 - mana
 - marvell
+- marvell-88q2xxx
 - marvell10g
 - max16064
 - max16065
@@ -1085,6 +1090,14 @@ modules:
 - microchip
 - microchip_rds_ptp
 - microchip_t1
+- mlx5_dpll
+- mlxreg-hotplug
+- mlxreg-io
+- mlxsw_core
+- mlxsw_i2c
+- mlxsw_minimal
+- mlxsw_pci
+- mlxsw_spectrum
 - mpi3mr
 - mscc
 - msdos
@@ -1163,8 +1176,13 @@ modules:
 - nvme-rdma
 - nvmet-fc
 - nvmet-rdma
+- nvsw-sn2201
+- objagg
 - ocrdma
+- octeon_ep
+- octeon_ep_vf
 - openvswitch
+- parman
 - pata_marvell
 - pcf8591
 - pci-pf-stub
@@ -1207,6 +1225,8 @@ modules:
 - pstore_zone
 - pvpanic-pci
 - qat_420xx
+- qca808x
+- qca83xx
 - qcom-phy-lib
 - qed
 - qede
@@ -1235,6 +1255,7 @@ modules:
 - rockchip
 - rocker
 - rotary_encoder
+- rpmb-core
 - rtc-bq32k
 - rtc-ds1286
 - rtc-ds1307
@@ -1262,6 +1283,7 @@ modules:
 - rtc-rp5c01
 - rtc-rs5c372
 - rtc-rv3029c2
+- rtc-rv8803
 - rtc-rx4581
 - rtc-rx8025
 - rtc-rx8581
@@ -1406,6 +1428,7 @@ modules:
 - softdog
 - soundcore
 - sparse-keymap
+- spi-ljca
 - sr9700
 - sr9800
 - ssb
@@ -1473,6 +1496,7 @@ modules:
 - ums-sddr09
 - ums-sddr55
 - ums-usbat
+- usb-ljca
 - usb_8dev
 - usblp
 - usbtmc
@@ -2079,6 +2103,7 @@ modules:
 - it87_wdt
 - jedec_probe
 - k8temp
+- lan743x
 - leds-mlxcpld
 - leds-ss4200
 - lp
@@ -2126,6 +2151,7 @@ modules:
 - ntb_tool
 - ntb_transport
 - nv_tco
+- nvidia-wmi-ec-backlight
 - nvidiafb
 - of_xilinx_wdt
 - opa_vnic
@@ -3540,12 +3566,10 @@ modules-desktop:
 - ds2782_battery
 - gma500_gfx
 - gpio-charger
-- gpio-ljca
 - gpio_mouse
 - hampshire
 - hi556
 - hid-cp2112
-- i2c-ljca
 - i915
 - intel-ipu6
 - intel-ipu6-isys
@@ -3737,11 +3761,9 @@ modules-desktop:
 - snd-sof-xtensa-dsp
 - soundwire-amd
 - spi-cs42l43
-- spi-ljca
 - tca6416-keypad
 - toshiba_acpi
 - toshiba_bluetooth
-- usb-ljca
 - usdhi6rol0
 - wbsd
 - winbond-cir
