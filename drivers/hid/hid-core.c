@@ -1733,8 +1733,7 @@ int __hid_request(struct hid_device *hid, struct hid_report *report,
 	if (reqtype == HID_REQ_SET_REPORT)
 		hid_output_report(report, buf);
 
-	ret = hid->ll_driver->raw_request(hid, report->id, buf, len,
-					  report->type, reqtype);
+	ret = hid_hw_raw_request(hid, report->id, buf, len, report->type, reqtype);
 	if (ret < 0) {
 		dbg_hid("unable to complete request: %d\n", ret);
 		goto out;
