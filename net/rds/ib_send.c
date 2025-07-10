@@ -214,7 +214,6 @@ static struct rds_message *rds_ib_send_unmap_op(struct rds_ib_connection *ic,
 void rds_ib_send_init_ring(struct rds_ib_connection *ic)
 {
 	struct rds_ib_send_work *send;
-	u32 num_send_sge = ic->i_frag_pages;
 	u32 i;
 	u32 j;
 
@@ -230,9 +229,8 @@ void rds_ib_send_init_ring(struct rds_ib_connection *ic)
 		sge = &send->s_sge[0];
 		sge->addr = ic->i_send_hdrs_dma[i];
 		sge->length = sizeof(struct rds_header);
-		sge->lkey = ic->i_mr->lkey;
 
-		for (j = 1; j <= num_send_sge; j++)
+		for (j = 0; j < RDS_IB_MAX_SGE; j++)
 			send->s_sge[j].lkey = ic->i_mr->lkey;
 	}
 }
@@ -567,7 +565,6 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 	struct rds_ib_send_work *prev;
 	const struct ib_send_wr *failed_wr;
 	struct scatterlist *scat;
-	int remaining_sge = 0;
 	u32 pos;
 	u32 i;
 	u32 work_alloc;
@@ -717,9 +714,8 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 	prev = NULL;
 	scat = &ic->i_data_op->op_sg[rm->data.op_dmasg];
 	i = 0;
-	remaining_sge = rm->data.op_count - sg;
 	do {
-		unsigned int len = 0;
+		int len, frag_leftover, j;
 
 		/* Set up the header */
 		send->s_wr.send_flags = send_flags;
@@ -735,31 +731,30 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		memcpy(ic->i_send_hdrs[pos], &rm->m_inc.i_hdr, sizeof(struct rds_header));
 
 		/* Set up the data, if present */
-		if (i < work_alloc
-		    && scat != &rm->data.op_sg[rm->data.op_count]) {
-			unsigned int num_sge = min_t(unsigned long, remaining_sge,
-						     ic->i_frag_pages);
-			unsigned int j = 1;
+		frag_leftover = ic->i_frag_sz;
+		j = 1;
+		while (frag_leftover > 0 &&
+		       scat != &rm->data.op_sg[rm->data.op_count]) {
+			len = min_t(int, frag_leftover,
+				    sg_dma_len(scat) - rm->data.op_dmaoff);
+			if (len <= 0)
+				break;
 
-			send->s_wr.num_sge += num_sge;
-			while (j <= num_sge) {
-				len = min((unsigned int)PAGE_SIZE,
-					  sg_dma_len(scat) - rm->data.op_dmaoff);
-				send->s_sge[j].addr = sg_dma_address(scat);
-				send->s_sge[j].addr += rm->data.op_dmaoff;
-				send->s_sge[j].length = len;
+			send->s_sge[j].addr = sg_dma_address(scat) + rm->data.op_dmaoff;
+			send->s_sge[j].length = len;
 
-				bytes_sent += len;
-				rm->data.op_dmaoff += len;
-				if (rm->data.op_dmaoff == sg_dma_len(scat)) {
-					scat++;
-					rm->data.op_dmasg++;
-					rm->data.op_dmaoff = 0;
-				}
-				j++;
-				remaining_sge--;
+			bytes_sent += len;
+			rm->data.op_dmaoff += len;
+			if (rm->data.op_dmaoff == sg_dma_len(scat)) {
+				scat++;
+				rm->data.op_dmasg++;
+				rm->data.op_dmaoff = 0;
 			}
+
+			frag_leftover -= len;
+			j++;
 		}
+		send->s_wr.num_sge = j;
 
 		rds_ib_set_wr_send_flags(ic, send, 0);
 

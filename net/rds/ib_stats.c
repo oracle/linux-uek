@@ -95,6 +95,8 @@ static char *rds_ib_stat_names[] = {
 	"ib_frag_pages_in_caches",
 	"ib_srq_refill_cq_failures",
 	"ib_srq_refill_worker_failures",
+	"ib_frag_alloc_composite",
+	"ib_frag_alloc_conservative",
 };
 
 unsigned int rds_ib_stats_info_copy(struct rds_info_iterator *iter,

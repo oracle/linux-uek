@@ -140,6 +140,9 @@ static inline u16 rds_ib_get_frag(unsigned int version, u16 ib_frag)
 	case RDS_MAX_FRAG_SIZE:
 		frag = RDS_MAX_FRAG_SIZE;
 		break;
+	case RDS_COMPOSITE_SGE_FRAG_SIZE:
+		frag = RDS_COMPOSITE_SGE_FRAG_SIZE;
+		break;
 	case SZ_8K:
 		frag = SZ_8K;
 		break;
@@ -156,8 +159,8 @@ void rds_ib_init_frag(unsigned int version)
 	/* Initialise using Host module parameter */
 	ib_init_frag_size = rds_ib_get_frag(version, rds_ib_max_frag);
 
-	pr_debug("RDS/IB: fragment size initialised to %uKB\n",
-		 ib_init_frag_size / SZ_1K);
+	pr_debug("RDS/IB: fragment size initialised to %u\n",
+		 ib_init_frag_size);
 }
 
 /* Update the RDS IB frag size */
@@ -169,6 +172,8 @@ static u16 rds_ib_set_frag_size(struct rds_connection *conn, u16 dp_frag)
 
 	frag = min_t(unsigned int, ib_init_frag_size,
 		     PAGE_ALIGN((ic->i_hca_sge - 1) * PAGE_SIZE));
+	if (!rds_ib_prq_mode(ic))
+		frag = min_t(unsigned int, RDS_COMPOSITE_SGE_FRAG_SIZE, frag);
 
 	if (frag != dp_frag) {
 		frag = min_t(unsigned int, dp_frag, frag);
