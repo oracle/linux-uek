@@ -106,6 +106,7 @@ enum {
 #define RDS_FRAG_SHIFT	12
 #define RDS_FRAG_SIZE	((unsigned int)(1 << RDS_FRAG_SHIFT))
 #define RDS_MAX_FRAG_SIZE	SZ_16K
+#define RDS_COMPOSITE_SGE_FRAG_SIZE	(RDS_MAX_FRAG_SIZE - sizeof(struct rds_header))
 
 /* Used to limit both RDMA and non-RDMA RDS message to 1MB */
 #define RDS_MAX_MSG_SIZE	((unsigned int)(1 << 20))

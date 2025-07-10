@@ -114,6 +114,7 @@ struct rds_page_frag {
 	struct list_head	f_item;
 	struct lfstack_el	f_cache_entry;
 	struct scatterlist	f_sg[NUM_RDS_RECV_SG];
+	bool			f_sg_is_composite;
 	struct rds_ib_device	*rds_ibdev;
 };
 
@@ -608,6 +609,8 @@ struct rds_ib_statistics {
 	uint64_t	s_ib_frag_pages_in_caches;
 	uint64_t	s_ib_srq_refill_cq_failures;
 	uint64_t	s_ib_srq_refill_worker_failures;
+	uint64_t	s_ib_frag_alloc_composite;
+	uint64_t	s_ib_frag_alloc_conservative;
 };
 
 extern struct workqueue_struct *rds_ib_wq;
