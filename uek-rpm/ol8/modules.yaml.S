@@ -1384,9 +1384,11 @@ modules:
 - snd-seq-midi-emul
 - snd-seq-midi-event
 - snd-seq-oss
+- snd-seq-ump-client
 - snd-seq-virmidi
 - snd-timer
 - snd-ua101
+- snd-ump
 - snd-usb-6fire
 - snd-usb-caiaq
 - snd-usb-hiface
@@ -3714,12 +3716,12 @@ modules-desktop:
 - snd-soc-sdw-mockup
 - snd-soc-sdw-utils
 - snd-soc-skl_hda_dsp
+- snd-soc-sof-sdw
 - snd-soc-sof-ssp-amp
 - snd-soc-sof_cs42l42
 - snd-soc-sof_da7219
 - snd-soc-sof_es8336
 - snd-soc-sof_nau8825
-- snd-soc-sof-sdw
 - snd-soc-sst-atom-hifi2-platform
 - snd-soc-tas2781-comlib
 - snd-soc-tas2781-comlib-i2c
