@@ -44,6 +44,7 @@
 #define ML_AF_LFX_GMCTL(a)	      (0x10A00ull | (uint64_t)(a) << 3)
 #define ML_PRIV_LFX_INT_CFG           (0x10C00ull)
 #define ML_AF_LFX_MLR_BASE(a)	      (0x10E00ull | (uint64_t)(a) << 3)
+#define ML_AF_LFX_MLR_SIZE(a)	      (0x11600ull | (uint64_t)(a) << 3)
 #define ML_AF_SCRATCHX(a)	      (0x14000ull | (uint64_t)(a) << 3)
 #define ML_AF_ANBX_BACKP_DISABLE(a)   (0x18000ull | (uint64_t)(a) << 12)
 #define ML_AF_ANBX_NCBI_P_OVR(a)      (0x18010ull | (uint64_t)(a) << 12)

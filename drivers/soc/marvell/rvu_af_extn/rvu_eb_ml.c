@@ -69,58 +69,60 @@ static bool is_ml_vf(struct rvu *rvu, u16 pcifunc)
 	return true;
 }
 
-static bool is_ml_af_reg(u64 offset)
+static bool is_ml_valid_af_reg(struct rvu *rvu, struct ml_rd_wr_reg_msg *req)
 {
+	u64 offset = req->reg_offset;
 	u16 i;
 
+	if (offset & 0x7)
+		return false;
+
+	/* Registers accessible from PF */
+	if (is_ml_pf(rvu, req->hdr.pcifunc)) {
+		switch (offset) {
+		case ML_AF_CFG:
+		case ML_AF_MLR_BASE:
+		case ML_AF_JOB_MGR_CTRL:
+		case ML_AF_CORE_INT_LO:
+		case ML_AF_CORE_INT_LO_ENA_W1C:
+		case ML_AF_CORE_INT_LO_ENA_W1S:
+		case ML_AF_CORE_INT_HI:
+		case ML_AF_CORE_INT_HI_ENA_W1C:
+		case ML_AF_CORE_INT_HI_ENA_W1S:
+		case ML_AF_WRAP_ERR_INT:
+		case ML_AF_WRAP_ERR_INT_ENA_W1C:
+		case ML_AF_WRAP_ERR_INT_ENA_W1S:
+		case ML_PRIV_AF_CFG:
+		case ML_PRIV_AF_INT_CFG:
+		case ML_AF_RVU_INT:
+		case ML_AF_RVU_INT_ENA_W1S:
+		case ML_AF_RVU_INT_ENA_W1C:
+		case ML_AF_LF_RST:
+		case ML_AF_RVU_LF_CFG_DEBUG:
+		case ML_AF_CONST:
+		case ML_AF_MLR_SIZE:
+		case ML_AF_AXI_BRIDGE_CTRLX(0) ... ML_AF_AXI_BRIDGE_CTRLX(1):
+		case ML_AF_SCRATCHX(0) ... ML_AF_SCRATCHX(ML_SCRATCH_NR - 1):
+			return true;
+		}
+
+		for (i = 0; i < ML_ANBX_NR; i++) {
+			if (offset == ML_AF_ANBX_BACKP_DISABLE(i))
+				return true;
+
+			if (offset == ML_AF_ANBX_NCBI_P_OVR(i))
+				return true;
+
+			if (offset == ML_AF_ANBX_NCBI_NP_OVR(i))
+				return true;
+		}
+	}
+
+	/* Registers accessible from PF/VF */
 	switch (offset) {
-	case ML_AF_CFG:
-	case ML_AF_MLR_BASE:
-	case ML_AF_JOB_MGR_CTRL:
-	case ML_AF_CORE_INT_LO:
-	case ML_AF_CORE_INT_LO_ENA_W1C:
-	case ML_AF_CORE_INT_LO_ENA_W1S:
-	case ML_AF_CORE_INT_HI:
-	case ML_AF_CORE_INT_HI_ENA_W1C:
-	case ML_AF_CORE_INT_HI_ENA_W1S:
-	case ML_AF_WRAP_ERR_INT:
-	case ML_AF_WRAP_ERR_INT_ENA_W1C:
-	case ML_AF_WRAP_ERR_INT_ENA_W1S:
-	case ML_PRIV_AF_CFG:
-	case ML_PRIV_AF_INT_CFG:
-	case ML_AF_RVU_INT:
-	case ML_AF_RVU_INT_ENA_W1S:
-	case ML_AF_RVU_INT_ENA_W1C:
-	case ML_AF_LF_RST:
-	case ML_AF_RVU_LF_CFG_DEBUG:
-	case ML_AF_CONST:
-	case ML_AF_MLR_SIZE:
+	case ML_AF_LFX_MLR_BASE(0) ... ML_AF_LFX_MLR_BASE(ML_RVU_LF_COUNT - 1):
+	case ML_AF_LFX_MLR_SIZE(0) ... ML_AF_LFX_MLR_SIZE(ML_RVU_LF_COUNT - 1):
 		return true;
-	}
-
-	for (i = 0; i < 2; i++) {
-		if (offset == ML_AF_AXI_BRIDGE_CTRLX(i))
-			return true;
-	}
-
-	for (i = 0; i < ML_SCRATCH_NR; i++) {
-		if (offset == ML_AF_SCRATCHX(i))
-			return true;
-	}
-
-	for (i = 0; i < ML_ANBX_NR; i++) {
-		if (offset == ML_AF_ANBX_BACKP_DISABLE(i))
-			return true;
-	}
-
-	for (i = 0; i < ML_ANBX_NR; i++) {
-		if (offset == ML_AF_ANBX_NCBI_P_OVR(i))
-			return true;
-	}
-
-	for (i = 0; i < ML_ANBX_NR; i++) {
-		if (offset == ML_AF_ANBX_NCBI_NP_OVR(i))
-			return true;
 	}
 
 	return false;
@@ -167,8 +169,8 @@ int rvu_mbox_handler_ml_rd_wr_register(struct rvu *rvu,
 	    !is_ml_vf(rvu, req->hdr.pcifunc))
 		return ML_AF_ERR_ACCESS_DENIED;
 
-	if (!is_ml_af_reg(req->reg_offset))
-		return ML_AF_ERR_REG_INVALID;
+	if (!is_ml_valid_af_reg(rvu, req))
+		return ML_AF_ERR_ACCESS_DENIED;
 
 	rsp->reg_offset = req->reg_offset;
 	rsp->ret_val = req->ret_val;
