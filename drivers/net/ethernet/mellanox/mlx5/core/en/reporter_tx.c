@@ -575,7 +575,7 @@ static const struct devlink_health_reporter_ops mlx5_tx_reporter_ops = {
 		.dump = mlx5e_tx_reporter_dump,
 };
 
-#define MLX5_REPORTER_TX_GRACEFUL_PERIOD 500
+#define MLX5_REPORTER_TX_GRACEFUL_PERIOD 0
 
 void mlx5e_reporter_tx_create(struct mlx5e_priv *priv)
 {
