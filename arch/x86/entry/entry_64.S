@@ -136,7 +136,6 @@ SYM_INNER_LABEL(entry_SYSCALL_64_after_hwframe, SYM_L_GLOBAL)
 	 */
 syscall_return_via_sysret:
 	IBRS_EXIT
-	TRACE_CLEAR_CPU_BUFFERS
 	POP_REGS pop_rdi=0
 
 	/*
@@ -567,8 +566,6 @@ SYM_INNER_LABEL(swapgs_restore_regs_and_return_to_usermode, SYM_L_GLOBAL)
 	ALTERNATIVE "", "jmp .Lpti_restore_regs_and_return_to_usermode", X86_FEATURE_PTI
 #endif
 
-	TRACE_CLEAR_CPU_BUFFERS
-
 	STACKLEAK_ERASE
 	POP_REGS
 	add	$8, %rsp	/* orig_ax */
@@ -687,8 +684,6 @@ native_irq_return_ldt:
 	pushq	%rdi				/* Stash user RDI */
 	swapgs					/* to kernel GS */
 	SWITCH_TO_KERNEL_CR3 scratch_reg=%rdi	/* to kernel CR3 */
-
-	TRACE_CLEAR_CPU_BUFFERS
 
 	movq	PER_CPU_VAR(espfix_waddr), %rdi
 	movq	%rax, (0*8)(%rdi)		/* user RAX */
