@@ -501,13 +501,6 @@ SYSCALL_DEFINE0(ni_syscall)
 	return -ENOSYS;
 }
 
-__visible void trace_asm_clear_cpu_buffers(void)
-{
-	struct cpuinfo_x86 *c = this_cpu_ptr(&cpu_info);
-
-	c->asm_clear++;
-}
-
 #ifdef CONFIG_XEN_PV
 #ifndef CONFIG_PREEMPTION
 /*

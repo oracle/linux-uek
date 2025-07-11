@@ -315,10 +315,6 @@
 #endif
 .endm
 
-.macro TRACE_CLEAR_CPU_BUFFERS
-	ALTERNATIVE "", "call trace_asm_clear_cpu_buffers", X86_FEATURE_CLEAR_CPU_BUF
-.endm
-
 /*
  * Macro to execute VERW insns that mitigate transient data sampling
  * attacks such as MDS or TSA. On affected systems a microcode update
@@ -368,8 +364,6 @@ extern retpoline_thunk_t __x86_indirect_thunk_array[];
 extern retpoline_thunk_t __x86_indirect_call_thunk_array[];
 extern retpoline_thunk_t __x86_indirect_jump_thunk_array[];
 extern its_thunk_t	 __x86_indirect_its_thunk_array[];
-
-extern __visible void trace_asm_clear_cpu_buffers(void);
 
 #ifdef CONFIG_MITIGATION_RETHUNK
 extern void __x86_return_thunk(void);
@@ -590,12 +584,43 @@ DECLARE_STATIC_KEY_FALSE(switch_mm_cond_l1d_flush);
 DECLARE_STATIC_KEY_FALSE(mmio_stale_data_clear);
 
 extern u16 x86_verw_sel;
-extern u64 x86_verw_counter;
 
 #include <asm/segment.h>
 
-extern inline void x86_clear_cpu_buffers(void);
-extern inline void x86_idle_clear_cpu_buffers(void);
+/**
+ * x86_clear_cpu_buffers - Buffer clearing support for different x86 CPU vulns
+ *
+ * This uses the otherwise unused and obsolete VERW instructions in
+ * combination with microcode which triggers a CPU buffer flush when the
+ * instruction is executed.
+ */
+static __always_inline void x86_clear_cpu_buffers(void)
+{
+	static const u16 ds = __KERNEL_DS;
+
+	/*
+	 * Has to be the memory-operand variant because only that
+	 * guarantees the CPU buffer flush functionality according to
+	 * documentation. The register-operand variant does not.
+	 * Works with any segment selector, but a valid writable
+	 * data segment is the fastest variant.
+	 *
+	 * "cc" clobber is required because VERW modifies ZF.
+	 */
+	asm volatile("verw %[ds]" : : [ds] "m" (ds) : "cc");
+}
+
+/**
+ * x86_idle_clear_cpu_buffers - Buffer clearing support in idle for different
+ * x86 CPU vulns
+ *
+ * Clear CPU buffers if the corresponding static key is enabled
+ */
+static __always_inline void x86_idle_clear_cpu_buffers(void)
+{
+	if (static_branch_likely(&cpu_buf_idle_clear))
+		x86_clear_cpu_buffers();
+}
 
 #endif /* __ASSEMBLY__ */
 

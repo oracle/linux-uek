@@ -32,9 +32,6 @@ static int cpu_debug_show(struct seq_file *m, void *p)
 	seq_printf(m, "num_cores:           %u\n", __num_cores_per_package);
 	seq_printf(m, "max_dies_per_pkg:    %u\n", __max_dies_per_package);
 	seq_printf(m, "max_threads_per_core:%u\n", __max_threads_per_core);
-	seq_printf(m, "clear:		    %lu\n", c->clear);
-	seq_printf(m, "asm clear:	    %lu\n", c->asm_clear);
-	seq_printf(m, "idle clear:	    %lu\n", c->idle_clear);
 	return 0;
 }
 

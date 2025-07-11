@@ -175,9 +175,9 @@ struct cpuinfo_x86 {
 	u8			x86_cache_bits;
 	unsigned		initialized : 1;
 
-	UEK_KABI_USE(1, unsigned long idle_clear)
-	UEK_KABI_USE(2, unsigned long clear)
-	UEK_KABI_USE(3, unsigned long asm_clear)
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
 	UEK_KABI_RESERVE(5)
 	UEK_KABI_RESERVE(6)
