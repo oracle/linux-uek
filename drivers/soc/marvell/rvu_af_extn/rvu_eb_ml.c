@@ -210,15 +210,18 @@ int rvu_mbox_handler_ml_free_rsrc_cnt(struct rvu *rvu, struct msg_req *req,
 }
 
 int rvu_mbox_handler_ml_attach_resources(struct rvu *rvu,
-					 struct ml_rsrc_attach *attach,
-					 struct msg_rsp *rsp)
+					 struct ml_rsrc_attach_req *attach,
+					 struct ml_rsrc_attach_rsp *rsp)
 {
 	u16 pcifunc = attach->hdr.pcifunc;
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
 	int free_lfs, mappedlfs;
 	struct rvu_hwinfo *hw = rvu->hw;
 	struct rvu_block *block;
+	u64 lf_map[ML_NUM_LF_MAPS];
 	int slot, lf;
+	int map_idx;
+	int map_shift;
 	u64 cfg;
 
 	if (!attach->mllfs)
@@ -250,6 +253,7 @@ int rvu_mbox_handler_ml_attach_resources(struct rvu *rvu,
 	if (attach->modify && !!mappedlfs)
 		rvu_detach_block(rvu, pcifunc, BLKTYPE_ML);
 
+	memset(lf_map, 0, ML_NUM_LF_MAPS * sizeof(u64));
 	for (slot = 0; slot < attach->mllfs; slot++) {
 		/* Allocate the resource */
 		lf = rvu_alloc_rsrc(&block->lf);
@@ -260,10 +264,14 @@ int rvu_mbox_handler_ml_attach_resources(struct rvu *rvu,
 		rvu_write64(rvu, BLKADDR_ML,
 			    block->lfcfg_reg | (lf << block->lfshift), cfg);
 		rvu_update_rsrc_map(rvu, pfvf, block, pcifunc, lf, true);
+		map_idx = lf / ML_NUM_LF_MAPS;
+		map_shift = lf % ML_NUM_LF_MAPS;
+		lf_map[map_idx] |= (1ULL << map_shift);
 
 		/* Set start MSIX vector for this LF within this PF/VF */
 		rvu_set_msix_offset(rvu, pfvf, block, lf);
 	}
+	memcpy(rsp->lf_map, lf_map, ML_NUM_LF_MAPS * sizeof(u64));
 
 exit:
 	mutex_unlock(&rvu->rsrc_lock);
