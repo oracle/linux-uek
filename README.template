@@ -20,8 +20,8 @@ This repository hosts source code for UEK versions which are in development and 
 
 | UEK Release and Tag | Linux Kernel version | Release Status | Target Arch | Target Userspace Distribution(s) |
 |--------------------|-----------------------------|----------------------|-----------------|--------------------------------------------|
-| [`ueknext/latest`](https://github.com/oracle/linux-uek/tree/ueknext/latest) | latest | Production | `x86_64`, `aarch64` | Oracle Linux 9 |
-| ##uek8/u1## | v6.12 | Production | `x86_64`, `aarch64` | Oracle Linux 9 |
+| [`ueknext/latest`](https://github.com/oracle/linux-uek/tree/ueknext/latest) | latest | Production | `x86_64`, `aarch64` | Oracle Linux 9, Oracle Linux 10 |
+| ##uek8/u1## | v6.12 | Production | `x86_64`, `aarch64` | Oracle Linux 9, Oracle Linux 10 |
 | ##uek7/u3## | v5.15 | Production | `x86_64`, `aarch64` | Oracle Linux 8, Oracle Linux 9 |
 | ##uek6/u3## | v5.4 | Production | `x86_64`, `aarch64` | Oracle Linux 7, Oracle Linux 8 |
 
