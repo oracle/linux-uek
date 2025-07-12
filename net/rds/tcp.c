@@ -48,9 +48,6 @@ static int rds_tcp_skbuf_handler(const struct ctl_table *ctl, int write,
 				 void __user *buffer, size_t *lenp,
 				 loff_t *fpos);
 
-static bool list_has_conn(struct list_head *list,
-			  struct rds_connection *conn);
-
 static int rds_tcp_min_sndbuf = SOCK_MIN_SNDBUF;
 static int rds_tcp_min_rcvbuf = SOCK_MIN_RCVBUF;
 
@@ -174,16 +171,12 @@ void rds_tcp_reset_callbacks(struct socket *sock,
 	 * to avoid any re-queueing)
 	 */
 
-	if (test_and_set_bit(RDS_SEND_WORK_QUEUED, &cp->cp_flags) &&
-	    rds_queue_cancel_work(cp, &cp->cp_send_w,
-				  "tcp reset, cancel send work"))
-		rds_conn_put(cp->cp_conn);
-
-	if (test_and_set_bit(RDS_RECV_WORK_QUEUED, &cp->cp_flags) &&
-	    rds_queue_cancel_work(cp, &cp->cp_recv_w,
-				  "tcp reset, cancel recv work"))
-		rds_conn_put(cp->cp_conn);
-
+	if (test_and_set_bit(RDS_SEND_WORK_QUEUED, &cp->cp_flags))
+		rds_queue_cancel_work(cp, &cp->cp_send_w,
+				      "tcp reset, cancel send work");
+	if (test_and_set_bit(RDS_RECV_WORK_QUEUED, &cp->cp_flags))
+		rds_queue_cancel_work(cp, &cp->cp_recv_w,
+				      "tcp reset, cancel recv work");
 	if (tc->t_tinc) {
 		rds_inc_put(&tc->t_tinc->ti_inc);
 		tc->t_tinc = NULL;
@@ -399,16 +392,6 @@ static int rds_tcp_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 		/* Once assigned, will never change until TCP conn destroyed. */
 		tc->t_rtn = rtn;
 
-		/* Ideally we would rds_conn_get() here for adding
-		 * conn to the rds_tcp_conn_list and a put() in
-		 * rds_tcp_conn_free(), but that would mean the refcount
-		 * would never drop to 0 as c_trans->conn_free() is called
-		 * in the kref callback rds_conn_(path_)destroy_fini() and
-		 * we'll be off-by-one rds_conn_put(). So, we choose to
-		 * ignore this "conn" copy and not bring it under the kref
-		 * umbrella. This is safe as c_trans->conn_free() is called
-		 * before freeing its container conn.
-		 */
 		spin_lock_irq(&rtn->rds_tcp_conn_lock);
 		list_add_tail(&tc->t_tcp_node, &rtn->rds_tcp_conn_list);
 		spin_unlock_irq(&rtn->rds_tcp_conn_lock);
@@ -460,7 +443,7 @@ static void rds_tcp_destroy_conns(struct rds_tcp_net *rtn)
 	spin_unlock_irq(&rtn->rds_tcp_conn_lock);
 
 	list_for_each_entry_safe(tc, _tc, &tmp_list, t_tcp_node)
-		rds_conn_destroy_init(tc->t_cpath->cp_conn, 1);
+		rds_conn_destroy(tc->t_cpath->cp_conn, 1);
 }
 
 struct rds_transport rds_tcp_transport = {
@@ -664,7 +647,7 @@ static void rds_tcp_kill_sock(struct net *net, struct rds_tcp_net *rtn)
 	spin_unlock_irq(&rtn->rds_tcp_conn_lock);
 	list_for_each_entry_safe(tc, _tc, &tmp_list, t_tcp_node) {
 		rds_tcp_conn_paths_destroy(tc->t_cpath->cp_conn);
-		rds_conn_destroy_init(tc->t_cpath->cp_conn, 1);
+		rds_conn_destroy(tc->t_cpath->cp_conn, 1);
 	}
 }
 

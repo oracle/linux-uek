@@ -148,7 +148,6 @@ static void rds_rdma_cm_event_handler_cmn(struct rdma_cm_id *cm_id,
 				cm_id->context = NULL;
 				up_write(&ic->i_cm_id_free_lock);
 				mutex_unlock(&new_conn->c_cm_lock);
-				rds_conn_put(new_conn); /* get in rds_ib_cm_accept */
 			}
 
 			rdma_destroy_id(cm_id);
@@ -510,11 +509,8 @@ static int rds_rdma_listen_init_common(rdma_cm_event_handler handler,
 	*ret_cm_id = cm_id;
 	cm_id = NULL;
 out:
-	if (cm_id) {
-		if (cm_id->context)
-			rds_conn_put(cm_id->context); /* get in rds_ib_cm_accept */
+	if (cm_id)
 		rdma_destroy_id(cm_id);
-	}
 	return ret;
 }
 
@@ -561,16 +557,12 @@ static void rds_rdma_listen_stop(void)
 {
 	if (rds_rdma_listen_id) {
 		rdsdebug("cm %p\n", rds_rdma_listen_id);
-		if (rds_rdma_listen_id->context)
-			rds_conn_put(rds_rdma_listen_id->context); /* get in rds_ib_cm_accept */
 		rdma_destroy_id(rds_rdma_listen_id);
 		rds_rdma_listen_id = NULL;
 	}
 #if IS_ENABLED(CONFIG_IPV6)
 	if (rds6_rdma_listen_id) {
 		rdsdebug("cm %p\n", rds6_rdma_listen_id);
-		if (rds6_rdma_listen_id->context)
-			rds_conn_put(rds6_rdma_listen_id->context); /* get in rds_ib_cm_accept */
 		rdma_destroy_id(rds6_rdma_listen_id);
 		rds6_rdma_listen_id = NULL;
 	}

@@ -1405,10 +1405,10 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rds_ib_device *rds_ibdev, *saved_ibdev;
 	struct ib_device *dev = ic->i_cm_id->device;
-	struct ib_qp_init_attr qp_attr = {};
+	struct ib_qp_init_attr qp_attr;
 	unsigned long max_wrs;
 	char *reason = NULL;
-	int ret = -EINVAL;
+	int ret;
 
 	WARN_ON(ic->rds_ibdev);
 
@@ -1521,8 +1521,8 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	}
 
 	/* XXX negotiate max send/recv with remote? */
+	memset(&qp_attr, 0, sizeof(qp_attr));
 	qp_attr.event_handler = rds_ib_qp_event_handler;
-	rds_conn_get(conn); /* put in rds_ib_conn_path_shutdown_final */
 	qp_attr.qp_context = conn;
 	/* + 1 to allow for the single ack message */
 	qp_attr.cap.max_send_wr = ic->i_send_ring.w_nr + 1 + RDS_IB_DEFAULT_FREG_WR;
@@ -1681,9 +1681,6 @@ out:
 	}
 
 	conn->c_reconnect_err = ret;
-	if (ret && qp_attr.qp_context)
-		rds_conn_put(conn); /* for qp_context */
-
 	/* rds_ib_get_client_data() has a hold on the device. */
 	rds_ib_dev_put(rds_ibdev);
 
@@ -1798,8 +1795,6 @@ static void rds_destroy_cm_id_worker(struct work_struct *_work)
 							      struct rds_ib_destroy_cm_id_work,
 							      work);
 
-	if (work->cm_id->context)
-		rds_conn_put(work->cm_id->context); /* get in rds_ib_cm_accept */
 	rdma_destroy_id(work->cm_id);
 	kfree(work);
 }
@@ -1816,11 +1811,8 @@ static void rds_spawn_destroy_cm_id(struct rdma_cm_id *cm_id)
 					&work->work, 0,
 					"destroy cm_id");
 		queue_work(rds_aux_wq, &work->work);
-	} else {
-		if (cm_id->context)
-			rds_conn_put(cm_id->context); /* get in rds_ib_cm_accept */
+	} else
 		rdma_destroy_id(cm_id);
-	}
 }
 
 static int rds_ib_cm_accept(struct rds_connection *conn,
@@ -1845,12 +1837,6 @@ static int rds_ib_cm_accept(struct rds_connection *conn,
 
 	ic->i_cm_id = cm_id;
 	ic->i_cm_id_gen = 0;
-	/* put for cm_id->context in:
-	 * rds_rdma_cm_event_handler_cmn
-	 * or rds_ib_conn_path_shutdown_final
-	 * or before rdma_destroy_id
-	 */
-	rds_conn_get(conn);
 	cm_id->context = conn;
 
 	if (isv6) {
@@ -2189,11 +2175,8 @@ out:
 					       rds_ibdev,
 					       conn, ic, reason, err);
 
-	if (conn) {
+	if (conn)
 		mutex_unlock(&conn->c_cm_lock);
-		rds_conn_put(conn); /* for rds_conn_create */
-	}
-
 	if (err)
 		rdma_reject(cm_id, &err, sizeof(int),
 			    IB_CM_REJ_CONSUMER_DEFINED);
@@ -2209,7 +2192,7 @@ void rds_ib_conn_destroy_worker(struct work_struct *_work)
 		container_of(_work, struct rds_ib_conn_destroy_work, work.work);
 	struct rds_connection   *conn = work->conn;
 
-	rds_conn_destroy_init(conn, 0);
+	rds_conn_destroy(conn, 0);
 
 	kfree(work);
 }
@@ -2437,7 +2420,6 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 		handler = rds_rdma_cm_event_handler;
 
 	WARN_ON(ic->i_cm_id);
-	rds_conn_get(conn); /* for cm_id->context */
 	ic->i_cm_id = rdma_create_id(rds_conn_net(conn), handler,
 				     RDS_IB_CM_ID_ADD_GEN(conn, ++ic->i_cm_id_gen),
 				     RDMA_PS_TCP, IB_QPT_RC);
@@ -2445,7 +2427,6 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 	if (IS_ERR(ic->i_cm_id)) {
 		ret = PTR_ERR(ic->i_cm_id);
 		ic->i_cm_id = NULL;
-		rds_conn_put(conn); /* for cm_id->context */
 		reason = "rdma_create_id failed";
 		goto out;
 	}
@@ -2489,8 +2470,6 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 		ic->i_cm_id = NULL;
 		up_write(&ic->i_cm_id_free_lock);
 
-		if (cm_id->context)
-			rds_conn_put(cm_id->context); /* get in rds_ib_cm_accept */
 		rdma_destroy_id(cm_id);
 	}
 
@@ -2593,10 +2572,8 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 		tasklet_kill(&ic->i_rtasklet);
 
 		/* first destroy the ib state that generates callbacks */
-		if (ic->i_cm_id->qp) {
+		if (ic->i_cm_id->qp)
 			rdma_destroy_qp(ic->i_cm_id);
-			rds_conn_put(conn); /* for qp_context */
-		}
 
 		if (test_bit(RDS_IB_CQ_ERR, &ic->i_flags) || test_bit(RDS_IB_CQ_DESTROY, &ic->i_flags)) {
 			pr_info("RDS/IB: Destroy CQ: conn %p <%pI6c,%pI6c,%d> ic %p cm_id %p\n",
@@ -2627,7 +2604,6 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 		up_write(&ic->i_cm_id_free_lock);
 
 		rds_spawn_destroy_cm_id(cm_id);
-		rds_conn_put(conn); /* for cm_id->context */
 
 		ic->i_pd = NULL;
 		ic->i_mr = NULL;
@@ -2747,14 +2723,6 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 
 	rds_ib_init_ic_frag(ic);
 
-	/* Ideally we would rds_conn_get() here for ic->conn and a put() in
-	 * rds_ib_conn_free(), but that would mean the refcount would never
-	 * drop to 0 as c_trans->conn_free() is called in the kref callback
-	 * rds_conn_(path_)destroy_fini() and we'll be off-by-one rds_conn_put().
-	 * So, we choose to ignore this "conn" copy and not bring it under the
-	 * kref umbrella. This is safe as c_trans->conn_free() is called
-	 * before freeing its container conn.
-	 */
 	ic->conn = conn;
 	conn->c_transport_data = ic;
 
@@ -2811,11 +2779,8 @@ void rds_ib_conn_free(void *arg)
 		spin_unlock(&ic->rds_ibdev->spinlock);
 	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
 
-	if (ic->i_alt.cm_id) {
-		if (ic->i_alt.cm_id->context)
-			rds_conn_put(ic->i_alt.cm_id->context); /* get in rds_ib_cm_accept */
+	if (ic->i_alt.cm_id)
 		rdma_destroy_id(ic->i_alt.cm_id);
-	}
 
 	kfree(ic);
 }

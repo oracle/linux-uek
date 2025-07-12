@@ -607,7 +607,7 @@ void rds_ib_destroy_nodev_conns(void)
 
 	/* Avoid calling conn_destroy with irqs off.  Note that while the
 	 * loop is running, conns can be queued to the nodev list until
-	 * rds_conn_destroy_init() is called on them.
+	 * rds_conn_destroy() is called on them.
 	 */
 	spin_lock_irqsave(&ib_nodev_conns_lock, flags);
 	while (!list_empty(&ib_nodev_conns)) {
@@ -615,7 +615,7 @@ void rds_ib_destroy_nodev_conns(void)
 				      ib_node);
 		list_del_init(&ic->ib_node);
 		spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
-		rds_conn_destroy_init(ic->conn, 1);
+		rds_conn_destroy(ic->conn, 1);
 		spin_lock_irqsave(&ib_nodev_conns_lock, flags);
 	}
 	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
