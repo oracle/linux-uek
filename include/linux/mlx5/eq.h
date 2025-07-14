@@ -10,6 +10,7 @@
 #define MLX5_NUM_SPARE_EQE (0x80)
 
 struct mlx5_eq;
+struct mlx5_eq_comp;
 struct mlx5_core_dev;
 
 struct mlx5_eq_param {
@@ -30,6 +31,7 @@ void mlx5_eq_disable(struct mlx5_core_dev *dev, struct mlx5_eq *eq,
 
 struct mlx5_eqe *mlx5_eq_get_eqe(struct mlx5_eq *eq, u32 cc);
 void mlx5_eq_update_ci(struct mlx5_eq *eq, u32 cc, bool arm);
+void mlx5_eq_reap(struct mlx5_core_dev *mdev, struct mlx5_eq_comp *eq);
 
 /* The HCA will think the queue has overflowed if we
  * don't tell it we've been processing events.  We
