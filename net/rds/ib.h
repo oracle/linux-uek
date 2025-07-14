@@ -116,6 +116,7 @@ struct rds_page_frag {
 	struct scatterlist	f_sg[NUM_RDS_RECV_SG];
 	bool			f_sg_is_composite;
 	struct rds_ib_device	*rds_ibdev;
+	struct rds_ib_srq	*rds_srq;
 };
 
 struct rds_ib_incoming {
@@ -124,6 +125,7 @@ struct rds_ib_incoming {
 	struct lfstack_el	ii_cache_entry;
 	struct rds_incoming	ii_inc;
 	struct rds_ib_device	*rds_ibdev;
+	struct rds_ib_srq	*rds_srq;
 };
 
 struct rds_ib_cache_head {
@@ -245,6 +247,7 @@ struct rds_ib_connection {
 
 	struct list_head	ib_node;
 	struct rds_ib_device	*rds_ibdev;
+	struct rds_ib_srq	*rds_srq;
 	struct rds_connection	*conn;
 
 	/* alphabet soup, IBTA style */
@@ -467,6 +470,26 @@ struct rds_rdma_dev_sock {
 	bool			rrds_dev_released;
 };
 
+struct rds_ib_srq {
+	struct list_head	list;
+	struct cpumask		llc_cpu_mask;
+
+	struct rds_ib_device	*rds_ibdev;
+	unsigned int		max_wr;
+
+	struct ib_srq		*srq;
+	struct rds_header	**recv_hdrs;
+	dma_addr_t		*recv_hdrs_dma;
+	struct scatterlist	*recv_hdrs_sg;
+	struct rds_ib_recv_work	*recvs;
+
+	struct rds_ib_refill_cache cache_incs;
+	struct rds_ib_refill_cache cache_frags;
+
+	unsigned long		*recvs_drained_bitmap;
+	struct delayed_work	refill_work;
+};
+
 struct rds_ib_device {
 	struct list_head	list;
 	struct list_head	ipaddr_list;
@@ -474,14 +497,8 @@ struct rds_ib_device {
 	struct ib_device	*dev;
 	struct ib_pd		*pd;
 
-	unsigned int		srq_max_wr;
-	struct ib_srq		*srq;
-	struct rds_header	**srq_recv_hdrs;
-	dma_addr_t		*srq_recv_hdrs_dma;
-	struct scatterlist	*srq_recv_hdrs_sg;
-	struct rds_ib_recv_work	*srq_recvs;
-	unsigned long		*srq_recvs_drained_bitmap;
-	struct delayed_work	srq_refill_work;
+	struct list_head	srqs;
+	struct mutex		srqs_lock;
 
 	struct workqueue_struct	*rid_dev_wq; /* Device work queue */
 
@@ -607,6 +624,7 @@ struct rds_ib_statistics {
 	uint64_t	s_ib_frag_pages_allocated;
 	uint64_t	s_ib_frag_pages_in_ib_recv_queue;
 	uint64_t	s_ib_frag_pages_in_caches;
+	uint64_t	s_ib_srq_count;
 	uint64_t	s_ib_srq_refill_cq_failures;
 	uint64_t	s_ib_srq_refill_worker_failures;
 	uint64_t	s_ib_frag_alloc_composite;
@@ -662,8 +680,6 @@ static inline __s32 rds_qp_num(struct rds_connection *conn, int dst)
 }
 
 /* ib.c */
-extern bool rds_ib_srq_enabled;
-extern unsigned int rds_ib_srq_max_wr;
 extern struct workqueue_struct *rds_aux_wq;
 extern struct workqueue_struct *rds_evt_wq;
 extern struct rds_transport rds_ib_transport;
@@ -674,8 +690,12 @@ struct rds_ib_device *rds_ib_get_client_data(struct ib_device *device);
 void rds_ib_dev_put(struct rds_ib_device *rds_ibdev);
 void rds_ib_dev_get(struct rds_ib_device *rds_ibdev);
 void rds_ib_nodev_connect(void);
+int rds_ib_alloc_cache(struct rds_ib_refill_cache *cache, bool use_percpu);
+void rds_ib_free_cache(struct rds_ib_refill_cache *cache);
 void rds_ib_free_one_frag(struct rds_page_frag *frag, size_t cache_sz);
 void rds_ib_free_one_inc(struct rds_ib_incoming *inc);
+void rds_ib_free_frag_cache(struct rds_ib_refill_cache *cache, size_t cache_sz);
+void rds_ib_free_inc_cache(struct rds_ib_refill_cache *cache);
 extern struct ib_client rds_ib_client;
 
 extern unsigned int rds_ib_mr_1m_pool_size;
@@ -747,6 +767,10 @@ void rds_ib_get_preferred_cpu_mask(struct cpumask *preferred_cpu_mask_p,
 struct rds_ib_device *rds_ib_get_device(const struct in6_addr *ipaddr);
 int rds_ib_update_ipaddr(struct rds_ib_device *rds_ibdev,
 			 struct in6_addr *ipaddr);
+void rds_ib_alloc_preferred_cpu(int *preferred_cpu_p,
+				struct rds_ib_device *rds_ibdev,
+				int cq_vector);
+void rds_ib_release_preferred_cpu(int *preferred_cpu_p);
 int rds_ib_add_conn(struct rds_ib_device *rds_ibdev,
 		    struct rds_connection *conn);
 void rds_ib_remove_conn(struct rds_ib_device *rds_ibdev, struct rds_connection *conn);
@@ -782,6 +806,7 @@ void rds_ib_recv_free_frag(struct rds_page_frag *frag, int nent);
 void __rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp);
 void rds_ib_srq_refill_worker(struct work_struct *work);
 int rds_ib_recv_refill_one(struct rds_ib_device *rds_ibdev,
+			   struct rds_ib_srq *rds_srq,
 			   struct rds_ib_connection *ic,
 			   struct rds_ib_recv_work *recv,
 			   gfp_t gfp);
@@ -797,8 +822,10 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 			    struct list_head *inc_stash);
 void rds_ib_recv_init_ring(struct rds_ib_connection *ic);
 void rds_ib_recv_clear_ring(struct rds_ib_connection *ic);
-void rds_ib_recv_init_srq(struct rds_ib_device *rds_ibdev);
-void rds_ib_recv_clear_srq(struct rds_ib_device *rds_ibdev);
+int rds_ib_find_srq(struct rds_ib_device *rds_ibdev,
+		    struct rds_ib_connection *ic,
+		    int cpu);
+void rds_ib_free_srq(struct rds_ib_srq *rds_srq);
 void rds_ib_recv_init_ack(struct rds_ib_connection *ic);
 void rds_ib_attempt_ack(struct rds_ib_connection *ic);
 void rds_ib_ack_send_complete(struct rds_ib_connection *ic);
@@ -826,7 +853,7 @@ static inline int rds_ib_recv_acquire_refill(struct rds_connection *conn)
 
 static inline bool rds_ib_prq_mode(const struct rds_ib_connection *ic)
 {
-	return ic && !ic->rds_ibdev->srq;
+	return ic && !ic->rds_srq;
 }
 
 /* ib_ring.c */

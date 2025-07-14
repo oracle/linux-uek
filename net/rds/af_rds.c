@@ -84,7 +84,8 @@ struct rt_debug_tp {
 /* Map from RDS_RTD_ flag to replacement tracepoints. */
 static struct rt_debug_tp rt_debug_tp_map[] = {
 	{ RDS_RTD_ERR,
-	  { "rds_ib_add_device_err", "rds_ib_setup_qp_err",
+	  { "rds_ib_add_device_err", "rds_ib_find_srq_err",
+	    "rds_ib_setup_qp_err",
 	    "rds_conn_drop", "rds_ib_cm_handle_connect_err",
 	    "rds_ib_setup_fastreg_err", "rds_rdma_cm_event_handler_err",
 	    NULL }},

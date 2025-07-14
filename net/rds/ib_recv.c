@@ -32,6 +32,7 @@
  */
 #include <linux/kernel.h>
 #include <linux/vmalloc.h>
+#include <linux/cacheinfo.h>
 #include <linux/pci.h>
 #include <linux/dma-mapping.h>
 #include <linux/sched/clock.h>
@@ -42,6 +43,14 @@
 #include "rds.h"
 #include "ib.h"
 #include "rds_single_path.h"
+
+static bool rds_ib_srq_enabled;
+static bool rds_ib_per_llc_srq = true;
+static unsigned int rds_ib_srq_max_wr = RDS_IB_DEFAULT_SRQ_RECV_WR;
+
+module_param(rds_ib_srq_enabled, bool, 0444);
+module_param(rds_ib_per_llc_srq, bool, 0444);
+module_param(rds_ib_srq_max_wr, uint, 0444);
 
 unsigned int rds_ib_cache_max_percpu = 1024;
 
@@ -95,14 +104,14 @@ void rds_ib_recv_init_ring(struct rds_ib_connection *ic)
 	}
 }
 
-void rds_ib_recv_init_srq(struct rds_ib_device *rds_ibdev)
+static void rds_ib_recv_init_srq(struct rds_ib_srq *rds_srq)
 {
 	struct rds_ib_recv_work *recv;
 	u32 i, j;
 	/* One entry for RDS header */
 	u32 num_send_sge = DIV_ROUND_UP(RDS_MAX_FRAG_SIZE, PAGE_SIZE) + 1;
 
-	for (i = 0, recv = rds_ibdev->srq_recvs; i < rds_ibdev->srq_max_wr; i++, recv++) {
+	for (i = 0, recv = rds_srq->recvs; i < rds_srq->max_wr; i++, recv++) {
 		struct ib_sge *sge;
 
 		recv->r_ibinc = NULL;
@@ -114,17 +123,214 @@ void rds_ib_recv_init_srq(struct rds_ib_device *rds_ibdev)
 		recv->r_wr.num_sge = num_send_sge;
 
 		sge = recv->r_sge;
-		sge->addr = rds_ibdev->srq_recv_hdrs_dma[i];
+		sge->addr = rds_srq->recv_hdrs_dma[i];
 		sge->length = sizeof(struct rds_header);
-		sge->lkey = rds_ibdev->mr->lkey;
+		sge->lkey = rds_srq->rds_ibdev->mr->lkey;
 
 		for (j = 1; j < num_send_sge; j++) {
 			sge = recv->r_sge + j;
 			sge->addr = 0;
 			sge->length = PAGE_SIZE;
-			sge->lkey = rds_ibdev->mr->lkey;
+			sge->lkey = rds_srq->rds_ibdev->mr->lkey;
 		}
 	}
+}
+
+int rds_ib_find_srq(struct rds_ib_device *rds_ibdev,
+		    struct rds_ib_connection *ic,
+		    int cpu)
+{
+	struct rds_ib_srq *rds_srq = NULL;
+	struct ib_srq_init_attr srq_init_attr;
+	struct cpu_cacheinfo *cache_p;
+	struct cpumask *llc_cpu_mask_p;
+	int error, srq_idx;
+	char *reason = NULL;
+
+	trace_rds_ib_find_srq(rds_ibdev->dev, rds_ibdev, ic->conn, ic,
+			      "finding SRQ", 0);
+
+	mutex_lock(&rds_ibdev->srqs_lock);
+
+	ic->rds_srq = NULL;
+	if (!rds_ib_srq_enabled) {
+		error = 0;
+		goto out;
+	}
+
+	if (rds_ib_per_llc_srq) {
+		list_for_each_entry(rds_srq, &rds_ibdev->srqs, list) {
+			if (cpumask_test_cpu(cpu, &rds_srq->llc_cpu_mask)) {
+				ic->rds_srq = rds_srq;
+				rds_srq = NULL;
+				error = 0;
+				goto out;
+			}
+		}
+	} else {
+		if (!list_empty(&rds_ibdev->srqs)) {
+			ic->rds_srq = list_first_entry(&rds_ibdev->srqs, struct rds_ib_srq, list);
+			error = 0;
+			goto out;
+		}
+	}
+
+	rds_srq = vzalloc_node(sizeof(struct rds_ib_srq), 
+			       rdsibdev_to_node(rds_ibdev));
+	if (!rds_srq) {
+		error = -ENOMEM;
+		reason = "could not allocate rds_srq";
+		goto out;
+	}
+
+	INIT_LIST_HEAD(&rds_srq->list);
+	INIT_DELAYED_WORK(&rds_srq->refill_work, rds_ib_srq_refill_worker);
+
+	if (rds_ib_per_llc_srq) {
+		cache_p = get_cpu_cacheinfo(cpu);
+		if (cache_p && cache_p->num_leaves > 0)
+			llc_cpu_mask_p = &cache_p->info_list[cache_p->num_leaves - 1].shared_cpu_map;
+		else
+			llc_cpu_mask_p = NULL;
+		
+		if (llc_cpu_mask_p) {
+			memcpy(&rds_srq->llc_cpu_mask, llc_cpu_mask_p, sizeof(struct cpumask));
+		} else {
+			pr_warn("RDS/IB: can't obtain CPU cacheinfo; turning rds_ib_per_llc_srq off\n");
+			rds_ib_per_llc_srq = false;
+		}
+	}
+
+	rds_srq->rds_ibdev = rds_ibdev;
+	rds_srq->max_wr = rds_ib_srq_max_wr ? : 1;
+
+	error = rds_ib_alloc_map_hdrs(rds_ibdev->dev,
+				      &rds_srq->recv_hdrs,
+				      &rds_srq->recv_hdrs_dma,
+				      &rds_srq->recv_hdrs_sg,
+				      &reason,
+				      rds_srq->max_wr,
+				      DIV_ROUND_UP(rds_srq->max_wr, RDS_HDRS_PER_PAGE),
+				      DMA_FROM_DEVICE);
+	if (error) {
+		reason = "rds_ib_alloc_map_hdrs for SRQ failed";
+		goto out;
+	}
+
+	error = rds_ib_alloc_cache(&rds_srq->cache_incs, false);
+	if (error) {
+		reason = "rds_ib_alloc_cache(rds_srq->cache_incs) failed";
+		goto out;
+	}
+
+	error = rds_ib_alloc_cache(&rds_srq->cache_frags, false);
+	if (error) {
+		reason = "rds_ib_alloc_cache(rds_srq->cache_frags) failed";
+		goto out;
+	}
+
+	memset(&srq_init_attr, 0, sizeof(srq_init_attr));
+	srq_init_attr.srq_type = IB_SRQT_BASIC;
+	srq_init_attr.attr.max_wr = rds_srq->max_wr;
+	srq_init_attr.attr.max_sge = rds_ibdev->max_sge;
+	rds_srq->srq = ib_create_srq(rds_ibdev->pd, &srq_init_attr);
+	if (IS_ERR(rds_srq->srq)) {
+		error = PTR_ERR(rds_srq->srq);
+		rds_srq->srq = NULL;
+		reason = "ib_create_srq failed";
+		goto out;
+	}
+
+	rds_srq->recvs = vzalloc_node(sizeof(struct rds_ib_recv_work) * rds_srq->max_wr,
+				      rdsibdev_to_node(rds_ibdev));
+	if (!rds_srq->recvs) {
+		error = -ENOMEM;
+		reason = "vzalloc_node for SRQ recvs failed";
+		goto out;
+	}
+
+	rds_ib_recv_init_srq(rds_srq);
+
+	for (srq_idx = 0; srq_idx < rds_srq->max_wr; srq_idx++) {
+		error = rds_ib_recv_refill_one(rds_ibdev, rds_srq, NULL,
+					       rds_srq->recvs + srq_idx,
+					       GFP_KERNEL);
+		if (error) {
+			reason = "rds_ib_recv_refill_one failed";
+			goto out;
+		}
+
+		error = ib_post_srq_recv(rds_srq->srq,
+					 &rds_srq->recvs[srq_idx].r_wr,
+					 NULL);
+		if (error) {
+			reason = "ib_post_srq_recv failed";
+			goto out;
+		}
+	}
+
+	rds_srq->recvs_drained_bitmap =
+		bitmap_zalloc_node(rds_srq->max_wr,
+				   GFP_KERNEL,
+				   rdsibdev_to_node(rds_ibdev));
+	if (!rds_srq->recvs_drained_bitmap) {
+		error = -ENOMEM;
+		reason = "bitmap_zalloc_node for SRQ drained_empty_bitmap failed";
+		goto out;
+	}
+
+	list_add_tail(&rds_srq->list, &rds_ibdev->srqs);
+
+	rds_ib_stats_inc(s_ib_srq_count);
+
+	ic->rds_srq = rds_srq;
+	rds_srq = NULL;
+	error = 0;
+
+out:
+	mutex_unlock(&rds_ibdev->srqs_lock);
+
+	if (rds_srq)
+		rds_ib_free_srq(rds_srq);
+
+	if (reason)
+		trace_rds_ib_find_srq_err(rds_ibdev->dev, rds_ibdev, ic->conn, ic,
+					  reason, error);
+
+	return error;
+}
+
+void rds_ib_free_srq(struct rds_ib_srq *rds_srq)
+{
+	int srq_idx;
+
+	if (!rds_srq)
+		return;
+
+	if (rds_srq->recvs_drained_bitmap)
+		bitmap_free(rds_srq->recvs_drained_bitmap);
+	if (rds_srq->recvs) {
+		for (srq_idx = 0; srq_idx < rds_srq->max_wr; srq_idx++)
+			rds_ib_recv_clear_one(rds_srq->rds_ibdev, NULL,
+					      rds_srq->recvs + srq_idx);
+		vfree(rds_srq->recvs);
+	}
+	if (rds_srq->srq)
+		ib_destroy_srq(rds_srq->srq);
+
+	rds_ib_free_frag_cache(&rds_srq->cache_frags, RDS_MAX_FRAG_SIZE);
+	rds_ib_free_cache(&rds_srq->cache_frags);
+
+	rds_ib_free_inc_cache(&rds_srq->cache_incs);
+	rds_ib_free_cache(&rds_srq->cache_incs);
+
+	rds_ib_free_unmap_hdrs(rds_srq->rds_ibdev->dev,
+			       &rds_srq->recv_hdrs,
+			       &rds_srq->recv_hdrs_dma,
+			       &rds_srq->recv_hdrs_sg,
+			       DIV_ROUND_UP(rds_srq->max_wr, RDS_HDRS_PER_PAGE),
+			       DMA_FROM_DEVICE);
+	vfree(rds_srq);
 }
 
 /* Detach and free frags */
@@ -156,24 +362,25 @@ static struct lfstack_el *rds_ib_recv_cache_get(int preferred_cpu,
 static void rds_ib_frag_free(struct rds_ib_connection *ic,
 			     struct rds_page_frag *frag)
 {
-	int frag_size, frag_pages, frag_cache_inx, preferred_cpu;
+	struct rds_ib_refill_cache *frag_cache;
+	int frag_size, frag_pages, preferred_cpu;
 
 	if (rds_ib_prq_mode(ic)) {
+		frag_cache = frag->rds_ibdev->i_cache_frags + ic->i_frag_cache_inx;
 		frag_size = ic->i_frag_sz;
 		frag_pages = ic->i_frag_pages;
-		frag_cache_inx = ic->i_frag_cache_inx;
 		preferred_cpu = ic->i_preferred_recv_cpu;
 	} else {
+		frag_cache = &frag->rds_srq->cache_frags;
 		frag_size = RDS_MAX_FRAG_SIZE;
 		frag_pages = DIV_ROUND_UP(RDS_MAX_FRAG_SIZE, PAGE_SIZE);
-		frag_cache_inx = ilog2(DIV_ROUND_UP(RDS_MAX_FRAG_SIZE, PAGE_SIZE));
 		preferred_cpu = WORK_CPU_UNBOUND;
 	}
 
 	if (rds_ib_recv_cache_put(preferred_cpu,
 				  &frag->f_cache_entry,
 				  &frag->f_cache_entry,
-				  frag->rds_ibdev->i_cache_frags + frag_cache_inx,
+				  frag_cache,
 				  1)) {
 		if (rds_ib_prq_mode(ic))
 			atomic_sub(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
@@ -253,6 +460,7 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 		if (!rds_ib_recv_cache_put(preferred_cpu,
 					   &first_frag->f_cache_entry,
 					   &p_frag->f_cache_entry,
+					   first_frag->rds_srq ? &first_frag->rds_srq->cache_frags :
 					   first_frag->rds_ibdev->i_cache_frags + frag_cache_inx,
 					   count)) {
 			struct lfstack_el *el = &first_frag->f_cache_entry;
@@ -272,6 +480,7 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 	if (!rds_ib_recv_cache_put(preferred_cpu,
 				   &ibinc->ii_cache_entry,
 				   &ibinc->ii_cache_entry,
+				   ibinc->rds_srq ? &ibinc->rds_srq->cache_incs :
 				   &ibinc->rds_ibdev->i_cache_incs,
 				   1))
 		rds_ib_free_one_inc(ibinc);
@@ -305,16 +514,8 @@ void rds_ib_recv_clear_ring(struct rds_ib_connection *ic)
 		rds_ib_recv_clear_one(ic->rds_ibdev, ic, &ic->i_recvs[i]);
 }
 
-void rds_ib_recv_clear_srq(struct rds_ib_device *rds_ibdev)
-{
-	u32 i;
-
-	for (i = 0; i < rds_ibdev->srq_max_wr; i++)
-		rds_ib_recv_clear_one(rds_ibdev, NULL,
-				      rds_ibdev->srq_recvs + i);
-}
-
 static struct rds_ib_incoming *rds_ib_refill_one_inc(struct rds_ib_device *rds_ibdev,
+						     struct rds_ib_srq *rds_srq,
 						     struct rds_ib_connection *ic,
 						     gfp_t slab_mask)
 {
@@ -322,6 +523,7 @@ static struct rds_ib_incoming *rds_ib_refill_one_inc(struct rds_ib_device *rds_i
 	struct lfstack_el *cache_item;
 
 	cache_item = rds_ib_recv_cache_get(ic ? ic->i_preferred_recv_cpu : WORK_CPU_UNBOUND,
+					   rds_srq ? &rds_srq->cache_incs :
 					   &rds_ibdev->i_cache_incs);
 	if (cache_item) {
 		ibinc = container_of(cache_item, struct rds_ib_incoming, ii_cache_entry);
@@ -337,10 +539,13 @@ static struct rds_ib_incoming *rds_ib_refill_one_inc(struct rds_ib_device *rds_i
 	else
 		rds_inc_init(&ibinc->ii_inc, NULL, &rds_ib_transport, &in6addr_any);
 	ibinc->rds_ibdev = rds_ibdev;
+	ibinc->rds_srq = rds_srq;
+
 	return ibinc;
 }
 
 static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_device *rds_ibdev,
+						    struct rds_ib_srq *rds_srq,
 						    struct rds_ib_connection *ic,
 						    gfp_t slab_mask, gfp_t page_mask)
 {
@@ -349,26 +554,27 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_device *rds_ib
 	struct scatterlist *sg;
 	struct scatterlist *s;
 	struct page *one_sge_page;
-	int frag_size, frag_pages, frag_cache_inx;
+	struct rds_ib_refill_cache *frag_cache;
+	int frag_size, frag_pages;
 	int ret;
 	int i;
 	int j;
 
 	if (rds_ib_prq_mode(ic)) {
+		frag_cache = rds_ibdev->i_cache_frags + ic->i_frag_cache_inx;
 		frag_size = ic->i_frag_sz;
 		frag_pages = ic->i_frag_pages;
-		frag_cache_inx = ic->i_frag_cache_inx;
 	} else {
+		frag_cache = &rds_srq->cache_frags;
 		frag_size = RDS_COMPOSITE_SGE_FRAG_SIZE;
 		frag_pages = DIV_ROUND_UP(frag_size, PAGE_SIZE);
-		frag_cache_inx = ilog2(frag_pages);
 	}
 
 	if (rds_ib_prq_mode(ic))
 		atomic_add(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
 
 	cache_item = rds_ib_recv_cache_get(ic ? ic->i_preferred_recv_cpu : WORK_CPU_UNBOUND,
-					   rds_ibdev->i_cache_frags + frag_cache_inx);
+					   frag_cache);
 	if (cache_item) {
 		frag = container_of(cache_item, struct rds_page_frag, f_cache_entry);
 		rds_ib_stats_add(s_ib_recv_removed_from_cache, frag_size);
@@ -433,11 +639,13 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_device *rds_ib
 
 	INIT_LIST_HEAD(&frag->f_item);
 	frag->rds_ibdev = rds_ibdev;
+	frag->rds_srq = rds_srq;
 
 	return frag;
 }
 
 int rds_ib_recv_refill_one(struct rds_ib_device *rds_ibdev,
+			   struct rds_ib_srq *rds_srq,
 			   struct rds_ib_connection *ic,
 			   struct rds_ib_recv_work *recv,
 			   gfp_t gfp)
@@ -458,7 +666,7 @@ int rds_ib_recv_refill_one(struct rds_ib_device *rds_ibdev,
 	 * recvs that were continuations will still have this allocated.
 	 */
 	if (!recv->r_ibinc) {
-		recv->r_ibinc = rds_ib_refill_one_inc(rds_ibdev, ic, slab_mask);
+		recv->r_ibinc = rds_ib_refill_one_inc(rds_ibdev, rds_srq, ic, slab_mask);
 		if (!recv->r_ibinc)
 			return -ENOMEM;
 	}
@@ -466,7 +674,7 @@ int rds_ib_recv_refill_one(struct rds_ib_device *rds_ibdev,
 	if (recv->r_frag)
 		return 0;
 
-	recv->r_frag = rds_ib_refill_one_frag(rds_ibdev, ic, slab_mask, page_mask);
+	recv->r_frag = rds_ib_refill_one_frag(rds_ibdev, rds_srq, ic, slab_mask, page_mask);
 	if (!recv->r_frag)
 		return -ENOMEM;
 
@@ -508,7 +716,7 @@ int rds_ib_recv_refill_one(struct rds_ib_device *rds_ibdev,
 		if (rds_ib_prq_mode(ic))
 			sge->addr = ic->i_recv_hdrs_dma[recv - ic->i_recvs];
 		else
-			sge->addr = rds_ibdev->srq_recv_hdrs_dma[recv - rds_ibdev->srq_recvs];
+			sge->addr = rds_srq->recv_hdrs_dma[recv - rds_srq->recvs];
 		sge->length = sizeof(struct rds_header);
 
 		for_each_sg(recv->r_frag->f_sg, sg, sg_count, i) {
@@ -576,7 +784,7 @@ void __rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 		}
 
 		recv = &ic->i_recvs[pos];
-		ret = rds_ib_recv_refill_one(ic->rds_ibdev, ic, recv, gfp);
+		ret = rds_ib_recv_refill_one(ic->rds_ibdev, NULL, ic, recv, gfp);
 		if (ret) {
 			static unsigned long warn_time;
 			/* warn max once per day. This should be enough to
@@ -653,20 +861,20 @@ void __rds_ib_recv_refill(struct rds_connection *conn, int prefill, gfp_t gfp)
 
 void rds_ib_srq_refill_worker(struct work_struct *work)
 {
-        struct rds_ib_device *rds_ibdev = container_of(work,
-						       struct rds_ib_device,
-						       srq_refill_work.work);
+        struct rds_ib_srq *rds_srq = container_of(work,
+						  struct rds_ib_srq,
+						  refill_work.work);
 	unsigned srq_idx;
 	int err;
 
-	while ((srq_idx = find_first_bit(rds_ibdev->srq_recvs_drained_bitmap,
-					 rds_ibdev->srq_max_wr)) < rds_ibdev->srq_max_wr) {
-		err = rds_ib_recv_refill_one(rds_ibdev, NULL,
-					     rds_ibdev->srq_recvs + srq_idx,
+	while ((srq_idx = find_first_bit(rds_srq->recvs_drained_bitmap,
+					 rds_srq->max_wr)) < rds_srq->max_wr) {
+		err = rds_ib_recv_refill_one(rds_srq->rds_ibdev, rds_srq, NULL,
+					     rds_srq->recvs + srq_idx,
 					     GFP_KERNEL);
 		if (!err) {
-			err = ib_post_srq_recv(rds_ibdev->srq,
-					       &rds_ibdev->srq_recvs[srq_idx].r_wr,
+			err = ib_post_srq_recv(rds_srq->srq,
+					       &rds_srq->recvs[srq_idx].r_wr,
 					       NULL);
 			if (err)
 				pr_warn_ratelimited("RDS/IB: ib_post_srq_recv failed with err=%d\n",
@@ -677,12 +885,12 @@ void rds_ib_srq_refill_worker(struct work_struct *work)
 
 		if (err) {
 			rds_ib_stats_inc(s_ib_srq_refill_worker_failures);
-			if (atomic_read(&rds_ibdev->rid_refcount) > 0)
-				queue_delayed_work(rds_aux_wq, &rds_ibdev->srq_refill_work, 1);
+			if (atomic_read(&rds_srq->rds_ibdev->rid_refcount) > 0)
+				queue_delayed_work(rds_aux_wq, &rds_srq->refill_work, 1);
 			break;
 		}
 
-		clear_bit(srq_idx, rds_ibdev->srq_recvs_drained_bitmap);
+		clear_bit(srq_idx, rds_srq->recvs_drained_bitmap);
 	}
 }
 
@@ -701,10 +909,10 @@ static bool rds_ib_recv_cache_put(int cpu,
 				  int count)
 {
 	struct rds_ib_cache_head *head;
-	if (!test_bit(RDS_IB_CACHE_INITIALIZED, &cache->initialized) || !cache->percpu) {
+	if (!test_bit(RDS_IB_CACHE_INITIALIZED, &cache->initialized)) {
 		return false;
 	}
-	if (cpu != WORK_CPU_UNBOUND) {
+	if (cpu != WORK_CPU_UNBOUND && cache->percpu) {
 		head = per_cpu_ptr(cache->percpu, cpu);
 
 		if (atomic_read(&head->count)  < rds_ib_cache_max_percpu) {
@@ -728,9 +936,10 @@ static struct lfstack_el *rds_ib_recv_cache_get(int preferred_cpu,
 	struct lfstack_el *item;
 	union lfstack *stack;
 
-	if (!test_bit(RDS_IB_CACHE_INITIALIZED, &cache->initialized) || !cache->percpu)
+	if (!test_bit(RDS_IB_CACHE_INITIALIZED, &cache->initialized))
 		return NULL;
-	if (preferred_cpu == WORK_CPU_UNBOUND)
+
+	if (preferred_cpu == WORK_CPU_UNBOUND || !cache->percpu)
 		goto no_preferred_cpu;
 
 	head = per_cpu_ptr(cache->percpu, preferred_cpu);
@@ -1142,7 +1351,6 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 				struct list_head *inc_stash)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
-	struct rds_ib_device *rds_ibdev = ic->rds_ibdev;
 	struct rds_ib_incoming *ibinc = ic->i_ibinc;
 	struct rds_header *ihdr, *hdr;
 
@@ -1169,7 +1377,7 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 	else if (rds_ib_prq_mode(ic))
 		ihdr = ic->i_recv_hdrs[recv - ic->i_recvs];
 	else
-		ihdr = rds_ibdev->srq_recv_hdrs[recv - rds_ibdev->srq_recvs];
+		ihdr = ic->rds_srq->recv_hdrs[recv - ic->rds_srq->recvs];
 
 	/* Validate the checksum. */
 	if (!rds_message_verify_checksum(ihdr)) {
@@ -1320,6 +1528,7 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 {
 	struct rds_connection *conn = ic->conn;
 	struct rds_ib_device *rds_ibdev = ic->rds_ibdev;
+	struct rds_ib_srq *rds_srq = ic->rds_srq;
 	struct rds_ib_recv_work *recv;
 	int err;
 
@@ -1330,14 +1539,14 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 
 	rds_ib_stats_inc(s_ib_rx_cq_event);
 
-	if (!rds_ib_prq_mode(ic)) {
-		if (wc->wr_id >= rds_ibdev->srq_max_wr) {
+	if (rds_srq) {
+		if (wc->wr_id >= rds_srq->max_wr) {
 			pr_err("RDS/IB: invalid wr_id=%llu >= %u\n",
-			       wc->wr_id, rds_ibdev->srq_max_wr);
+			       wc->wr_id, rds_srq->max_wr);
 			return;
 		}
 
-		recv = rds_ibdev->srq_recvs + wc->wr_id;
+		recv = rds_srq->recvs + wc->wr_id;
 		ib_dma_unmap_sg(ic->i_cm_id->device,
 				recv->r_frag->f_sg,
 				recv->r_frag->f_sg_is_composite ? 1 :
@@ -1382,7 +1591,7 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 		recv->r_frag = NULL;
 	}
 
-	if (rds_ib_prq_mode(ic))
+	if (!rds_srq)
 		rds_ib_ring_free(&ic->i_recv_ring, 1);
 
 	if (rds_ib_ring_empty(&ic->i_recv_ring)) {
@@ -1392,18 +1601,18 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 			mod_delayed_work(conn->c_wq, &conn->c_down_wait_w, 0);
 	}
 
-	if (!rds_ib_prq_mode(ic)) {
-		err = rds_ib_recv_refill_one(rds_ibdev, NULL,
-					     rds_ibdev->srq_recvs + wc->wr_id,
+	if (rds_srq) {
+		err = rds_ib_recv_refill_one(rds_ibdev, rds_srq, NULL,
+					     rds_srq->recvs + wc->wr_id,
 					     GFP_NOWAIT);
 		if (!err)
-			err = ib_post_srq_recv(rds_ibdev->srq,
-					       &rds_ibdev->srq_recvs[wc->wr_id].r_wr,
+			err = ib_post_srq_recv(rds_srq->srq,
+					       &rds_srq->recvs[wc->wr_id].r_wr,
 					       NULL);
 		if (err) {
 			rds_ib_stats_inc(s_ib_srq_refill_cq_failures);
-			set_bit(wc->wr_id, rds_ibdev->srq_recvs_drained_bitmap);
-			queue_delayed_work(rds_aux_wq, &rds_ibdev->srq_refill_work, 0);
+			set_bit(wc->wr_id, rds_srq->recvs_drained_bitmap);
+			queue_delayed_work(rds_aux_wq, &rds_srq->refill_work, 0);
 		}
 	} else
 		RDS_IB_RECV_REFILL(conn, 0, GFP_NOWAIT, s_ib_rx_refill_from_cq);

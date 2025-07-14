@@ -1025,7 +1025,7 @@ static int rds_ib_get_load(int *tos_row, u8 tos)
 static inline int ibdev_get_unused_vector(struct rds_ib_device *rds_ibdev, u8 tos,
 					  int sibling_vector)
 {
-	struct cpumask *l3_cpu_mask_p = NULL;
+	struct cpumask *llc_cpu_mask_p = NULL;
 	struct cpumask cpu_mask;
 	struct cpu_cacheinfo *cache_p;
 	int *tos_row, load;
@@ -1033,7 +1033,7 @@ static inline int ibdev_get_unused_vector(struct rds_ib_device *rds_ibdev, u8 to
 	int index, min, i;
 
 	/* try to allocate a vector pointing to a CPU that belongs
-	 * to the same L3 cache, if sibling_vector >= 0 with CQ-preference
+	 * to the same last-level cache, if sibling_vector >= 0 with CQ-preference
 	 */
 	if (sibling_vector >= 0 &&
 	    (rds_ib_preferred_cpu & RDS_IB_PREFER_CPU_CQ))
@@ -1048,8 +1048,8 @@ static inline int ibdev_get_unused_vector(struct rds_ib_device *rds_ibdev, u8 to
 			cpu = cpumask_first(&cpu_mask);
 
 			cache_p = get_cpu_cacheinfo(cpu);
-			if (cache_p && cache_p->num_leaves > 3)
-				l3_cpu_mask_p = &cache_p->info_list[3].shared_cpu_map;
+			if (cache_p && cache_p->num_leaves > 0)
+				llc_cpu_mask_p = &cache_p->info_list[cache_p->num_leaves - 1].shared_cpu_map;
 		}
 	}
  
@@ -1059,13 +1059,13 @@ static inline int ibdev_get_unused_vector(struct rds_ib_device *rds_ibdev, u8 to
 	min = -1;
 
 	/* try to find a sibling with lowest load first */
-	if (l3_cpu_mask_p) {
+	if (llc_cpu_mask_p) {
 		for (i = rds_ibdev->dev->num_comp_vectors - 1; i >= 0; i--) {
 			irqn = ib_get_vector_irqn(rds_ibdev->dev, i);
 			rds_ib_get_preferred_cpu_mask(&cpu_mask,
 						      irqn, rdsibdev_to_node(rds_ibdev));
 
-			if (!cpumask_intersects(&cpu_mask, l3_cpu_mask_p))
+			if (!cpumask_intersects(&cpu_mask, llc_cpu_mask_p))
 				continue;
 
 			tos_row = rds_ibdev->vector_load + i * RDS_IB_NMBR_TOS_ROWS;
@@ -1392,6 +1392,9 @@ static void __rds_rdma_conn_dev_rele(struct rds_ib_connection *ic)
 	ic->i_pd = NULL;
 	ic->i_mr = NULL;
 
+	rds_ib_release_preferred_cpu(&ic->i_preferred_recv_cpu);
+	rds_ib_release_preferred_cpu(&ic->i_preferred_send_cpu);
+
 	/* Move connection back to the nodev list. */
 	rds_ib_remove_conn(rds_ibdev, ic->conn);
 }
@@ -1520,6 +1523,21 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		goto out;
 	}
 
+	ic->i_scq_isolate_warned = false;
+	ic->i_rcq_isolate_warned = false;
+
+	rds_ib_alloc_preferred_cpu(&ic->i_preferred_send_cpu,
+				   rds_ibdev, ic->i_scq_vector);
+
+	rds_ib_alloc_preferred_cpu(&ic->i_preferred_recv_cpu,
+				   rds_ibdev, ic->i_rcq_vector);
+
+	ret = rds_ib_find_srq(rds_ibdev, ic, ic->i_preferred_recv_cpu);
+	if (ret) {
+		reason = "rds_ib_find_srq failed";
+		goto out;
+	}
+
 	/* XXX negotiate max send/recv with remote? */
 	qp_attr.event_handler = rds_ib_qp_event_handler;
 	rds_conn_get(conn); /* put in rds_ib_conn_path_shutdown_final */
@@ -1533,8 +1551,8 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	qp_attr.qp_type = IB_QPT_RC;
 	qp_attr.send_cq = ic->i_scq;
 	qp_attr.recv_cq = ic->i_rcq;
-	if (rds_ibdev->srq)
-		qp_attr.srq = rds_ibdev->srq;
+	if (ic->rds_srq)
+		qp_attr.srq = ic->rds_srq->srq;
 
 	ic->i_hca_sge = rds_ibdev->max_sge;
 	/*
@@ -1667,6 +1685,8 @@ out:
 	 * the conn will be dropped.
 	 */
 	if (ret) {
+		rds_ib_release_preferred_cpu(&ic->i_preferred_recv_cpu);
+		rds_ib_release_preferred_cpu(&ic->i_preferred_send_cpu);
 		if (ic->i_sends) {
 			vfree(ic->i_sends);
 			ic->i_sends = NULL;

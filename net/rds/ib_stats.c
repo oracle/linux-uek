@@ -93,6 +93,7 @@ static char *rds_ib_stat_names[] = {
 	"ib_frag_pages_allocated",
 	"ib_frag_pages_in_ib_recv_queue",
 	"ib_frag_pages_in_caches",
+	"ib_srq_count",
 	"ib_srq_refill_cq_failures",
 	"ib_srq_refill_worker_failures",
 	"ib_frag_alloc_composite",
