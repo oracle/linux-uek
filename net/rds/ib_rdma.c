@@ -262,9 +262,9 @@ void rds_ib_get_preferred_cpu_mask(struct cpumask *preferred_cpu_mask_p,
 	}
 }
 
-static void rds_ib_alloc_preferred_cpu(int *preferred_cpu_p,
-				       struct rds_ib_device *rds_ibdev,
-				       int cq_vector)
+void rds_ib_alloc_preferred_cpu(int *preferred_cpu_p,
+				struct rds_ib_device *rds_ibdev,
+				int cq_vector)
 {
 	struct cpumask preferred_cpu_mask;
 	int irqn, min_load, min_cpu, cpu;
@@ -297,6 +297,21 @@ static void rds_ib_alloc_preferred_cpu(int *preferred_cpu_p,
 		rds_ib_preferred_cpu_load[min_cpu]++;
 	*preferred_cpu_p = min_cpu;
 	spin_unlock_irqrestore(&rds_ib_preferred_cpu_load_lock, flags);
+}
+
+void rds_ib_release_preferred_cpu(int *preferred_cpu_p)
+{
+	int preferred_cpu = *preferred_cpu_p;
+	unsigned long flags;
+
+	if (preferred_cpu == WORK_CPU_UNBOUND)
+		return;
+
+	spin_lock_irqsave(&rds_ib_preferred_cpu_load_lock, flags);
+	rds_ib_preferred_cpu_load[preferred_cpu]--;
+	spin_unlock_irqrestore(&rds_ib_preferred_cpu_load_lock, flags);
+
+	*preferred_cpu_p = WORK_CPU_UNBOUND;
 }
 
 struct rds_ib_device *rds_ib_get_device(const struct in6_addr *ipaddr)
@@ -508,15 +523,6 @@ int rds_ib_add_conn(struct rds_ib_device *rds_ibdev,
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	unsigned long flags;
 
-	ic->i_scq_isolate_warned = false;
-	ic->i_rcq_isolate_warned = false;
-
-	rds_ib_alloc_preferred_cpu(&ic->i_preferred_send_cpu,
-				   rds_ibdev, ic->i_scq_vector);
-
-	rds_ib_alloc_preferred_cpu(&ic->i_preferred_recv_cpu,
-				   rds_ibdev, ic->i_rcq_vector);
-
 	/* conn was previously on the nodev_conns_list */
 	spin_lock_irqsave(&ib_nodev_conns_lock, flags);
 	spin_lock(&rds_ibdev->spinlock);
@@ -564,15 +570,6 @@ void rds_ib_remove_conn(struct rds_ib_device *rds_ibdev, struct rds_connection *
 	list_add_tail(&ic->ib_node, &ib_nodev_conns);
 
 	spin_unlock_irqrestore(&ib_nodev_conns_lock, flags);
-
-	spin_lock_irqsave(&rds_ib_preferred_cpu_load_lock, flags);
-	if (ic->i_preferred_recv_cpu != WORK_CPU_UNBOUND)
-		rds_ib_preferred_cpu_load[ic->i_preferred_recv_cpu]--;
-	ic->i_preferred_recv_cpu = WORK_CPU_UNBOUND;
-	if (ic->i_preferred_send_cpu != WORK_CPU_UNBOUND)
-		rds_ib_preferred_cpu_load[ic->i_preferred_send_cpu]--;
-	ic->i_preferred_send_cpu = WORK_CPU_UNBOUND;
-	spin_unlock_irqrestore(&rds_ib_preferred_cpu_load_lock, flags);
 
 	rds_ib_dev_put(rds_ibdev);
 }

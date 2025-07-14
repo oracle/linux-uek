@@ -953,6 +953,26 @@ DEFINE_EVENT(rds_ib, rds_ib_shutdown_device,
 
 );
 
+DEFINE_EVENT(rds_ib, rds_ib_find_srq,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
+DEFINE_EVENT(rds_ib, rds_ib_find_srq_err,
+
+	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
+		 struct rds_connection *conn, struct rds_ib_connection *ic,
+		 char *reason, int err),
+
+	TP_ARGS(dev, rds_ibdev, conn, ic, reason, err)
+
+);
+
 DEFINE_EVENT(rds_ib, rds_ib_cm_accept_err,
 
 	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,

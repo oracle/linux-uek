@@ -33,6 +33,8 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_add_device_err);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_remove_device);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_remove_device_err);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_shutdown_device);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_find_srq);
+EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_find_srq_err);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_cm_accept_err);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_cm_handle_connect);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_ib_cm_handle_connect_err);

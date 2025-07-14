@@ -45,18 +45,12 @@
 
 static struct dentry *debugfs_basedir;
 
-bool rds_ib_srq_enabled;
-unsigned int rds_ib_srq_max_wr = RDS_IB_DEFAULT_SRQ_RECV_WR;
-
 unsigned int rds_ib_mr_1m_pool_size = RDS_MR_1M_POOL_SIZE;
 unsigned int rds_ib_mr_8k_pool_size = RDS_MR_8K_POOL_SIZE;
 unsigned int rds_ib_retry_count = RDS_IB_DEFAULT_RETRY_COUNT;
 unsigned int rds_ib_rnr_retry_count = RDS_IB_DEFAULT_RNR_RETRY_COUNT;
 unsigned int rds_ib_cache_gc_interval = RDS_IB_DEFAULT_CACHE_GC_INTERVAL;
 const u64 fw_ver_16_32_1010 = (((u64)16 << 32) | ((u64)32 << 16) | (u64)1010);
-
-module_param(rds_ib_srq_enabled, bool, 0444);
-module_param(rds_ib_srq_max_wr, uint, 0444);
 
 module_param(rds_ib_mr_1m_pool_size, int, 0444);
 MODULE_PARM_DESC(rds_ib_mr_1m_pool_size, " Max number of 1m MRs per HCA");
@@ -151,6 +145,8 @@ static int ib_rds_cache_hit_show(struct seq_file *m, void *v)
 				cache = &rds_ibdev->i_cache_incs;
 			else
 				cache = rds_ibdev->i_cache_frags + i - 1;
+			if (!cache->percpu)
+				continue;
 			head = per_cpu_ptr(cache->percpu, cpu);
 			s += atomic64_read(&head->miss_count);
 			s += atomic64_read(&head->hit_count);
@@ -165,6 +161,8 @@ static int ib_rds_cache_hit_show(struct seq_file *m, void *v)
 				cache = &rds_ibdev->i_cache_incs;
 			else
 				cache = rds_ibdev->i_cache_frags + i - 1;
+			if (!cache->percpu)
+				continue;
 			head = per_cpu_ptr(cache->percpu, cpu);
 			miss = atomic64_read(&head->miss_count);
 			hit = atomic64_read(&head->hit_count);
@@ -260,63 +258,74 @@ static void ib_rds_remove_debugfs_cache_hit(struct rds_ib_device *rds_ibdev)
 	debugfs_remove_recursive(rds_ibdev->debugfs_dir);
 }
 
-static int rds_ib_alloc_cache(struct rds_ib_refill_cache *cache)
+int rds_ib_alloc_cache(struct rds_ib_refill_cache *cache,
+		       bool use_percpu)
 {
 	struct rds_ib_cache_head *head;
 	int cpu;
 
-	cache->percpu = alloc_percpu_gfp(struct rds_ib_cache_head, GFP_KERNEL);
-	if (!cache->percpu)
-		return -ENOMEM;
+	if (use_percpu) {
+		cache->percpu = alloc_percpu_gfp(struct rds_ib_cache_head, GFP_KERNEL);
+		if (!cache->percpu)
+			return -ENOMEM;
 
-	for_each_possible_cpu(cpu) {
-		head = per_cpu_ptr(cache->percpu, cpu);
-		lfstack_init(&head->stack);
-		atomic_set(&head->count, 0);
-		atomic64_set(&head->hit_count, 0);
-		atomic64_set(&head->miss_count, 0);
-		atomic64_set(&head->gc_count, 0);
+		for_each_possible_cpu(cpu) {
+			head = per_cpu_ptr(cache->percpu, cpu);
+			lfstack_init(&head->stack);
+			atomic_set(&head->count, 0);
+			atomic64_set(&head->hit_count, 0);
+			atomic64_set(&head->miss_count, 0);
+			atomic64_set(&head->gc_count, 0);
+		}
 	}
+
 	lfstack_init(&cache->ready);
 	atomic_set(&cache->count, 0);
 	atomic64_set(&cache->hit_count, 0);
 	atomic64_set(&cache->miss_count, 0);
 	set_bit_mb(RDS_IB_CACHE_INITIALIZED, &cache->initialized);
+
 	return 0;
 }
 
-static void rds_ib_free_cache(struct rds_ib_refill_cache *cache)
+void rds_ib_free_cache(struct rds_ib_refill_cache *cache)
 {
 	struct rds_ib_cache_head *head;
 	int cpu;
+
 	clear_bit_mb(RDS_IB_CACHE_INITIALIZED, &cache->initialized);
-	for_each_possible_cpu(cpu) {
-		head = per_cpu_ptr(cache->percpu, cpu);
-		lfstack_free(&head->stack);
-		atomic_set(&head->count, 0);
-		atomic64_set(&head->hit_count, 0);
-		atomic64_set(&head->miss_count, 0);
-		atomic64_set(&head->gc_count, 0);
+
+	if (cache->percpu) {
+		for_each_possible_cpu(cpu) {
+			head = per_cpu_ptr(cache->percpu, cpu);
+			lfstack_free(&head->stack);
+			atomic_set(&head->count, 0);
+			atomic64_set(&head->hit_count, 0);
+			atomic64_set(&head->miss_count, 0);
+			atomic64_set(&head->gc_count, 0);
+		}
+		free_percpu(cache->percpu);
+		cache->percpu = NULL;
 	}
+
 	lfstack_free(&cache->ready);
-	free_percpu(cache->percpu);
-	cache->percpu = NULL;
 	atomic_set(&cache->count, 0);
 	atomic64_set(&cache->hit_count, 0);
 	atomic64_set(&cache->miss_count, 0);
 }
 
-static int rds_ib_alloc_caches(struct rds_ib_device *rds_ibdev)
+static int rds_ib_alloc_caches(struct rds_ib_device *rds_ibdev,
+			       bool use_percpu)
 {
 	int i, j;
 	int ret;
 
-	ret = rds_ib_alloc_cache(&rds_ibdev->i_cache_incs);
+	ret = rds_ib_alloc_cache(&rds_ibdev->i_cache_incs, use_percpu);
 	if (ret)
 		goto out;
 
 	for (i = 0; i < RDS_FRAG_CACHE_ENTRIES; i++) {
-		ret = rds_ib_alloc_cache(rds_ibdev->i_cache_frags + i);
+		ret = rds_ib_alloc_cache(rds_ibdev->i_cache_frags + i, use_percpu);
 		if (ret) {
 			rds_ib_free_cache(&rds_ibdev->i_cache_incs);
 			for (j = 0; j < i; j++)
@@ -352,12 +361,17 @@ static void rds_ib_free_frag_cache_one(struct rds_ib_refill_cache *cache, size_t
 	int cache_frag_pages = ceil(cache_sz, PAGE_SIZE);
 	struct lfstack_el *cache_item;
 	struct rds_page_frag *frag;
-	struct rds_ib_cache_head *head = per_cpu_ptr(cache->percpu, cpu);
-	int cnt = 0;
-	int frag_pages = 0;
+	struct rds_ib_cache_head *head;
+	int cnt, frag_pages;
 
+	if (!cache->percpu)
+		return;
+
+	head = per_cpu_ptr(cache->percpu, cpu);
 	trace_rds_ib_free_cache_one(head, cpu, "frag(s)");
+
 	cache_item = lfstack_pop_all(&head->stack);
+	cnt = frag_pages = 0;
 	while (cache_item) {
 		frag = container_of(cache_item, struct rds_page_frag, f_cache_entry);
 		cache_item = lfstack_next(cache_item);
@@ -369,7 +383,7 @@ static void rds_ib_free_frag_cache_one(struct rds_ib_refill_cache *cache, size_t
 	rds_ib_stats_sub(s_ib_frag_pages_in_caches, frag_pages);
 }
 
-static void rds_ib_free_frag_cache(struct rds_ib_refill_cache *cache, size_t cache_sz)
+void rds_ib_free_frag_cache(struct rds_ib_refill_cache *cache, size_t cache_sz)
 {
 	int cache_frag_pages = ceil(cache_sz, PAGE_SIZE);
 	int cpu;
@@ -378,19 +392,24 @@ static void rds_ib_free_frag_cache(struct rds_ib_refill_cache *cache, size_t cac
 	struct rds_page_frag *frag;
 
 	clear_bit_mb(RDS_IB_CACHE_INITIALIZED, &cache->initialized);
-	for_each_possible_cpu(cpu) {
-		rds_ib_free_frag_cache_one(cache, cache_sz, cpu);
-		head = per_cpu_ptr(cache->percpu, cpu);
-		lfstack_free(&head->stack);
-		atomic_set(&head->count, 0);
+
+	if (cache->percpu) {
+		for_each_possible_cpu(cpu) {
+			rds_ib_free_frag_cache_one(cache, cache_sz, cpu);
+			head = per_cpu_ptr(cache->percpu, cpu);
+			lfstack_free(&head->stack);
+			atomic_set(&head->count, 0);
+		}
+		free_percpu(cache->percpu);
+		cache->percpu = NULL;
 	}
+
 	while ((cache_item = lfstack_pop(&cache->ready))) {
 		frag = container_of(cache_item, struct rds_page_frag, f_cache_entry);
 		rds_ib_free_one_frag(frag, cache_sz);
 		rds_ib_stats_sub(s_ib_frag_pages_in_caches, cache_frag_pages);
 	}
 	lfstack_free(&cache->ready);
-	free_percpu(cache->percpu);
 }
 
 void rds_ib_free_one_inc(struct rds_ib_incoming *inc)
@@ -405,12 +424,18 @@ static void rds_ib_free_inc_cache_one(struct rds_ib_refill_cache *cache, int cpu
 {
 	struct lfstack_el *cache_item;
 	struct rds_ib_incoming *inc;
-	struct rds_ib_cache_head *head = per_cpu_ptr(cache->percpu, cpu);
-	int cnt = 0;
+	struct rds_ib_cache_head *head;
+	int cnt;
 
+	if (!cache->percpu)
+		return;
+
+	head = per_cpu_ptr(cache->percpu, cpu);
 	trace_rds_ib_free_cache_one(head, cpu, "inc(s)");
+
 	cache_item = lfstack_pop_all(&head->stack);
 
+	cnt = 0;
 	while (cache_item) {
 		inc = container_of(cache_item, struct rds_ib_incoming, ii_cache_entry);
 		cache_item = lfstack_next(cache_item);
@@ -420,7 +445,7 @@ static void rds_ib_free_inc_cache_one(struct rds_ib_refill_cache *cache, int cpu
 	atomic_sub(cnt, &head->count);
 }
 
-static void rds_ib_free_inc_cache(struct rds_ib_refill_cache *cache)
+void rds_ib_free_inc_cache(struct rds_ib_refill_cache *cache)
 {
 	struct rds_ib_cache_head *head;
 	int cpu;
@@ -428,18 +453,23 @@ static void rds_ib_free_inc_cache(struct rds_ib_refill_cache *cache)
 	struct rds_ib_incoming *inc;
 
 	clear_bit_mb(RDS_IB_CACHE_INITIALIZED, &cache->initialized);
-	for_each_possible_cpu(cpu) {
-		rds_ib_free_inc_cache_one(cache, cpu);
-		head = per_cpu_ptr(cache->percpu, cpu);
-		lfstack_free(&head->stack);
-		atomic_set(&head->count, 0);
+
+	if (cache->percpu) {
+		for_each_possible_cpu(cpu) {
+			rds_ib_free_inc_cache_one(cache, cpu);
+			head = per_cpu_ptr(cache->percpu, cpu);
+			lfstack_free(&head->stack);
+			atomic_set(&head->count, 0);
+		}
+		free_percpu(cache->percpu);
+		cache->percpu = NULL;
 	}
+
 	while ((cache_item = lfstack_pop(&cache->ready))) {
 		inc = container_of(cache_item, struct rds_ib_incoming, ii_cache_entry);
 		rds_ib_free_one_inc(inc);
 	}
 	lfstack_free(&cache->ready);
-	free_percpu(cache->percpu);
 }
 
 static void rds_ib_free_caches(struct rds_ib_device *rds_ibdev)
@@ -461,11 +491,15 @@ static bool rds_ib_cache_need_gc(struct rds_ib_refill_cache *cache, int cpu)
 	u64 nmbr;
 	bool ret;
 
+	if (!cache->percpu)
+		return false;
+
 	head = per_cpu_ptr(cache->percpu, cpu);
 	nmbr = atomic64_read(&head->miss_count) + atomic64_read(&head->hit_count);
 
 	ret = (atomic64_read(&head->gc_count) == nmbr && atomic_read(&head->count) > 0);
 	atomic64_set(&head->gc_count, nmbr);
+
 	return ret;
 }
 
@@ -671,6 +705,7 @@ static void rds_ib_dev_free(struct work_struct *work)
 	struct rds_ib_ipaddr *i_ipaddr, *i_next;
 	struct rds_ib_device *rds_ibdev = container_of(work,
 					struct rds_ib_device, rid_free_work);
+	struct rds_ib_srq *rds_srq, *tmp_rds_srq;
 	bool last_to_free;
 	int allocated;
 
@@ -690,21 +725,13 @@ static void rds_ib_dev_free(struct work_struct *work)
 		up_write(&rds_ibdev->fastreg_lock);
 	}
 
-	cancel_delayed_work_sync(&rds_ibdev->srq_refill_work);
-	if (rds_ibdev->srq_recvs_drained_bitmap)
-		bitmap_free(rds_ibdev->srq_recvs_drained_bitmap);
-	if (rds_ibdev->srq_recvs) {
-		rds_ib_recv_clear_srq(rds_ibdev);
-		vfree(rds_ibdev->srq_recvs);
+	list_for_each_entry_safe(rds_srq, tmp_rds_srq,
+				 &rds_ibdev->srqs, list) {
+		list_del(&rds_srq->list);
+		rds_ib_stats_dec(s_ib_srq_count);
+		cancel_delayed_work_sync(&rds_srq->refill_work);
+		rds_ib_free_srq(rds_srq);
 	}
-	if (rds_ibdev->srq)
-		ib_destroy_srq(rds_ibdev->srq);
-	rds_ib_free_unmap_hdrs(rds_ibdev->dev,
-			       &rds_ibdev->srq_recv_hdrs,
-			       &rds_ibdev->srq_recv_hdrs_dma,
-			       &rds_ibdev->srq_recv_hdrs_sg,
-			       DIV_ROUND_UP(rds_ibdev->srq_max_wr, RDS_HDRS_PER_PAGE),
-			       DMA_FROM_DEVICE);
 
 	if (rds_ibdev->mr)
 		ib_dereg_mr(rds_ibdev->mr);
@@ -1278,8 +1305,6 @@ int rds_ib_add_one(struct ib_device *device)
 	struct rds_ib_device *rds_ibdev;
 	struct ib_device_attr *dev_attr;
 	struct ib_udata uhw;
-	struct ib_srq_init_attr srq_init_attr;
-	int srq_idx;
 	char *reason = NULL;
 
 	/* Only handle IB (no iWARP) devices */
@@ -1399,73 +1424,8 @@ int rds_ib_add_one(struct ib_device *device)
 		goto put_dev;
 	}
 
-	if (rds_ib_srq_enabled) {
-		rds_ibdev->srq_max_wr = rds_ib_srq_max_wr ? : 1;
-
-		error = rds_ib_alloc_map_hdrs(device,
-					      &rds_ibdev->srq_recv_hdrs,
-					      &rds_ibdev->srq_recv_hdrs_dma,
-					      &rds_ibdev->srq_recv_hdrs_sg,
-					      &reason,
-					      rds_ibdev->srq_max_wr,
-					      DIV_ROUND_UP(rds_ibdev->srq_max_wr, RDS_HDRS_PER_PAGE),
-					      DMA_FROM_DEVICE);
-		if (error)
-			goto put_dev;
-
-		memset(&srq_init_attr, 0, sizeof(srq_init_attr));
-		srq_init_attr.srq_type = IB_SRQT_BASIC;
-		srq_init_attr.attr.max_wr = rds_ibdev->srq_max_wr;
-		srq_init_attr.attr.max_sge = rds_ibdev->max_sge;
-		rds_ibdev->srq = ib_create_srq(rds_ibdev->pd,
-					       &srq_init_attr);
-		if (IS_ERR(rds_ibdev->srq)) {
-			error = PTR_ERR(rds_ibdev->srq);
-			rds_ibdev->srq = NULL;
-			reason = "ib_create_srq failed";
-			goto put_dev;
-		}
-
-		rds_ibdev->srq_recvs = vzalloc_node(sizeof(struct rds_ib_recv_work) * rds_ibdev->srq_max_wr,
-						    ibdev_to_node(device));
-		if (!rds_ibdev->srq_recvs) {
-			error = -ENOMEM;
-			reason = "vzalloc_node for srq_recvs failed";
-			goto put_dev;
-		}
-
-		rds_ib_recv_init_srq(rds_ibdev);
-
-		for (srq_idx = 0; srq_idx < rds_ibdev->srq_max_wr; srq_idx++) {
-			error = rds_ib_recv_refill_one(rds_ibdev, NULL,
-						       rds_ibdev->srq_recvs + srq_idx,
-						       GFP_KERNEL);
-			if (error) {
-				reason = "rds_ib_recv_refill_one failed";
-				goto put_dev;
-			}
-
-			error = ib_post_srq_recv(rds_ibdev->srq,
-						 &rds_ibdev->srq_recvs[srq_idx].r_wr,
-						 NULL);
-			if (error) {
-				reason = "ib_post_srq_recv failed";
-				goto put_dev;
-			}
-		}
-
-		rds_ibdev->srq_recvs_drained_bitmap =
-			bitmap_zalloc_node(rds_ibdev->srq_max_wr,
-					   GFP_KERNEL,
-					   ibdev_to_node(device));
-		if (!rds_ibdev->srq_recvs_drained_bitmap) {
-			error = -ENOMEM;
-			reason = "bitmap_zalloc_node for srq_drained_empty_bitmap failed";
-			goto put_dev;
-		}
-
-		INIT_DELAYED_WORK(&rds_ibdev->srq_refill_work, rds_ib_srq_refill_worker);
-	}
+	INIT_LIST_HEAD(&rds_ibdev->srqs);
+	mutex_init(&rds_ibdev->srqs_lock);
 
 	INIT_WORK(&rds_ibdev->fastreg_reset_w, rds_ib_reset_fastreg);
 	init_rwsem(&rds_ibdev->fastreg_lock);
@@ -1497,7 +1457,7 @@ int rds_ib_add_one(struct ib_device *device)
 		goto put_dev;
 	}
 
-	error = rds_ib_alloc_caches(rds_ibdev);
+	error = rds_ib_alloc_caches(rds_ibdev, true);
 	if (error) {
 		reason = "rds_ib_alloc_caches failed";
 		goto put_dev;
