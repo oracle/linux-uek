@@ -895,7 +895,8 @@ gfn_to_memslot_dirty_bitmap(struct kvm_vcpu *vcpu, gfn_t gfn,
 	slot = kvm_vcpu_gfn_to_memslot(vcpu, gfn);
 	if (!slot || slot->flags & KVM_MEMSLOT_INVALID)
 		return NULL;
-	if (no_dirty_log && kvm_slot_dirty_track_enabled(slot))
+	if (no_dirty_log && kvm_slot_dirty_track_enabled(slot) &&
+            !kvm_dirty_log_pgtable(vcpu->kvm))
 		return NULL;
 
 	return slot;
@@ -3093,6 +3094,8 @@ static bool
 fast_pf_fix_direct_spte(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault,
 			u64 *sptep, u64 old_spte, u64 new_spte)
 {
+	struct kvm_mmu_page *sp = sptep_to_sp(sptep);
+
 	/*
 	 * Theoretically we could also set dirty bit (and flush TLB) here in
 	 * order to eliminate unnecessary PML logging. See comments in
@@ -3109,7 +3112,8 @@ fast_pf_fix_direct_spte(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault,
 		return false;
 
 	if (is_writable_pte(new_spte) && !is_writable_pte(old_spte))
-		mark_page_dirty_in_slot(vcpu->kvm, fault->slot, fault->gfn);
+		mark_page_range_dirty_in_slot(vcpu->kvm, fault->slot, fault->gfn,
+				KVM_PAGES_PER_HPAGE(sp->role.level));
 
 	return true;
 }

@@ -12175,7 +12175,8 @@ static void kvm_mmu_slot_apply_flags(struct kvm *kvm,
 		 * which can be collapsed into a single large-page spte.  Later
 		 * page faults will create the large-page sptes.
 		 */
-		kvm_mmu_zap_collapsible_sptes(kvm, new);
+	        if (!kvm_dirty_log_pgtable(kvm))
+			kvm_mmu_zap_collapsible_sptes(kvm, new);
 	} else {
 		/*
 		 * Initially-all-set does not require write protecting any page,
