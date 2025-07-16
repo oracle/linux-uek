@@ -480,6 +480,14 @@ static inline unsigned int arm_smmu_cdtab_l2_idx(unsigned int ssid)
 #define MSI_IOVA_BASE			0x8000000
 #define MSI_IOVA_LENGTH			0x100000
 
+#define ARM_SMMU_IIDR			0x18
+#define IIDR_MRVL_CN96XX_A0		0x2b20034c
+#define IIDR_MRVL_CN96XX_B0		0x2b20134c
+#define IIDR_MRVL_CN95XX_A0		0x2b30034c
+#define IIDR_MRVL_CN95XX_B0		0x2b30134c
+
+#define ARM_SMMU_CMDQ_DRAIN_TIMEOUT_US	1000000 /* 1s! */
+
 enum pri_resp {
 	PRI_RESP_DENY = 0,
 	PRI_RESP_FAIL = 1,
@@ -604,6 +612,7 @@ struct arm_smmu_cmdq {
 	atomic_long_t			*valid_map;
 	atomic_t			owner_prod;
 	atomic_t			lock;
+	spinlock_t			spin_lock;
 	bool				(*supports_cmd)(struct arm_smmu_cmdq_ent *ent);
 };
 
@@ -733,6 +742,7 @@ struct arm_smmu_device {
 #define ARM_SMMU_OPT_MSIPOLL		(1 << 2)
 #define ARM_SMMU_OPT_CMDQ_FORCE_SYNC	(1 << 3)
 #define ARM_SMMU_OPT_TEGRA241_CMDQV	(1 << 4)
+#define ARM_SMMU_OPT_FORCE_QDRAIN	(1 << 5)
 	u32				options;
 
 	struct arm_smmu_cmdq		cmdq;
