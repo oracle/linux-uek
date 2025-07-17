@@ -18,7 +18,7 @@
 #include <linux/bits.h>
 
 #define RELOC_KERNEL_PRESERVE_CONTEXT	BIT(0)
-#define RELOC_KERNEL_HOST_MEM_ACTIVE	BIT(1)
+#define RELOC_KERNEL_CACHE_INCOHERENT	BIT(1)
 
 #endif
 
