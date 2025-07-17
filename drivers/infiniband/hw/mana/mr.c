@@ -100,6 +100,7 @@ static int mana_ib_gd_destroy_mr(struct mana_ib_dev *dev, u64 mr_handle)
 
 struct ib_mr *mana_ib_reg_user_mr(struct ib_pd *ibpd, u64 start, u64 length,
 				  u64 iova, int access_flags,
+				  struct ib_dmah *dmah,
 				  struct ib_udata *udata)
 {
 	struct mana_ib_pd *pd = container_of(ibpd, struct mana_ib_pd, ibpd);
@@ -109,6 +110,9 @@ struct ib_mr *mana_ib_reg_user_mr(struct ib_pd *ibpd, u64 start, u64 length,
 	struct mana_ib_mr *mr;
 	u64 dma_region_handle;
 	int err;
+
+	if (dmah)
+		return ERR_PTR(-EOPNOTSUPP);
 
 	dev = container_of(ibdev, struct mana_ib_dev, ib_dev);
 
@@ -175,6 +179,7 @@ err_free:
 
 struct ib_mr *mana_ib_reg_user_mr_dmabuf(struct ib_pd *ibpd, u64 start, u64 length,
 					 u64 iova, int fd, int access_flags,
+					 struct ib_dmah *dmah,
 					 struct uverbs_attr_bundle *attrs)
 {
 	struct mana_ib_pd *pd = container_of(ibpd, struct mana_ib_pd, ibpd);
@@ -185,6 +190,9 @@ struct ib_mr *mana_ib_reg_user_mr_dmabuf(struct ib_pd *ibpd, u64 start, u64 leng
 	struct mana_ib_mr *mr;
 	u64 dma_region_handle;
 	int err;
+
+	if (dmah)
+		return ERR_PTR(-EOPNOTSUPP);
 
 	dev = container_of(ibdev, struct mana_ib_dev, ib_dev);
 

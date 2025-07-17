@@ -868,7 +868,7 @@ struct ib_mr *ionic_get_dma_mr(struct ib_pd *ibpd, int access)
 }
 
 struct ib_mr *ionic_reg_user_mr(struct ib_pd *ibpd, u64 start, u64 length,
-				u64 addr, int access,
+				u64 addr, int access, struct ib_dmah *dmah,
 				struct ib_udata *udata)
 {
 	struct ionic_ibdev *dev = to_ionic_ibdev(ibpd->device);
@@ -876,6 +876,9 @@ struct ib_mr *ionic_reg_user_mr(struct ib_pd *ibpd, u64 start, u64 length,
 	struct ionic_mr *mr;
 	unsigned long pg_sz;
 	int rc;
+
+	if (dmah)
+		return ERR_PTR(-EOPNOTSUPP);
 
 	mr = kzalloc(sizeof(*mr), GFP_KERNEL);
 	if (!mr)
@@ -931,6 +934,7 @@ err_mrid:
 
 struct ib_mr *ionic_reg_user_mr_dmabuf(struct ib_pd *ibpd, u64 offset,
 				       u64 length, u64 addr, int fd, int access,
+				       struct ib_dmah *dmah,
 				       struct uverbs_attr_bundle *attrs)
 {
 	struct ionic_ibdev *dev = to_ionic_ibdev(ibpd->device);
@@ -939,6 +943,9 @@ struct ib_mr *ionic_reg_user_mr_dmabuf(struct ib_pd *ibpd, u64 offset,
 	struct ionic_mr *mr;
 	u64 pg_sz;
 	int rc;
+
+	if (dmah)
+		return ERR_PTR(-EOPNOTSUPP);
 
 	mr = kzalloc(sizeof(*mr), GFP_KERNEL);
 	if (!mr)

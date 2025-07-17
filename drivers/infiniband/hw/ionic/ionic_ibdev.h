@@ -467,10 +467,11 @@ int ionic_query_ah(struct ib_ah *ibah, struct rdma_ah_attr *ah_attr);
 int ionic_destroy_ah(struct ib_ah *ibah, u32 flags);
 struct ib_mr *ionic_get_dma_mr(struct ib_pd *ibpd, int access);
 struct ib_mr *ionic_reg_user_mr(struct ib_pd *ibpd, u64 start, u64 length,
-				u64 addr, int access,
+				u64 addr, int access, struct ib_dmah *dmah,
 				struct ib_udata *udata);
 struct ib_mr *ionic_reg_user_mr_dmabuf(struct ib_pd *ibpd, u64 offset,
 				       u64 length, u64 addr, int fd, int access,
+					   struct ib_dmah *dmah,
 				       struct uverbs_attr_bundle *attrs);
 int ionic_dereg_mr(struct ib_mr *ibmr, struct ib_udata *udata);
 struct ib_mr *ionic_alloc_mr(struct ib_pd *ibpd, enum ib_mr_type type,
