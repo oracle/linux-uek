@@ -135,7 +135,6 @@ static struct rds_connection *rds_conn_lookup(struct net *net,
 		    net == rds_conn_net(conn) &&
 		    conn->c_dev_if == dev_if) {
 			ret = conn;
-			rds_conn_get(conn);
 			break;
 		}
 	}
@@ -154,10 +153,8 @@ void rds_conn_laddr_list(struct net *net, struct in6_addr *laddr,
 	for_each_conn_hash_bucket(head) {
 		hlist_for_each_entry_rcu(conn, head, c_hash_node)
 			if (ipv6_addr_equal(&conn->c_laddr, laddr) &&
-			    net == rds_conn_net(conn)) {
-				rds_conn_get(conn);
+			    net == rds_conn_net(conn))
 				list_add(&conn->c_laddr_node, laddr_conns);
-			}
 	}
 
 	rcu_read_unlock();
@@ -266,15 +263,10 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 		 * can stick the other QP. */
 		parent = conn;
 		conn = parent->c_passive;
-		if (conn)
-			rds_conn_get(conn);
 	}
 	rcu_read_unlock();
-	if (conn) {
-		if (parent)
-			rds_conn_put(parent);
-		return conn;
-	}
+	if (conn)
+		goto out;
 
 	conn = kmem_cache_alloc(rds_conn_slab, gfp);
 	if (!conn) {
@@ -284,7 +276,6 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 	}
 	memset(conn, 0, sizeof(*conn));
 
-	kref_init(&conn->c_refcount);
 	INIT_HLIST_NODE(&conn->c_hash_node);
 	INIT_HLIST_NODE(&conn->c_faddr_node);
 	conn->c_laddr = *laddr;
@@ -414,13 +405,11 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 			kfree(conn->c_path);
 			kmem_cache_free(rds_conn_slab, conn);
 			conn = parent->c_passive;
-			rds_conn_get(parent->c_passive);
 		} else {
 			/* Note that for loopback connection, only one
 			 * rds_connection is added to the conn hash table.
 			 */
 			parent->c_passive = conn;
-			rds_conn_get(parent->c_passive);
 			rds_cong_add_conn(conn);
 			atomic_inc(&conn->c_trans->t_conn_count);
 		}
@@ -445,11 +434,9 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 			}
 			kfree(conn->c_path);
 			kmem_cache_free(rds_conn_slab, conn);
-			conn = found; /* return lookup conn */
+			conn = found;
 		} else {
-			rds_conn_get(conn);
 			hlist_add_head_rcu(&conn->c_hash_node, head);
-			rds_conn_get(conn);
 			hlist_add_head_rcu(&conn->c_faddr_node, faddr_head);
 			rds_cong_add_conn(conn);
 			atomic_inc(&conn->c_trans->t_conn_count);
@@ -461,9 +448,6 @@ out:
 	if (reason)
 		trace_rds_conn_create_err(NULL, conn, NULL, reason,
 					  PTR_ERR(conn));
-
-	if (parent)
-		rds_conn_put(parent);
 
 	return conn;
 }
@@ -582,11 +566,6 @@ static void rds_conn_shutdown_check_wait(struct work_struct *work)
 		delay = conn->c_trans->conn_path_shutdown_check_wait(cp);
 
 		if (delay > 0) {
-			/* We do not rds_conn_get() here as rds_conn_shutdown_check_wait()
-			 * is protected by the cp_shutdown_final completion sync
-			 * and there is no risk of the connection being destroyed
-			 * while the worker is active.
-			 */
 			rds_queue_delayed_work(cp, cp->cp_wq,
 					       &cp->cp_down_wait_w, delay,
 					       "shutdown check wait");
@@ -642,8 +621,7 @@ static void rds_conn_shutdown_check_wait(struct work_struct *work)
 
 void rds_conn_init_shutdown(struct rds_conn_path *cp)
 {
-	if (cancel_delayed_work(&cp->cp_conn->c_dr_sock_cancel_w))
-		rds_conn_put(cp->cp_conn);
+	cancel_delayed_work(&cp->cp_conn->c_dr_sock_cancel_w);
 
 	/* shut it down unless it's down already */
 	if (!rds_conn_path_transition(cp, RDS_CONN_DOWN, RDS_CONN_DOWN,
@@ -679,63 +657,52 @@ void rds_conn_init_shutdown(struct rds_conn_path *cp)
 		clear_bit(RDS_SHUTDOWN_PREPARE_DONE, &cp->cp_flags);
 		set_bit(RDS_SHUTDOWN_WAITING, &cp->cp_flags);
 		smp_mb__after_atomic();
-
-		/* We do not rds_conn_get() here as rds_conn_shutdown_check_wait()
-		 * is protected by the cp_shutdown_final completion sync
-		 * and there is no risk of the connection being destroyed
-		 * while the worker is active.
-		 */
 		queue_delayed_work(cp->cp_wq, &cp->cp_down_wait_w, 0);
 	} else
 		rds_conn_shutdown_final(cp);
 }
 
-/* Quiesce a single rds_conn_path by shutting down
- * the conn & tearing down any queued messages.
+/* destroy a single rds_conn_path. rds_conn_destroy() iterates over
+ * all paths using rds_conn_path_destroy()
  */
-static void rds_conn_path_destroy_init(struct rds_conn_path *cp, int shutdown)
+static void rds_conn_path_destroy(struct rds_conn_path *cp, int shutdown)
 {
 	DECLARE_COMPLETION_ONSTACK(shutdown_final);
 	struct rds_message *rm, *rtmp;
 	LIST_HEAD(to_be_dropped);
 
+	cp->cp_drop_source = DR_CONN_DESTROY;
+
 	if (!cp->cp_transport_data)
 		return;
 
-	/* Quiesce heartbeats. Drop the conn refcount
-	 * if we successfully cancel the worker thread(s).
-	 */
-	if (rds_queue_cancel_work(cp, &cp->cp_hb_w,
-				  "conn path destroy hb worker"))
-		rds_conn_put(cp->cp_conn);
+	/* quiesce heartbeats */
+	rds_queue_cancel_work(cp, &cp->cp_hb_w,
+			      "conn path destroy hb worker");
 
-	/* Make sure lingering queued work won't try to ref the
+	/* make sure lingering queued work won't try to ref the
 	 * conn. If there is work queued, we cancel it (and set the
-	 * bit to avoid any re-queueing).
+	 * bit to avoid any re-queueing)
 	 */
-	if (test_and_set_bit(RDS_SEND_WORK_QUEUED, &cp->cp_flags) &&
-	    rds_queue_cancel_work(cp, &cp->cp_send_w,
-				  "conn path destroy send work"))
-		rds_conn_put(cp->cp_conn);
+	if (test_and_set_bit(RDS_SEND_WORK_QUEUED, &cp->cp_flags))
+		rds_queue_cancel_work(cp, &cp->cp_send_w,
+				      "conn path destroy send work");
+	if (test_and_set_bit(RDS_RECV_WORK_QUEUED, &cp->cp_flags))
+		rds_queue_cancel_work(cp, &cp->cp_recv_w,
+				      "conn path destroy recv work");
 
-	if (test_and_set_bit(RDS_RECV_WORK_QUEUED, &cp->cp_flags) &&
-	    rds_queue_cancel_work(cp, &cp->cp_recv_w,
-				  "conn path destroy recv work"))
-		rds_conn_put(cp->cp_conn);
-
-	cp->cp_drop_source = DR_CONN_DESTROY;
 	cp->cp_shutdown_final = &shutdown_final;
 	rds_conn_path_drop(cp, DR_CONN_DESTROY, 0);
 	flush_delayed_work(&cp->cp_up_or_down_w);
 	wait_for_completion(&shutdown_final);
 
-	/* Tear down queued messages */
+	/* tear down queued messages */
 	list_for_each_entry_safe(rm, rtmp,
 				 &cp->cp_send_queue,
 				 m_conn_item) {
 		if (shutdown) {
 			list_del_init(&rm->m_conn_item);
-			WARN_ON(!list_empty(&rm->m_sock_item));
+			BUG_ON(!list_empty(&rm->m_sock_item));
 			rds_message_put(rm);
 		} else {
 			list_move_tail(&rm->m_conn_item, &to_be_dropped);
@@ -746,122 +713,53 @@ static void rds_conn_path_destroy_init(struct rds_conn_path *cp, int shutdown)
 					  RDS_RDMA_SEND_DROPPED);
 	if (cp->cp_xmit_rm)
 		rds_message_put(cp->cp_xmit_rm);
+
+	cp->cp_conn->c_trans->conn_free(cp->cp_transport_data);
+
+	destroy_workqueue(cp->cp_wq);
+	cp->cp_wq = NULL;
 }
 
-/* Destroying a connection is done in two phases:
- *   1) Call rds_conn_destroy_init() to quiesce all conn,cp(s) activity.
- *   2) Call rds_conn_put() which in-turn calls rds_conn_destroy_fini()
- *	via the kref callback when c_refcount drops to 0.
+/* Stop and free a connection.
+ *
+ * This can only be used in very limited circumstances.  It assumes that once
+ * the conn has been shutdown that no one else is referencing the connection.
+ * We can only ensure this in the rmmod path in the current code.
  */
-void rds_conn_destroy_init(struct rds_connection *conn, int shutdown)
+void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 {
 	int npaths = (conn->c_trans->t_mp_capable ? RDS_MPATH_WORKERS : 1);
 	int i;
 
-	smp_rmb();
-	if (conn->c_destroy_in_prog)
-		return;
+	trace_rds_conn_destroy(NULL, conn, NULL, NULL, 0);
+
 	conn->c_destroy_in_prog = 1;
 	smp_mb();
-
-	trace_rds_conn_destroy_init(NULL, conn, NULL, NULL, 0);
-
-	/* Always drop the conn refcount if we
-	 * successfully cancel any of its worker threads.
-	 */
-	if (cancel_work_sync(&conn->c_ha_changed.work))
-		rds_conn_put(conn);
-	if (cancel_delayed_work_sync(&conn->c_dr_sock_cancel_w))
-		rds_conn_put(conn);
+	cancel_work_sync(&conn->c_ha_changed.work);
+	cancel_delayed_work_sync(&conn->c_dr_sock_cancel_w);
 
 	/* Ensure conn will not be scheduled for reconnect */
 	spin_lock_irq(&rds_conn_lock);
-	if (!hlist_unhashed(&conn->c_hash_node)) {
-		hlist_del_init_rcu(&conn->c_hash_node);
-		rds_conn_put(conn);
-	}
-	if (!hlist_unhashed(&conn->c_faddr_node)) {
-		hlist_del_init_rcu(&conn->c_faddr_node);
-		rds_conn_put(conn);
-	}
+	hlist_del_init_rcu(&conn->c_hash_node);
+	hlist_del_init_rcu(&conn->c_faddr_node);
 	spin_unlock_irq(&rds_conn_lock);
 	synchronize_rcu();
 
-	/* Quiesce the cp */
+	/* shut the connection down */
 	for (i = 0; i < npaths; i++) {
 		struct rds_conn_path *cp;
 
 		cp = &conn->c_path[i];
-		rds_conn_path_destroy_init(cp, shutdown);
-		WARN_ON(!list_empty(&cp->cp_retrans));
+		rds_conn_path_destroy(cp, shutdown);
+		BUG_ON(!list_empty(&cp->cp_retrans));
 	}
 
 	/*
 	 * The congestion maps aren't freed up here.  They're
 	 * freed by rds_cong_exit() after all the connections
 	 * have been freed.
-	 *
-	 * This will also call the last rds_conn_put() that will
-	 * call rds_conn_destroy_fini() if/when c_refcount == 0.
 	 */
 	rds_cong_remove_conn(conn);
-
-	if (conn->c_passive) {
-		rds_conn_put(conn->c_passive);
-		conn->c_passive = NULL;
-	}
-}
-EXPORT_SYMBOL_GPL(rds_conn_destroy_init);
-
-/* free the underlying transport conn */
-static void rds_conn_path_destroy_fini(struct rds_conn_path *cp)
-{
-	cp->cp_conn->c_trans->conn_free(cp->cp_transport_data);
-	destroy_workqueue(cp->cp_wq);
-	cp->cp_wq = NULL;
-}
-
-/* Free a connection via the kref callback (see rds_conn_put).
- * This assumes the conn and its cp(s) have been quiesced
- * and is called when the conn's c_refcount drops to 0.
- */
-static void rds_conn_destroy_fini(struct kref *ref)
-{
-	struct rds_connection *conn = container_of(ref, struct rds_connection,
-						   c_refcount);
-
-	int npaths = (conn->c_trans->t_mp_capable ? RDS_MPATH_WORKERS : 1);
-	int i;
-
-	trace_rds_conn_destroy_fini(NULL, conn, NULL, NULL, 0);
-
-	smp_rmb();
-	if (!conn->c_destroy_in_prog) {
-		/* This should never happen unless there is mismatched
-		 * rds_conn_put()s causing the refcount to drop to 0
-		 * that inadvertently attempts to destroy the conn.
-		 * Do not proceed as the conn has not yet been
-		 * quiesced by destroy_init().
-		 */
-		WARN_ON(!conn->c_destroy_in_prog);
-		printk(KERN_INFO "RDS/%s: connection <%pI6c,%pI6c,%d> not destroyed\n",
-		       conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" : "IB",
-		       &conn->c_laddr, &conn->c_faddr, conn->c_tos);
-		return;
-	}
-
-	printk(KERN_INFO "RDS/%s: connection <%pI6c,%pI6c,%d> destroyed\n",
-	       conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" : "IB",
-	       &conn->c_laddr, &conn->c_faddr, conn->c_tos);
-
-	/* free the conn_paths */
-	for (i = 0; i < npaths; i++) {
-		struct rds_conn_path *cp;
-
-		cp = &conn->c_path[i];
-		rds_conn_path_destroy_fini(cp);
-		WARN_ON(!list_empty(&cp->cp_retrans));
-	}
 
 	atomic_dec(&conn->c_trans->t_conn_count);
 
@@ -869,20 +767,7 @@ static void rds_conn_destroy_fini(struct kref *ref)
 	kfree(conn->c_path);
 	kmem_cache_free(rds_conn_slab, conn);
 }
-
-/* Call this when queuing a new worker thread */
-void rds_conn_get(struct rds_connection *conn)
-{
-	kref_get(&conn->c_refcount);
-}
-EXPORT_SYMBOL_GPL(rds_conn_get);
-
-/* Call this when a worker is done or canceled */
-void rds_conn_put(struct rds_connection *conn)
-{
-	kref_put(&conn->c_refcount, rds_conn_destroy_fini);
-}
-EXPORT_SYMBOL_GPL(rds_conn_put);
+EXPORT_SYMBOL_GPL(rds_conn_destroy);
 
 static void __rds_inc_msg_cp(struct rds_incoming *inc,
 			     struct rds_info_iterator *iter,
@@ -1487,7 +1372,6 @@ static void rds_conn_ha_changed_task(struct work_struct *work)
 	conn->c_trans->conn_ha_changed(conn,
 				       conn->c_ha_changed.ha,
 				       conn->c_ha_changed.ha_len);
-	rds_conn_put(conn); /* get in rds_conn_faddr_ha_changed */
 }
 
 void rds_conn_faddr_ha_changed(const struct in6_addr *faddr,
@@ -1538,9 +1422,7 @@ void rds_conn_faddr_ha_changed(const struct in6_addr *faddr,
 			memcpy(&conn->c_ha_changed.ha, ha, ha_len);
 			conn->c_ha_changed.ha_len = ha_len;
 
-			rds_conn_get(conn); /* put in rds_conn_ha_changed_task */
-			if (!queue_work(system_wq, &conn->c_ha_changed.work))
-				rds_conn_put(conn);
+			queue_work(system_wq, &conn->c_ha_changed.work);
 		}
 	}
 

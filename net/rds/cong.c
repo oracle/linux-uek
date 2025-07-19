@@ -289,7 +289,6 @@ void rds_cong_add_conn(struct rds_connection *conn)
 	unsigned long flags;
 
 	rdsdebug("conn %p now on map %p\n", conn, conn->c_lcong);
-	rds_conn_get(conn); /* put in rds_cong_remove_conn */
 	spin_lock_irqsave(&rds_cong_lock, flags);
 	list_add_tail(&conn->c_map_item, &conn->c_lcong->m_conn_list);
 	spin_unlock_irqrestore(&rds_cong_lock, flags);
@@ -303,7 +302,6 @@ void rds_cong_remove_conn(struct rds_connection *conn)
 	spin_lock_irqsave(&rds_cong_lock, flags);
 	list_del_init(&conn->c_map_item);
 	spin_unlock_irqrestore(&rds_cong_lock, flags);
-	rds_conn_put(conn); /* get in rds_cong_add_conn */
 }
 
 int rds_cong_get_maps(struct rds_connection *conn)
