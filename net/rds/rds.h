@@ -1152,12 +1152,8 @@ struct rds_connection *rds_conn_find(struct net *net, struct in6_addr *laddr,
 				     int dev_if);
 void rds_conn_init_shutdown(struct rds_conn_path *cp);
 void rds_conn_destroy_init(struct rds_connection *conn, int shutdown);
-#define rds_conn_get(conn) \
-	rds_conn_get_trace((conn), __func__, __LINE__)
-#define rds_conn_put(conn) \
-	rds_conn_put_trace((conn), __func__, __LINE__)
-void rds_conn_get_trace(struct rds_connection *conn, const char *func, int line);
-void rds_conn_put_trace(struct rds_connection *conn, const char *func, int line);
+void rds_conn_get(struct rds_connection *conn);
+void rds_conn_put(struct rds_connection *conn);
 void rds_conn_reset(struct rds_connection *conn);
 void rds_conn_drop(struct rds_connection *conn, int reason, int err);
 void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err);

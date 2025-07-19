@@ -743,68 +743,6 @@ DEFINE_EVENT(rds_heartbeat, rds_heartbeat_disable,
 	TP_ARGS(conn, cp, saddr, daddr)
 );
 
-DECLARE_EVENT_CLASS(rds_conn_kref,
-
-	TP_PROTO(struct rds_connection *conn, const char *func, int line, int refcount),
-
-	TP_ARGS(conn, func, line, refcount),
-
-	TP_STRUCT__entry(
-		RDS_TRACE_COMMON_FIELDS
-		__array(char, func, RDS_STRSIZE)
-		__field(int, line)
-		__field(int, refcount)
-	),
-
-	TP_fast_assign(
-		struct in6_addr *in6;
-
-		in6 = (struct in6_addr *)__entry->laddr;
-		*in6 = conn ? conn->c_laddr : in6addr_any;
-		in6 = (struct in6_addr *)__entry->faddr;
-		*in6 = conn ? conn->c_faddr : in6addr_any;
-		__entry->tos = conn ? conn->c_tos : 0;
-		__entry->transport = conn ? conn->c_trans->t_type :
-					    RDS_TRANS_NONE;
-		__entry->conn = conn;
-		RDS_STRLCPY(__entry->func, func);
-		__entry->refcount = refcount;
-		__entry->line = line;
-		/* Unused common fields */
-		__entry->cp = NULL;
-		__entry->lport = 0;
-		__entry->fport = 0;
-		__entry->netns_inum = 0;
-		__entry->qp_num = 0;
-		__entry->remote_qp_num = 0;
-		__entry->flags = 0;
-		__entry->err = 0;
-		__entry->cgroup = NULL;
-		__entry->cgroup_id = 0;
-		__entry->rs = NULL;
-		__entry->rm = NULL;
-	),
-
-	TP_printk("RDS/%s: <%pI6c,%pI6c,%d>, caller %s:%d refcount %d",
-		  show_transport(__entry->transport),
-		  __entry->laddr, __entry->faddr, __entry->tos,
-		  __entry->func, __entry->line, __entry->refcount)
-);
-
-DEFINE_EVENT(rds_conn_kref, rds_conn_kref_get,
-
-	TP_PROTO(struct rds_connection *conn, const char *func, int line, int refcount),
-
-	TP_ARGS(conn, func, line, refcount)
-);
-
-DEFINE_EVENT(rds_conn_kref, rds_conn_kref_put,
-
-	TP_PROTO(struct rds_connection *conn, const char *func, int line, int refcount),
-
-	TP_ARGS(conn, func, line, refcount)
-);
-
 DECLARE_EVENT_CLASS(rds_ib,
 
 	TP_PROTO(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
