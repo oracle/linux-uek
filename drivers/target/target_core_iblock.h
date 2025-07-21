@@ -33,6 +33,7 @@ struct iblock_dev {
 	struct bio_set	ibd_bio_set;
 	struct block_device *ibd_bd;
 	bool ibd_readonly;
+	bool ibd_exclusive;
 	struct iblock_dev_plug *ibd_plug;
 } ____cacheline_aligned;
 

@@ -60,6 +60,7 @@ static struct se_device *iblock_alloc_device(struct se_hba *hba, const char *nam
 		pr_err("Unable to allocate struct iblock_dev\n");
 		return NULL;
 	}
+	ib_dev->ibd_exclusive = true;
 
 	ib_dev->ibd_plug = kcalloc(nr_cpu_ids, sizeof(*ib_dev->ibd_plug),
 				   GFP_KERNEL);
@@ -96,16 +97,19 @@ static int iblock_configure_device(struct se_device *dev)
 		goto out;
 	}
 
-	pr_debug( "IBLOCK: Claiming struct block_device: %s\n",
-			ib_dev->ibd_udev_path);
+	pr_debug("IBLOCK: Claiming struct block_device: %s: %d\n",
+		 ib_dev->ibd_udev_path, ib_dev->ibd_exclusive);
 
-	mode = FMODE_READ|FMODE_EXCL;
+	mode = FMODE_READ;
+	if (ib_dev->ibd_exclusive)
+		mode |= FMODE_EXCL;
 	if (!ib_dev->ibd_readonly)
 		mode |= FMODE_WRITE;
 	else
 		dev->dev_flags |= DF_READ_ONLY;
 
-	bd = blkdev_get_by_path(ib_dev->ibd_udev_path, mode, ib_dev);
+	bd = blkdev_get_by_path(ib_dev->ibd_udev_path, mode,
+				ib_dev->ibd_exclusive ? ib_dev : NULL);
 	if (IS_ERR(bd)) {
 		ret = PTR_ERR(bd);
 		goto out_free_bioset;
@@ -168,7 +172,7 @@ static int iblock_configure_device(struct se_device *dev)
 	return 0;
 
 out_blkdev_put:
-	blkdev_put(ib_dev->ibd_bd, FMODE_WRITE|FMODE_READ|FMODE_EXCL);
+	blkdev_put(ib_dev->ibd_bd, mode);
 out_free_bioset:
 	bioset_exit(&ib_dev->ibd_bio_set);
 out:
@@ -192,9 +196,15 @@ static void iblock_free_device(struct se_device *dev)
 static void iblock_destroy_device(struct se_device *dev)
 {
 	struct iblock_dev *ib_dev = IBLOCK_DEV(dev);
+	fmode_t mode = FMODE_READ;
+
+	if (ib_dev->ibd_exclusive)
+		mode |= FMODE_EXCL;
+	if (!ib_dev->ibd_readonly)
+		mode |= FMODE_WRITE;
 
 	if (ib_dev->ibd_bd != NULL)
-		blkdev_put(ib_dev->ibd_bd, FMODE_WRITE|FMODE_READ|FMODE_EXCL);
+		blkdev_put(ib_dev->ibd_bd, mode);
 	bioset_exit(&ib_dev->ibd_bio_set);
 }
 
@@ -559,13 +569,14 @@ fail:
 }
 
 enum {
-	Opt_udev_path, Opt_readonly, Opt_force, Opt_err
+	Opt_udev_path, Opt_readonly, Opt_force, Opt_exclusive, Opt_err,
 };
 
 static match_table_t tokens = {
 	{Opt_udev_path, "udev_path=%s"},
 	{Opt_readonly, "readonly=%d"},
 	{Opt_force, "force=%d"},
+	{Opt_exclusive, "exclusive=%d"},
 	{Opt_err, NULL}
 };
 
@@ -575,7 +586,7 @@ static ssize_t iblock_set_configfs_dev_params(struct se_device *dev,
 	struct iblock_dev *ib_dev = IBLOCK_DEV(dev);
 	char *orig, *ptr, *arg_p, *opts;
 	substring_t args[MAX_OPT_ARGS];
-	int ret = 0, token;
+	int ret = 0, token, tmp_exclusive;
 	unsigned long tmp_readonly;
 
 	opts = kstrdup(page, GFP_KERNEL);
@@ -622,6 +633,22 @@ static ssize_t iblock_set_configfs_dev_params(struct se_device *dev,
 			ib_dev->ibd_readonly = tmp_readonly;
 			pr_debug("IBLOCK: readonly: %d\n", ib_dev->ibd_readonly);
 			break;
+		case Opt_exclusive:
+			arg_p = match_strdup(&args[0]);
+			if (!arg_p) {
+				ret = -ENOMEM;
+				break;
+			}
+			ret = kstrtoint(arg_p, 0, &tmp_exclusive);
+			kfree(arg_p);
+			if (ret < 0) {
+				pr_err("kstrtoul() failed for exclusive=\n");
+				goto out;
+			}
+			ib_dev->ibd_exclusive = tmp_exclusive;
+			pr_debug("IBLOCK: exclusive: %d\n",
+				 ib_dev->ibd_exclusive);
+			break;
 		case Opt_force:
 			break;
 		default:
@@ -648,6 +675,7 @@ static ssize_t iblock_show_configfs_dev_params(struct se_device *dev, char *b)
 		bl += sprintf(b + bl, "  UDEV PATH: %s",
 				ib_dev->ibd_udev_path);
 	bl += sprintf(b + bl, "  readonly: %d\n", ib_dev->ibd_readonly);
+	bl += sprintf(b + bl, "  exclusive: %d\n", ib_dev->ibd_exclusive);
 
 	bl += sprintf(b + bl, "        ");
 	if (bd) {
