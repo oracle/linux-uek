@@ -160,8 +160,8 @@ static inline unsigned long __crypto_memneq_16(const void *a, const void *b)
  * not call this function directly, but should instead use
  * crypto_memneq defined in crypto/algapi.h.
  */
-noinline unsigned long __crypto_memneq(const void *a, const void *b,
-				       size_t size)
+noinline unsigned long CRYPTO_API(__crypto_memneq)(const void *a, const void *b,
+				size_t size)
 {
 	switch (size) {
 	case 16:
@@ -170,4 +170,4 @@ noinline unsigned long __crypto_memneq(const void *a, const void *b,
 		return __crypto_memneq_generic(a, b, size);
 	}
 }
-EXPORT_SYMBOL(__crypto_memneq);
+DEFINE_CRYPTO_API(__crypto_memneq);

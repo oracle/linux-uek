@@ -14,7 +14,7 @@
  * (which may alias one of the sources).  Don't call this directly; call
  * crypto_xor() or crypto_xor_cpy() instead.
  */
-void __crypto_xor(u8 *dst, const u8 *src1, const u8 *src2, unsigned int len)
+void CRYPTO_API(__crypto_xor)(u8 *dst, const u8 *src1, const u8 *src2, unsigned int len)
 {
 	int relalign = 0;
 
@@ -83,7 +83,7 @@ void __crypto_xor(u8 *dst, const u8 *src1, const u8 *src2, unsigned int len)
 	while (len--)
 		*dst++ = *src1++ ^ *src2++;
 }
-EXPORT_SYMBOL_GPL(__crypto_xor);
+DEFINE_CRYPTO_API(__crypto_xor);
 
 MODULE_DESCRIPTION("Crypto library utility functions");
 MODULE_LICENSE("GPL");
