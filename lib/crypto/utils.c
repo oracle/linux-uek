@@ -8,6 +8,7 @@
 #include <linux/unaligned.h>
 #include <crypto/utils.h>
 #include <linux/module.h>
+#include <crypto/api.h>
 
 /*
  * XOR @len bytes from @src1 and @src2 together, writing the result to @dst
