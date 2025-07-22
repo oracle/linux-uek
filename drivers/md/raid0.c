@@ -678,7 +678,7 @@ static void *raid0_takeover_raid45(struct mddev *mddev)
 	mddev->raid_disks--;
 	mddev->delta_disks = -1;
 	/* make sure it will be not marked as dirty */
-	mddev->recovery_cp = MaxSector;
+	mddev->resync_offset = MaxSector;
 	mddev_clear_unsupported_flags(mddev, UNSUPPORTED_MDDEV_FLAGS);
 
 	create_strip_zones(mddev, &priv_conf);
@@ -721,7 +721,7 @@ static void *raid0_takeover_raid10(struct mddev *mddev)
 	mddev->raid_disks += mddev->delta_disks;
 	mddev->degraded = 0;
 	/* make sure it will be not marked as dirty */
-	mddev->recovery_cp = MaxSector;
+	mddev->resync_offset = MaxSector;
 	mddev_clear_unsupported_flags(mddev, UNSUPPORTED_MDDEV_FLAGS);
 
 	create_strip_zones(mddev, &priv_conf);
@@ -764,7 +764,7 @@ static void *raid0_takeover_raid1(struct mddev *mddev)
 	mddev->delta_disks = 1 - mddev->raid_disks;
 	mddev->raid_disks = 1;
 	/* make sure it will be not marked as dirty */
-	mddev->recovery_cp = MaxSector;
+	mddev->resync_offset = MaxSector;
 	mddev_clear_unsupported_flags(mddev, UNSUPPORTED_MDDEV_FLAGS);
 
 	create_strip_zones(mddev, &priv_conf);
