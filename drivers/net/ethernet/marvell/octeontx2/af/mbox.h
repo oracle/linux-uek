@@ -178,6 +178,8 @@ M(SWDEV2AF_NOTIFY,	0x011,  swdev2af_notify,		\
 				swdev2af_notify_req, msg_rsp)		\
 M(FDB_NOTIFY,		0x012,  fdb_notify,				\
 				fdb_notify_req, msg_rsp)		\
+M(FIB_NOTIFY,		0x013,  fib_notify,				\
+				fib_notify_req, msg_rsp)		\
 /* CGX mbox IDs (range 0x200 - 0x3FF) */				\
 M(CGX_START_RXTX,	0x200, cgx_start_rxtx, msg_req, msg_rsp)	\
 M(CGX_STOP_RXTX,	0x201, cgx_stop_rxtx, msg_req, msg_rsp)		\
@@ -2319,11 +2321,32 @@ struct rep_event {
 
 #define FDB_ADD  BIT_ULL(0)
 #define FDB_DEL	 BIT_ULL(1)
+#define FIB_CMD	 BIT_ULL(2)
 
 struct fdb_notify_req {
 	struct  mbox_msghdr hdr;
 	u64 flags;
 	u8  mac[ETH_ALEN];
+};
+
+struct fib_entry {
+	u64 cmd;
+	u64 gw_valid : 1;
+	u64 mac_valid : 1;
+	u64 host    : 1;
+	u64 bridge  : 1;
+	u32 dst;
+	u32 dst_len;
+	u32 gw;
+	u16 port_id;
+	u8 nud_state;
+	u8 mac[ETH_ALEN];
+};
+
+struct fib_notify_req {
+	struct  mbox_msghdr hdr;
+	u16 cnt;
+	struct fib_entry entry[16];
 };
 
 struct af2swdev_notify_req {
@@ -2332,6 +2355,8 @@ struct af2swdev_notify_req {
 	u32 port_id;
 	u32 switch_id;
 	u8 mac[6];
+	u8 cnt;
+	struct fib_entry entry[16];
 };
 
 struct af2pf_fdb_refresh_req {
