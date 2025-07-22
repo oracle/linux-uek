@@ -494,18 +494,6 @@ static bool is_cpt_pf(struct rvu *rvu, u16 pcifunc)
 	return true;
 }
 
-static bool is_cpt_vf(struct rvu *rvu, u16 pcifunc)
-{
-	int cpt_pf_num = rvu->cpt_pf_num;
-
-	if (rvu_get_pf(rvu->pdev, pcifunc) != cpt_pf_num)
-		return false;
-	if (!(pcifunc & RVU_PFVF_FUNC_MASK))
-		return false;
-
-	return true;
-}
-
 static int validate_and_get_cpt_blkaddr(int req_blkaddr)
 {
 	int blkaddr;
@@ -515,6 +503,19 @@ static int validate_and_get_cpt_blkaddr(int req_blkaddr)
 		return -EINVAL;
 
 	return blkaddr;
+}
+
+static inline bool otx2_cpt_validate_access(struct rvu *rvu, u16 pcifunc,
+					    int blkaddr)
+{
+	struct rvu_block *block;
+	int num_lfs;
+
+	block = &rvu->hw->block[blkaddr];
+	num_lfs = rvu_get_rsrc_mapcount(rvu_get_pfvf(rvu, pcifunc),
+					block->addr);
+
+	return is_cpt_pf(rvu, pcifunc) || num_lfs;
 }
 
 int otx2_cpt_que_pri_mask(struct rvu *rvu)
@@ -888,6 +889,7 @@ int rvu_mbox_handler_cpt_rd_wr_register(struct rvu *rvu,
 					struct cpt_rd_wr_reg_msg *req,
 					struct cpt_rd_wr_reg_msg *rsp)
 {
+	u16 pcifunc = req->hdr.pcifunc;
 	u64 offset = req->reg_offset;
 	int blkaddr;
 
@@ -895,9 +897,8 @@ int rvu_mbox_handler_cpt_rd_wr_register(struct rvu *rvu,
 	if (blkaddr < 0)
 		return blkaddr;
 
-	/* This message is accepted only if sent from CPT PF/VF */
-	if (!is_cpt_pf(rvu, req->hdr.pcifunc) &&
-	    !is_cpt_vf(rvu, req->hdr.pcifunc))
+	/* Allow if accessed by CPT PF or LF is attached to given PF/VF */
+	if (!otx2_cpt_validate_access(rvu, pcifunc, blkaddr))
 		return CPT_AF_ERR_ACCESS_DENIED;
 
 	if (!validate_and_update_reg_offset(rvu, req, &offset))
@@ -1009,15 +1010,15 @@ static void get_eng_sts(struct rvu *rvu, struct cpt_sts_rsp *rsp, int blkaddr)
 int rvu_mbox_handler_cpt_sts(struct rvu *rvu, struct cpt_sts_req *req,
 			     struct cpt_sts_rsp *rsp)
 {
+	u16 pcifunc = req->hdr.pcifunc;
 	int blkaddr;
 
 	blkaddr = validate_and_get_cpt_blkaddr(req->blkaddr);
 	if (blkaddr < 0)
 		return blkaddr;
 
-	/* This message is accepted only if sent from CPT PF/VF */
-	if (!is_cpt_pf(rvu, req->hdr.pcifunc) &&
-	    !is_cpt_vf(rvu, req->hdr.pcifunc))
+	/* Allow if accessed by CPT PF or LF is attached to given PF/VF */
+	if (!otx2_cpt_validate_access(rvu, pcifunc, blkaddr))
 		return CPT_AF_ERR_ACCESS_DENIED;
 
 	get_ctx_pc(rvu, rsp, blkaddr);
@@ -1085,6 +1086,7 @@ int rvu_mbox_handler_cpt_rxc_time_cfg(struct rvu *rvu,
 				      struct msg_rsp *rsp)
 {
 	struct rvu_cpt *cpt = &rvu->cpt;
+	u16 pcifunc = req->hdr.pcifunc;
 	int blkaddr;
 
 	blkaddr = validate_and_get_cpt_blkaddr(req->blkaddr);
@@ -1102,9 +1104,8 @@ int rvu_mbox_handler_cpt_rxc_time_cfg(struct rvu *rvu,
 		return 0;
 	}
 
-	/* This message is accepted only if sent from CPT PF/VF */
-	if (!is_cpt_pf(rvu, req->hdr.pcifunc) &&
-	    !is_cpt_vf(rvu, req->hdr.pcifunc))
+	/* Allow if accessed by CPT PF or LF is attached to given PF/VF */
+	if (!otx2_cpt_validate_access(rvu, pcifunc, blkaddr))
 		return CPT_AF_ERR_ACCESS_DENIED;
 
 	cpt_rxc_time_cfg(rvu, req, blkaddr, NULL);
@@ -1302,9 +1303,11 @@ int rvu_cpt_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int lf,
 {
 	u64 reg;
 
-	if (is_cpt_pf(rvu, pcifunc) || is_cpt_vf(rvu, pcifunc) ||
-	    is_cn20k(rvu->pdev))
-		cpt_rxc_teardown(rvu, pcifunc, blkaddr, lf);
+	/* Allow if accessed by CPT PF or LF is attached to given PF/VF */
+	if (!otx2_cpt_validate_access(rvu, pcifunc, blkaddr))
+		return CPT_AF_ERR_ACCESS_DENIED;
+
+	cpt_rxc_teardown(rvu, pcifunc, blkaddr, lf);
 
 	mutex_lock(&rvu->alias_lock);
 	/* Enable BAR2 ALIAS for this pcifunc. */
