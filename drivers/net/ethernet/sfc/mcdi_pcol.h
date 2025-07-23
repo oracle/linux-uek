@@ -9557,15 +9557,13 @@
 /***********************************/
 /* MC_CMD_DYNAMIC_SENSORS_GET_DESCRIPTIONS
  * Get descriptions for a set of sensors, specified as an array of sensor
- * handles as returned by MC_CMD_DYNAMIC_SENSORS_LIST
- *
- * Any handles which do not correspond to a sensor currently managed by the MC
- * will be dropped from from the response. This may happen when a sensor table
- * update is in progress, and effectively means the set of usable sensors is
- * the intersection between the sets of sensors known to the driver and the MC.
- *
- * On Riverhead this command is implemented as a wrapper for
- * `get_descriptions` in the sensor_query SPHINX service.
+ * handles as returned by MC_CMD_DYNAMIC_SENSORS_LIST. Any handles which do not
+ * correspond to a sensor currently managed by the MC will be dropped from
+ * the response. This may happen when a sensor table update is in progress, and
+ * effectively means the set of usable sensors is the intersection between the
+ * sets of sensors known to the driver and the MC. On Riverhead this command is
+ * implemented as a wrapper for `get_descriptions` in the sensor_query SPHINX
+ * service.
  */
 #define MC_CMD_DYNAMIC_SENSORS_GET_DESCRIPTIONS 0x67
 #undef MC_CMD_0x67_PRIVILEGE_CTG
@@ -9602,19 +9600,15 @@
 /***********************************/
 /* MC_CMD_DYNAMIC_SENSORS_GET_READINGS
  * Read the state and value for a set of sensors, specified as an array of
- * sensor handles as returned by MC_CMD_DYNAMIC_SENSORS_LIST.
- *
- * In the case of a broken sensor, then the state of the response's
- * MC_CMD_DYNAMIC_SENSORS_VALUE entry will be set to BROKEN, and any value
- * provided should be treated as erroneous.
- *
- * Any handles which do not correspond to a sensor currently managed by the MC
- * will be dropped from from the response. This may happen when a sensor table
- * update is in progress, and effectively means the set of usable sensors is
- * the intersection between the sets of sensors known to the driver and the MC.
- *
- * On Riverhead this command is implemented as a wrapper for `get_readings`
- * in the sensor_query SPHINX service.
+ * sensor handles as returned by MC_CMD_DYNAMIC_SENSORS_LIST. In the case of a
+ * broken sensor, then the state of the response's MC_CMD_DYNAMIC_SENSORS_VALUE
+ * entry will be set to BROKEN, and any value provided should be treated as
+ * erroneous. Any handles which do not correspond to a sensor currently managed
+ * by the MC will be dropped from the response. This may happen when a
+ * sensor table update is in progress, and effectively means the set of usable
+ * sensors is the intersection between the sets of sensors known to the driver
+ * and the MC. On Riverhead this command is implemented as a wrapper for
+ * `get_readings` in the sensor_query SPHINX service.
  */
 #define MC_CMD_DYNAMIC_SENSORS_GET_READINGS 0x68
 #undef MC_CMD_0x68_PRIVILEGE_CTG
@@ -26359,10 +26353,11 @@
  * INTF=CALLER, PF=PF_NULL, VF=... to refer to a VF child of the calling PF or
  * a sibling VF of the calling VF. - INTF=CALLER, PF=..., VF=VF_NULL to refer
  * to a PF on the calling interface - INTF=CALLER, PF=..., VF=... to refer to a
- * VF on the calling interface - INTF=..., PF=..., VF=VF_NULL to refer to a PF
+ * VF on the calling interface - INTF=..., PF=PF_NULL, VF=VF_NULL to refer to
+ * the named interface itself - INTF=..., PF=..., VF=VF_NULL to refer to a PF
  * on a named interface - INTF=..., PF=..., VF=... to refer to a VF on a named
  * interface where ... refers to a small integer for the VF/PF fields, and to
- * values from the PCIE_INTERFACE enum for for the INTF field. It's only
+ * values from the PCIE_INTERFACE enum for the INTF field. It's only
  * meaningful to use INTF=CALLER within a structure that's an argument to
  * MC_CMD_DEVEL_GET_CLIENT_HANDLE.
  */
