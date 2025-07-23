@@ -1220,6 +1220,7 @@ void proc_sched_show_task(struct task_struct *p, struct pid_namespace *ns,
 		P_SCHEDSTAT(nr_wakeups_affine_attempts);
 		P_SCHEDSTAT(nr_wakeups_passive);
 		P_SCHEDSTAT(nr_wakeups_idle);
+		P_SCHEDSTAT(nr_preempt_delay_granted);
 
 		avg_atom = p->se.sum_exec_runtime;
 		if (nr_switches)

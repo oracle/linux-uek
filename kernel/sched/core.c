@@ -931,6 +931,11 @@ void hrtick_local_start(u64 delay)
 	rq_unlock(rq, &rf);
 }
 
+void update_stat_preempt_delayed(struct task_struct *t)
+{
+	schedstat_inc(t->stats.nr_preempt_delay_granted);
+}
+
 static void hrtick_rq_init(struct rq *rq)
 {
 #ifdef CONFIG_SMP
