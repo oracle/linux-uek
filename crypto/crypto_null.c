@@ -150,7 +150,7 @@ MODULE_ALIAS_CRYPTO("compress_null");
 MODULE_ALIAS_CRYPTO("digest_null");
 MODULE_ALIAS_CRYPTO("cipher_null");
 
-struct crypto_sync_skcipher *crypto_get_default_null_skcipher(void)
+struct crypto_sync_skcipher *CRYPTO_API(crypto_get_default_null_skcipher)(void)
 {
 	struct crypto_sync_skcipher *ntfm = NULL;
 	struct crypto_sync_skcipher *tfm;
@@ -181,9 +181,9 @@ struct crypto_sync_skcipher *crypto_get_default_null_skcipher(void)
 
 	return tfm;
 }
-EXPORT_SYMBOL_GPL(crypto_get_default_null_skcipher);
+DEFINE_CRYPTO_API(crypto_get_default_null_skcipher);
 
-void crypto_put_default_null_skcipher(void)
+void CRYPTO_API(crypto_put_default_null_skcipher)(void)
 {
 	struct crypto_sync_skcipher *tfm = NULL;
 
@@ -196,7 +196,7 @@ void crypto_put_default_null_skcipher(void)
 
 	crypto_free_sync_skcipher(tfm);
 }
-EXPORT_SYMBOL_GPL(crypto_put_default_null_skcipher);
+DEFINE_CRYPTO_API(crypto_put_default_null_skcipher);
 
 static int __init crypto_null_mod_init(void)
 {
