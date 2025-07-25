@@ -2678,6 +2678,7 @@ void ib_set_device_ops(struct ib_device *dev, const struct ib_device_ops *ops)
 	SET_DEVICE_OP(dev_ops, get_dev_fw_str);
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 	SET_DEVICE_OP(dev_ops, get_vector_irqn);
+	SET_DEVICE_OP(dev_ops, reap_eq);
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	SET_DEVICE_OP(dev_ops, get_dma_mr);
 	SET_DEVICE_OP(dev_ops, get_hw_stats);
