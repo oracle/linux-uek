@@ -21,6 +21,8 @@
 #include <rdma/ib_addr.h>
 #include <rdma/ib_cache.h>
 #include <linux/mlx5/port.h>
+#include <linux/mlx5/eq.h>
+#include <linux/mlx5/driver.h>
 #include <linux/mlx5/vport.h>
 #include <linux/mlx5/fs.h>
 #include <linux/mlx5/eswitch.h>
@@ -3303,6 +3305,20 @@ mlx5_ib_get_vector_irqn(struct ib_device *ibdev, int comp_vector)
 
 	return irqn;
 }
+
+static int
+mlx5_ib_reap_eq(struct ib_device *ibdev, struct ib_cq *i_scq)
+{
+	struct mlx5_ib_dev *dev = to_mdev(ibdev);
+	struct mlx5_core_dev *mdev = dev->mdev;
+	struct mlx5_ib_cq *cq = (struct mlx5_ib_cq *)i_scq;
+	struct mlx5_eq_comp *eq_comp;
+
+	eq_comp = cq->mcq.eq;
+	mlx5_eq_reap(mdev, eq_comp);
+
+	return 0;
+}
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 static void mlx5_ib_unbind_slave_port(struct mlx5_ib_dev *ibdev,
@@ -3933,6 +3949,7 @@ static const struct ib_device_ops mlx5_ib_dev_ops = {
 	.get_dev_fw_str = get_dev_fw_str,
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 	.get_vector_irqn = mlx5_ib_get_vector_irqn,
+	.reap_eq = mlx5_ib_reap_eq,
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	.get_dma_mr = mlx5_ib_get_dma_mr,
 	.get_link_layer = mlx5_ib_port_link_layer,
