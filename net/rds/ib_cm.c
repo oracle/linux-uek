@@ -2541,13 +2541,18 @@ void rds_ib_conn_path_shutdown_tidy_up(struct rds_conn_path *cp)
 	struct rds_ib_connection *ic = conn->c_transport_data;
 
 	if (!rds_ib_ring_empty(&ic->i_send_ring) ||
-	    test_bit(IB_ACK_IN_FLIGHT, &ic->i_ack_flags))
+	    test_bit(IB_ACK_IN_FLIGHT, &ic->i_ack_flags)) {
 		rds_ib_tx(ic);
+		if (test_bit(RDS_USER_RESET, &cp->cp_flags))
+			ib_reap_eq(ic->rds_ibdev->dev, ic->i_scq);
+	}
 
 	if (!rds_ib_ring_empty(&ic->i_recv_ring)) {
 		spin_lock_bh(&ic->i_rx_lock);
 		rds_ib_rx(ic);
 		spin_unlock_bh(&ic->i_rx_lock);
+		if (test_bit(RDS_USER_RESET, &cp->cp_flags))
+			ib_reap_eq(ic->rds_ibdev->dev, ic->i_rcq);
 	}
 }
 
