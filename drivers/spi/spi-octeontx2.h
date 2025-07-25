@@ -38,7 +38,7 @@ struct octeontx2_spi {
 #define OCTEONTX2_SPI_WBUF(x)	((x)->regs.wbuf)
 #define OCTEONTX2_SPI_RCVD(x)	((x)->regs.rcvd)
 
-int octeontx2_spi_transfer_one_message(struct spi_master *master,
+int octeontx2_spi_transfer_one_message(struct spi_controller *host,
 				       struct spi_message *msg);
 
 union mpix_cfg {

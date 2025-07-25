@@ -209,14 +209,14 @@ static int octeontx2_spi_do_transfer(struct octeontx2_spi *p,
 	return xfer->len;
 }
 
-int octeontx2_spi_transfer_one_message(struct spi_master *master,
+int octeontx2_spi_transfer_one_message(struct spi_controller *host,
 				       struct spi_message *msg)
 {
-	struct octeontx2_spi *p = spi_master_get_devdata(master);
+	struct octeontx2_spi *p = spi_controller_get_devdata(host);
 	unsigned int total_len = 0;
 	int status = 0;
 	struct spi_transfer *xfer;
-	int cs = msg->spi->chip_select;
+	int cs = spi_get_chipselect(msg->spi, 0);
 
 	list_for_each_entry(xfer, &msg->transfers, transfer_list) {
 		bool last_xfer = list_is_last(&xfer->transfer_list,
@@ -232,7 +232,7 @@ int octeontx2_spi_transfer_one_message(struct spi_master *master,
 err:
 	msg->status = status;
 	msg->actual_length = total_len;
-	spi_finalize_current_message(master);
+	spi_finalize_current_message(host);
 	return status;
 }
 
@@ -312,7 +312,7 @@ static int octeontx2_spi_probe(struct pci_dev *pdev,
 			       const struct pci_device_id *ent)
 {
 	struct device *dev = &pdev->dev;
-	struct spi_master *master;
+	struct spi_controller *host;
 	struct octeontx2_spi *p;
 	union mpix_sts mpi_sts;
 	int ret = -ENOENT;
@@ -332,11 +332,11 @@ static int octeontx2_spi_probe(struct pci_dev *pdev,
 
 	has_acpi = has_acpi_companion(dev);
 
-	master = spi_alloc_master(dev, sizeof(struct octeontx2_spi));
-	if (!master)
+	host = devm_spi_alloc_host(dev, sizeof(struct octeontx2_spi));
+	if (!host)
 		return -ENOMEM;
 
-	p = spi_master_get_devdata(master);
+	p = spi_controller_get_devdata(host);
 
 	ret = pcim_enable_device(pdev);
 	if (ret)
@@ -385,23 +385,23 @@ static int octeontx2_spi_probe(struct pci_dev *pdev,
 	}
 	dev_info(dev, "Reference clock is %u\n", p->sys_freq);
 
-	master->num_chipselect = 4;
-	master->mode_bits = SPI_CPHA | SPI_CPOL | SPI_CS_HIGH |
-			    SPI_LSB_FIRST | SPI_3WIRE |
-			    SPI_TX_DUAL | SPI_RX_DUAL |
-			    SPI_TX_QUAD | SPI_RX_QUAD;
-	master->transfer_one_message = octeontx2_spi_transfer_one_message;
-	master->bits_per_word_mask = SPI_BPW_MASK(8);
-	master->max_speed_hz = OCTEONTX2_SPI_MAX_CLOCK_HZ;
-	master->dev.of_node = pdev->dev.of_node;
-	master->dev.fwnode = pdev->dev.fwnode;
+	host->num_chipselect = 4;
+	host->mode_bits = SPI_CPHA | SPI_CPOL | SPI_CS_HIGH |
+			  SPI_LSB_FIRST | SPI_3WIRE |
+			  SPI_TX_DUAL | SPI_RX_DUAL |
+			  SPI_TX_QUAD | SPI_RX_QUAD;
+	host->transfer_one_message = octeontx2_spi_transfer_one_message;
+	host->bits_per_word_mask = SPI_BPW_MASK(8);
+	host->max_speed_hz = OCTEONTX2_SPI_MAX_CLOCK_HZ;
+	host->dev.of_node = pdev->dev.of_node;
+	host->dev.fwnode = pdev->dev.fwnode;
 	#ifdef CONFIG_ACPI
-		master->mem_ops = &octeontx2_spi_mem_ops;
+		host->mem_ops = &octeontx2_spi_mem_ops;
 	#endif
 
-	pci_set_drvdata(pdev, master);
+	pci_set_drvdata(pdev, host);
 
-	ret = devm_spi_register_master(dev, master);
+	ret = devm_spi_register_controller(dev, host);
 	if (ret)
 		goto error_disable;
 
@@ -411,19 +411,19 @@ error_disable:
 	if (!has_acpi)
 		clk_disable_unprepare(p->clk);
 error_put:
-	spi_master_put(master);
+	spi_controller_put(host);
 error:
 	return ret;
 }
 
 static void octeontx2_spi_remove(struct pci_dev *pdev)
 {
-	struct spi_master *master = pci_get_drvdata(pdev);
+	struct spi_controller *host = pci_get_drvdata(pdev);
 	struct octeontx2_spi *p;
 
 	bool has_acpi = has_acpi_companion(&pdev->dev);
 
-	p = spi_master_get_devdata(master);
+	p = spi_controller_get_devdata(host);
 
 	/* Put everything in a known state. */
 	if (p) {
@@ -433,7 +433,7 @@ static void octeontx2_spi_remove(struct pci_dev *pdev)
 	}
 
 	pci_disable_device(pdev);
-	spi_master_put(master);
+	spi_controller_put(host);
 }
 
 static const struct pci_device_id octeontx2_spi_pci_id_table[] = {
