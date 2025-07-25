@@ -179,6 +179,20 @@ u32 mlx5_eq_poll_irq_disabled(struct mlx5_eq_comp *eq)
 	return count_eqe;
 }
 
+void mlx5_eq_reap(struct mlx5_core_dev *dev, struct mlx5_eq_comp *eq)
+{
+	u32 eqe_count;
+
+	mlx5_core_warn(dev, "EQ 0x%x: Cons = 0x%x, irqn = 0x%x\n",
+				  eq->core.eqn, eq->core.cons_index, eq->core.irqn);
+
+	eqe_count = mlx5_eq_poll_irq_disabled(eq);
+	if (eqe_count)
+		mlx5_core_warn(dev, "Recovered %d eqes on EQ 0x%x\n",
+					  eqe_count, eq->core.eqn);
+}
+EXPORT_SYMBOL(mlx5_eq_reap);
+
 static void mlx5_eq_async_int_lock(struct mlx5_eq_async *eq, bool recovery,
 				   unsigned long *flags)
 	__acquires(&eq->lock)
