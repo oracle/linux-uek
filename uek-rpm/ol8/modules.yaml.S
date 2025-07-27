@@ -1103,7 +1103,6 @@ modules:
 - msdos
 - mt76
 - mt76-connac-lib
-- ptp_ocp
 - mtd
 - mtd_blkdevs
 - mtdblock
@@ -1223,6 +1222,7 @@ modules:
 - pptp
 - pstore_blk
 - pstore_zone
+- ptp_ocp
 - pvpanic-pci
 - qat_420xx
 - qca808x
@@ -2327,8 +2327,8 @@ modules:
 - tpm_nsc
 - tps65023-regulator
 - tps6507x-regulator
-- tsm_report
 - tps68470-regulator
+- tsm_report
 - tulip
 - typhoon
 - uio_hv_generic
@@ -3591,8 +3591,8 @@ modules-desktop:
 - intel_skl_int3472_common
 - intel_skl_int3472_discrete
 - intel_skl_int3472_tps68470
-- ipu-bridge
 - intel_vpu
+- ipu-bridge
 - isp1704_charger
 - ivsc-ace
 - ivsc-csi
