@@ -159,8 +159,18 @@ static void __page_state_change(unsigned long paddr, enum psc_op op)
 	 * Now that page state is changed in the RMP table, validate it so that it is
 	 * consistent with the RMP entry.
 	 */
-	if (op == SNP_PAGE_STATE_PRIVATE && pvalidate(paddr, RMP_PG_SIZE_4K, 1))
-		sev_es_terminate(SEV_TERM_SET_LINUX, GHCB_TERM_PVALIDATE);
+	if (op == SNP_PAGE_STATE_PRIVATE) {
+		if (pvalidate(paddr, RMP_PG_SIZE_4K, 1))
+			sev_es_terminate(SEV_TERM_SET_LINUX, GHCB_TERM_PVALIDATE);
+
+		/*
+		 * If affected by the cache-coherency vulnerability, perform the
+		 * cache eviction mitigation. This code runs identity-mapped in
+		 * the decompressor, so paddr is directly usable here.
+		 */
+		if (!has_cpuflag(X86_FEATURE_COHERENCY_SFW_NO))
+			sev_evict_cache((void *)paddr, 1);
+	}
 }
 
 void snp_set_page_private(unsigned long paddr)

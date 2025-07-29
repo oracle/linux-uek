@@ -685,6 +685,14 @@ static void pvalidate_pages(unsigned long vaddr, unsigned long npages, bool vali
 		if (WARN(rc, "Failed to validate address 0x%lx ret %d", vaddr, rc))
 			sev_es_terminate(SEV_TERM_SET_LINUX, GHCB_TERM_PVALIDATE);
 
+		/*
+		 * If validating memory (making it private) and affected by the
+		 * cache-coherency vulnerability, perform the cache eviction
+		 * mitigation.
+		 */
+		if (validate && !cpu_feature_enabled(X86_FEATURE_COHERENCY_SFW_NO))
+			sev_evict_cache((void *)vaddr, 1);
+
 		vaddr = vaddr + PAGE_SIZE;
 	}
 }
