@@ -1026,7 +1026,6 @@ void rds_conn_drop_sock_cancel_worker(struct work_struct *work)
 						   c_dr_sock_cancel_w.work);
 
 	rds_conn_drop(conn, DR_SOCK_CANCEL, 0);
-	rds_conn_put(conn); /* get in rds_send_drop_to */
 }
 
 void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
@@ -1107,13 +1106,10 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 	list_for_each_entry_safe(rm, tmp, &list, m_sock_item) {
 		atomic_inc(&rm->m_inc.i_conn->c_dr_sock_cancel_refs);
 
-		if (test_bit(RDS_MSG_MAPPED, &rm->m_flags)) {
-			rds_conn_get(rm->m_inc.i_conn);
-			if (!queue_delayed_work(system_unbound_wq,
-						&rm->m_inc.i_conn->c_dr_sock_cancel_w,
-						rds_sysctl_dr_sock_cancel_jiffies))
-				rds_conn_put(rm->m_inc.i_conn);
-		}
+		if (test_bit(RDS_MSG_MAPPED, &rm->m_flags))
+			queue_delayed_work(system_unbound_wq,
+					   &rm->m_inc.i_conn->c_dr_sock_cancel_w,
+					   rds_sysctl_dr_sock_cancel_jiffies);
 	}
 
 	/* Wait for messages to be unmapped, mark their completion
@@ -1149,9 +1145,8 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in6 *dest)
 		rm = list_entry(list.next, struct rds_message, m_sock_item);
 		list_del_init(&rm->m_sock_item);
 
-		if (atomic_dec_and_test(&rm->m_inc.i_conn->c_dr_sock_cancel_refs) &&
-		    cancel_delayed_work(&rm->m_inc.i_conn->c_dr_sock_cancel_w))
-			rds_conn_put(rm->m_inc.i_conn);
+		if (atomic_dec_and_test(&rm->m_inc.i_conn->c_dr_sock_cancel_refs))
+			cancel_delayed_work(&rm->m_inc.i_conn->c_dr_sock_cancel_w);
 
 		rds_message_put(rm);
 	}
@@ -1654,9 +1649,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 		} else {
 			cpath = &conn->c_path[0];
 		}
-		if (rs->rs_conn)
-			rds_conn_put(rs->rs_conn); /* rs_conn overwritten */
-		rs->rs_conn = conn; /* put new conn in rds_sock_put() */
+		rs->rs_conn = conn;
 		rs->rs_conn_path = cpath;
 	}
 
