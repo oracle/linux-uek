@@ -874,23 +874,19 @@ static void rds_conn_destroy_fini(struct kref *ref)
 
 }
 
-/* Call rds_conn_get() when copying conn ex: queuing a new worker thread */
-void rds_conn_get_trace(struct rds_connection *conn, const char *func, int line)
+/* Call this when queuing a new worker thread */
+void rds_conn_get(struct rds_connection *conn)
 {
 	kref_get(&conn->c_refcount);
-	trace_rds_conn_kref_get(conn, func, line,
-				kref_read(&conn->c_refcount));
 }
-EXPORT_SYMBOL_GPL(rds_conn_get_trace);
+EXPORT_SYMBOL_GPL(rds_conn_get);
 
-/* Call rds_conn_put() when done with conn ex: a worker is done or cancelled */
-void rds_conn_put_trace(struct rds_connection *conn, const char *func, int line)
+/* Call this when a worker is done or canceled */
+void rds_conn_put(struct rds_connection *conn)
 {
-	int new_refcount = kref_read(&conn->c_refcount) - 1;
 	kref_put(&conn->c_refcount, rds_conn_destroy_fini);
-	trace_rds_conn_kref_put(conn, func, line, new_refcount);
 }
-EXPORT_SYMBOL_GPL(rds_conn_put_trace);
+EXPORT_SYMBOL_GPL(rds_conn_put);
 
 static void __rds_inc_msg_cp(struct rds_incoming *inc,
 			     struct rds_info_iterator *iter,
