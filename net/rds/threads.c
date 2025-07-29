@@ -95,7 +95,7 @@ static inline void rds_update_avg_connect_time(struct rds_conn_path *cp)
 	trace_rds_conn_update_connect_time(NULL, cp->cp_conn, cp, NULL, 0);
 }
 
-bool rds_queue_work(struct rds_conn_path *cp,
+void rds_queue_work(struct rds_conn_path *cp,
 		    struct workqueue_struct *wq,
 		    struct work_struct *work,
 		    char *reason)
@@ -106,35 +106,36 @@ bool rds_queue_work(struct rds_conn_path *cp,
 
 	if (cp && cp->cp_conn->c_trans->conn_preferred_cpu) {
 		cpu = cp->cp_conn->c_trans->conn_preferred_cpu(cp->cp_conn, false);
-		return queue_work_on(cpu, wq, work);
+		queue_work_on(cpu, wq, work);
 	} else
-		return queue_work(wq, work);
+		queue_work(wq, work);
 }
 EXPORT_SYMBOL_GPL(rds_queue_work);
 
-bool rds_queue_work_offline_safe(rds_wq_func wq_func, int cpu,
+void rds_queue_work_offline_safe(rds_wq_func wq_func, int cpu,
 				 struct workqueue_struct *wq,
 				 struct delayed_work *dwork,
 				 unsigned long delay)
 {
 	if (!delay || cpu == WORK_CPU_UNBOUND) {
-		return wq_func(cpu, wq, dwork, delay);
+		wq_func(cpu, wq, dwork, delay);
+		return;
 	}
 
 	if (cpus_read_trylock()) {
 		if (cpu_online(cpu)) {
-			bool ret = wq_func(cpu, wq, dwork, delay);
+			wq_func(cpu, wq, dwork, delay);
 			cpus_read_unlock();
-			return ret;
+			return;
 		}
 		cpus_read_unlock();
 	}
 
-	return wq_func(WORK_CPU_UNBOUND, wq, dwork, delay);
+	wq_func(WORK_CPU_UNBOUND, wq, dwork, delay);
 }
 EXPORT_SYMBOL_GPL(rds_queue_work_offline_safe);
 
-bool rds_queue_delayed_work(struct rds_conn_path *cp,
+void rds_queue_delayed_work(struct rds_conn_path *cp,
 			    struct workqueue_struct *wq,
 			    struct delayed_work *dwork,
 			    unsigned long delay,
@@ -147,13 +148,13 @@ bool rds_queue_delayed_work(struct rds_conn_path *cp,
 
 	if (cp && cp->cp_conn->c_trans->conn_preferred_cpu) {
 		cpu = cp->cp_conn->c_trans->conn_preferred_cpu(cp->cp_conn, false);
-		return rds_queue_work_offline_safe(queue_delayed_work_on, cpu, wq, dwork, delay);
+		rds_queue_work_offline_safe(queue_delayed_work_on, cpu, wq, dwork, delay);
 	} else
-		return queue_delayed_work(wq, dwork, delay);
+		queue_delayed_work(wq, dwork, delay);
 }
 EXPORT_SYMBOL_GPL(rds_queue_delayed_work);
 
-bool rds_queue_delayed_work_on(struct rds_conn_path *cp,
+void rds_queue_delayed_work_on(struct rds_conn_path *cp,
 			       int cpu,
 			       struct workqueue_struct *wq,
 			       struct delayed_work *dwork,
@@ -162,11 +163,11 @@ bool rds_queue_delayed_work_on(struct rds_conn_path *cp,
 {
 	trace_rds_queue_work(cp ? cp->cp_conn : NULL, cp, wq, &dwork->work,
 			     delay, reason);
-	return rds_queue_work_offline_safe(queue_delayed_work_on, cpu, wq, dwork, delay);
+	rds_queue_work_offline_safe(queue_delayed_work_on, cpu, wq, dwork, delay);
 }
 EXPORT_SYMBOL_GPL(rds_queue_delayed_work_on);
 
-bool rds_mod_delayed_work(struct rds_conn_path *cp,
+void rds_mod_delayed_work(struct rds_conn_path *cp,
 			  struct workqueue_struct *wq,
 			  struct delayed_work *dwork,
 			  unsigned long delay,
@@ -179,27 +180,27 @@ bool rds_mod_delayed_work(struct rds_conn_path *cp,
 
 	if (cp && cp->cp_conn->c_trans->conn_preferred_cpu) {
 		cpu = cp->cp_conn->c_trans->conn_preferred_cpu(cp->cp_conn, false);
-		return rds_queue_work_offline_safe(mod_delayed_work_on, cpu, wq, dwork, delay);
+		rds_queue_work_offline_safe(mod_delayed_work_on, cpu, wq, dwork, delay);
 	} else
-		return mod_delayed_work(wq, dwork, delay);
+		mod_delayed_work(wq, dwork, delay);
 }
 EXPORT_SYMBOL_GPL(rds_mod_delayed_work);
 
-bool rds_queue_cancel_work(struct rds_conn_path *cp,
+void rds_queue_cancel_work(struct rds_conn_path *cp,
 			   struct delayed_work *dwork, char *reason)
 {
 	trace_rds_queue_cancel_work(cp ? cp->cp_conn : NULL, cp, NULL,
 				    &dwork->work, 0, reason);
-	return cancel_delayed_work_sync(dwork);
+	cancel_delayed_work_sync(dwork);
 }
 EXPORT_SYMBOL_GPL(rds_queue_cancel_work);
 
-bool rds_queue_flush_work(struct rds_conn_path *cp,
+void rds_queue_flush_work(struct rds_conn_path *cp,
 			  struct work_struct *work, char *reason)
 {
 	trace_rds_queue_flush_work(cp ? cp->cp_conn : NULL, cp, NULL,
 				   work, 0, reason);
-	return flush_work(work);
+	flush_work(work);
 }
 EXPORT_SYMBOL_GPL(rds_queue_flush_work);
 
@@ -234,11 +235,8 @@ void rds_connect_path_complete(struct rds_conn_path *cp, int curr)
 	conn->c_is_first_hb_ping = 1;
 	WRITE_ONCE(cp->cp_hb_start, 0);
 	WRITE_ONCE(cp->cp_hb_state, HB_PONG_RCVD);
-
-	rds_conn_get(conn);
-	if (!rds_queue_delayed_work(cp, cp->cp_wq, &cp->cp_hb_w, 0,
-				    "hb worker"))
-		rds_conn_put(conn);
+	rds_queue_delayed_work(cp, cp->cp_wq, &cp->cp_hb_w, 0,
+			       "hb worker");
 
 	rds_update_avg_connect_time(cp);
 	cp->cp_reconnect = 1;
@@ -370,13 +368,11 @@ void rds_send_worker(struct work_struct *work)
 			delay = 2;
 			break;
 		default:
-			rds_conn_put(cp->cp_conn);
 			return;
 		}
 
 		rds_cond_queue_send_work(cp, delay);
 	}
-	rds_conn_put(cp->cp_conn);
 }
 
 void rds_recv_worker(struct work_struct *work)
@@ -410,12 +406,10 @@ void rds_recv_worker(struct work_struct *work)
 			delay = 2;
 			break;
 		default:
-			rds_conn_put(cp->cp_conn);
 			return;
 		}
 		rds_cond_queue_recv_work(cp, delay);
 	}
-	rds_conn_put(cp->cp_conn);
 }
 
 void rds_hb_worker(struct work_struct *work)
@@ -433,7 +427,7 @@ void rds_hb_worker(struct work_struct *work)
 
 	if (!rds_sysctl_conn_hb_timeout || conn->c_loopback ||
 	    conn->c_trans->t_type == RDS_TRANS_TCP)
-		goto out;
+		return;
 
 	if (rds_conn_path_state(cp) == RDS_CONN_UP) {
 		switch (READ_ONCE(cp->cp_hb_state)) {
@@ -447,13 +441,13 @@ void rds_hb_worker(struct work_struct *work)
 				    conn->c_is_hb_enabled) {
 				/* Drop the conn only if both sides are (exthdr) HB capable */
 				rds_conn_path_drop(cp, DR_HB_TIMEOUT, 0);
-				goto out;
+				return;
 			} else if (!conn->c_is_hb_enabled) {
 				/* Do not schedule further PINGs if:
 				 *  - we don't get a PONG
 				 *  - we get a PONG without an exthdr.
 				 */
-				goto out;
+				return;
 			}
 			break;
 
@@ -468,7 +462,7 @@ void rds_hb_worker(struct work_struct *work)
 				 */
 				trace_rds_heartbeat_disable(conn, &conn->c_path[0],
 							    &conn->c_laddr, &conn->c_faddr);
-				goto out;
+				return;
 			}
 
 			WRITE_ONCE(cp->cp_hb_start, now);
@@ -481,14 +475,9 @@ void rds_hb_worker(struct work_struct *work)
 			break;
 		}
 
-		rds_conn_get(conn);
-		if (!rds_queue_delayed_work(cp, cp->cp_wq, &cp->cp_hb_w, delay,
-					    "hb worker"))
-			rds_conn_put(conn);
+		rds_queue_delayed_work(cp, cp->cp_wq, &cp->cp_hb_w, delay,
+				       "hb worker");
 	}
-
-out:
-	rds_conn_put(conn);
 }
 
 static void rds_shutdown_worker(struct rds_conn_path *cp,

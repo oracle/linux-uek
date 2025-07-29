@@ -233,16 +233,7 @@ DEFINE_EVENT(rds_status, rds_conn_create_err,
 
 );
 
-DEFINE_EVENT(rds_status, rds_conn_destroy_init,
-
-	TP_PROTO(struct rds_sock *rs, struct rds_connection *conn,
-		 struct rds_conn_path *cp, char *reason, int err),
-
-	TP_ARGS(rs, conn, cp, reason, err)
-
-);
-
-DEFINE_EVENT(rds_status, rds_conn_destroy_fini,
+DEFINE_EVENT(rds_status, rds_conn_destroy,
 
 	TP_PROTO(struct rds_sock *rs, struct rds_connection *conn,
 		 struct rds_conn_path *cp, char *reason, int err),

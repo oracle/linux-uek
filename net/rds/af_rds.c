@@ -97,7 +97,7 @@ static struct rt_debug_tp rt_debug_tp_map[] = {
 	{ RDS_RTD_ERR_EXT,
 	  { "rds_send_worker_err", "rds_receive_worker_err", NULL }},
 	{ RDS_RTD_CM,
-	  { "rds_conn_destroy_init", "rds_conn_destroy_fini", "rds_conn_drop",
+	  {  "rds_conn_destroy", "rds_conn_drop",
 	    "rds_ib_cm_initiate_connect_err", "rds_ib_conn_path_connect",
 	    "rds_rdma_cm_event_handler", "rds_rdma_cm_event_handler_err",
 	    NULL }},
@@ -580,10 +580,8 @@ static int rds_user_reset(struct rds_sock *rs, sockptr_t optval, int optlen)
 		}
 
 		list_for_each_entry(conn, &s_addr_conns, c_laddr_node)
-			if (conn) {
+			if (conn)
 				rds_user_conn_paths_drop(conn);
-				rds_conn_put(conn); /* for rds_conn_laddr_list */
-			}
 		mutex_unlock(&conn_reset_zero_dest);
 		goto done;
 	}
@@ -601,7 +599,6 @@ static int rds_user_reset(struct rds_sock *rs, sockptr_t optval, int optlen)
 		       &reset.src.s_addr,
 		       &reset.dst.s_addr, conn->c_tos);
 		rds_user_conn_paths_drop(conn);
-		rds_conn_put(conn); /* for rds_conn_find */
 	}
 done:
 	return 0;
@@ -634,10 +631,8 @@ static int rds6_user_reset(struct rds_sock *rs, sockptr_t optval, int optlen)
 		}
 
 		list_for_each_entry(conn, &s_addr_conns, c_laddr_node)
-			if (conn) {
+			if (conn)
 				rds_user_conn_paths_drop(conn);
-				rds_conn_put(conn); /* for rds_conn_laddr_list */
-			}
 		mutex_unlock(&conn_reset_zero_dest);
 		goto done;
 	}
@@ -653,7 +648,6 @@ static int rds6_user_reset(struct rds_sock *rs, sockptr_t optval, int optlen)
 		       is_tcp ? "tcp" : "IB",
 		       &reset.src, &reset.dst, conn->c_tos);
 		rds_user_conn_paths_drop(conn);
-		rds_conn_put(conn); /* for rds_conn_find */
 	}
 done:
 	return 0;
@@ -1173,10 +1167,6 @@ void debug_sock_put(struct sock *sk)
 	}
 	if (refcount_dec_and_test(&sk->sk_refcnt)) {
 		struct rds_sock *rs = rds_sk_to_rs(sk);
-
-		if (rs->rs_conn)
-			rds_conn_put(rs->rs_conn); /* rs_conn from rds_sendmsg */
-
 		if (rs->poison != 0xABABABAB) {
 			printk(KERN_CRIT "bad poison on put %x\n", rs->poison);
 			WARN_ON(1);
