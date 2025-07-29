@@ -21,8 +21,6 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(rds_receive);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_receive_csum_err);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_drop_ingress);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_drop_egress);
-EXPORT_TRACEPOINT_SYMBOL_GPL(rds_conn_kref_get);
-EXPORT_TRACEPOINT_SYMBOL_GPL(rds_conn_kref_put);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_heartbeat_send_ping);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_heartbeat_send_pong);
 EXPORT_TRACEPOINT_SYMBOL_GPL(rds_heartbeat_receive_ping);
