@@ -427,9 +427,6 @@ out:
 
 	mutex_unlock(&rtn->rds_tcp_accept_lock);
 
-	if (conn)
-		rds_conn_put(conn); /* for rds_conn_create */
-
 	return ret;
 }
 

@@ -114,7 +114,7 @@ struct rds_loop_connection {
 
 /*
  * Even the loopback transport needs to keep track of its connections,
- * so it can call rds_conn_destroy_init() on them on exit. N.B. there are
+ * so it can call rds_conn_destroy() on them on exit. N.B. there are
  * 1+ loopback addresses (127.*.*.*) so it's not a bug to have
  * multiple loopback conns allocated, although rather useless.
  */
@@ -127,15 +127,6 @@ static int rds_loop_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	if (!lc)
 		return -ENOMEM;
 
-	/* Ideally we would rds_conn_get() here for lc->conn
-	 * and a put() in rds_loop_conn_free(), but that would
-	 * mean the refcount would never drop to 0 as c_trans->conn_free()
-	 * is called in the kref callback rds_conn_(path_)destroy_fini() and
-	 * we'll be off-by-one rds_conn_put(). So, we choose to
-	 * ignore this "conn" copy and not bring it under the kref umbrella.
-	 * This is safe as c_trans->conn_free() is called before
-	 * freeing its container conn.
-	 */
 	INIT_LIST_HEAD(&lc->loop_node);
 	lc->conn = conn;
 	conn->c_transport_data = lc;
@@ -190,7 +181,7 @@ void rds_loop_net_exit(struct rds_net *rns)
 
 	list_for_each_entry_safe(lc, _lc, &tmp_list, loop_node) {
 		WARN_ON(lc->conn->c_passive);
-		rds_conn_destroy_init(lc->conn, 1);
+		rds_conn_destroy(lc->conn, 1);
 	}
 }
 

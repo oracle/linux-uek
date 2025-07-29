@@ -542,7 +542,7 @@ static void __rds_conn_destroy(struct work_struct *work)
 	struct __rds_destroy_wk *free_wk;
 
 	free_wk = container_of(work, struct __rds_destroy_wk, rdw_free_work);
-	rds_conn_destroy_init(free_wk->rdw_conn, 1);
+	rds_conn_destroy(free_wk->rdw_conn, 1);
 	kfree(free_wk);
 }
 
@@ -588,7 +588,7 @@ static void __rds_ib_dev_shutdown(struct rds_ib_device *rds_ibdev)
 
 			free_wk = kmalloc(sizeof(*free_wk), GFP_KERNEL);
 			if (!free_wk) {
-				rds_conn_destroy_init(ic->conn, 1);
+				rds_conn_destroy(ic->conn, 1);
 			} else {
 				free_wk->rdw_conn = ic->conn;
 				INIT_WORK(&free_wk->rdw_free_work,
@@ -1211,8 +1211,6 @@ static int rds_ib_laddr_check_cm(struct net *net, const struct in6_addr *addr,
 		 cm_id->device ? cm_id->device->node_type : -1);
 
 out:
-	if (cm_id->context)
-		rds_conn_put(cm_id->context); /* get in rds_ib_cm_accept */
 	rdma_destroy_id(cm_id);
 
 	return ret;
