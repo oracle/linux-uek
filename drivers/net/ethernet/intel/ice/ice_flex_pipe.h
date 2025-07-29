@@ -117,7 +117,7 @@ ice_add_prof_id_flow(struct ice_hw *hw, enum ice_block blk, u16 vsi, u64 hdl);
 int
 ice_rem_prof_id_flow(struct ice_hw *hw, enum ice_block blk, u16 vsi, u64 hdl);
 enum ice_ddp_state ice_init_pkg(struct ice_hw *hw, u8 *buff, u32 len);
-enum ice_ddp_state
+int
 ice_copy_and_init_pkg(struct ice_hw *hw, const u8 *buf, u32 len);
 bool ice_is_init_pkg_successful(enum ice_ddp_state state);
 int ice_init_hw_tbls(struct ice_hw *hw);
