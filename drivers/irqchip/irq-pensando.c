@@ -682,10 +682,25 @@ static int __init pen_ictlr_iomap_csrintr(struct device_node *dn,
 
 	if (i != info->num_bases) {
 		pr_err("only mapped %u of %u regions\n", i, info->num_bases);
+		for (; i > 0; i--)
+			iounmap(info->map_base[i - 1]);
 		return -ENOMEM;
 	}
 
 	return 0;
+}
+
+/*
+ * Unmap all mapped regions in info->map_base[]
+ */
+static void pen_ictlr_unmap_all(struct pen_ictlr_info *info)
+{
+	unsigned int i;
+
+	for (i = info->num_bases; i > 0; i--) {
+		if (info->map_base[i - 1])
+			iounmap(info->map_base[i - 1]);
+	}
 }
 
 static struct pen_ictlr_info *__init pen_ictlr_probe(struct device_node *dn,
@@ -759,8 +774,7 @@ static struct pen_ictlr_info *__init pen_ictlr_probe(struct device_node *dn,
 	return info;
 
 out_unmap_regs:
-	if (info->map_base)
-		iounmap(info->map_base);
+	pen_ictlr_unmap_all(info);
 
 out_free_info:
 	kfree(info);
