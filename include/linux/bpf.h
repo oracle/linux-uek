@@ -216,6 +216,7 @@ struct bpf_map {
 	struct work_struct work;
 	struct mutex freeze_mutex;
 	atomic64_t writecnt;
+	UEK_KABI_EXTEND(u64 cookie) /* write-once */
 };
 
 static inline bool map_value_has_spin_lock(const struct bpf_map *map)
