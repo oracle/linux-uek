@@ -918,8 +918,6 @@ static __cpuidle void mwait_idle(void)
 			mb(); /* quirk */
 		}
 
-		x86_idle_clear_cpu_buffers();
-
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
 		if (!need_resched()) {
 			__sti_mwait(0, 0);

@@ -44,6 +44,8 @@ static __always_inline void __monitorx(const void *eax, unsigned long ecx,
 
 static __always_inline void __mwait(unsigned long eax, unsigned long ecx)
 {
+	x86_idle_clear_cpu_buffers();
+
 	/* "mwait %eax, %ecx;" */
 	asm volatile(".byte 0x0f, 0x01, 0xc9;"
 		     :: "a" (eax), "c" (ecx));
@@ -96,6 +98,7 @@ static __always_inline void __mwaitx(unsigned long eax, unsigned long ebx,
  */
 static __always_inline void __sti_mwait(unsigned long eax, unsigned long ecx)
 {
+	x86_idle_clear_cpu_buffers();
 	/* "mwait %eax, %ecx;" */
 	asm volatile("sti; .byte 0x0f, 0x01, 0xc9;"
 		     :: "a" (eax), "c" (ecx));
@@ -119,8 +122,6 @@ static __always_inline void mwait_idle_with_hints(unsigned long eax, unsigned lo
 			clflush((void *)&current_thread_info()->flags);
 			mb();
 		}
-
-		x86_idle_clear_cpu_buffers();
 
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
 
