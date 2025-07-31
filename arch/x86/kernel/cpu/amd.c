@@ -1266,66 +1266,23 @@ bool amd_check_tsa_microcode(void)
 	bool ret = false;
 
 	if (cpu_has(c, X86_FEATURE_ZEN3)) {
-		switch (c->x86_model) {
-		case 0x1:
+		if (c->x86_model == 0x1) {
 			if (c->x86_stepping == 0x1)
 				ret = c->microcode >= 0x0a0011d7;
 			else if (c->x86_stepping == 0x2)
 				ret = c->microcode >= 0x0a00123b;
-			break;
-		case 0x8:
-			ret = c->microcode >= 0x0a00820d;
-			break;
-		case 0x21:
-			if (c->x86_stepping == 0x0)
-				ret = c->microcode >= 0x0a20102e;
-			else if (c->x86_stepping == 0x2)
-				ret = c->microcode >= 0x0a201211;
-			break;
-		case 0x30:
+		} else if (c->x86_model == 0x30) {
 			ret = c->microcode >= 0x0a30010d;
-			break;
-		case 0x44:
-			ret = c->microcode >= 0x0a404108;
-			break;
-		case 0x50:
-			ret = c->microcode >= 0x0a500012;
-			break;
-		default:
-			break;
 		}
 	} else if (cpu_has(c, X86_FEATURE_ZEN4)) {
-		switch (c->x86_model) {
-		case 0x11:
+		if (c->x86_model == 0x11) {
 			if (c->x86_stepping == 0x1)
 				ret = c->microcode >= 0x0a10114c;
 			else if (c->x86_stepping == 0x2)
 				ret = c->microcode >= 0x0a10124c;
-			break;
-		case 0x18:
-			ret = c->microcode >= 0x0a108109;
-			break;
-		case 0x61:
-			ret = c->microcode >= 0x0a60120a;
-			break;
-		case 0x74:
-			ret = c->microcode >= 0x0a704108;
-			break;
-		case 0x75:
-			ret = c->microcode >= 0x0a705208;
-			break;
-		case 0x78:
-			ret = c->microcode >= 0x0a708008;
-			break;
-		case 0x7c:
-			ret = c->microcode >= 0x0a70c008;
-			break;
-		case 0xa0:
+		} else if (c->x86_model == 0xa0) {
 			if (c->x86_stepping == 0x2)
 				ret = c->microcode >= 0x0aa00216;
-			break;
-		default:
-			break;
 		}
 	}
 
