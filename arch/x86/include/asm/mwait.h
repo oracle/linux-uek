@@ -114,11 +114,15 @@ static __always_inline void __sti_mwait(unsigned long eax, unsigned long ecx)
 static __always_inline void mwait_idle_with_hints(unsigned long eax, unsigned long ecx)
 {
 	if (static_cpu_has_bug(X86_BUG_MONITOR) || !current_set_polling_and_test()) {
-		const void *addr = &current_thread_info()->flags;
+		if (static_cpu_has_bug(X86_BUG_CLFLUSH_MONITOR)) {
+			mb();
+			clflush((void *)&current_thread_info()->flags);
+			mb();
+		}
 
 		x86_idle_clear_cpu_buffers();
-		alternative_input("", "clflush (%[addr])", X86_BUG_CLFLUSH_MONITOR, [addr] "a" (addr));
-		__monitor(addr, 0, 0);
+
+		__monitor((void *)&current_thread_info()->flags, 0, 0);
 
 		if (!need_resched()) {
 			if (ecx & 1) {

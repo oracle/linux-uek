@@ -912,11 +912,15 @@ static __init bool prefer_mwait_c1_over_halt(void)
 static __cpuidle void mwait_idle(void)
 {
 	if (!current_set_polling_and_test()) {
-		const void *addr = &current_thread_info()->flags;
+		if (this_cpu_has(X86_BUG_CLFLUSH_MONITOR)) {
+			mb(); /* quirk */
+			clflush((void *)&current_thread_info()->flags);
+			mb(); /* quirk */
+		}
 
 		x86_idle_clear_cpu_buffers();
-		alternative_input("", "clflush (%[addr])", X86_BUG_CLFLUSH_MONITOR, [addr] "a" (addr));
-		__monitor(addr, 0, 0);
+
+		__monitor((void *)&current_thread_info()->flags, 0, 0);
 		if (!need_resched()) {
 			__sti_mwait(0, 0);
 			raw_local_irq_disable();
