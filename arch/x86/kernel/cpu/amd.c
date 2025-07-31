@@ -373,14 +373,6 @@ static void bsp_determine_snp(struct cpuinfo_x86 *c)
 #endif
 }
 
-static void tsa_set_cpuid_flags(struct cpuinfo_x86 *c)
-{
-	if (!cpu_has(c, X86_FEATURE_HYPERVISOR) && c->x86 != 0x19) {
-		setup_force_cpu_cap(X86_FEATURE_TSA_SQ_NO);
-		setup_force_cpu_cap(X86_FEATURE_TSA_L1_NO);
-	}
-}
-
 static void bsp_init_amd(struct cpuinfo_x86 *c)
 {
 	if (cpu_has(c, X86_FEATURE_CONSTANT_TSC)) {
@@ -488,9 +480,6 @@ static void bsp_init_amd(struct cpuinfo_x86 *c)
 	}
 
 	bsp_determine_snp(c);
-
-	tsa_set_cpuid_flags(c);
-
 	return;
 
 warn:
@@ -1258,36 +1247,4 @@ void amd_check_microcode(void)
 
 	if (cpu_feature_enabled(X86_FEATURE_ZEN2))
 		on_each_cpu(zenbleed_check_cpu, NULL, 1);
-}
-
-bool amd_check_tsa_microcode(void)
-{
-	struct cpuinfo_x86 *c = &boot_cpu_data;
-	bool ret = false;
-
-	if (cpu_has(c, X86_FEATURE_ZEN3)) {
-		if (c->x86_model == 0x1) {
-			if (c->x86_stepping == 0x1)
-				ret = c->microcode >= 0x0a0011d7;
-			else if (c->x86_stepping == 0x2)
-				ret = c->microcode >= 0x0a00123b;
-		} else if (c->x86_model == 0x30) {
-			ret = c->microcode >= 0x0a30010d;
-		}
-	} else if (cpu_has(c, X86_FEATURE_ZEN4)) {
-		if (c->x86_model == 0x11) {
-			if (c->x86_stepping == 0x1)
-				ret = c->microcode >= 0x0a10114c;
-			else if (c->x86_stepping == 0x2)
-				ret = c->microcode >= 0x0a10124c;
-		} else if (c->x86_model == 0xa0) {
-			if (c->x86_stepping == 0x2)
-				ret = c->microcode >= 0x0aa00216;
-		}
-	}
-
-	if (ret)
-		setup_force_cpu_cap(X86_FEATURE_VERW_CLEAR);
-
-	return ret;
 }

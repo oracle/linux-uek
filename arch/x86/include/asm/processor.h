@@ -715,11 +715,9 @@ static __always_inline void amd_clear_divider(void)
 }
 
 extern void amd_check_microcode(void);
-extern bool amd_check_tsa_microcode(void);
 #else
 static inline void amd_clear_divider(void)		{ }
 static inline void amd_check_microcode(void)		{ }
-static inline bool amd_check_tsa_microcode(void)	{ return false; }
 #endif
 
 extern unsigned long arch_align_stack(unsigned long sp);

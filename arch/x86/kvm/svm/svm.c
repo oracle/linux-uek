@@ -4223,9 +4223,6 @@ static noinstr void svm_vcpu_enter_exit(struct kvm_vcpu *vcpu, bool spec_ctrl_in
 
 	amd_clear_divider();
 
-	if (static_branch_likely(&cpu_buf_vm_clear))
-		x86_clear_cpu_buffers();
-
 	if (sev_es_guest(vcpu->kvm))
 		__svm_sev_es_vcpu_run(svm, spec_ctrl_intercepted,
 				      sev_es_host_save_area(sd));

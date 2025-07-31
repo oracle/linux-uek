@@ -50,7 +50,6 @@ static void __init l1d_flush_select_mitigation(void);
 static void __init srso_select_mitigation(void);
 static void __init gds_select_mitigation(void);
 static void __init its_select_mitigation(void);
-static void __init tsa_select_mitigation(void);
 
 /* The base value of the SPEC_CTRL MSR without task-specific bits set */
 u64 x86_spec_ctrl_base;
@@ -191,8 +190,6 @@ void __init cpu_select_mitigations(void)
 	srso_select_mitigation();
 	gds_select_mitigation();
 	its_select_mitigation();
-
-	tsa_select_mitigation();
 }
 
 /*
@@ -2859,94 +2856,6 @@ out:
 }
 
 #undef pr_fmt
-#define pr_fmt(fmt)	"Transient Scheduler Attacks: " fmt
-
-enum tsa_mitigations {
-	TSA_MITIGATION_NONE,
-	TSA_MITIGATION_UCODE_NEEDED,
-	TSA_MITIGATION_USER_KERNEL,
-	TSA_MITIGATION_VM,
-	TSA_MITIGATION_FULL,
-};
-
-static const char * const tsa_strings[] = {
-	[TSA_MITIGATION_NONE]		= "Vulnerable",
-	[TSA_MITIGATION_UCODE_NEEDED]	= "Vulnerable: No microcode",
-	[TSA_MITIGATION_USER_KERNEL]	= "Mitigation: user/kernel boundary",
-	[TSA_MITIGATION_VM]		= "Mitigation: VM only",
-	[TSA_MITIGATION_FULL]		= "Mitigation: enabled",
-};
-
-static enum tsa_mitigations tsa_mitigation __ro_after_init =
-	IS_ENABLED(CONFIG_MITIGATION_TSA) ? TSA_MITIGATION_FULL : TSA_MITIGATION_NONE;
-
-static int __init tsa_parse_cmdline(char *str)
-{
-	if (!str)
-		return -EINVAL;
-
-	if (!strcmp(str, "off"))
-		tsa_mitigation = TSA_MITIGATION_NONE;
-	else if (!strcmp(str, "on"))
-		tsa_mitigation = TSA_MITIGATION_FULL;
-	else if (!strcmp(str, "user"))
-		tsa_mitigation = TSA_MITIGATION_USER_KERNEL;
-	else if (!strcmp(str, "vm"))
-		tsa_mitigation = TSA_MITIGATION_VM;
-	else
-		pr_err("Ignoring unknown tsa=%s option.\n", str);
-
-	return 0;
-}
-early_param("tsa", tsa_parse_cmdline);
-
-static void __init tsa_select_mitigation(void)
-{
-	bool has_microcode = false;
-
-	if (tsa_mitigation == TSA_MITIGATION_NONE)
-		return;
-
-	if (cpu_mitigations_off() || !boot_cpu_has_bug(X86_BUG_TSA)) {
-		tsa_mitigation = TSA_MITIGATION_NONE;
-		return;
-	}
-
-	if (boot_cpu_has(X86_FEATURE_HYPERVISOR)) {
-		if (boot_cpu_has(X86_FEATURE_VERW_CLEAR)) {
-			has_microcode = true;
-		}
-	} else {
-		has_microcode = amd_check_tsa_microcode();
-	}
-
-	if (!has_microcode) {
-		tsa_mitigation = TSA_MITIGATION_UCODE_NEEDED;
-		goto out;
-	}
-
-	switch (tsa_mitigation) {
-	case TSA_MITIGATION_USER_KERNEL:
-		setup_force_cpu_cap(X86_FEATURE_CLEAR_CPU_BUF);
-		static_branch_enable(&cpu_buf_idle_clear);
-		break;
-	case TSA_MITIGATION_VM:
-		static_branch_enable(&cpu_buf_vm_clear);
-		break;
-	case TSA_MITIGATION_FULL:
-		setup_force_cpu_cap(X86_FEATURE_CLEAR_CPU_BUF);
-		static_branch_enable(&cpu_buf_idle_clear);
-		static_branch_enable(&cpu_buf_vm_clear);
-		break;
-	default:
-		break;
-	}
-
-out:
-	pr_info("%s\n", tsa_strings[tsa_mitigation]);
-}
-
-#undef pr_fmt
 #define pr_fmt(fmt) fmt
 
 #ifdef CONFIG_SYSFS
@@ -3187,11 +3096,6 @@ static ssize_t gds_show_state(char *buf)
 	return sysfs_emit(buf, "%s\n", gds_strings[gds_mitigation]);
 }
 
-static ssize_t tsa_show_state(char *buf)
-{
-	return sysfs_emit(buf, "%s\n", tsa_strings[tsa_mitigation]);
-}
-
 static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr,
 			       char *buf, unsigned int bug)
 {
@@ -3252,9 +3156,6 @@ static ssize_t cpu_show_common(struct device *dev, struct device_attribute *attr
 
 	case X86_BUG_ITS:
 		return its_show_state(buf);
-
-	case X86_BUG_TSA:
-		return tsa_show_state(buf);
 
 	default:
 		break;
@@ -3339,11 +3240,6 @@ ssize_t cpu_show_reg_file_data_sampling(struct device *dev, struct device_attrib
 ssize_t cpu_show_indirect_target_selection(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	return cpu_show_common(dev, attr, buf, X86_BUG_ITS);
-}
-
-ssize_t cpu_show_tsa(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	return cpu_show_common(dev, attr, buf, X86_BUG_TSA);
 }
 #endif
 
