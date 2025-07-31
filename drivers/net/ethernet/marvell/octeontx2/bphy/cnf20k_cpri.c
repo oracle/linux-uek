@@ -186,6 +186,27 @@ static void cnf20k_cpri_rx_napi_schedule(int cpri_num, u32 status, int node_id)
 	}
 }
 
+static int cpri_polling_thread(void *data)
+{
+	while (!kthread_should_stop()) {
+		for (int cpri_num = 0; cpri_num < 5; cpri_num++) {
+			u64 offset =
+			cnf20k_get_cpri_regaddr(0x280, cpri_num);
+			u64 status = readq(cnf20k_cpri_reg_base + offset);
+
+			if (status & BIT(0)) {
+				cnf20k_cpri_rx_napi_schedule(cpri_num,
+							     status, 0);
+				writeq(BIT(0),
+				       cnf20k_cpri_reg_base + offset);
+			}
+		}
+		cpu_relax();
+	}
+
+	return 0;
+}
+
 void cnf20k_cpri_update_stats(struct cnf20k_cpri_ndev_priv *priv)
 {
 	struct cnf20k_cpri_stats *dev_stats = &priv->stats;
@@ -1213,6 +1234,8 @@ static long cnf20k_cpri_cdev_ioctl(struct file *filp, unsigned int cmd,
 				PSM_CNF20K_INT_GP_ENA_W1S(1);
 				writeq(0xFFFFFFFF, cdev->reg_base + offset);
 			}
+
+			kthread_run(cpri_polling_thread, NULL, "cpri_poll");
 			break;
 			}
 
