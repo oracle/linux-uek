@@ -121,6 +121,10 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 #build kernel with 4k & 64k page size for aarch64
 %define with_64k_ps %{?_with_64k_ps: %{_with_64k_ps}} %{?!_with_64k_ps: 0}
 %define with_64k_ps_debug %{?_with_64k_ps_debug: %{_with_64k_ps_debug}} %{?!_with_64k_ps_debug: 0}
+
+# build an embedded kernel
+%define with_embedded4 %{?_without_embedded: 0} %{?!_without_embedded: 1}
+
 # verbose build, i.e. no silent rules and V=1
 %define with_verbose %{?_with_verbose:        1} %{?!_with_verbose:      0}
 
@@ -158,6 +162,9 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 
 # Only build the 64k page size kernel (--with 64konly):
 %define with_64konly    %{?_with_64konly:      1} %{?!_with_64konly:      0}
+
+# Only build the embedded kernel (--with embeddedonly)
+%define with_embeddedonly %{?_with_embeddedonly: 1} %{?!_with_embeddedonly: 0}
 
 # should we do C=1 builds with sparse
 %define with_sparse     %{?_with_sparse:       1} %{?!_with_sparse:       0}
@@ -234,6 +241,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define with_debug 0
 %define with_64k_ps 0
 %define with_64k_ps_debug 0
+%define with_embedded4 0
 %endif
 
 %define all_x86 i386 i686
@@ -250,10 +258,11 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define with_debug 0
 %endif
 
-# don't do 4k/64k page size kernels for arch except aarch64
+# don't do 4k/64k page size or embedded kernels for arch except aarch64
 %ifnarch aarch64
 %define with_64k_ps       0
 %define with_64k_ps_debug 0
+%define with_embedded4 0
 %endif
 
 # only package docs noarch
@@ -323,9 +332,21 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define with_headers 0
 %define with_bpftool 0
 %define with_tools 0
+%define with_embedded4 0
+%else
+%if %{with_embeddedonly}
+%define with_up 0
+%define with_container 0
+%define with_64k_ps 0
+%define with_debug 0
+%define with_headers 0
+%define with_bpftool 0
+%define with_tools 0
+%define with_embedded4 1
 %else
 %define with_headers 1
 %define with_bpftool 1
+%endif
 %endif
 %endif
 
@@ -502,6 +523,8 @@ Source43: generate_bls_conf.sh
 Source44: filter-modules.py
 Source45: modules.yaml.S
 Source46: denylist.txt.S
+Source47: modules.yaml.S.emb4
+Source48: denylist.txt.S.emb4
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
@@ -509,6 +532,7 @@ Source1002: config-x86_64-container
 Source1007: config-aarch64
 Source1008: config-aarch64-debug
 Source1009: config-aarch64-container
+Source1011: config-aarch64-embedded4
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -775,9 +799,10 @@ This package provides less commonly used kernel modules for the %{variant_name}-
 #
 # This macro creates a kernel%%{?variant}-<subpackage>-modules package.
 #       %%kernel_modules_package [-o] <subpackage>
+# -e flag denotes embedded kernels, skips the dependency on linux-firmware
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_modules_package(o) \
+%define kernel_modules_package(eo) \
 %define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
 %package -n %{variant_name}-modules\
 Summary: kernel modules to match the %{variant_name}-core kernel\
@@ -787,7 +812,9 @@ Provides: %{variant_name}-modules = %{version}-%{release}%{?1:.%{1}}\
 Provides: installonlypkg(%{installonly_variant_name}-modules)\
 Provides: %{variant_name}-modules-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
+%if 0%{!?-e:1}\
 Requires: linux-firmware >= 999:20250203-999.38.git0fd450ee\
+%endif\
 AutoReq: no\
 AutoProv: yes\
 %description -n %{variant_name}-modules\
@@ -797,9 +824,10 @@ This package provides commonly used kernel modules for the %{variant_name}-core 
 #
 # This macro creates a kernel%%{?variant}-<subpackage>-modules-core package.
 #       %%kernel_modules_core_package [-o] <subpackage>
+# -e flag denotes embedded kernels, skips the dependency on linux-firmware
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_modules_core_package(o) \
+%define kernel_modules_core_package(eo) \
 %define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
 %package -n %{variant_name}-modules-core\
 Summary: Core kernel modules to match the %{variant_name}-core kernel\
@@ -809,7 +837,9 @@ Provides: %{variant_name}-modules-core = %{version}-%{release}%{?1:.%{1}}\
 Provides: installonlypkg(%{installonly_variant_name}-modules-core)\
 Provides: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-core-uname-r = %{KVERREL}%{?1:.%{1}}\
+%if 0%{!?-e:1}\
 Requires: linux-firmware-core >= 999:20250203-999.38.git0fd450ee\
+%endif\
 Requires: libdnf >= 0.69.0-6.0.2\
 AutoReq: no\
 AutoProv: yes\
@@ -843,9 +873,10 @@ The meta-package for the %{1} kernel.\
 # This macro creates a kernel%%{?variant}-<subpackage> and its -devel and -debuginfo too.
 #       %%define variant_summary The Linux kernel compiled for <configuration>
 #       %%kernel_variant_package [-o] <subpackage>
+# -e flag denotes embedded kernels, skips the dependency on linux-firmware
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_variant_package(o) \
+%define kernel_variant_package(eo) \
 %define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
 %package -n %{variant_name}-core\
 Summary: %{variant_summary}\
@@ -862,8 +893,8 @@ Provides: kernel-ueknano = %{KVERREL}%{?1:.%{1}}\
 %{expand:%%kernel_meta_package %{-o:%{-o}} %{?1:%{1}}}\
 %endif\
 %{expand:%%kernel_devel_package %{-o:%{-o}} %{?1:%{1}}}\
-%{expand:%%kernel_modules_package %{-o:%{-o}} %{?1:%{1}}}\
-%{expand:%%kernel_modules_core_package %{-o:%{-o}} %{?1:%{1}}}\
+%{expand:%%kernel_modules_package %{?-e:-e} %{-o:%{-o}} %{?1:%{1}}}\
+%{expand:%%kernel_modules_core_package %{?-e:-e} %{-o:%{-o}} %{?1:%{1}}}\
 %{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s extra %{?1:%{1}}}\
 %{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s desktop %{?1:%{1}}}\
 %{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s deprecated %{?1:%{1}}}\
@@ -883,6 +914,11 @@ This package includes 64k page size for aarch64 kernel.
 %kernel_variant_package -o 64kdebug
 %description -n kernel%{?variant}64kdebug-core
 This package include debug kernel for 64k page size.
+
+%define variant_summary A kernel for an embedded platform
+%kernel_variant_package -eo emb4
+%description -n kernel%{?variant}emb4-core
+This package includes an embedded kernel.
 
 %define variant_summary The Linux kernel compiled with extra debugging enabled
 %kernel_variant_package debug
@@ -951,6 +987,7 @@ mkdir -p configs
     cp %{SOURCE1009} configs/config-container
     cp %{SOURCE1008} configs/config-debug
     cp %{SOURCE1007} configs/config
+    cp %{SOURCE1011} configs/config-embedded4
 %endif
 
 echo 'CONFIG_DTRACE=y' >> configs/config
@@ -1091,19 +1128,32 @@ BuildKernel() {
     if [ "$Flavour" == "debug" ]; then
         cp configs/config-debug .config
         modlistVariant="$PWD/../kernel%{?variant}-debug"
+        modlistSrc=modules.yaml.S
+        denylistSrc=denylist.txt.S
     elif [ "$Flavour" == "64k" ]; then
         sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config
         echo 'CONFIG_ARM64_64K_PAGES=y' >> configs/config
         cp configs/config .config
         modlistVariant="$PWD/../kernel%{?variant}64k"
+        modlistSrc=modules.yaml.S
+        denylistSrc=denylist.txt.S
     elif [ "$Flavour" == "64kdebug" ]; then
         sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config-debug
         echo 'CONFIG_ARM64_64K_PAGES=y' >> configs/config-debug
         cp configs/config-debug .config
         modlistVariant="$PWD/../kernel%{?variant}64kdebug"
+        modlistSrc=modules.yaml.S
+        denylistSrc=denylist.txt.S
+    elif [ "$Flavour" == "emb4" ]; then
+        cp configs/config-embedded4 .config
+        modlistVariant="$PWD/../kernel%{?variant}emb4"
+        modlistSrc=modules.yaml.S.emb4
+        denylistSrc=denylist.txt.S.emb4
     else
         cp configs/config .config
         modlistVariant="$PWD/../kernel%{?variant}${Flavour:+-${Flavour}}"
+        modlistSrc=modules.yaml.S
+        denylistSrc=denylist.txt.S
     fi
 
     echo USING ARCH=$Arch
@@ -1112,7 +1162,7 @@ BuildKernel() {
     # This ensures build-ids are unique to allow parallel debuginfo
     perl -p -i -e "s/^CONFIG_BUILD_SALT.*/CONFIG_BUILD_SALT=\"%{KVERREL}\"/" .config
 
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ]; then
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb4" ]; then
        %{make} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
     else
        %{make} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
@@ -1222,7 +1272,7 @@ BuildKernel() {
     %_sourcedir/kabitool -s Module.symvers -o $RPM_BUILD_ROOT/kernel-$KernelVer-kabideps
 
 %if %{with_kabichk}
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ]; then
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb4" ]; then
        # Create symbol type data which can be used to introspect kABI breakages
        python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
 
@@ -1382,8 +1432,8 @@ BuildKernel() {
         --output ${modlistVariant} \
         -D"Arch_%{_target_cpu}" \
         -D"Flavour_${Flavour}" \
-        $RPM_SOURCE_DIR/modules.yaml.S \
-        $RPM_SOURCE_DIR/denylist.txt.S)
+        $RPM_SOURCE_DIR/${modlistSrc} \
+        $RPM_SOURCE_DIR/${denylistSrc})
 
     # Copy the System.map file for depmod to use, and create a backup of the
     # full module tree so we can restore it after we're done filtering
@@ -1578,6 +1628,10 @@ BuildKernel %make_target %kernel_image 64k
 BuildKernel %make_target %kernel_image 64kdebug
 %endif
 
+%if %{with_embedded4}
+BuildKernel %make_target %kernel_image emb4
+%endif
+
 %global bpftool_make \
   %{make} EXTRA_CFLAGS="${RPM_OPT_FLAGS}" EXTRA_LDFLAGS="%{__global_ldflags}" DESTDIR=$RPM_BUILD_ROOT VMLINUX_H=$RPM_BUILD_ROOT/$BpfDevelDir/vmlinux.h
 %if %{with_bpftool}
@@ -1661,6 +1715,11 @@ BuildKernel %make_target %kernel_image 64kdebug
        mv certs/signing_key.x509.sign.64kdebug certs/signing_key.x509 \
        %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.64kdebug/ %{dgst} \
      fi \
+    if [ "%{with_embedded4}" -ne "0" ]; then \
+       mv certs/signing_key.pem.sign.emb4 certs/signing_key.pem \
+       mv certs/signing_key.x509.sign.emb4 certs/signing_key.x509 \
+       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb4/ %{dgst} \
+    fi \
   fi \
 %{nil}
 
@@ -2036,6 +2095,11 @@ fi\
 %kernel_variant_postun -o -v 64kdebug
 %kernel_variant_post -o -v 64kdebug
 
+%kernel_variant_pre -o emb4
+%kernel_variant_preun -o emb4
+%kernel_variant_postun -o -v emb4
+%kernel_variant_post -o -v emb4
+
 if [ -x /sbin/ldconfig ]
 then
     /sbin/ldconfig -X || exit $?
@@ -2198,5 +2262,7 @@ fi
 
 %kernel_variant_files -o %{with_64k_ps} 64k
 %kernel_variant_files -o %{with_64k_ps_debug} 64kdebug
+
+%kernel_variant_files -o %{with_embedded4} emb4
 
 %changelog
