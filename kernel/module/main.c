@@ -2944,14 +2944,13 @@ static int _load_module(struct load_info *info, const char __user *uargs,
 	flush_module_icache(mod);
 
 	/* Now copy in args */
-	if (uargs) {
-		mod->args = strndup_user(uargs, ~0UL >> 1);
-		if (IS_ERR(mod->args)) {
-			err = PTR_ERR(mod->args);
-			goto free_arch_cleanup;
-		}
-	} else {
+	mod->args = strndup_user(uargs, ~0UL >> 1);
+	if (!uargs && (flags & MODULE_INIT_MEM))
 		mod->args = kstrdup("", GFP_KERNEL);
+
+	if (IS_ERR(mod->args)) {
+		err = PTR_ERR(mod->args);
+		goto free_arch_cleanup;
 	}
 
 	init_build_id(mod, info);
