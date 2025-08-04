@@ -30,6 +30,13 @@
 #define PSM_INT_GP_ENA_W1C(a)		(0x10E0080 + (a) * 0x100)
 #define PSM_INT_GP_ENA_W1S(a)		(0x10E00C0 + (a) * 0x100)
 
+/* BPHY PSM GPINT CNF20K register offsets */
+
+#define PSM_CNF20K_INT_GP_SUM_W1C(a)           (0xE0000 + (a) * 0x100)
+#define PSM_CNF20K_INT_GP_SUM_W1S(a)           (0xE0040 + (a) * 0x100)
+#define PSM_CNF20K_INT_GP_ENA_W1C(a)           (0xE0080 + (a) * 0x100)
+#define PSM_CNF20K_INT_GP_ENA_W1S(a)           (0xE00C0 + (a) * 0x100)
+
 /* eCPRI ethertype */
 #define ETH_P_ECPRI			0xAEFE
 #define ECPRI_MSG_TYPE_5		0x5

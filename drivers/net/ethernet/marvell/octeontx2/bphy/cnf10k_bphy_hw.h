@@ -168,6 +168,119 @@
 #define CNF10K_PSM_RST					(0xFA000ULL)
 #define CNF10K_PSM_MAX_QUEUE_ID				254
 
+/*CN20K*/
+
+#define CNF20K_CPRIX_TXD_GMII_DL_CBUF_CFG1(a)		(0x1100ULL + \
+							((unsigned long)(a) \
+							 << 31))
+
+#define CNF20K_CPRIX_TXD_GMII_DL_CBUF_CFG2(a)		(0x1108ULL + \
+							((unsigned long)(a) \
+							 << 31))
+
+#define CNF20K_CPRIX_TXD_GMII_DL_WR_DOORBELL(a)		(0x1110ULL + \
+							((unsigned long)(a) \
+							 << 31))
+
+#define CNF20K_CPRIX_TXD_GMII_DL_SW_WR_PTR(a)		(0x1118ULL + \
+							((unsigned long)(a) \
+							 << 31))
+
+#define CNF20K_CPRIX_TXD_GMII_DL_NXT_RD_PTR(a)		(0x1120ULL + \
+							((unsigned long)(a) \
+							 << 31))
+
+#define CNF20K_CPRIX_RXD_GMII_UL_CBUF_CFG1(a)		(0x1000ULL + \
+							((unsigned long)(a) \
+							 << 31))
+
+#define CNF20K_CPRIX_RXD_GMII_UL_CBUF_CFG2(a)		(0x1008ULL + \
+							((unsigned long)(a) \
+							 << 31))
+
+#define CNF20K_CPRIX_RXD_GMII_UL_RD_DOORBELL(a)		(0x1010ULL + \
+							((unsigned long)(a) \
+							 << 31))
+
+#define CNF20K_CPRIX_RXD_GMII_UL_SW_RD_PTR(a)		(0x1018ULL + \
+							((unsigned long)(a) \
+							 << 31))
+
+#define CNF20K_CPRIX_RXD_GMII_UL_NXT_WR_PTR(a)		(0x1020ULL + \
+							((unsigned long)(a) \
+							 << 31))
+
+#define CNF20K_CPRIX_RXD_GMII_UL_PKT_COUNT(a)		(0x1028ULL + \
+							((unsigned long)(a) \
+							 << 31))
+
+#define CNF20K_CPRIX_ETH_UL_INT(a)			(0x280ULL + \
+							((unsigned long)(a) \
+							 << 31))
+
+#define CNF20K_CPRIX_ETH_UL_INT_ENA_W1S(a)		(0x288ULL + \
+							((unsigned long)(a) \
+							 << 31))
+
+#define CNF20K_CPRIX_ETH_UL_INT_ENA_W1C(a)		(0x290ULL + \
+							((unsigned long)(a) \
+							 << 31))
+
+#define CPRDX_AF_ETH_UL_INT_PSM_MSG_W0(a)		(0x2a0ULL + \
+							((unsigned long)(a) \
+							 << 31))
+
+#define CPRDX_AF_ETH_UL_INT_PSM_MSG_W1(a)		(0x2a8ULL + \
+							((unsigned long)(a) \
+							 << 31))
+
+#define CPRDX_AF_ETH_UL_INT_PSM_GMID(a)			(0x2b0ULL + \
+							((unsigned long)(a) \
+							 << 31))
+
+#define CNF20K_CPRIX_ETH_BAD_CRC_CNT(a, b)	(0x400ULL + \
+						((unsigned long)(a) << 31) + \
+						((unsigned long)(b) << 11))
+
+#define CNF20K_CPRIX_ETH_UL_ERR_CNT(a, b)	(0x408ULL + \
+						((unsigned long)(a) << 31) + \
+						((unsigned long)(b) << 11))
+
+#define CNF20K_CPRIX_ETH_UL_OSIZE_CNT(a, b)	(0x410ULL + \
+						((unsigned long)(a) << 31) + \
+						((unsigned long)(b) << 11))
+
+#define CNF20K_CPRIX_ETH_UL_USIZE_CNT(a, b)	(0x418ULL + \
+						((unsigned long)(a) << 31) + \
+						((unsigned long)(b) << 11))
+
+#define CNF20K_CPRIX_ETH_UL_FIFO_ORUN_CNT(a, b)	(0x420ULL + \
+						((unsigned long)(a) << 31) + \
+						((unsigned long)(b) << 11))
+
+#define CNF20K_CPRIX_ETH_UL_GPKTS_CNT(a, b)	(0x428ULL + \
+						((unsigned long)(a) << 31) + \
+						((unsigned long)(b) << 11))
+
+#define CNF20K_CPRIX_ETH_UL_BOCT_CNT(a, b)	(0x430ULL + \
+						((unsigned long)(a) << 31) + \
+						((unsigned long)(b) << 11))
+
+#define CNF20K_CPRIX_ETH_UL_GOCT_CNT(a, b)	(0x438ULL + \
+						((unsigned long)(a) << 31) + \
+						((unsigned long)(b) << 11))
+
+#define CNF20K_CPRIX_ETH_UL_MALFORMED_CNT(a, b)	(0x440ULL + \
+						((unsigned long)(a) << 31) + \
+						((unsigned long)(b) << 11))
+
+#define CNF20K_CPRIX_ETH_DL_GOCTETS_CNT(a, b)	(0x450ULL + \
+						((unsigned long)(a) << 31) + \
+						((unsigned long)(b) << 11))
+
+#define CNF20K_CPRIX_ETH_DL_GPKTS_CNT(a, b)	(0x458ULL + \
+						((unsigned long)(a) << 31) + \
+						((unsigned long)(b) << 11))
 /* MHAB Structures */
 struct cnf10k_mhbw_jd_dma_cfg_word_0_s {
 	u64 dma_mode		: 3;

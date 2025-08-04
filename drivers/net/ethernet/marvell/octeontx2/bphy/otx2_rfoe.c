@@ -982,7 +982,6 @@ static netdev_tx_t otx2_rfoe_eth_start_xmit(struct sk_buff *skb,
 	struct ptp_tstamp_skb *ts_skb;
 	u64 jd_cfg_ptr_iova, regval;
 	unsigned long flags;
-	struct ethhdr *eth;
 	bool psm_queue_ena;
 	int pkt_stats_type;
 	__be16 proto = rfoe_common_get_protocol(skb);
