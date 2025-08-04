@@ -21,7 +21,6 @@
 static DEFINE_SPINLOCK(sw_fib_llock);
 static LIST_HEAD(sw_fib_lh);
 
-static bool sw_fib_work_running;
 static struct workqueue_struct *sw_fib_wq;
 static void sw_fib_work_handler(struct work_struct *work);
 static DECLARE_DELAYED_WORK(sw_fib_work, sw_fib_work_handler);
@@ -73,24 +72,26 @@ out:
 static void sw_fib_work_handler(struct work_struct *work)
 {
 	struct sw_fib_list_entry *lentry;
+	LIST_HEAD(tlist);
 
 	spin_lock(&sw_fib_llock);
+	list_splice_init(&sw_fib_lh, &tlist);
+	spin_unlock(&sw_fib_llock);
+
 	while ((lentry =
-		list_first_entry_or_null(&sw_fib_lh,
+		list_first_entry_or_null(&tlist,
 					 struct sw_fib_list_entry, lh)) != NULL) {
-		if (!lentry)
-			break;
-
 		list_del_init(&lentry->lh);
-		spin_unlock(&sw_fib_llock);
-
 		sw_fib_notify(lentry->pf, lentry->cnt, lentry->entry);
 		kfree(lentry->entry);
 		kfree(lentry);
-		spin_lock(&sw_fib_llock);
 	}
+
+	spin_lock(&sw_fib_llock);
+	if (!list_empty(&sw_fib_lh))
+		queue_delayed_work(sw_fib_wq, &sw_fib_work,
+				   msecs_to_jiffies(10));
 	spin_unlock(&sw_fib_llock);
-	queue_delayed_work(sw_fib_wq, &sw_fib_work, msecs_to_jiffies(1000));
 }
 
 int sw_fib_add_to_list(struct net_device *dev,
@@ -108,13 +109,9 @@ int sw_fib_add_to_list(struct net_device *dev,
 
 	spin_lock(&sw_fib_llock);
 	list_add_tail(&lentry->lh, &sw_fib_lh);
+	queue_delayed_work(sw_fib_wq, &sw_fib_work,
+			   msecs_to_jiffies(10));
 	spin_unlock(&sw_fib_llock);
-
-	if (!sw_fib_work_running) {
-		queue_delayed_work(sw_fib_wq, &sw_fib_work,
-				   msecs_to_jiffies(10));
-		sw_fib_work_running = true;
-	}
 
 	return 0;
 }

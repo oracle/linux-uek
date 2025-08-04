@@ -57,20 +57,30 @@ static bool sw_nb_is_cavium_dev(struct net_device *netdev)
 static int sw_nb_check_slaves(struct net_device *dev,
 			      struct netdev_nested_priv *priv)
 {
+	int *cnt;
 	if (!priv->flags)
 		return 0;
 
 	priv->flags &= sw_nb_is_cavium_dev(dev);
+	if (priv->flags) {
+		cnt = priv->data;
+		(*cnt)++;
+	}
+
 	return 0;
 }
 
 static bool sw_nb_is_valid_dev(struct net_device *netdev)
 {
-	struct netdev_nested_priv priv = { true, NULL};
+	struct netdev_nested_priv priv;
+	int cnt = 0;
+
+	priv.flags = true;
+	priv.data = &cnt;
 
 	if (netif_is_bridge_master(netdev)) {
 		netdev_walk_all_lower_dev(netdev, sw_nb_check_slaves, &priv);
-		return priv.flags;
+		return priv.flags && !!*(int *)priv.data;
 	}
 
 	return sw_nb_is_cavium_dev(netdev);
@@ -182,8 +192,8 @@ static int sw_nb_fib_event(struct notifier_block *nb,
 	case FIB_EVENT_ENTRY_DEL:
 		break;
 	default:
-		pr_err("%s:%d Won't process FIB event %lu\n",
-		       __func__, __LINE__, event);
+		pr_debug("%s:%d Won't process FIB event %lu\n",
+			 __func__, __LINE__, event);
 		return NOTIFY_DONE;
 	}
 

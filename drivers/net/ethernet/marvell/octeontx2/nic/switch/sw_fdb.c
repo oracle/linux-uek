@@ -42,11 +42,6 @@ struct sw_fdb_list_entry {
 static struct workqueue_struct *sw_fdb_wq;
 static struct work_struct sw_fdb_work;
 
-void sw_fdb_queue_work(void)
-{
-	queue_work(sw_fdb_wq, &sw_fdb_work);
-}
-
 static int sw_fdb_add_or_del(struct otx2_nic *pf,
 			     const unsigned char *addr,
 			     bool add_fdb)
@@ -73,22 +68,26 @@ out:
 void sw_fdb_wq_handler(struct work_struct *work)
 {
 	struct sw_fdb_list_entry *entry;
+	LIST_HEAD(tlist);
 
 	spin_lock(&sw_fdb_llock);
+	list_splice_init(&sw_fdb_lh, &tlist);
+	spin_unlock(&sw_fdb_llock);
+
 	while ((entry =
-		list_first_entry_or_null(&sw_fdb_lh,
+		list_first_entry_or_null(&tlist,
 					 struct sw_fdb_list_entry,
 					 list)) != NULL) {
-		if (!entry)
-			break;
 		list_del_init(&entry->list);
-		spin_unlock(&sw_fdb_llock);
 		sw_fdb_add_or_del(entry->pf, entry->mac, entry->add_fdb);
-
 		kfree(entry);
-		spin_lock(&sw_fdb_llock);
 	}
+
+	spin_lock(&sw_fdb_llock);
+	if (!list_empty(&sw_fdb_lh))
+		queue_work(sw_fdb_wq, &sw_fdb_work);
 	spin_unlock(&sw_fdb_llock);
+
 }
 
 int sw_fdb_add_to_list(struct net_device *dev, u8 *mac, bool add_fdb)
@@ -106,9 +105,9 @@ int sw_fdb_add_to_list(struct net_device *dev, u8 *mac, bool add_fdb)
 
 	spin_lock(&sw_fdb_llock);
 	list_add_tail(&entry->list, &sw_fdb_lh);
+	queue_work(sw_fdb_wq, &sw_fdb_work);
 	spin_unlock(&sw_fdb_llock);
 
-	queue_work(sw_fdb_wq, &sw_fdb_work);
 	return 0;
 }
 
