@@ -5884,7 +5884,7 @@ static int alg_test_fips_disabled(const struct alg_test_desc *desc)
 	return !(desc->fips_allowed & FIPS_ALLOWED);
 }
 
-int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
+int alg_test(struct crypto_alg *alg, const char *driver, const char *alg, u32 type, u32 mask)
 {
 	int i;
 	int j;
@@ -5900,7 +5900,7 @@ int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
 	if ((type & CRYPTO_ALG_TYPE_MASK) == CRYPTO_ALG_TYPE_CIPHER) {
 		char nalg[CRYPTO_MAX_ALG_NAME];
 
-		if (snprintf(nalg, sizeof(nalg), "ecb(%s)", alg) >=
+		if (snprintf(nalg, sizeof(nalg), "ecb(%s)", name) >=
 		    sizeof(nalg))
 			return -ENAMETOOLONG;
 
@@ -5915,7 +5915,7 @@ int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
 		goto test_done;
 	}
 
-	i = alg_find_test(alg);
+	i = alg_find_test(name);
 	j = alg_find_test(driver);
 	if (i < 0 && j < 0)
 		goto notest;
@@ -5940,18 +5940,18 @@ test_done:
 		if (fips_enabled || panic_on_fail) {
 			fips_fail_notify();
 			panic("alg: self-tests for %s (driver %s) failed in %s mode!\n",
-			      alg, driver,
+			      name, driver,
 			      fips_enabled ? "fips" : "panic_on_fail");
 		}
 		pr_warn("alg: self-tests for %s (driver %s) failed (rc=%d)",
-			alg, driver, rc);
+			name, driver, rc);
 		WARN(rc != -ENOENT,
 		     "alg: self-tests for %s (driver %s) failed (rc=%d)",
-		     alg, driver, rc);
+		     name, driver, rc);
 	} else {
 		if (fips_enabled)
 			pr_info("alg: self-tests for %s (driver %s) passed\n",
-				alg, driver);
+				name, driver);
 	}
 
 	return rc;
@@ -5960,7 +5960,7 @@ notest:
 	if ((type & CRYPTO_ALG_TYPE_MASK) == CRYPTO_ALG_TYPE_LSKCIPHER) {
 		char nalg[CRYPTO_MAX_ALG_NAME];
 
-		if (snprintf(nalg, sizeof(nalg), "ecb(%s)", alg) >=
+		if (snprintf(nalg, sizeof(nalg), "ecb(%s)", name) >=
 		    sizeof(nalg))
 			goto notest2;
 
@@ -5976,14 +5976,14 @@ notest:
 	}
 
 notest2:
-	printk(KERN_INFO "alg: No test for %s (driver %s)\n", alg, driver);
+	printk(KERN_INFO "alg: No test for %s (driver %s)\n", name, driver);
 
 	if (type & CRYPTO_ALG_FIPS_INTERNAL)
-		return alg_fips_disabled(driver, alg);
+		return alg_fips_disabled(driver, name);
 
 	return 0;
 non_fips_alg:
-	return alg_fips_disabled(driver, alg);
+	return alg_fips_disabled(driver, name);
 }
 
 #endif /* CONFIG_CRYPTO_MANAGER_DISABLE_TESTS */
