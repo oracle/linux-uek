@@ -36,7 +36,7 @@ static const struct x86_cpu_id module_cpu_ids[] = {
 	X86_MATCH_FEATURE(X86_FEATURE_SSSE3, NULL),
 	{}
 };
-MODULE_DEVICE_TABLE(x86cpu, module_cpu_ids);
+CRYPTO_MODULE_DEVICE_TABLE(x86cpu, module_cpu_ids);
 
 static int sha1_update(struct shash_desc *desc, const u8 *data,
 			     unsigned int len, sha1_block_fn *sha1_xform)
