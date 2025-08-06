@@ -17,6 +17,7 @@
  * Copyright 2024 Google LLC
  */
 
+#include <crypto/api.h>
 #include <linux/hardirq.h>
 #include <linux/types.h>
 #include <linux/module.h>
@@ -1747,8 +1748,8 @@ static void __exit aesni_exit(void)
 	unregister_avx_algs();
 }
 
-late_initcall(aesni_init);
-module_exit(aesni_exit);
+crypto_late_initcall(aesni_init);
+crypto_module_exit(aesni_exit);
 
 MODULE_DESCRIPTION("AES cipher and modes, optimized with AES-NI or VAES instructions");
 MODULE_LICENSE("GPL");

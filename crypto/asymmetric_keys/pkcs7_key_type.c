@@ -91,5 +91,5 @@ static void __exit pkcs7_key_cleanup(void)
 	unregister_key_type(&key_type_pkcs7);
 }
 
-module_init(pkcs7_key_init);
-module_exit(pkcs7_key_cleanup);
+crypto_module_init(pkcs7_key_init);
+crypto_module_exit(pkcs7_key_cleanup);
