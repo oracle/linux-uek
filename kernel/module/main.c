@@ -2557,7 +2557,9 @@ static noinline int do_init_module(struct load_info *info, struct module *mod, i
 	freeinit->init_data = mod->mem[MOD_INIT_DATA].base;
 	freeinit->init_rodata = mod->mem[MOD_INIT_RODATA].base;
 
-	do_crypto_api(info);
+	if (flags & MODULE_INIT_MEM)
+		do_crypto_api(info);
+
 	do_mod_ctors(mod);
 	/* Start the module */
 	if (mod->init != NULL)
