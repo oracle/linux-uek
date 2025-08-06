@@ -114,7 +114,7 @@ struct crypto_alg *crypto_alg_mod_lookup(const char *name, u32 type, u32 mask);
 
 struct crypto_larval *crypto_larval_alloc(const char *name, u32 type, u32 mask);
 void crypto_schedule_test(struct crypto_larval *larval);
-void crypto_alg_tested(const char *name, int err);
+void crypto_alg_tested(struct crypto_alg *alg, int err);
 
 void crypto_remove_spawns(struct crypto_alg *alg, struct list_head *list,
 			  struct crypto_alg *nalg);
