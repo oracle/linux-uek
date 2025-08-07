@@ -3243,6 +3243,38 @@ exit:
 	return rc;
 }
 
+int rvu_mbox_handler_npc_flow_del_n_free(struct rvu *rvu,
+					 struct npc_flow_del_n_free_req *mreq,
+					 struct msg_rsp *rsp)
+{
+	struct npc_mcam_free_entry_req sreq = { 0 };
+	struct npc_delete_flow_req dreq = { 0 };
+	struct npc_delete_flow_rsp drsp = { 0 };
+	int err = 0;
+
+	sreq.hdr.pcifunc = mreq->hdr.pcifunc;
+	dreq.hdr.pcifunc = mreq->hdr.pcifunc;
+
+	if (!mreq->cnt || mreq->cnt > 256) {
+		dev_err(rvu->dev, "Invalid cnt=%d\n", mreq->cnt);
+		return -EINVAL;
+	}
+
+	for (int i = 0; i < mreq->cnt; i++) {
+
+		dreq.entry = mreq->entry[i];
+		err |= rvu_mbox_handler_npc_delete_flow(rvu, &dreq, &drsp);
+
+		sreq.entry = mreq->entry[i];
+		err |= rvu_mbox_handler_npc_mcam_free_entry(rvu, &sreq, rsp);
+		if (err)
+			dev_err(rvu->dev, "free entry error for i=%d entry=%d\n",
+				i, mreq->entry[i]);
+	}
+
+	return err;
+}
+
 int rvu_mbox_handler_npc_mcam_read_entry(struct rvu *rvu,
 					 struct npc_mcam_read_entry_req *req,
 					 struct npc_mcam_read_entry_rsp *rsp)

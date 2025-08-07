@@ -356,6 +356,8 @@ M(NPC_MCAM_GET_DFT_RL_IDXS, 0x601e, npc_get_dft_rl_idxs,	\
 M(NPC_MCAM_GET_NPC_PFL_INFO, 0x601f, npc_get_pfl_info,		\
 					msg_req,		\
 					npc_get_pfl_info_rsp)	\
+M(NPC_MCAM_FLOW_DEL_N_FREE,	0x6020, npc_flow_del_n_free,			\
+				 npc_flow_del_n_free_req, msg_rsp)	\
 /* NIX mbox IDs (range 0x8000 - 0xFFFF) */				\
 M(NIX_LF_ALLOC,		0x8000, nix_lf_alloc,				\
 				 nix_lf_alloc_req, nix_lf_alloc_rsp)	\
@@ -1915,6 +1917,12 @@ struct npc_mcam_alloc_entry_rsp {
 	u16 count; /* Number of entries allocated */
 	u16 free_count; /* Number of entries available */
 	u16 entry_list[NPC_MAX_NONCONTIG_ENTRIES];
+};
+
+struct npc_flow_del_n_free_req {
+	struct mbox_msghdr hdr;
+	u16 cnt;
+	u16 entry[256]; /* Entry index to be freed */
 };
 
 struct npc_mcam_free_entry_req {
