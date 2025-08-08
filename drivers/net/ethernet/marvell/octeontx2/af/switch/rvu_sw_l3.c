@@ -112,6 +112,7 @@ static atomic64_t req_cnt;
 static atomic64_t ack_cnt;
 static atomic64_t req_processed;
 static LIST_HEAD(l3_local_lh);
+static int lcnt;
 
 static void sw_l3_offl_work_handler(struct work_struct *work)
 {
@@ -127,6 +128,16 @@ static void sw_l3_offl_work_handler(struct work_struct *work)
 
 		if (!l3_entry)
 			break;
+
+		if (lcnt + l3_entry->cnt > 16) {
+			req = atomic64_read(&req_cnt);
+			atomic64_set(&ack_cnt, req);
+			atomic64_set(&req_processed, req);
+			mutex_unlock(&l3_offl_llock);
+			goto process;
+		}
+
+		lcnt += l3_entry->cnt;
 
 		atomic64_inc(&req_cnt);
 		list_del_init(&l3_entry->list);
@@ -152,6 +163,9 @@ static void sw_l3_offl_work_handler(struct work_struct *work)
 	}
 
 	atomic64_set(&req_processed, req);
+
+process:
+	lcnt = 0;
 
 	mutex_lock(&l3_offl_llock);
 	list_splice_init(&l3_local_lh, &l3lh);
