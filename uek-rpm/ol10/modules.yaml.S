@@ -545,7 +545,6 @@ modules-core:
 - chacha-neon
 - cppc_cpufreq
 - crct10dif-ce
-- ecdh_generic
 - ghash-ce
 - poly1305-neon
 - sbsa_gwdt
