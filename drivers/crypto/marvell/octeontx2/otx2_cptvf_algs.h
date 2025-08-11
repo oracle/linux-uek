@@ -11,7 +11,10 @@
 #include "otx2_cpt_common.h"
 #include "cn10k_cpt.h"
 
-#define OTX2_CPT_MAX_ENC_KEY_SIZE    32
+/* Encapsulation key includes a maximum 32-byte key and an additional
+ * 4-byte nonce/salt.
+ */
+#define OTX2_CPT_MAX_ENC_KEY_SIZE    36
 #define OTX2_CPT_MAX_HASH_KEY_SIZE   64
 #define OTX2_CPT_MAX_KEY_SIZE (OTX2_CPT_MAX_ENC_KEY_SIZE + \
 			       OTX2_CPT_MAX_HASH_KEY_SIZE)
