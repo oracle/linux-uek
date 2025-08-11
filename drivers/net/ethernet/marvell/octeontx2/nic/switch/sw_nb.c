@@ -73,6 +73,7 @@ static int sw_nb_check_slaves(struct net_device *dev,
 static bool sw_nb_is_valid_dev(struct net_device *netdev)
 {
 	struct netdev_nested_priv priv;
+	struct net_device *br;
 	int cnt = 0;
 
 	priv.flags = true;
@@ -80,6 +81,15 @@ static bool sw_nb_is_valid_dev(struct net_device *netdev)
 
 	if (netif_is_bridge_master(netdev)) {
 		netdev_walk_all_lower_dev(netdev, sw_nb_check_slaves, &priv);
+		return priv.flags && !!*(int *)priv.data;
+	}
+
+	if (netif_is_bridge_port(netdev)) {
+		br = netdev_master_upper_dev_get_rcu(netdev);
+		if (!br)
+			return false;
+
+		netdev_walk_all_lower_dev(br, sw_nb_check_slaves, &priv);
 		return priv.flags && !!*(int *)priv.data;
 	}
 
