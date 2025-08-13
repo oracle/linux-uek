@@ -526,7 +526,6 @@ modules-core:
 - ses
 - sha1-ce
 - sha256-arm64
-- sha2-ce
 - sha512-arm64
 - sit
 - squashfs
