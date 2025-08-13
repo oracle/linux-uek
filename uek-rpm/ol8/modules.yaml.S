@@ -561,8 +561,6 @@ modules-core:
 - scsi_dh_emc
 - scsi_dh_rdac
 - sha1-ce
-- sha2-ce
-- sha256-arm64
 - sha512-arm64
 - tag_brcm
 - tag_ksz
@@ -597,7 +595,6 @@ modules-core:
 - coretemp
 - crc16
 - crc8
-- crypto_simd
 - curve25519-x86_64
 - dax_hmem
 - dax_pmem
@@ -669,7 +666,6 @@ modules-core:
 - serpent-sse2-x86_64
 - sg
 - sha1-ssse3
-- sha256-ssse3
 - sha512-ssse3
 - skx_edac
 - skx_edac_common
@@ -1600,14 +1596,11 @@ modules:
 - clk-max77686
 - clk-pwm
 - clk-qcom
-- clk-s2mps11
 - clk-scpi
 - clk-smd-rpm
 - cptpf
 - cptvf
 - cpufreq-dt
-- cros_ec_dev
-- cros_ec_hwmon
 - dc395x
 - dmx3191d
 - drm_dp_aux_bus
@@ -1620,10 +1613,10 @@ modules:
 - dwmac-meson
 - dwmac-meson8b
 - dwmac-qcom-ethqos
+- dwmac-renesas-gbeth
 - dwmac-rk
 - dwmac-sun8i
 - dwmac-sunxi
-- echo
 - eeprom_93cx6
 - ehci-platform
 - esas2r
@@ -1669,8 +1662,6 @@ modules:
 - hid-cypress
 - hid-ezkey
 - hid-kensington
-- hid-lg-g15
-- hid-logitech
 - hid-microsoft
 - hid-monterey
 - hid-plantronics
@@ -1681,7 +1672,6 @@ modules:
 - host1x
 - i2c-arb-gpio-challenge
 - i2c-bcm2835
-- i2c-cros-ec-tunnel
 - i2c-meson
 - i2c-mux-gpio
 - i2c-mux-gpmux
@@ -1823,14 +1813,12 @@ modules:
 - rtc-r9701
 - rtc-rs5c348
 - rtc-rx8010
-- rtc-s5m
 - rtc-tegra
 - rtc-xgene
 - rvu_cptcommon
 - rvu_cptpf
 - rvu_cptvf
 - rvu_mbox
-- s2mps11
 - sata_rcar
 - scpi-hwmon
 - scpi_pm_domain
@@ -2092,6 +2080,7 @@ modules:
 - intel_ips
 - intel_pmc_core
 - intel_pmc_core_pltdrv
+- intel_pmc_ssram_telemetry
 - intel_rapl_tpmi
 - intel_soc_dts_iosf
 - intel_tcc_cooling
@@ -2213,6 +2202,7 @@ modules:
 - pinctrl-lewisburg
 - pinctrl-sunrisepoint
 - pinctrl-tigerlake
+- platform_temperature_control
 - pmc551
 - pmt_class
 - pmt_crashlog
@@ -2465,6 +2455,7 @@ modules-extra:
 - snic
 - softing
 - spi-amd
+- spi-amd-pci
 - spi_ks8995
 - sym53c8xx
 - tcp_bic
@@ -2492,6 +2483,7 @@ modules-extra:
 #ifdef Arch_aarch64
 - ds2482
 - ds2490
+- irq-bcm2712-mip
 - trancevibrator
 - w1_ds2408
 - w1_ds2423
@@ -3275,18 +3267,21 @@ modules-desktop:
 - cm3605
 - cma3000_d0x
 - cma3000_d0x_i2c
+- cros-ec-proto
 - cros-ec-sensorhub
+- cros-ec-sensors-core
 - cros-ec-typec
 - cros_charge-control
 - cros_ec
 - cros_ec_baro
 - cros_ec_chardev
 - cros_ec_debugfs
+- cros_ec_dev
+- cros_ec_hwmon
 - cros_ec_keyb
 - cros_ec_light_prox
 - cros_ec_lightbar
 - cros_ec_sensors
-- cros_ec_sensors_core
 - cros_ec_sysfs
 - cros_ec_ucsi
 - cros_ec_vbc
@@ -3348,6 +3343,7 @@ modules-desktop:
 - hts221
 - hts221_i2c
 - hts221_spi
+- i2c-cros-ec-tunnel
 - igorplugusb
 - iio-mux
 - iio-trig-interrupt
@@ -4004,6 +4000,7 @@ modules-usb:
 - dwc3-of-simple
 - dwc3-pci
 - dwc3-qcom
+- dwc3-qcom-legacy
 - dwc3-xilinx
 - ehci-exynos
 - isp1760

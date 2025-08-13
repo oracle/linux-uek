@@ -10,7 +10,6 @@ kernel/arch/arm64/crypto/ghash-ce.ko
 kernel/arch/arm64/crypto/poly1305-neon.ko
 kernel/arch/arm64/crypto/sha1-ce.ko
 kernel/arch/arm64/crypto/sha256-arm64.ko
-kernel/arch/arm64/crypto/sha2-ce.ko
 kernel/arch/arm64/crypto/sha512-arm64.ko
 kernel/arch/arm64/lib/xor-neon.ko
 kernel/crypto/adiantum.ko
