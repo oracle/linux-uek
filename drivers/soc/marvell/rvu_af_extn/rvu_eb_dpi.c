@@ -66,6 +66,8 @@ static unsigned long eng_fifo_buf = 0x101008080808;
 #define DPI_WPORT				(0x1ULL << 4)
 #define DPI_RPORT				(0x1ULL << 0)
 
+#define MAX_EPFX				16
+
 struct dpi_rsrc {
 	struct qmem	*dpi_ctx[DPI_MAX_CHAN_TBL];
 	struct rsrc_bmap chan_tbl;
@@ -841,6 +843,7 @@ static int rvu_setup_dpi_hw_resource(struct rvu_block *block, void *data)
 	block->lfcfg_reg = DPI_PRIV_LFX_CFG;
 	block->msixcfg_reg = DPI_PRIV_LFX_INT_CFG(0);
 	block->lfreset_reg = DPI_AF_LF_RST;
+	block->blk_reset_reg = DPI_AF_BLK_RST;
 	block->rvu = rvu;
 	sprintf(block->name, "DPI%d", blkid);
 	err = rvu_alloc_bitmap(&block->lf);
@@ -865,6 +868,56 @@ free_bmap:
 	rvu_free_bitmap(&block->lf);
 
 	return err;
+}
+
+static void rvu_reset_dpi_block(struct rvu_block *block, void *data)
+{
+	struct dpi_drvdata *drvdata = data;
+	struct rvu *rvu = block->rvu;
+	int blkaddr, err, blkid;
+	u16 epf, dev_type_bmap, epfx_dis;
+	u64 val;
+
+	if (!block->implemented)
+		return;
+
+	blkid = drvdata->res_idx;
+	blkaddr = blkid ? BLKADDR_DPI1 : BLKADDR_DPI0;
+
+	/* Retain bitmap of EPFX dev type SDP-0, PSW-1 mode change,
+	 * epfx_dis holds the disable option for PSW/SDP for EPF
+	 */
+	for (epf = 0; epf < MAX_EPFX; epf++) {
+		val = rvu_read64(rvu, blkaddr, DPI_AF_EPFX_CFG(epf));
+		dev_type_bmap |= !!(val & BIT_ULL(1)) << epf;
+		epfx_dis |= (val & BIT_ULL(0)) << epf;
+	}
+
+	rvu_write64(rvu, blkaddr, block->blk_reset_reg, BIT_ULL(0));
+	err = rvu_poll_reg(rvu, blkaddr, block->blk_reset_reg, BIT_ULL(63),
+			   true);
+	if (err) {
+		dev_err(rvu->dev, "HW block:%d reset timeout retrying again\n",
+			blkaddr);
+		while (rvu_poll_reg(rvu, blkaddr, block->blk_reset_reg,
+				    BIT_ULL(63), true) == -EBUSY)
+			;
+	}
+
+	for (epf = 0; epf < MAX_EPFX; epf++) {
+		val = rvu_read64(rvu, blkaddr, DPI_AF_EPFX_CFG(epf));
+		if (dev_type_bmap & (1 << epf))
+			val |= BIT_ULL(1);
+		else
+			val &= ~BIT_ULL(1);
+
+		if (epfx_dis & (1 << epf))
+			val |= BIT_ULL(0);
+		else
+			val &= ~BIT_ULL(0);
+
+		rvu_write64(rvu, blkaddr, DPI_AF_EPFX_CFG(epf), val);
+	}
 }
 
 static int rvu_dpi_mbox_handler(struct otx2_mbox *mbox, int devid,
@@ -946,6 +999,7 @@ static struct rvu_eblock_driver_ops dpi_ops = {
 	.remove	= rvu_dpi_remove,
 	.init	= rvu_dpi_init_block,
 	.setup	= rvu_setup_dpi_hw_resource,
+	.reset	= rvu_reset_dpi_block,
 	.free	= rvu_dpi_freemem_block,
 	.register_interrupt = rvu_dpi_register_interrupts_block,
 	.unregister_interrupt = rvu_dpi_unregister_interrupts_block,

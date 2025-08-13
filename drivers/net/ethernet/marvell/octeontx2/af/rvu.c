@@ -638,8 +638,6 @@ static void rvu_reset_all_blocks(struct rvu *rvu)
 	rvu_block_reset(rvu, BLKADDR_REE0, REE_AF_BLK_RST);
 	rvu_block_reset(rvu, BLKADDR_REE1, REE_AF_BLK_RST);
 	rvu_block_reset(rvu, BLKADDR_SDP, SDP_AF_BLK_RST);
-	rvu_block_reset(rvu, BLKADDR_DPI0, DPI_AF_BLK_RST);
-	rvu_block_reset(rvu, BLKADDR_DPI1, DPI_AF_BLK_RST);
 }
 
 void rvu_reset_blk_lfcfg(struct rvu *rvu, struct rvu_block *block)

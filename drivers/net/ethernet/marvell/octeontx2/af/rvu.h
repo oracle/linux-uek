@@ -149,6 +149,7 @@ struct rvu_block {
 	u64  lfcfg_reg;
 	u64  msixcfg_reg;
 	u64  lfreset_reg;
+	u64  blk_reset_reg;
 	unsigned char name[NAME_SIZE];
 	struct rvu *rvu;
 	u64 cpt_flt_eng_map[3];

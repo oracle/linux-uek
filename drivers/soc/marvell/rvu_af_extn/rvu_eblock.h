@@ -41,6 +41,7 @@ struct rvu_eblock_driver_ops {
 	int (*init)(struct rvu_block *hwblock, void *priv_data);
 	int (*setup)(struct rvu_block *hwblock, void *priv_data);
 	void (*free)(struct rvu_block *hwblock, void *priv_data);
+	void (*reset)(struct rvu_block *hwblock, void *priv_data);
 	int (*register_interrupt)(struct rvu_block *hwblock, void *priv_data);
 	void (*unregister_interrupt)(struct rvu_block *hwblock,
 				     void *priv_data);

@@ -97,6 +97,9 @@ static int rvu_eb_device_attach(struct rvu_eb_device *eblock,
 
 	eblock->priv_data = data;
 
+	if (driver->ops->reset)
+		driver->ops->reset(eblock->hw_block,
+				   eblock->priv_data);
 	/* Run all the init ops required to get the device active */
 	err = driver->ops->setup(eblock->hw_block, eblock->priv_data);
 	if (err)
