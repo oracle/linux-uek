@@ -434,6 +434,7 @@
 #define X86_FEATURE_TSA_SQ_NO		(21*32+ 6) /* "" AMD CPU not vulnerable to TSA-SQ */
 #define X86_FEATURE_TSA_L1_NO		(21*32+ 7) /* "" AMD CPU not vulnerable to TSA-L1 */
 #define X86_FEATURE_INDIRECT_THUNK_ITS	(21*32 + 9) /* "" Use thunk for indirect branches in lower half of cacheline */
+#define X86_FEATURE_IBPB_EXIT_TO_USER	(21*32 + 10) /* "" Use IBPB on exit-to-userspace, see VMSCAPE bug */
 
 /*
  * BUG word(s)
