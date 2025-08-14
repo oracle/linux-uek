@@ -44,6 +44,8 @@ enum rvu_block_addr_e {
 	BLKADDR_RFOE0		= 0x27ULL,
 	BLKADDR_RFOE1		= 0x2fULL,
 	BLK_COUNT		= 0x30ULL,
+	/* Add new blocks before this */
+	BLK_COUNT_OTX2		= 0x20ULL,
 };
 
 /* RVU Block Type Enumeration */

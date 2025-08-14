@@ -558,7 +558,7 @@ static void rvu_check_block_implemented(struct rvu *rvu)
 	}
 
 	/* For each block check if 'implemented' bit is set */
-	for (blkid = 0; blkid < BLK_COUNT; blkid++) {
+	for (blkid = 0; blkid < BLK_COUNT_OTX2; blkid++) {
 		block = &hw->block[blkid];
 		cfg = rvupf_read64(rvu, RVU_PF_BLOCK_ADDRX_DISC(blkid));
 		if (cfg & BIT_ULL(11)) {
