@@ -529,7 +529,7 @@
 /* X86_BUG(10) (X86_BUG_NULL_SEG) is not reused, it impacts AMD cpus */
 /* X86_BUG(11) (X86_BUG_SWAPGS_FENCE) is not reused, it impacts AMD K8 */
 /* X86_BUG(12) (X86_BUG_MONITOR) is not reused, it impacts Intel Goldmont */
-/* X86_BUG(13) (X86_BUG_AMD_E400) is available */
+#define X86_BUG_VMSCAPE			X86_BUG(13) /* "vmscape" CPU is affected by VMSCAPE attacks from guests */
 /* X86_BUG(14) and later cannot be reused, they impact recent CPUs */
 
 #endif /* _ASM_X86_CPUFEATURES_H */
