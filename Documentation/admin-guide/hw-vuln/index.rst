@@ -21,4 +21,4 @@ are configurable at compile, boot or run time.
    gather_data_sampling
    srso
    indirect-target-selection
-
+   vmscape
