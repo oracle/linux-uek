@@ -482,6 +482,18 @@ static int get_cpt_pf_num(struct rvu *rvu)
 	return cpt_pf_num;
 }
 
+static bool is_cpt_vf(struct rvu *rvu, u16 pcifunc)
+{
+	int cpt_pf_num = rvu->cpt_pf_num;
+
+	if (rvu_get_pf(rvu->pdev, pcifunc) != cpt_pf_num)
+		return false;
+	if (!(pcifunc & RVU_PFVF_FUNC_MASK))
+		return false;
+
+	return true;
+}
+
 static bool is_cpt_pf(struct rvu *rvu, u16 pcifunc)
 {
 	int cpt_pf_num = rvu->cpt_pf_num;
@@ -515,7 +527,9 @@ static inline bool otx2_cpt_validate_access(struct rvu *rvu, u16 pcifunc,
 	num_lfs = rvu_get_rsrc_mapcount(rvu_get_pfvf(rvu, pcifunc),
 					block->addr);
 
-	return is_cpt_pf(rvu, pcifunc) || num_lfs;
+	return (is_cpt_pf(rvu, pcifunc) ||
+		is_cpt_vf(rvu, pcifunc) ||
+		num_lfs);
 }
 
 int otx2_cpt_que_pri_mask(struct rvu *rvu)
