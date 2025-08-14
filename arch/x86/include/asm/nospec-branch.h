@@ -13,6 +13,7 @@
 #include <asm/msr.h>
 #include <asm/nospec-annotate.h>
 #include <asm/unwind_hints.h>
+#include <asm/percpu.h>
 
 /*
  * Fill the CPU return stack buffer.
@@ -346,11 +347,15 @@ DECLARE_STATIC_KEY_FALSE(switch_mm_cond_ibpb);
 
 extern u64 x86_pred_cmd;
 
-static inline void indirect_branch_prediction_barrier(void)
-{
-	if (static_branch_likely(&switch_mm_always_ibpb) || static_branch_likely(&switch_mm_cond_ibpb))
-		wrmsrl(MSR_IA32_PRED_CMD, x86_pred_cmd);
-}
+DECLARE_PER_CPU(bool, x86_ibpb_exit_to_user);
+
+#define indirect_branch_prediction_barrier()			\
+do {								\
+	if (static_branch_likely(&switch_mm_always_ibpb) ||	\
+	    static_branch_likely(&switch_mm_cond_ibpb) ||	\
+	    cpu_feature_enabled(X86_FEATURE_IBPB_EXIT_TO_USER))	\
+		wrmsrl(MSR_IA32_PRED_CMD, x86_pred_cmd);	\
+} while (0)
 
 /* The Intel SPEC CTRL MSR base value cache */
 extern u64 x86_spec_ctrl_base;
