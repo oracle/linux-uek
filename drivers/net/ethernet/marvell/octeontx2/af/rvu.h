@@ -29,7 +29,7 @@
 /* PCI device IDs */
 #define	PCI_DEVID_OCTEONTX2_RVU_AF		0xA065
 #define	PCI_DEVID_OCTEONTX2_LBK			0xA061
-#define	PCI_DEVID_OCTEONTX2_GEN_PF		0xA0FD
+#define	PCI_DEVID_OCTEONTX2_GEN_PF		0xA0E3
 
 /* Subsystem Device ID */
 #define PCI_SUBSYS_DEVID_98XX                  0xB100
