@@ -25,7 +25,7 @@
 #define MAX_CPRI_INST			5
 
 #define RX_GP_INT_CPRI_ETH		32
-#define NUM_VECTORS			4
+#define NUM_VECTORS			128
 
 #define MAX_NUM_HALF_BPHY_CHIPLET	1
 #define CNF20K_HALF_BPHY_CPRI_MAX_MHAB	5

@@ -96,7 +96,7 @@
 struct cnf20k_cpri_drv_ctx cnf20k_cpri_drv_ctx[CNF20K_BPHY_CPRI_MAX_INTF];
 static struct class *cnf20k_cpri_class;
 
-struct msix_entry msix_entries[4];
+struct msix_entry msix_entries[NUM_VECTORS];
 
 void __iomem *cnf20k_cpri_reg_base;
 
@@ -1045,22 +1045,15 @@ static int cnf20k_cpri_parse_and_init_intf(struct cnf20k_cdev_priv *cdev,
 				}
 			}
 		}
-		if (cfg->bphy_chiplet_mask == 3) {
-			for (i = 0; i < NUM_VECTORS; i++)
+		if (cfg->bphy_chiplet_mask) {
+			for (i = 0; i < NUM_VECTORS; i++) {
 				msix_entries[i].entry =
 				cfg->hw_params.msix_offset[0] + i;
-			msix_vecs = 4;
-		} else if (cfg->bphy_chiplet_mask == 1) {
-			msix_entries[0].entry =
-			cfg->hw_params.msix_offset[0] + 1;
-			msix_vecs = 1;
-		} else if (cfg->bphy_chiplet_mask == 2) {
-			msix_entries[0].entry =
-			cfg->hw_params.msix_offset[1] + 1;
-			msix_vecs = 1;
+			}
+			msix_vecs = NUM_VECTORS;
 		}
 		msix_enable_ctrl(pdev);
-		ret = pci_enable_msix_exact(pdev, msix_entries, msix_vecs);
+		ret = pci_enable_msix_range(pdev, msix_entries, msix_vecs, NUM_VECTORS);
 		if (ret < 0) {
 			dev_err(&pdev->dev, "Failed to enable MSI-X: %d\n",
 				ret);
