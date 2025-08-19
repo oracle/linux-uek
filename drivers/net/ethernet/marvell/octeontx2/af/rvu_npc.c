@@ -4124,6 +4124,46 @@ int rvu_mbox_handler_npc_mcam_entry_stats(struct rvu *rvu,
 	return 0;
 }
 
+int rvu_mbox_handler_npc_mcam_mul_stats(struct rvu *rvu,
+					struct npc_mcam_get_mul_stats_req *req,
+					struct npc_mcam_get_mul_stats_rsp *rsp)
+{
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	u16 index, cntr;
+	int blkaddr;
+	u64 regval;
+	u32 bank;
+
+	if (!req->cnt || req->cnt > 256) {
+		dev_err(rvu->dev, "%s invalid request cnt=%d\n",
+			__func__, req->cnt);
+		return -EINVAL;
+	}
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+	if (blkaddr < 0)
+		return NPC_MCAM_INVALID_REQ;
+
+	mutex_lock(&mcam->lock);
+
+	for (int i = 0; i < req->cnt; i++) {
+		index = req->entry[i] & (mcam->banksize - 1);
+		bank = npc_get_bank(rvu, mcam, req->entry[i]);
+
+		/* read MCAM entry STAT_ACT register */
+		regval = rvu_read64(rvu, blkaddr, NPC_AF_MCAMEX_BANKX_STAT_ACT(index, bank));
+		cntr = regval & 0x1FF;
+
+		rsp->stat[i] = rvu_read64(rvu, blkaddr, NPC_AF_MATCH_STATX(cntr));
+		rsp->stat[i] &= BIT_ULL(48) - 1;
+	}
+
+	rsp->cnt = req->cnt;
+
+	mutex_unlock(&mcam->lock);
+	return 0;
+}
+
 void rvu_npc_clear_ucast_entry(struct rvu *rvu, int pcifunc, int nixlf)
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;

@@ -9,6 +9,7 @@
 #include "rvu.h"
 #include "rvu_sw.h"
 #include "rvu_sw_l2.h"
+#include "rvu_sw_fl.h"
 
 u32 rvu_sw_port_id(struct rvu *rvu, u16 pcifunc)
 {
@@ -36,6 +37,11 @@ int rvu_mbox_handler_swdev2af_notify(struct rvu *rvu,
 
 	case SWDEV2AF_MSG_TYPE_REFRESH_FDB:
 		rc = rvu_sw_l2_fdb_list_entry_add(rvu, req->pcifunc, req->mac);
+		break;
+
+	case SWDEV2AF_MSG_TYPE_REFRESH_FL:
+		rc = rvu_sw_fl_stats_sync2db(rvu, req->cookie, req->dis,
+					     req->mcam_idx, req->cnt);
 		break;
 	}
 

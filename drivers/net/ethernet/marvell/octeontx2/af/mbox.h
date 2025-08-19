@@ -180,6 +180,10 @@ M(FDB_NOTIFY,		0x012,  fdb_notify,				\
 				fdb_notify_req, msg_rsp)		\
 M(FIB_NOTIFY,		0x013,  fib_notify,				\
 				fib_notify_req, msg_rsp)		\
+M(FL_NOTIFY,		0x014,  fl_notify,				\
+				fl_notify_req, msg_rsp)		\
+M(FL_GET_STATS,		0x015,  fl_get_stats,				\
+				fl_get_stats_req, fl_get_stats_rsp)	\
 /* CGX mbox IDs (range 0x200 - 0x3FF) */				\
 M(CGX_START_RXTX,	0x200, cgx_start_rxtx, msg_req, msg_rsp)	\
 M(CGX_STOP_RXTX,	0x201, cgx_stop_rxtx, msg_req, msg_rsp)		\
@@ -392,6 +396,9 @@ M(NPC_MCAM_FLOW_DEL_N_FREE,	0x6020, npc_flow_del_n_free,			\
 				 npc_flow_del_n_free_req, msg_rsp)	\
 M(NPC_MCAM_READ_DEFAULT_RULE, 0x6021, npc_read_default_rule, msg_req,   \
 				      npc_mcam_read_base_rule_rsp)      \
+M(NPC_MCAM_GET_MUL_STATS, 0x6022, npc_mcam_mul_stats,                     \
+				   npc_mcam_get_mul_stats_req,              \
+				   npc_mcam_get_mul_stats_rsp)              \
 /* NIX mbox IDs (range 0x8000 - 0xFFFF) */				\
 M(NIX_LF_ALLOC,		0x8000, nix_lf_alloc,				\
 				 nix_lf_alloc_req, nix_lf_alloc_rsp)	\
@@ -2322,6 +2329,8 @@ struct rep_event {
 #define FDB_ADD  BIT_ULL(0)
 #define FDB_DEL	 BIT_ULL(1)
 #define FIB_CMD	 BIT_ULL(2)
+#define FL_ADD	 BIT_ULL(3)
+#define FL_DEL	 BIT_ULL(4)
 
 struct fdb_notify_req {
 	struct  mbox_msghdr hdr;
@@ -2347,22 +2356,6 @@ struct fib_notify_req {
 	struct  mbox_msghdr hdr;
 	u16 cnt;
 	struct fib_entry entry[16];
-};
-
-struct af2swdev_notify_req {
-	struct mbox_msghdr hdr;
-	u64 flags;
-	u32 port_id;
-	u32 switch_id;
-	u8 mac[6];
-	u8 cnt;
-	struct fib_entry entry[16];
-};
-
-struct af2pf_fdb_refresh_req {
-	struct mbox_msghdr hdr;
-	u16 pcifunc;
-	u8 mac[6];
 };
 
 struct flow_msg {
@@ -2406,6 +2399,74 @@ struct flow_msg {
 	u8 icmp_code;
 	__be16 tcp_flags;
 	u16 sq_id;
+};
+
+struct fl_tuple {
+	u32 ip4src;
+	u32 ip4dst;
+	u16 sport;
+	u16 dport;
+	u16 eth_type;
+	u8 proto;
+	u8 smac[16];
+	u8 dmac[16];
+	u64 is_xdev_br : 1;
+	u64 is_indev_br : 1;
+	u16 in_pf;
+	u16 xmit_pf;
+	u64 features;
+	struct {				/* FLOW_ACTION_MANGLE */
+		u32		offset;
+		u32		mask;
+		u32		val;
+	} mangle[6];
+	u8 mangle_valid;
+};
+
+struct fl_notify_req {
+	struct  mbox_msghdr hdr;
+	unsigned long cookie;
+	u64 flags;
+	u64 features;
+	struct fl_tuple tuple;
+};
+
+struct fl_get_stats_req {
+	struct  mbox_msghdr hdr;
+	unsigned long cookie;
+};
+
+struct fl_get_stats_rsp {
+	struct  mbox_msghdr hdr;
+	u64 pkts_diff;
+};
+
+struct af2swdev_notify_req {
+	struct mbox_msghdr hdr;
+	u64 flags;
+	u32 port_id;
+	u32 switch_id;
+	union {
+		struct {
+			u8 mac[6];
+		};
+		struct {
+			u8 cnt;
+			struct fib_entry entry[16];
+		};
+
+		struct {
+			unsigned long cookie;
+			u64 features;
+			struct fl_tuple tuple;
+		};
+	};
+};
+
+struct af2pf_fdb_refresh_req {
+	struct mbox_msghdr hdr;
+	u16 pcifunc;
+	u8 mac[6];
 };
 
 struct npc_install_flow_req {
@@ -2526,6 +2587,18 @@ struct npc_mcam_read_base_rule_rsp {
 struct npc_cn20k_mcam_read_base_rule_rsp {
 	struct mbox_msghdr hdr;
 	struct cn20k_mcam_entry entry;
+};
+
+struct npc_mcam_get_mul_stats_req {
+	struct mbox_msghdr hdr;
+	int cnt;
+	u16 entry[256]; /* mcam entry */
+};
+
+struct npc_mcam_get_mul_stats_rsp {
+	struct mbox_msghdr hdr;
+	int cnt;
+	u64 stat[256];  /* counter stats */
 };
 
 struct npc_mcam_get_stats_req {
@@ -2770,9 +2843,18 @@ struct swdev2af_notify_req {
 	u64 msg_type;
 #define SWDEV2AF_MSG_TYPE_FW_STATUS BIT_ULL(0)
 #define	SWDEV2AF_MSG_TYPE_REFRESH_FDB BIT_ULL(1)
+#define	SWDEV2AF_MSG_TYPE_REFRESH_FL BIT_ULL(2)
 	u16 pcifunc;
-	bool fw_up;
-	u8 mac[ETH_ALEN];
+	union {
+		bool fw_up;
+		u8 mac[ETH_ALEN];
+		struct {
+			int cnt;
+			unsigned long cookie[128];
+			u16 mcam_idx[128][2];
+			u8 dis[128];
+		};
+	};
 };
 
 struct set_vf_perm  {
