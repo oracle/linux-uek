@@ -888,6 +888,9 @@ static bool validate_and_update_reg_offset(struct rvu *rvu,
 		if ((offset & 0xFF00) == CPT_AF_UCCX_CTL(0))
 			return true;
 
+		if ((offset & 0xFFF00) == CPT_AF_GRPX_THR(0, rvu->pdev))
+			return true;
+
 		switch (offset & 0xFF000) {
 		case CPT_AF_EXEX_STS(0):
 		case CPT_AF_EXEX_CTL(0):

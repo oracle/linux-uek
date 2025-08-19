@@ -810,7 +810,8 @@
 #define CPT_AF_CPTCLK_CNT               (0x2a000)
 #define CPT_AF_PF_FUNC                  (0x2b000)
 #define CPT_AF_LFX_PTR_CTL(a)           (0x2c000ull | (u64)(a) << 3)
-#define CPT_AF_GRPX_THR(a)              (0x2d000ull | (u64)(a) << 3)
+#define CPT_AF_GRPX_THR(a, pdev)        ((is_cn20k(pdev) ? (0x2df00ull) : \
+					(0x2d000ull)) | (u64)(a) << 3)
 #define CPT_AF_CTL                      (0x2e000ull)
 #define CPT_AF_XEX_THR(a)               (0x2f000ull | (u64)(a) << 3)
 #define CPT_PRIV_LFX_CFG                (0x41000)
