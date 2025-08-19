@@ -21,6 +21,7 @@ enum {
 
 int sw_nb_register(void);
 int sw_nb_unregister(void);
+bool sw_nb_is_valid_dev(struct net_device *netdev);
 
 int otx2_mbox_up_handler_af2pf_fdb_refresh(struct otx2_nic *pf,
 					   struct af2pf_fdb_refresh_req *req,

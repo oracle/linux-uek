@@ -20,6 +20,7 @@
 #include "sw_nb.h"
 #include "sw_fdb.h"
 #include "sw_fib.h"
+#include "sw_fl.h"
 
 static const char *sw_nb_cmd2str[OTX2_CMD_MAX] = {
 	[OTX2_DEV_UP]  = "OTX2_DEV_UP",
@@ -70,7 +71,7 @@ static int sw_nb_check_slaves(struct net_device *dev,
 	return 0;
 }
 
-static bool sw_nb_is_valid_dev(struct net_device *netdev)
+bool sw_nb_is_valid_dev(struct net_device *netdev)
 {
 	struct netdev_nested_priv priv;
 	struct net_device *br;
@@ -562,6 +563,7 @@ int sw_nb_register(void)
 
 	sw_fdb_init();
 	sw_fib_init();
+	sw_fl_init();
 
 	err = register_switchdev_notifier(&sw_nb_fdb);
 	if (err) {
