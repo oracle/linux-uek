@@ -640,11 +640,7 @@ struct io_kiocb {
 		/* stores selected buf, valid IFF REQ_F_BUFFER_SELECTED is set */
 		struct io_buffer	*kbuf;
 
-		/*
-		 * stores buffer ID for ring provided buffers, valid IFF
-		 * REQ_F_BUFFER_RING is set.
-		 */
-		struct io_buffer_list	*buf_list;
+		UEK_KABI_DEPRECATE(struct io_buffer_list *, buf_list)
 	};
 
 	union {
