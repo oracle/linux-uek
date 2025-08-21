@@ -131,8 +131,7 @@ static inline bool io_kbuf_recycle(struct io_kiocb *req, unsigned issue_flags)
 /* Mapped buffer ring, return io_uring_buf from head */
 #define io_ring_head_to_buf(br, head, mask)	&(br)->bufs[(head) & (mask)]
 
-static inline unsigned int io_put_kbuf(struct io_kiocb *req, int len,
-				       unsigned issue_flags)
+static inline unsigned int io_put_kbuf(struct io_kiocb *req, int len)
 {
 	if (!(req->flags & (REQ_F_BUFFER_RING | REQ_F_BUFFER_SELECTED)))
 		return 0;
@@ -140,7 +139,7 @@ static inline unsigned int io_put_kbuf(struct io_kiocb *req, int len,
 }
 
 static inline unsigned int io_put_kbufs(struct io_kiocb *req, int len,
-					int nbufs, unsigned issue_flags)
+					int nbufs)
 {
 	if (!(req->flags & (REQ_F_BUFFER_RING | REQ_F_BUFFER_SELECTED)))
 		return 0;

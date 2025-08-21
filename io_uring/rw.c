@@ -581,7 +581,7 @@ void io_req_rw_complete(struct io_kiocb *req, struct io_tw_state *ts)
 	io_req_io_end(req);
 
 	if (req->flags & (REQ_F_BUFFER_SELECTED|REQ_F_BUFFER_RING))
-		req->cqe.flags |= io_put_kbuf(req, req->cqe.res, 0);
+		req->cqe.flags |= io_put_kbuf(req, req->cqe.res);
 
 	io_req_rw_cleanup(req, 0);
 	io_req_task_complete(req, ts);
@@ -663,7 +663,7 @@ static int kiocb_done(struct io_kiocb *req, ssize_t ret,
 			 */
 			io_req_io_end(req);
 			io_req_set_res(req, final_ret,
-				       io_put_kbuf(req, ret, issue_flags));
+				       io_put_kbuf(req, ret));
 			io_req_rw_cleanup(req, issue_flags);
 			return IOU_OK;
 		}
@@ -1069,7 +1069,7 @@ int io_read_mshot(struct io_kiocb *req, unsigned int issue_flags)
 		if (ret < 0)
 			req_set_fail(req);
 	} else if (!(req->flags & REQ_F_APOLL_MULTISHOT)) {
-		cflags = io_put_kbuf(req, ret, issue_flags);
+		cflags = io_put_kbuf(req, ret);
 	} else {
 		/*
 		 * Any successful return value will keep the multishot read
@@ -1077,7 +1077,7 @@ int io_read_mshot(struct io_kiocb *req, unsigned int issue_flags)
 		 * we fail to post a CQE, or multishot is no longer set, then
 		 * jump to the termination path. This request is then done.
 		 */
-		cflags = io_put_kbuf(req, ret, issue_flags);
+		cflags = io_put_kbuf(req, ret);
 		rw->len = 0; /* similarly to above, reset len to 0 */
 
 		if (io_req_post_cqe(req, ret, cflags | IORING_CQE_F_MORE)) {
@@ -1289,7 +1289,7 @@ int io_do_iopoll(struct io_ring_ctx *ctx, bool force_nonspin)
 		if (!smp_load_acquire(&req->iopoll_completed))
 			break;
 		nr_events++;
-		req->cqe.flags = io_put_kbuf(req, req->cqe.res, 0);
+		req->cqe.flags = io_put_kbuf(req, req->cqe.res);
 		if (req->opcode != IORING_OP_URING_CMD)
 			io_req_rw_cleanup(req, 0);
 	}
