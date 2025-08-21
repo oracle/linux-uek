@@ -857,9 +857,10 @@ int io_recvmsg_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
  * Returns true if it is actually finished, or false if it should run
  * again (for multishot).
  */
-static inline bool io_recv_finish(struct io_kiocb *req, int *ret,
+static inline bool io_recv_finish(struct io_kiocb *req,
 				  struct io_async_msghdr *kmsg,
-				  bool mshot_finished, unsigned issue_flags)
+				  struct io_br_sel *sel, bool mshot_finished,
+				  unsigned issue_flags)
 {
 	struct io_sr_msg *sr = io_kiocb_to_cmd(req, struct io_sr_msg);
 	unsigned int cflags = 0;
@@ -868,7 +869,7 @@ static inline bool io_recv_finish(struct io_kiocb *req, int *ret,
 		cflags |= IORING_CQE_F_SOCK_NONEMPTY;
 
 	if (sr->flags & IORING_RECVSEND_BUNDLE) {
-		size_t this_ret = *ret - sr->done_io;
+		size_t this_ret = sel->val - sr->done_io;
 
 		cflags |= io_put_kbufs(req, this_ret, req->buf_list, io_bundle_nbufs(kmsg, this_ret));
 		if (sr->retry_flags & IO_SR_MSG_RETRY)
@@ -889,7 +890,7 @@ static inline bool io_recv_finish(struct io_kiocb *req, int *ret,
 			return false;
 		}
 	} else {
-		cflags |= io_put_kbuf(req, *ret, req->buf_list);
+		cflags |= io_put_kbuf(req, sel->val, req->buf_list);
 	}
 
 	/*
@@ -897,7 +898,7 @@ static inline bool io_recv_finish(struct io_kiocb *req, int *ret,
 	 * receive from this socket.
 	 */
 	if ((req->flags & REQ_F_APOLL_MULTISHOT) && !mshot_finished &&
-	    io_req_post_cqe(req, *ret, cflags | IORING_CQE_F_MORE)) {
+	    io_req_post_cqe(req, sel->val, cflags | IORING_CQE_F_MORE)) {
 		int mshot_retry_ret = IOU_ISSUE_SKIP_COMPLETE;
 
 		io_mshot_prep_retry(req, kmsg);
@@ -910,20 +911,20 @@ static inline bool io_recv_finish(struct io_kiocb *req, int *ret,
 			mshot_retry_ret = IOU_REQUEUE;
 		}
 		if (issue_flags & IO_URING_F_MULTISHOT)
-			*ret = mshot_retry_ret;
+			sel->val = mshot_retry_ret;
 		else
-			*ret = -EAGAIN;
+			sel->val = -EAGAIN;
 		return true;
 	}
 
 	/* Finish the request / stop multishot. */
 finish:
-	io_req_set_res(req, *ret, cflags);
+	io_req_set_res(req, sel->val, cflags);
 
 	if (issue_flags & IO_URING_F_MULTISHOT)
-		*ret = IOU_STOP_MULTISHOT;
+		sel->val = IOU_STOP_MULTISHOT;
 	else
-		*ret = IOU_OK;
+		sel->val = IOU_OK;
 	io_req_msg_cleanup(req, issue_flags);
 	return true;
 }
@@ -1090,10 +1091,11 @@ retry_multishot:
 	else
 		io_kbuf_recycle(req, req->buf_list, issue_flags);
 
-	if (!io_recv_finish(req, &ret, kmsg, mshot_finished, issue_flags))
+	sel.val = ret;
+	if (!io_recv_finish(req, kmsg, &sel, mshot_finished, issue_flags))
 		goto retry_multishot;
 
-	return ret;
+	return sel.val;
 }
 
 static int io_recv_buf_select(struct io_kiocb *req, struct io_async_msghdr *kmsg,
@@ -1236,10 +1238,11 @@ out_free:
 	else
 		io_kbuf_recycle(req, req->buf_list, issue_flags);
 
-	if (!io_recv_finish(req, &ret, kmsg, mshot_finished, issue_flags))
+	sel.val = ret;
+	if (!io_recv_finish(req, kmsg, &sel, mshot_finished, issue_flags))
 		goto retry_multishot;
 
-	return ret;
+	return sel.val;
 }
 
 void io_send_zc_cleanup(struct io_kiocb *req)
