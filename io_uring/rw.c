@@ -88,28 +88,28 @@ static int io_iov_buffer_select_prep(struct io_kiocb *req)
 
 static int __io_import_iovec(int ddir, struct io_kiocb *req,
 			     struct io_async_rw *io,
+			     struct io_br_sel *sel,
 			     unsigned int issue_flags)
 {
 	const struct io_issue_def *def = &io_issue_defs[req->opcode];
 	struct io_rw *rw = io_kiocb_to_cmd(req, struct io_rw);
 	struct iovec *iov;
-	void __user *buf;
 	int nr_segs, ret;
 	size_t sqe_len;
 
-	buf = u64_to_user_ptr(rw->addr);
+	sel->addr = u64_to_user_ptr(rw->addr);
 	sqe_len = rw->len;
 
 	if (!def->vectored || req->flags & REQ_F_BUFFER_SELECT) {
 		if (io_do_buffer_select(req)) {
-			buf = io_buffer_select(req, &sqe_len, issue_flags);
-			if (!buf)
+			*sel = io_buffer_select(req, &sqe_len, issue_flags);
+			if (!sel->addr)
 				return -ENOBUFS;
-			rw->addr = (unsigned long) buf;
+			rw->addr = (unsigned long) sel->addr;
 			rw->len = sqe_len;
 		}
 
-		return import_ubuf(ddir, buf, sqe_len, &io->iter);
+		return import_ubuf(ddir, sel->addr, sqe_len, &io->iter);
 	}
 
 	if (io->free_iovec) {
@@ -119,7 +119,7 @@ static int __io_import_iovec(int ddir, struct io_kiocb *req,
 		iov = &io->fast_iov;
 		nr_segs = 1;
 	}
-	ret = __import_iovec(ddir, buf, sqe_len, nr_segs, &iov, &io->iter,
+	ret = __import_iovec(ddir, sel->addr, sqe_len, nr_segs, &iov, &io->iter,
 				req->ctx->compat);
 	if (unlikely(ret < 0))
 		return ret;
@@ -134,11 +134,12 @@ static int __io_import_iovec(int ddir, struct io_kiocb *req,
 
 static inline int io_import_iovec(int rw, struct io_kiocb *req,
 				  struct io_async_rw *io,
+				  struct io_br_sel *sel,
 				  unsigned int issue_flags)
 {
 	int ret;
 
-	ret = __io_import_iovec(rw, req, io, issue_flags);
+	ret = __io_import_iovec(rw, req, io, sel, issue_flags);
 	if (unlikely(ret < 0))
 		return ret;
 
@@ -240,6 +241,7 @@ done:
 static int io_prep_rw_setup(struct io_kiocb *req, int ddir, bool do_import)
 {
 	struct io_async_rw *rw;
+	struct io_br_sel sel = { };
 	int ret;
 
 	if (io_rw_alloc_async(req))
@@ -249,7 +251,7 @@ static int io_prep_rw_setup(struct io_kiocb *req, int ddir, bool do_import)
 		return 0;
 
 	rw = req->async_data;
-	ret = io_import_iovec(ddir, req, rw, 0);
+	ret = io_import_iovec(ddir, req, rw, &sel, 0);
 	if (unlikely(ret < 0))
 		return ret;
 
@@ -904,7 +906,8 @@ static int io_rw_init_file(struct io_kiocb *req, fmode_t mode, int rw_type)
 	return 0;
 }
 
-static int __io_read(struct io_kiocb *req, unsigned int issue_flags)
+static int __io_read(struct io_kiocb *req, struct io_br_sel *sel,
+		     unsigned int issue_flags)
 {
 	bool force_nonblock = issue_flags & IO_URING_F_NONBLOCK;
 	struct io_rw *rw = io_kiocb_to_cmd(req, struct io_rw);
@@ -914,7 +917,7 @@ static int __io_read(struct io_kiocb *req, unsigned int issue_flags)
 	loff_t *ppos;
 
 	if (io_do_buffer_select(req)) {
-		ret = io_import_iovec(ITER_DEST, req, io, issue_flags);
+		ret = io_import_iovec(ITER_DEST, req, io, sel, issue_flags);
 		if (unlikely(ret < 0))
 			return ret;
 	}
@@ -1025,9 +1028,10 @@ done:
 
 int io_read(struct io_kiocb *req, unsigned int issue_flags)
 {
+	struct io_br_sel sel = { };
 	int ret;
 
-	ret = __io_read(req, issue_flags);
+	ret = __io_read(req, &sel, issue_flags);
 	if (ret >= 0)
 		return kiocb_done(req, ret, issue_flags);
 
@@ -1039,6 +1043,7 @@ int io_read(struct io_kiocb *req, unsigned int issue_flags)
 int io_read_mshot(struct io_kiocb *req, unsigned int issue_flags)
 {
 	struct io_rw *rw = io_kiocb_to_cmd(req, struct io_rw);
+	struct io_br_sel sel = { };
 	unsigned int cflags = 0;
 	int ret;
 
@@ -1048,7 +1053,7 @@ int io_read_mshot(struct io_kiocb *req, unsigned int issue_flags)
 	if (!io_file_can_poll(req))
 		return -EBADFD;
 
-	ret = __io_read(req, issue_flags);
+	ret = __io_read(req, &sel, issue_flags);
 
 	/*
 	 * If we get -EAGAIN, recycle our buffer and just let normal poll
