@@ -221,6 +221,10 @@ static int cpt_rx_inline_queue_cfg(struct rvu *rvu, int blkaddr, u8 cptlf,
 	}
 	rvu_write64(rvu, blkaddr, CPT_AF_LFX_CTL2(cptlf), val);
 
+	val = req->pdb_ena ? BIT_ULL(0) : 0;
+	val |= req->cq_remap ? BIT_ULL(1) : 0;
+	rvu_write64(rvu, blkaddr, CPT_AF_CN20K_NIXRXX_CFG(nix_queue), val);
+
 	return 0;
 }
 
