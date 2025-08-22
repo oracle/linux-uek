@@ -1520,12 +1520,12 @@ struct nix_rq_cpt_field_mask_cfg_req {
 		u64 rq_ctx_word_mask[RQ_CTX_MASK_MAX];
 		struct nix_cn10k_rq_ctx_s rq_mask;
 	};
-	struct nix_lf_rx_ipec_cfg1_req {
+	struct nix_lf_rx_ipsec_cfg1_inline_replay_req {
 		u32 spb_cpt_aura;
 		u8 rq_mask_enable;
 		u8 spb_cpt_sizem1;
 		u8 spb_cpt_enable;
-	} ipsec_cfg1;
+	} ipsec_cfg1_inline_replay;
 };
 
 struct nix_rx_mode {

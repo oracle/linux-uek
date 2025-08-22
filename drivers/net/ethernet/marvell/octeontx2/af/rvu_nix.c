@@ -5743,21 +5743,28 @@ void rvu_nix_lf_teardown(struct rvu *rvu, u16 pcifunc, int blkaddr, int nixlf)
 
 	nix_free_all_bandprof(rvu, pcifunc);
 
-	sa_base = rvu_read64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_SA_BASE(nixlf));
-	if (FIELD_GET(RX_SA_BASE, sa_base)) {
-		err = rvu_cpt_ctx_flush(rvu, pcifunc);
-		if (err)
-			dev_err(rvu->dev,
-				"CPT ctx flush failed with error: %d\n", err);
-	}
-	if (is_block_implemented(rvu->hw, BLKADDR_CPT0)) {
-		/* reset the configuration related to inline ipsec */
-		rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_CFG0(nixlf),
-			    0x0);
-		rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_CFG1(nixlf),
-			    0x0);
-		rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_SA_BASE(nixlf),
-			    0x0);
+	/* In CN20K, inline ipsec registers modified; this is handled
+	 * in the CN20K-specific teardown path.
+	 */
+	if (!is_cn20k(rvu->pdev)) {
+		sa_base = rvu_read64(rvu, blkaddr,
+				     NIX_AF_LFX_RX_IPSEC_SA_BASE(nixlf));
+		if (FIELD_GET(RX_SA_BASE, sa_base)) {
+			err = rvu_cpt_ctx_flush(rvu, pcifunc);
+			if (err)
+				dev_err(rvu->dev,
+					"CPT ctx flush failed with error: %d\n",
+					err);
+		}
+		if (is_block_implemented(rvu->hw, BLKADDR_CPT0)) {
+			/* reset the configuration related to inline ipsec */
+			rvu_write64(rvu, blkaddr,
+				    NIX_AF_LFX_RX_IPSEC_CFG0(nixlf), 0x0);
+			rvu_write64(rvu, blkaddr,
+				    NIX_AF_LFX_RX_IPSEC_CFG1(nixlf), 0x0);
+			rvu_write64(rvu, blkaddr,
+				    NIX_AF_LFX_RX_IPSEC_SA_BASE(nixlf), 0x0);
+		}
 	}
 }
 
@@ -6764,36 +6771,64 @@ static inline void configure_rq_mask(struct rvu *rvu, int blkaddr, int nixlf,
 static inline void configure_rq_enable(struct rvu *rvu, int blkaddr, int nixlf,
 				       bool enable)
 {
+	u64 rq_mask;
+	u64 reg;
 	u64 cfg;
 
-	cfg = rvu_read64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_CFG1(nixlf));
-	if (enable)
-		cfg |= BIT_ULL(43);
-	else
-		cfg &= ~BIT_ULL(43);
+	if (is_cn20k(rvu->pdev)) {
+		reg = NIX_AF_CN20K_LFX_RX_INLINE_REPLAY(nixlf);
+		rq_mask = BIT_ULL(1);
+	} else {
+		reg = NIX_AF_LFX_RX_IPSEC_CFG1(nixlf);
+		rq_mask = BIT_ULL(43);
+	}
 
-	rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_CFG1(nixlf), cfg);
+	cfg = rvu_read64(rvu, blkaddr, reg);
+	if (enable)
+		cfg |= rq_mask;
+	else
+		cfg &= ~rq_mask;
+
+	rvu_write64(rvu, blkaddr, reg, cfg);
 }
 
 static inline void
 configure_spb_cpt(struct rvu *rvu, int blkaddr, int nixlf,
 		  struct nix_rq_cpt_field_mask_cfg_req *req, bool enable)
 {
+	u64 spb_cpt_sizem1_mask;
+	u64 spb_cpt_enable_bit;
+	u64 spb_cpt_aura_mask;
+	u64 reg;
 	u64 cfg;
 
-	cfg = rvu_read64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_CFG1(nixlf));
-	if (enable) {
-		cfg |= BIT_ULL(37);
-		cfg &= ~GENMASK_ULL(42, 38);
-		cfg |= ((u64)req->ipsec_cfg1.spb_cpt_sizem1 << 38);
-		cfg &= ~GENMASK_ULL(63, 44);
-		cfg |= ((u64)req->ipsec_cfg1.spb_cpt_aura << 44);
+	if (is_cn20k(rvu->pdev)) {
+		reg = NIX_AF_CN20K_LFX_RX_INLINE_REPLAY(nixlf);
+		spb_cpt_sizem1_mask = GENMASK_ULL(12, 8);
+		spb_cpt_enable_bit = BIT_ULL(0);
+		spb_cpt_aura_mask = GENMASK_ULL(35, 16);
 	} else {
-		cfg &= ~BIT_ULL(37);
-		cfg &= ~GENMASK_ULL(42, 38);
-		cfg &= ~GENMASK_ULL(63, 44);
+		reg = NIX_AF_LFX_RX_IPSEC_CFG1(nixlf);
+		spb_cpt_sizem1_mask = GENMASK_ULL(42, 38);
+		spb_cpt_enable_bit = BIT_ULL(37);
+		spb_cpt_aura_mask = GENMASK_ULL(63, 44);
 	}
-	rvu_write64(rvu, blkaddr, NIX_AF_LFX_RX_IPSEC_CFG1(nixlf), cfg);
+
+	cfg = rvu_read64(rvu, blkaddr, reg);
+	if (enable) {
+		cfg |= spb_cpt_enable_bit;
+		cfg &= ~spb_cpt_sizem1_mask;
+		cfg |= ((u64)req->ipsec_cfg1_inline_replay.spb_cpt_sizem1 *
+			(spb_cpt_sizem1_mask & ~(spb_cpt_sizem1_mask - 1)));
+		cfg &= ~spb_cpt_aura_mask;
+		cfg |= ((u64)req->ipsec_cfg1_inline_replay.spb_cpt_aura *
+			(spb_cpt_aura_mask & ~(spb_cpt_aura_mask - 1)));
+	} else {
+		cfg &= ~spb_cpt_enable_bit;
+		cfg &= ~spb_cpt_sizem1_mask;
+		cfg &= ~spb_cpt_aura_mask;
+	}
+	rvu_write64(rvu, blkaddr, reg, cfg);
 }
 
 static
@@ -6863,21 +6898,19 @@ int rvu_mbox_handler_nix_lf_inline_rq_cfg(struct rvu *rvu,
 	if (!hw->cap.second_cpt_pass)
 		return NIX_AF_ERR_INVALID_NIXBLK;
 
-	if (req->ipsec_cfg1.rq_mask_enable) {
+	if (req->ipsec_cfg1_inline_replay.rq_mask_enable) {
 		rq_mask = nix_inline_rq_mask_alloc(rvu, req, nix_hw, blkaddr);
 		if (rq_mask < 0)
 			return NIX_AF_ERR_RQ_CPT_MASK;
 	}
 
 	configure_rq_mask(rvu, blkaddr, nixlf, rq_mask,
-			  req->ipsec_cfg1.rq_mask_enable);
+			  req->ipsec_cfg1_inline_replay.rq_mask_enable);
 
-	if (!is_cn20k(rvu->pdev)) {
-		configure_rq_enable(rvu, blkaddr, nixlf,
-				    req->ipsec_cfg1.rq_mask_enable);
-		configure_spb_cpt(rvu, blkaddr, nixlf, req,
-				  req->ipsec_cfg1.spb_cpt_enable);
-	}
+	configure_rq_enable(rvu, blkaddr, nixlf,
+			    req->ipsec_cfg1_inline_replay.rq_mask_enable);
+	configure_spb_cpt(rvu, blkaddr, nixlf, req,
+			  req->ipsec_cfg1_inline_replay.spb_cpt_enable);
 
 	return 0;
 }

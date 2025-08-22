@@ -314,6 +314,8 @@ int rvu_nix_cn20k_free_resources(struct rvu *rvu, u16 pcifunc)
 	mutex_lock(&nix_cn20k_hw->rx_inl_lock);
 	nix_free_rx_inl_profiles(rvu, pcifunc, nix_cn20k_hw, blkaddr, nixlf);
 	nix_free_rx_inl_queues(rvu, pcifunc);
+	rvu_write64(rvu, blkaddr, NIX_AF_CN20K_LFX_RX_INLINE_REPLAY(nixlf),
+		    0x0);
 	mutex_unlock(&nix_cn20k_hw->rx_inl_lock);
 
 	return 0;

@@ -428,6 +428,7 @@
 #define NIX_AF_LFX_CINTS_BASE(a)	(0x4130 | (a) << 17)
 #define NIX_AF_LFX_RX_IPSEC_CFG0(a)	(0x4140 | (a) << 17)
 #define NIX_AF_LFX_RX_IPSEC_CFG1(a)	(0x4148 | (a) << 17)
+#define NIX_AF_CN20K_LFX_RX_INLINE_REPLAY(a)	(0x4190 | (a) << 17)
 #define NIX_AF_LFX_RX_IPSEC_DYNO_CFG(a)	(0x4150 | (a) << 17)
 #define NIX_AF_LFX_RX_IPSEC_DYNO_BASE(a)	(0x4158 | (a) << 17)
 #define NIX_AF_LFX_RX_IPSEC_SA_BASE(a)	(0x4170 | (a) << 17)
