@@ -2227,6 +2227,9 @@ int rvu_mbox_handler_get_hw_cap(struct rvu *rvu, struct msg_req *req,
 	if (rvu->mcs_blk_cnt)
 		rsp->hw_caps = HW_CAP_MACSEC;
 
+	if (is_cn20k(rvu->pdev))
+		rsp->hw_caps |= HW_CAP_MACSEC_SCI_MATCH;
+
 	return 0;
 }
 

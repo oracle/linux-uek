@@ -475,6 +475,11 @@ enum mcs_devtype {
 	offset += (a) * 0x10ull;		\
 	offset; })
 
+/* Only available in cn20k */
+#define MCSX_CPM_RX_SLAVE_LABEL_CAM_DATAX(a)	(0x1c688ull + (a) * 8ull)
+#define MCSX_CPM_RX_SLAVE_LABEL_CAM_MASKX(a)	(0x1ca88ull + (a) * 8ull)
+#define MCSX_CPM_RX_SLAVE_LABEL_TCAM_ENABLEX(a)	(0x1c678ull + (a) * 8ull)
+
 /* TX registers */
 #define MCSX_CPM_TX_SLAVE_FLOWID_TCAM_DATAX(a, b) ({	\
 	u64 offset;					\

@@ -350,12 +350,30 @@ void mcs_ena_dis_sc_cam_entry(struct mcs *mcs, int sc_id, int ena)
 		val = mcs_reg_read(mcs, reg) & ~BIT_ULL(sc_id);
 
 	mcs_reg_write(mcs, reg, val);
+
+	if (!is_cn20k(mcs->pdev))
+		return;
+
+	reg = MCSX_CPM_RX_SLAVE_LABEL_TCAM_ENABLEX(0);
+	if (sc_id > 63)
+		reg = MCSX_CPM_RX_SLAVE_LABEL_TCAM_ENABLEX(1);
+
+	val = mcs_reg_read(mcs, reg);
+	val = ena ? val | BIT_ULL(sc_id) : val & ~BIT_ULL(sc_id);
+
+	mcs_reg_write(mcs, reg, val);
 }
 
 void mcs_rx_sc_cam_write(struct mcs *mcs, u64 sci, u64 secy, int sc_id)
 {
 	mcs_reg_write(mcs, MCSX_CPM_RX_SLAVE_SC_CAMX(0, sc_id), sci);
 	mcs_reg_write(mcs, MCSX_CPM_RX_SLAVE_SC_CAMX(1, sc_id), secy);
+
+	if (is_cn20k(mcs->pdev)) {
+		mcs_reg_write(mcs, MCSX_CPM_RX_SLAVE_LABEL_CAM_DATAX(sc_id), sci);
+		mcs_reg_write(mcs, MCSX_CPM_RX_SLAVE_LABEL_CAM_MASKX(sc_id), 0ULL);
+	}
+
 	/* Enable SC CAM */
 	mcs_ena_dis_sc_cam_entry(mcs, sc_id, true);
 }
@@ -468,6 +486,13 @@ int mcs_install_flowid_bypass_entry(struct mcs *mcs)
 	secy_id = mcs->hw->secy_entries - MCS_RSRC_RSVD_CNT;
 	__set_bit(secy_id, mcs->rx.secy.bmap);
 	__set_bit(secy_id, mcs->tx.secy.bmap);
+
+	/* On CN20KA, MCS hardware sends the SECY:SC metadata in NIX_PARSE_S
+	 * structure of CQE. But there is no indication of whether the metadata
+	 * is valid or not to software. Hence reserve 0th SC so that software
+	 * can treat zero SC as invalid
+	 */
+	__set_bit(0, mcs->rx.sc.bmap);
 
 	/* Set validate frames to NULL and enable control port */
 	plcy = 0x7ull;

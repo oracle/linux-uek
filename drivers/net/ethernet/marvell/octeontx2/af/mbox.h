@@ -598,6 +598,7 @@ struct get_hw_cap_rsp {
 	u8 nix_shaping;		     /* Is shaping and coloring supported */
 	u8 npc_hash_extract;	/* Is hash extract supported */
 #define HW_CAP_MACSEC		BIT_ULL(1)
+#define HW_CAP_MACSEC_SCI_MATCH	BIT_ULL(2)
 	u64 hw_caps;
 };
 
