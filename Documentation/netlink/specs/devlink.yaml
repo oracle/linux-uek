@@ -727,7 +727,10 @@ attribute-sets:
       -
         name: region-direct
         type: flag
-
+      -
+        name: health-reporter-burst-period
+        type: u64
+        doc: Time (in msec) for recoveries before starting the grace period.
   -
     name: dl-dev-stats
     subset-of: devlink
@@ -1711,6 +1714,7 @@ operations:
             - health-reporter-graceful-period
             - health-reporter-auto-recover
             - health-reporter-auto-dump
+            - health-reporter-burst-period
 
     -
       name: health-reporter-recover
