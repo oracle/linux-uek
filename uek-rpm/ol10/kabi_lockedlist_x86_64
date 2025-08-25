@@ -8,7 +8,9 @@
 	__blk_alloc_disk
 	__blk_mq_alloc_disk
 	__block_write_full_folio
+	__bread_gfp
 	__break_lease
+	__brelse
 	__check_object_size
 	__const_udelay
 	__cpu_active_mask
@@ -273,6 +275,7 @@
 	inode_init_once
 	inode_newsize_ok
 	int_to_scsilun
+	invalidate_bdev
 	invalidate_inode_buffers
 	invalidate_mapping_pages
 	io_schedule
@@ -341,6 +344,7 @@
 	mempool_free
 	mempool_free_slab
 	memset
+	mntget
 	mntput
 	mod_timer
 	module_put
@@ -391,6 +395,8 @@
 	phys_base
 	physical_mask
 	pid_task
+	pipe_lock
+	pipe_unlock
 	posix_lock_file
 	posix_test_lock
 	prepare_creds
@@ -534,6 +540,7 @@
 	vfs_create_mount
 	vfs_fsync
 	vfs_fsync_range
+	vfs_getattr
 	vfs_iter_read
 	vfs_iter_write
 	vfs_llseek
