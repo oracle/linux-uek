@@ -162,6 +162,7 @@ hws_pool_buddy_get_next_buddy(struct mlx5hws_pool *pool, int idx,
 		mlx5hws_err(pool->ctx, "Failed to create resource type: %d: size %d index: %d\n",
 			    pool->type, new_buddy_size, idx);
 		mlx5hws_buddy_cleanup(buddy);
+		kfree(buddy);
 		return NULL;
 	}
 
