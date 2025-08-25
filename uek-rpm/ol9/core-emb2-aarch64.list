@@ -12,7 +12,6 @@ kernel/crypto/cfb.ko
 kernel/crypto/cmac.ko
 kernel/crypto/crc32_generic.ko
 kernel/crypto/crypto_user.ko
-kernel/crypto/dh_generic.ko
 kernel/crypto/ecdh_generic.ko
 kernel/crypto/md4.ko
 kernel/crypto/ofb.ko
