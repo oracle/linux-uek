@@ -2205,6 +2205,9 @@ int npc_defrag_move_vdx_to_free(struct rvu *rvu,
 	u16 pcifunc;
 	int blkaddr;
 	void *map;
+	u8 bank;
+	u16 midx;
+	u64 stats;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 
@@ -2230,8 +2233,19 @@ int npc_defrag_move_vdx_to_free(struct rvu *rvu,
 		if (rc)
 			return rc;
 
+		midx = old_midx % mcam->banksize;
+		bank = old_midx / mcam->banksize;
+		stats = rvu_read64(rvu, blkaddr,
+				   NPC_AF_CN20K_MCAMEX_BANKX_STAT_EXT(midx, bank));
+
 		npc_cn20k_enable_mcam_entry(rvu, blkaddr, old_midx, false);
 		npc_cn20k_copy_mcam_entry(rvu, blkaddr, old_midx, new_midx);
+
+		midx = new_midx % mcam->banksize;
+		bank = new_midx / mcam->banksize;
+		rvu_write64(rvu, blkaddr,
+			    NPC_AF_CN20K_MCAMEX_BANKX_STAT_EXT(midx, bank), stats);
+
 		npc_cn20k_enable_mcam_entry(rvu, blkaddr, new_midx, true);
 
 		/* Free the old mcam idx */
