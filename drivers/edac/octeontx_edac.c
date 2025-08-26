@@ -7,6 +7,7 @@
  */
 
 #include <linux/of_address.h>
+#include <linux/cper.h>
 #include <linux/arm_sdei.h>
 #include <linux/arm-smccc.h>
 #include <linux/sys_soc.h>
@@ -73,6 +74,12 @@ static const struct of_device_id gic_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, gic_of_match);
 
+static const struct of_device_id ea_of_match[] = {
+	{.name = "ea",},
+	{},
+};
+MODULE_DEVICE_TABLE(of, ea_of_match);
+
 static const struct pci_device_id octeontx_edac_pci_tbl[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, PCI_DEVICE_ID_OCTEONTX2_LMC) },
 	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, PCI_DEVICE_ID_OCTEONTX2_MCC) },
@@ -81,6 +88,13 @@ static const struct pci_device_id octeontx_edac_pci_tbl[] = {
 };
 
 static struct octeontx_ghes_list __ro_after_init ghes_list;
+
+static const char * const severity_strs[] = {
+	"recoverable",
+	"fatal",
+	"corrected",
+	"info",
+};
 
 #define otx_printk(level, fmt, arg...) edac_printk(level, "octeontx", fmt, ##arg)
 
@@ -449,6 +463,41 @@ static void octeontx_edac_cpu_msg(struct octeontx_ghes_record *rec, char msg[SIZ
 	msg[n] = '\0';
 }
 
+static void octeontx_edac_ea_msg(struct octeontx_ghes_record *rec, char msg[SIZE])
+{
+	struct cper_sec_proc_arm *desc = NULL;
+	struct cper_arm_err_info *info = NULL;
+	u32 len = SIZE;
+	u32 n = 0;
+	char pfx[64];
+
+	pr_err("Error records :\n");
+	snprintf(pfx, sizeof(pfx), "%s ", HW_ERR);
+
+	pr_err("%s event severity: %s\n", pfx,
+	       rec->error_severity < ARRAY_SIZE(severity_strs) ?
+	       severity_strs[rec->error_severity] : "unknown");
+
+	pr_err("%s fru_text: %.20s\n", pfx, rec->msg);
+
+	desc = &rec->core.desc;
+	info = &rec->core.info;
+
+	cper_print_proc_arm(pfx, desc);
+
+	n += scnprintf(msg + n, len - n, "%s ", rec->msg);
+	n += scnprintf(msg + n, len - n, "midr=0x%llx ", desc->midr);
+	if (desc->validation_bits & CPER_ARM_VALID_MPIDR)
+		n += scnprintf(msg + n, len - n, "mpidr=0x%llx ", desc->mpidr);
+	if (info->validation_bits & CPER_ARM_INFO_VALID_PHYSICAL_ADDR)
+		n += scnprintf(msg + n, len - n, "paddr=0x%llx ", info->physical_fault_addr);
+	if (info->validation_bits & CPER_ARM_INFO_VALID_VIRT_ADDR)
+		n += scnprintf(msg + n, len - n, "vaddr=0x%llx ", info->virt_fault_addr);
+	if (info->validation_bits & CPER_ARM_INFO_VALID_ERR_INFO)
+		n += scnprintf(msg + n, len - n, "info=0x%llx ", info->error_info);
+	msg[n] = '\0';
+}
+
 static void octeontx_edac_mc_wq(struct work_struct *work)
 {
 	struct delayed_work *dw = to_delayed_work(work);
@@ -541,6 +590,8 @@ loop:
 		octeontx_edac_cpu_msg(&rec, msg);
 		if (kstrtoint(&ghes->name[4], 10, &inst) || inst > 255)
 			inst = 0;
+	} else if (!strcmp(ghes->name, ea_of_match[0].name)) {
+		octeontx_edac_ea_msg(&rec, msg);
 	}
 
 	++tail;
@@ -991,6 +1042,20 @@ static int octeontx_gic_probe(struct platform_device *pdev)
 	return ret;
 }
 
+static int octeontx_ea_probe(struct platform_device *pdev)
+{
+	struct octeontx_edac *ghes = NULL;
+	int ret = 0;
+
+	ret = octeontx_edac_map_resource(pdev, &ghes, NULL);
+	if (ret)
+		return ret;
+
+	ret = octeontx_edac_device_init(pdev, ghes, "ea", ghes->name);
+
+	return ret;
+}
+
 static void octeontx_device_remove(struct platform_device *pdev)
 {
 	struct edac_device_ctl_info *edac_dev = platform_get_drvdata(pdev);
@@ -1086,6 +1151,15 @@ static struct platform_driver gic_edac_drv = {
 	}
 };
 
+static struct platform_driver ea_edac_drv = {
+	.probe = octeontx_ea_probe,
+	.remove = octeontx_device_remove,
+	.driver = {
+		.name = "ea_edac",
+		.of_match_table = ea_of_match,
+	}
+};
+
 static int __init octeontx_edac_init(void)
 {
 	struct platform_device *mdc = NULL;
@@ -1094,6 +1168,7 @@ static int __init octeontx_edac_init(void)
 	struct platform_device *mcc = NULL;
 	struct platform_device *cpu = NULL;
 	struct platform_device *gic = NULL;
+	struct platform_device *ea = NULL;
 	int ret = 0;
 
 	octeontx_edac_msix_init();
@@ -1139,6 +1214,15 @@ static int __init octeontx_edac_init(void)
 			pr_err("Unable register %s %ld\n", gic_edac_drv.driver.name, PTR_ERR(gic));
 			platform_driver_unregister(&gic_edac_drv);
 		}
+
+		ret = platform_driver_register(&ea_edac_drv);
+		if (!ret)
+			ea = platform_device_register_simple(ea_edac_drv.driver.name,
+							     PLATFORM_DEVID_NONE, NULL, 0);
+		if (!ret && IS_ERR(ea)) {
+			pr_err("Unable register %s %ld\n", ea_edac_drv.driver.name, PTR_ERR(ea));
+			platform_driver_unregister(&ea_edac_drv);
+		}
 	} else {
 		ret = platform_driver_register(&mcc_edac_drv);
 		if (!ret)
@@ -1178,6 +1262,7 @@ static void __exit octeontx_edac_exit(void)
 		platform_driver_unregister(&tad_edac_drv);
 		platform_driver_unregister(&cpu_edac_drv);
 		platform_driver_unregister(&gic_edac_drv);
+		platform_driver_unregister(&ea_edac_drv);
 	} else {
 		platform_driver_unregister(&mcc_edac_drv);
 	}
