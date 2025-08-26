@@ -46,9 +46,72 @@ struct cper_sec_platform_err {
 	} perr;
 };
 
+struct apa_wdog_info {
+	uint64_t core_id;
+	uint64_t apa_wdog_int_w1c;
+	uint64_t apa_wdog_core_diag;
+	uint64_t apa_wdog_struct_crd_diag;
+	uint64_t apa_wdog_struct_txnid_diag;
+	uint64_t apa_wdog_struct_rqb_diag;
+	uint64_t apa_wdog_struct_dat_diag;
+};
+
+struct vendor_info {
+	struct apa_wdog_info apa_wdog_data;
+};
+
 struct processor_error {
 	struct cper_sec_proc_arm desc;
 	struct cper_arm_err_info info;
+	struct cper_arm_ctx_info ctx;
+	uint64_t regs[32];
+	struct cper_arm_ctx_info el1ctx;
+	uint64_t elr_el1;
+	uint64_t esr_el1;
+	uint64_t far_el1;
+	uint64_t isr_el1;
+	uint64_t mair_el1;
+	uint64_t midr_el1;
+	uint64_t mpidr_el1;
+	uint64_t sctlr_el1;
+	uint64_t sp_el0;
+	uint64_t sp_el1;
+	uint64_t spsr_el1;
+	uint64_t tcr_el1;
+	uint64_t tpidr_el0;
+	uint64_t tpidr_el1;
+	uint64_t tpidrro_el0;
+	uint64_t ttbr0_el1;
+	uint64_t ttbr1_el1;
+	struct cper_arm_ctx_info el2ctx;
+	uint64_t elr_el2;
+	uint64_t esr_el2;
+	uint64_t far_el2;
+	uint64_t hacr_el2;
+	uint64_t hcr_el2;
+	uint64_t hpfar_el2;
+	uint64_t mair_el2;
+	uint64_t sctlr_el2;
+	uint64_t sp_el2;
+	uint64_t spsr_el2;
+	uint64_t tcr_el2;
+	uint64_t tpidr_el2;
+	uint64_t ttbr0_el2;
+	uint64_t vtcr_el2;
+	uint64_t vttbr_el2;
+
+	struct cper_arm_ctx_info el3ctx;
+	uint64_t elr_el3;
+	uint64_t esr_el3;
+	uint64_t far_el3;
+	uint64_t mair_el3;
+	uint64_t sctlr_el3;
+	uint64_t sp_el3;
+	uint64_t spsr_el3;
+	uint64_t tcr_el3;
+	uint64_t tpidr_el3;
+	uint64_t ttbr0_el3;
+	struct vendor_info vendor_data;
 };
 
 struct octeontx_ghes_record {
