@@ -65,7 +65,7 @@ out:
 	return rc;
 }
 
-void sw_fdb_wq_handler(struct work_struct *work)
+static void sw_fdb_wq_handler(struct work_struct *work)
 {
 	struct sw_fdb_list_entry *entry;
 	LIST_HEAD(tlist);

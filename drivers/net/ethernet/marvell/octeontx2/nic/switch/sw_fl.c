@@ -66,7 +66,7 @@ out:
 	return rc;
 }
 
-void sw_fl_wq_handler(struct work_struct *work)
+static void sw_fl_wq_handler(struct work_struct *work)
 {
 	struct sw_fl_list_entry *entry;
 	LIST_HEAD(tlist);
@@ -91,8 +91,9 @@ void sw_fl_wq_handler(struct work_struct *work)
 	spin_unlock(&sw_fl_lock);
 }
 
-int sw_fl_add_to_list(struct otx2_nic *pf, struct fl_tuple *tuple,
-		      unsigned long cookie, bool add_fl)
+static int
+sw_fl_add_to_list(struct otx2_nic *pf, struct fl_tuple *tuple,
+		  unsigned long cookie, bool add_fl)
 {
 	struct sw_fl_list_entry *entry;
 
