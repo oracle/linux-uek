@@ -256,6 +256,9 @@ int rvu_mbox_handler_tim_config_ring(struct rvu *rvu,
 	if (lf < 0)
 		return TIM_AF_LF_INVALID;
 
+	if (is_rvu_otx2(rvu) && req->priority)
+		return TIM_AF_INVALID_PRIORITY_VALUE;
+
 	/* Check if extended interval is supported. */
 	regval = rvu_read64(rvu, blkaddr, TIM_AF_CONST);
 	intvl_ext = !!(regval & BIT(25));
@@ -354,6 +357,9 @@ int rvu_mbox_handler_tim_config_ring(struct rvu *rvu,
 		regval |= (((u64)req->clocksource) << 51);
 	else
 		regval |= (((u64)req->clocksource) << 40);
+
+	if (req->priority)
+		regval |= ((u64)(req->priority) << 49);
 
 	rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf), regval);
 
