@@ -531,6 +531,8 @@ int sw_nb_unregister(void)
 {
 	int err;
 
+	sw_fl_deinit();
+	sw_fib_deinit();
 	sw_fdb_deinit();
 
 	err = unregister_switchdev_notifier(&sw_nb_fdb);
