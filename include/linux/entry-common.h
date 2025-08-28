@@ -172,7 +172,11 @@ static __always_inline void syscall_exit_to_user_mode_work(struct pt_regs *regs)
 	if (unlikely(work & SYSCALL_WORK_EXIT))
 		syscall_exit_work(regs, work);
 	local_irq_disable_exit_to_user();
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 	exit_to_user_mode_prepare(regs, false);
+#else
+	exit_to_user_mode_prepare(regs);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 }
 
 /**

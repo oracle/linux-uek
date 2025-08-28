@@ -100,7 +100,11 @@ static __always_inline void arm64_enter_from_user_mode(struct pt_regs *regs)
 static __always_inline void arm64_exit_to_user_mode(struct pt_regs *regs)
 {
 	local_irq_disable();
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 	exit_to_user_mode_prepare(regs, false);
+#else
+	exit_to_user_mode_prepare(regs);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	local_daif_mask();
 	mte_check_tfsr_exit();
 	exit_to_user_mode();
