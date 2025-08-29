@@ -61,3 +61,11 @@ config OCTEONTX2_BPHY_RFOE_NETDEV
 	  This driver provides support for processing packets received/sent by
 	  BPHY RFOE MHAB such as eCPRI control, PTP and other ethernet packets
 	  in Linux kernel. The rest of packets are processed by ODP application.
+
+config OCTEONTX2_BPHY_CNF20K_CPRI_PF
+       tristate "Marvell OcteonTX2 BPHY CNF20K CPRI PF driver"
+       help
+         This driver supports Marvell's OcteonTX2 BPHY CNF20K CPRI
+         Physical Function.The PF driver is responsible for initializing
+         the cpri netdev for CNF20K.
+         This option is disabled by default.

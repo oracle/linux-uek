@@ -71,9 +71,9 @@ static void cnf20k_cpri_get_drvinfo(struct net_device *netdev,
 	snprintf(p->driver, sizeof(p->driver), "cnf20k_cpri {cpri%d lmac%d}",
 		 priv->cpri_num, priv->lmac_id);
 	if (priv->pdev)
-		strlcpy(p->bus_info, pci_name(priv->pdev), sizeof(p->bus_info));
+		strscpy(p->bus_info, pci_name(priv->pdev), sizeof(p->bus_info));
 	else
-		strlcpy(p->bus_info, "unknown", sizeof(p->bus_info));
+		strscpy(p->bus_info, "unknown", sizeof(p->bus_info));
 }
 
 static u32 cnf20k_cpri_get_msglevel(struct net_device *netdev)

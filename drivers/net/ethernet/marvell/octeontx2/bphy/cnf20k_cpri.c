@@ -1546,3 +1546,4 @@ module_exit(cpri_cleanup_module);
 
 MODULE_AUTHOR("Viswajth Murali <viswajithm@marvell.com>");
 MODULE_DESCRIPTION(DRV_STRING);
+MODULE_LICENSE("GPL v2");
