@@ -896,7 +896,7 @@ config CAVIUM_ERRATUM_36890
 
 config QCOM_FALKOR_ERRATUM_1003
 	bool "Falkor E1003: Incorrect translation due to ASID change"
-	default y
+	default n
 	help
 	  On Falkor v1, an incorrect ASID may be cached in the TLB when ASID
 	  and BADDR are changed together in TTBRx_EL1. Since we keep the ASID
