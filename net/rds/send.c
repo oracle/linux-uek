@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2024, Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2025, Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -1741,6 +1741,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 		goto out;
 	}
 
+	smp_rmb(); /* Pairs with smp_mb() in rds_conn_destroy() */
 	if (conn->c_destroy_in_prog) {
 		ret = -EAGAIN;
 		reason = "destroy pending";
