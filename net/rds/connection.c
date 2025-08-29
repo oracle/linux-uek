@@ -1475,6 +1475,7 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err)
 
 	rds_conn_path_state_change(cp, RDS_CONN_ERROR, reason, err);
 
+	smp_rmb(); /* Pairs with smp_mb() in rds_conn_destroy() */
 	if (reason != DR_CONN_DESTROY && conn->c_destroy_in_prog) {
 		trace_rds_queue_noop(conn, cp, NULL, NULL, 0,
 				     "not queueing work, destroy in progress");
@@ -1557,7 +1558,7 @@ void rds_conn_faddr_ha_changed(const struct in6_addr *faddr,
 	rcu_read_lock();
 
 	hlist_for_each_entry_rcu(conn, head, c_faddr_node) {
-		smp_mb();
+		smp_rmb(); /* Pairs with smp_mb() in rds_conn_destroy() */
 		if (conn->c_destroy_in_prog)
 			continue;
 
