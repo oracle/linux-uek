@@ -733,7 +733,7 @@ void rds_conn_destroy(struct rds_connection *conn, int shutdown)
 	trace_rds_conn_destroy(NULL, conn, NULL, NULL, 0);
 
 	conn->c_destroy_in_prog = 1;
-	smp_mb();
+	smp_rmb(); /* Pairs with smp_mb() in rds_conn_destroy() */
 	cancel_work_sync(&conn->c_ha_changed.work);
 	cancel_delayed_work_sync(&conn->c_dr_sock_cancel_w);
 
@@ -1383,7 +1383,7 @@ void rds_conn_faddr_ha_changed(const struct in6_addr *faddr,
 	rcu_read_lock();
 
 	hlist_for_each_entry_rcu(conn, head, c_faddr_node) {
-		smp_mb();
+		smp_rmb(); /* Pairs with smp_mb() in rds_conn_destroy() */
 		if (conn->c_destroy_in_prog)
 			continue;
 

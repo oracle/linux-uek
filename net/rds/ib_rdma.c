@@ -524,6 +524,7 @@ int rds_ib_add_conn(struct rds_ib_device *rds_ibdev,
 	/* Note that old requests may still be processing while the module or
 	 * device is going away or the connection is being destroyed.
 	 */
+	smp_rmb(); /* Pairs with smp_mb() in rds_conn_destroy() */
 	if (rds_ibdev->rid_mod_unload || rds_ibdev->rid_dev_rem ||
 	    conn->c_destroy_in_prog) {
 		spin_unlock(&rds_ibdev->spinlock);

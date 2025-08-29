@@ -197,7 +197,7 @@ void rds_tcp_conn_slots_available(struct rds_connection *conn, bool fan_out)
 	struct rds_tcp_connection *tc;
 	struct rds_tcp_net *rtn;
 
-	smp_rmb();
+	smp_rmb(); /* Pairs with smp_mb() in rds_conn_destroy() */
 	if (conn->c_destroy_in_prog)
 		return;
 

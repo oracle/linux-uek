@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006, 2020 Oracle and/or its affiliates.
+ * Copyright (c) 2006, 2025 Oracle and/or its affiliates.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -264,6 +264,7 @@ void rds_tcp_conn_path_shutdown(struct rds_conn_path *cp)
 			       "shutting down", 0);
 
 	if (sock) {
+		smp_rmb(); /* Pairs with smp_mb() in rds_conn_destroy() */
 		if (cp->cp_conn->c_destroy_in_prog)
 			rds_tcp_set_linger(sock);
 
