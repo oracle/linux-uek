@@ -237,6 +237,9 @@ int rvu_mbox_handler_fl_notify(struct rvu *rvu,
 {
 	struct fl_entry *fl_entry;
 
+	if (!(rvu->rswitch.flags & RVU_SWITCH_FLAG_FW_READY))
+		return 0;
+
 	fl_entry = kcalloc(1, sizeof(*fl_entry), GFP_KERNEL);
 	if (!fl_entry)
 		return -ENOMEM;
