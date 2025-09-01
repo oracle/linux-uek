@@ -267,6 +267,7 @@ struct bpf_map_owner {
 	bool xdp_has_frags;
 	const struct btf_type *attach_func_proto;
 };
+
 struct bpf_map {
 	/* The first two cachelines with read-mostly members of which some
 	 * are also accessed in fast-path (e.g. ops, max_entries).
@@ -287,6 +288,7 @@ struct bpf_map {
 	int numa_node;
 	u32 btf_key_type_id;
 	u32 btf_value_type_id;
+	UEK_KABI_FILL_HOLE(spinlock_t owner_lock)
 	struct btf *btf;
 #ifdef CONFIG_MEMCG_KMEM
 	struct mem_cgroup *memcg;
@@ -301,13 +303,8 @@ struct bpf_map {
 	 * stored in the map to make sure that all callers and callees have the
 	 * same prog type, JITed flag and xdp_has_frags flag.
 	 */
-	UEK_KABI_FILL_HOLE(struct {
-		spinlock_t lock;
-		enum bpf_prog_type type;
-		bool jited;
-		bool xdp_has_frags;
-	} owner)
-	/* 4 bytes hole */
+	UEK_KABI_FILL_HOLE(struct bpf_map_owner *owner)
+	UEK_KABI_FILL_HOLE(u64 cookie) /* write-once */
 
 	/* The 3rd and 4th cacheline with misc members to avoid false sharing
 	 * particularly with refcounting.
@@ -317,7 +314,6 @@ struct bpf_map {
 	struct work_struct work;
 	struct mutex freeze_mutex;
 	atomic64_t writecnt;
-	UEK_KABI_EXTEND(u64 cookie) /* write-once */
 };
 
 static inline bool map_value_has_spin_lock(const struct bpf_map *map)
@@ -1282,6 +1278,16 @@ static inline bool bpf_map_flags_access_ok(u32 access_flags)
 {
 	return (access_flags & (BPF_F_RDONLY_PROG | BPF_F_WRONLY_PROG)) !=
 	       (BPF_F_RDONLY_PROG | BPF_F_WRONLY_PROG);
+}
+
+static inline struct bpf_map_owner *bpf_map_owner_alloc(struct bpf_map *map)
+{
+	return kzalloc(sizeof(*map->owner), GFP_ATOMIC);
+}
+
+static inline void bpf_map_owner_free(struct bpf_map *map)
+{
+	kfree(map->owner);
 }
 
 struct bpf_event_entry {
