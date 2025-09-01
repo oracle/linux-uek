@@ -2542,6 +2542,7 @@ struct ib_device_ops {
 	void (*get_dev_fw_str)(struct ib_device *device, char *str);
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 	int (*get_vector_irqn)(struct ib_device *ibdev, int comp_vector);
+	int (*reap_eq)(struct ib_device *device, struct ib_cq *i_scq);
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	int (*query_port)(struct ib_device *device, u32 port_num,
 			  struct ib_port_attr *port_attr);
@@ -4965,6 +4966,12 @@ ib_get_vector_irqn(struct ib_device *device, int comp_vector)
 		return -1;
 
 	return device->ops.get_vector_irqn(device, comp_vector);
+}
+
+static inline int
+ib_reap_eq(struct ib_device *device, struct ib_cq *i_scq)
+{
+	return device->ops.reap_eq(device, i_scq);
 }
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
