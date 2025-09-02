@@ -4466,6 +4466,12 @@ BPF_CALL_5(bpf_setsockopt, struct bpf_sock_ops_kern *, bpf_sock,
 				else
 					tp->save_syn = val;
 				break;
+			case TCP_BPF_SOCK_OPS_CB_FLAGS:
+				if (val & ~(BPF_SOCK_OPS_ALL_CB_FLAGS))
+					ret = -EINVAL;
+				else
+					tp->bpf_sock_ops_cb_flags = val;
+				break;
 			default:
 				ret = -EINVAL;
 			}
@@ -4517,6 +4523,16 @@ BPF_CALL_5(bpf_getsockopt, struct bpf_sock_ops_kern *, bpf_sock,
 				goto err_clear;
 			memcpy(optval, tp->saved_syn + 1, optlen);
 			break;
+		case TCP_BPF_SOCK_OPS_CB_FLAGS: {
+			int cb_flags;
+
+			if (optlen != sizeof(int))
+				goto err_clear;
+			tp = tcp_sk(sk);
+			cb_flags = tp->bpf_sock_ops_cb_flags;
+			memcpy(optval, &cb_flags, optlen);
+			break;
+		}
 		default:
 			goto err_clear;
 		}

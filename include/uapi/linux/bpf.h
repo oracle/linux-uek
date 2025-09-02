@@ -1517,7 +1517,7 @@ union bpf_attr {
  * 		  **SO_PRIORITY**, **SO_RCVLOWAT**, **SO_MARK**.
  * 		* **IPPROTO_TCP**, which supports the following *optname*\ s:
  * 		  **TCP_CONGESTION**, **TCP_BPF_IW**,
- * 		  **TCP_BPF_SNDCWND_CLAMP**.
+ * 		  **TCP_BPF_SNDCWND_CLAMP**, **TCP_BPF_SOCK_OPS_CB_FLAGS**.
  * 		* **IPPROTO_IP**, which supports *optname* **IP_TOS**.
  * 		* **IPPROTO_IPV6**, which supports *optname* **IPV6_TCLASS**.
  * 	Return
@@ -3783,6 +3783,7 @@ enum {
 
 #define TCP_BPF_IW		1001	/* Set TCP initial congestion window */
 #define TCP_BPF_SNDCWND_CLAMP	1002	/* Set sndcwnd_clamp */
+#define TCP_BPF_SOCK_OPS_CB_FLAGS 1008	/* Get or Set TCP sock ops flags */
 
 struct bpf_perf_event_value {
 	__u64 counter;
