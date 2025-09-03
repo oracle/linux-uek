@@ -123,6 +123,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define with_64k_ps_debug %{?_with_64k_ps_debug: %{_with_64k_ps_debug}} %{?!_with_64k_ps_debug: 0}
 
 # build an embedded kernel
+%define with_embedded %{?_without_embedded: 0} %{?!_without_embedded: 1}
 %define with_embedded4 %{?_without_embedded: 0} %{?!_without_embedded: 1}
 
 # verbose build, i.e. no silent rules and V=1
@@ -241,6 +242,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define with_debug 0
 %define with_64k_ps 0
 %define with_64k_ps_debug 0
+%define with_embedded 0
 %define with_embedded4 0
 %endif
 
@@ -262,6 +264,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %ifnarch aarch64
 %define with_64k_ps       0
 %define with_64k_ps_debug 0
+%define with_embedded 0
 %define with_embedded4 0
 %endif
 
@@ -332,6 +335,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define with_headers 0
 %define with_bpftool 0
 %define with_tools 0
+%define with_embedded 0
 %define with_embedded4 0
 %else
 %if %{with_embeddedonly}
@@ -342,6 +346,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define with_headers 0
 %define with_bpftool 0
 %define with_tools 0
+%define with_embedded 1
 %define with_embedded4 1
 %else
 %define with_headers 1
@@ -525,6 +530,8 @@ Source45: modules.yaml.S
 Source46: denylist.txt.S
 Source47: modules.yaml.S.emb4
 Source48: denylist.txt.S.emb4
+Source49: modules.yaml.S.emb
+Source50: denylist.txt.S.emb
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
@@ -533,6 +540,7 @@ Source1007: config-aarch64
 Source1008: config-aarch64-debug
 Source1009: config-aarch64-container
 Source1011: config-aarch64-embedded4
+Source1012: config-aarch64-embedded
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -920,6 +928,11 @@ This package include debug kernel for 64k page size.
 %description -n kernel%{?variant}emb4-core
 This package includes an embedded kernel.
 
+%define variant_summary A kernel for an embedded platform
+%kernel_variant_package -eo emb
+%description -n kernel%{?variant}emb-core
+This package includes an embedded kernel.
+
 %define variant_summary The Linux kernel compiled with extra debugging enabled
 %kernel_variant_package debug
 %description debug-core
@@ -988,6 +1001,7 @@ mkdir -p configs
     cp %{SOURCE1008} configs/config-debug
     cp %{SOURCE1007} configs/config
     cp %{SOURCE1011} configs/config-embedded4
+    cp %{SOURCE1012} configs/config-embedded
 %endif
 
 echo 'CONFIG_DTRACE=y' >> configs/config
@@ -1149,6 +1163,11 @@ BuildKernel() {
         modlistVariant="$PWD/../kernel%{?variant}emb4"
         modlistSrc=modules.yaml.S.emb4
         denylistSrc=denylist.txt.S.emb4
+    elif [ "$Flavour" == "emb" ]; then
+        cp configs/config-embedded .config
+        modlistVariant="$PWD/../kernel%{?variant}emb"
+        modlistSrc=modules.yaml.S.emb
+        denylistSrc=denylist.txt.S.emb
     else
         cp configs/config .config
         modlistVariant="$PWD/../kernel%{?variant}${Flavour:+-${Flavour}}"
@@ -1162,7 +1181,7 @@ BuildKernel() {
     # This ensures build-ids are unique to allow parallel debuginfo
     perl -p -i -e "s/^CONFIG_BUILD_SALT.*/CONFIG_BUILD_SALT=\"%{KVERREL}\"/" .config
 
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb4" ]; then
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb4" ]; then
        %{make} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
     else
        %{make} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
@@ -1272,7 +1291,7 @@ BuildKernel() {
     %_sourcedir/kabitool -s Module.symvers -o $RPM_BUILD_ROOT/kernel-$KernelVer-kabideps
 
 %if %{with_kabichk}
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb4" ]; then
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb4" ]; then
        # Create symbol type data which can be used to introspect kABI breakages
        python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
 
@@ -1632,6 +1651,10 @@ BuildKernel %make_target %kernel_image 64kdebug
 BuildKernel %make_target %kernel_image emb4
 %endif
 
+%if %{with_embedded}
+BuildKernel %make_target %kernel_image emb
+%endif
+
 %global bpftool_make \
   %{make} EXTRA_CFLAGS="${RPM_OPT_FLAGS}" EXTRA_LDFLAGS="%{__global_ldflags}" DESTDIR=$RPM_BUILD_ROOT VMLINUX_H=$RPM_BUILD_ROOT/$BpfDevelDir/vmlinux.h
 %if %{with_bpftool}
@@ -1719,6 +1742,11 @@ BuildKernel %make_target %kernel_image emb4
        mv certs/signing_key.pem.sign.emb4 certs/signing_key.pem \
        mv certs/signing_key.x509.sign.emb4 certs/signing_key.x509 \
        %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb4/ %{dgst} \
+    fi \
+    if [ "%{with_embedded}" -ne "0" ]; then \
+       mv certs/signing_key.pem.sign.emb certs/signing_key.pem \
+       mv certs/signing_key.x509.sign.emb certs/signing_key.x509 \
+       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb/ %{dgst} \
     fi \
   fi \
 %{nil}
@@ -2100,6 +2128,11 @@ fi\
 %kernel_variant_postun -o -v emb4
 %kernel_variant_post -o -v emb4
 
+%kernel_variant_pre -o emb
+%kernel_variant_preun -o emb
+%kernel_variant_postun -o -v emb
+%kernel_variant_post -o -v emb
+
 if [ -x /sbin/ldconfig ]
 then
     /sbin/ldconfig -X || exit $?
@@ -2264,5 +2297,7 @@ fi
 %kernel_variant_files -o %{with_64k_ps_debug} 64kdebug
 
 %kernel_variant_files -o %{with_embedded4} emb4
+
+%kernel_variant_files -o %{with_embedded} emb
 
 %changelog
