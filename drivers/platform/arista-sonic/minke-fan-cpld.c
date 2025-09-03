@@ -49,18 +49,6 @@
    ((FAN_BASE_REG((Slot)->index)) + ((Fan)->index) * 8 + (Inner) * 2 + 3)
 
 #define FAN_ID_REG(Slot)  ((Slot)->cpld->info->id_base_reg + (Slot)->index)
-#define FAN_PRESENT_REG   0x70
-#define FAN_OK_REG        0x71
-
-#define FAN_BLUE_LED_REG  0x73
-#define FAN_AMBER_LED_REG 0x74
-#define FAN_GREEN_LED_REG 0x75
-#define FAN_RED_LED_REG   0x76
-
-#define FAN_INT_REG       0x77
-#define FAN_ID_CHNG_REG   0x78
-#define FAN_PRES_CHNG_REG 0x80
-#define FAN_OK_CHNG_REG   0x82
 
 #define FAN_INT_OK   BIT(0)
 #define FAN_INT_PRES BIT(1)
@@ -119,6 +107,16 @@ struct cpld_info {
    bool left_right;
    const struct fan_id *fan_ids;
    u8 id_base_reg;
+   u8 present_reg;
+   u8 ok_reg;
+   u8 blue_led_reg;
+   u8 amber_led_reg;
+   u8 green_led_reg;
+   u8 red_led_reg;
+   u8 int_reg;
+   u8 id_chng_reg;
+   u8 pres_chng_reg;
+   u8 ok_chng_reg;
 };
 
 struct cpld_fan {
@@ -197,6 +195,16 @@ static const struct cpld_info cpld_infos[] = {
       .left_right = false,
       .fan_ids = mk_fan_ids,
       .id_base_reg = 0x61,
+      .present_reg = 0x70,
+      .ok_reg = 0x71,
+      .blue_led_reg = 0x73,
+      .amber_led_reg = 0x74,
+      .green_led_reg = 0x75,
+      .red_led_reg = 0x76,
+      .int_reg = 0x77,
+      .id_chng_reg = 0x78,
+      .pres_chng_reg = 0x80,
+      .ok_chng_reg = 0x82,
    },
    [MINKE_CPLD] = {
       .name = "minke",
@@ -206,6 +214,16 @@ static const struct cpld_info cpld_infos[] = {
       .left_right = true,
       .fan_ids = minke_fan_ids,
       .id_base_reg = 0x60,
+      .present_reg = 0x70,
+      .ok_reg = 0x71,
+      .blue_led_reg = 0x73,
+      .amber_led_reg = 0x74,
+      .green_led_reg = 0x75,
+      .red_led_reg = 0x76,
+      .int_reg = 0x77,
+      .id_chng_reg = 0x78,
+      .pres_chng_reg = 0x80,
+      .ok_chng_reg = 0x82,
    },
    [RUNDLE_CPLD] = {
       .name = "rundle",
@@ -215,6 +233,16 @@ static const struct cpld_info cpld_infos[] = {
       .left_right = false,
       .fan_ids = rundle_fan_ids,
       .id_base_reg = 0x91,
+      .present_reg = 0xA0,
+      .ok_reg = 0xA1,
+      .blue_led_reg = 0xA3,
+      .amber_led_reg = 0xA4,
+      .green_led_reg = 0xA5,
+      .red_led_reg = 0xA6,
+      .int_reg = 0xA7,
+      .id_chng_reg = 0xB0,
+      .pres_chng_reg = 0xB1,
+      .ok_chng_reg = 0xB2,
    },
 };
 
@@ -341,19 +369,19 @@ static int cpld_update_leds(struct cpld_data *cpld)
          cpld->red_led |= (1 << i);
    }
 
-   err = cpld_write_byte(cpld, FAN_BLUE_LED_REG, cpld->blue_led);
+   err = cpld_write_byte(cpld, cpld->info->blue_led_reg, cpld->blue_led);
    if (err)
       return err;
 
-   err = cpld_write_byte(cpld, FAN_AMBER_LED_REG, cpld->amber_led);
+   err = cpld_write_byte(cpld, cpld->info->amber_led_reg, cpld->amber_led);
    if (err)
       return err;
 
-   err = cpld_write_byte(cpld, FAN_GREEN_LED_REG, cpld->green_led);
+   err = cpld_write_byte(cpld, cpld->info->green_led_reg, cpld->green_led);
    if (err)
       return err;
 
-   err = cpld_write_byte(cpld, FAN_RED_LED_REG, cpld->red_led);
+   err = cpld_write_byte(cpld, cpld->info->red_led_reg, cpld->red_led);
    if (err)
       return err;
 
@@ -371,30 +399,30 @@ static int cpld_update(struct cpld_data *cpld)
 
    pali_dbg(cpld, "polling cpld information\n");
 
-   err = cpld_read_byte(cpld, FAN_INT_REG, &interrupt);
+   err = cpld_read_byte(cpld, cpld->info->int_reg, &interrupt);
    if (err)
       goto fail;
 
    if (interrupt & FAN_INT_ID) {
-      err = cpld_read_byte(cpld, FAN_ID_CHNG_REG, &id_chng);
+      err = cpld_read_byte(cpld, cpld->info->id_chng_reg, &id_chng);
       if (err)
          goto fail;
    }
 
    if (interrupt & FAN_INT_OK) {
-      err = cpld_read_byte(cpld, FAN_OK_CHNG_REG, &ok_chng);
+      err = cpld_read_byte(cpld, cpld->info->ok_chng_reg, &ok_chng);
       if (err)
          goto fail;
-      err = cpld_read_byte(cpld, FAN_OK_REG, &cpld->ok);
+      err = cpld_read_byte(cpld, cpld->info->ok_reg, &cpld->ok);
       if (err)
          goto fail;
    }
 
    if (interrupt & FAN_INT_PRES) {
-      err = cpld_read_byte(cpld, FAN_PRES_CHNG_REG, &pres_chng);
+      err = cpld_read_byte(cpld, cpld->info->pres_chng_reg, &pres_chng);
       if (err)
          goto fail;
-      err = cpld_read_byte(cpld, FAN_OK_REG, &cpld->present);
+      err = cpld_read_byte(cpld, cpld->info->present_reg, &cpld->present);
       if (err)
          goto fail;
    }
@@ -443,9 +471,9 @@ static int cpld_update(struct cpld_data *cpld)
    }
 
    // FIXME: clear registers by setting them to 0
-   cpld_write_byte(cpld, FAN_ID_CHNG_REG, id_chng);
-   cpld_write_byte(cpld, FAN_OK_CHNG_REG, ok_chng);
-   cpld_write_byte(cpld, FAN_PRES_CHNG_REG, pres_chng);
+   cpld_write_byte(cpld, cpld->info->id_chng_reg, id_chng);
+   cpld_write_byte(cpld, cpld->info->ok_chng_reg, ok_chng);
+   cpld_write_byte(cpld, cpld->info->pres_chng_reg, pres_chng);
 
    if (managed_leds)
       err = cpld_update_leds(cpld);
@@ -485,7 +513,7 @@ static int cpld_read_present(struct cpld_data *cpld)
    int err;
    int i;
 
-   err = cpld_read_byte(cpld, FAN_PRESENT_REG, &cpld->present);
+   err = cpld_read_byte(cpld, cpld->info->present_reg, &cpld->present);
    if (err)
       return err;
 
@@ -503,7 +531,7 @@ static int cpld_read_fault(struct cpld_data *cpld)
    int err;
    int i;
 
-   err = cpld_read_byte(cpld, FAN_OK_REG, &cpld->ok);
+   err = cpld_read_byte(cpld, cpld->info->ok_reg, &cpld->ok);
    if (err)
       return err;
 
@@ -658,19 +686,19 @@ static s32 cpld_write_slot_led(struct cpld_slot *slot, u8 val)
    else
       cpld->red_led &= ~(1 << slot->index);
 
-   err = cpld_write_byte(cpld, FAN_BLUE_LED_REG, cpld->blue_led);
+   err = cpld_write_byte(cpld, cpld->info->blue_led_reg, cpld->blue_led);
    if (err)
       return err;
 
-   err = cpld_write_byte(cpld, FAN_AMBER_LED_REG, cpld->amber_led);
+   err = cpld_write_byte(cpld, cpld->info->amber_led_reg, cpld->amber_led);
    if (err)
       return err;
 
-   err = cpld_write_byte(cpld, FAN_GREEN_LED_REG, cpld->green_led);
+   err = cpld_write_byte(cpld, cpld->info->green_led_reg, cpld->green_led);
    if (err)
       return err;
 
-   err = cpld_write_byte(cpld, FAN_RED_LED_REG, cpld->red_led);
+   err = cpld_write_byte(cpld, cpld->info->red_led_reg, cpld->red_led);
 
    return err;
 }
@@ -1033,11 +1061,11 @@ static int cpld_init(struct cpld_data *cpld)
    pali_info(cpld, "%s CPLD version %02x.%02x\n",
              cpld->info->name, cpld->major, cpld->minor);
 
-   err = cpld_read_byte(cpld, FAN_PRESENT_REG, &cpld->present);
+   err = cpld_read_byte(cpld, cpld->info->present_reg, &cpld->present);
    if (err)
       return err;
 
-   err = cpld_read_byte(cpld, FAN_OK_REG, &cpld->ok);
+   err = cpld_read_byte(cpld, cpld->info->ok_reg, &cpld->ok);
    if (err)
       return err;
 
@@ -1068,9 +1096,9 @@ static int cpld_init(struct cpld_data *cpld)
       }
    }
 
-   cpld_write_byte(cpld, FAN_OK_CHNG_REG, 0x00);
-   cpld_write_byte(cpld, FAN_PRES_CHNG_REG, 0x00);
-   cpld_write_byte(cpld, FAN_ID_CHNG_REG, 0x00);
+   cpld_write_byte(cpld, cpld->info->ok_chng_reg, 0x00);
+   cpld_write_byte(cpld, cpld->info->pres_chng_reg, 0x00);
+   cpld_write_byte(cpld, cpld->info->id_chng_reg, 0x00);
 
    if (managed_leds) {
       err = cpld_update_leds(cpld);
