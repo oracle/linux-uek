@@ -751,6 +751,22 @@ static ssize_t bonding_show_ad_user_port_key(struct device *d,
 }
 static DEVICE_ATTR(ad_user_port_key, 0644,
 		   bonding_show_ad_user_port_key, bonding_sysfs_store_option);
+ 
+/* Show arp_allslaves. */
+static ssize_t bonding_show_arp_allslaves(struct device *d,
+					  struct device_attribute *attr,
+					  char *buf)
+{
+	struct bonding *bond = to_bond(d);
+	const struct bond_opt_value *val;
+
+	val = bond_opt_get_val(BOND_OPT_ARP_ALLSLAVES,
+			       bond->params.arp_allslaves);
+
+	return sprintf(buf, "%s %d\n", val->string, bond->params.arp_allslaves);
+}
+static DEVICE_ATTR(arp_allslaves, 0644,
+		   bonding_show_arp_allslaves, bonding_sysfs_store_option);
 
 static struct attribute *per_bond_attrs[] = {
 	&dev_attr_slaves.attr,
@@ -791,6 +807,7 @@ static struct attribute *per_bond_attrs[] = {
 	&dev_attr_ad_actor_system.attr,
 	&dev_attr_ad_user_port_key.attr,
 	&dev_attr_arp_missed_max.attr,
+	&dev_attr_arp_allslaves.attr,
 	NULL,
 };
 
