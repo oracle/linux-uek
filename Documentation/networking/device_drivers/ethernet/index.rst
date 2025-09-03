@@ -49,6 +49,7 @@ Contents:
    neterion/s2io
    netronome/nfp
    pensando/ionic
+   pensando/ionic_rdma
    smsc/smc9
    stmicro/stmmac
    ti/cpsw
