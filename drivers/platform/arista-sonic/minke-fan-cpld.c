@@ -464,12 +464,15 @@ static int cpld_update(struct cpld_data *cpld)
       if ((interrupt & FAN_INT_PRES) && (pres_chng & (1 << i))) {
          if (slot->present && (cpld->present & (1 << i))) {
             str = "hotswapped";
+            cpld_read_slot_id(slot);
          } else if (!slot->present && (cpld->present & (1 << i))) {
             str = "plugged";
+            cpld_read_slot_id(slot);
             slot->present = true;
          } else {
             str = "unplugged";
             slot->present = false;
+            slot->fan_id = &cpld->info->fan_ids[FAN_ID_UNKNOWN];
          }
          pali_info(cpld, "fan in slot %d was %s\n", i + 1, str);
       }
@@ -796,12 +799,14 @@ static ssize_t cpld_fan_pwm_show(struct device *dev, struct device_attribute *da
 
    mutex_lock(&cpld->lock);
    err = cpld_read_fan_pwm(fan);
-   mutex_unlock(&cpld->lock);
-   if (err)
+   if (err) {
+      mutex_unlock(&cpld->lock);
       return err;
+   }
 
    pwm = slot->dual ? fan->pwm_outer : fan->pwm_inner;
-   return sprintf(buf, "%hhu\n", pwm);
+   mutex_unlock(&cpld->lock);
+   return sysfs_emit(buf, "%hhu\n", pwm);
 }
 
 static ssize_t cpld_fan_pwm_store(struct device *dev, struct device_attribute *da,
@@ -836,14 +841,13 @@ static ssize_t cpld_fan_present_show(struct device *dev,
    int err;
 
    if (!poll_interval) {
-      mutex_lock(&cpld->lock);
       err = cpld_read_present(cpld);
-      mutex_unlock(&cpld->lock);
-      if (err)
+      if (err) {
          return err;
+      }
    }
-
-   return sprintf(buf, "%d\n", slot->present);
+   err = sysfs_emit(buf, "%d\n", slot->present);
+   return err;
 }
 
 static ssize_t cpld_fan_id_show(struct device *dev, struct device_attribute *da,
@@ -856,14 +860,13 @@ static ssize_t cpld_fan_id_show(struct device *dev, struct device_attribute *da,
    int err = 0;
 
    if (!poll_interval) {
-      mutex_lock(&cpld->lock);
       err = cpld_read_slot_id(slot);
-      mutex_unlock(&cpld->lock);
-      if (err)
+      if (err) {
          return err;
+      }
    }
-
-   return sprintf(buf, "%hhu\n", slot->ident);
+   err = sysfs_emit(buf, "%hhu\n", slot->ident);
+   return err;
 }
 
 static ssize_t cpld_fan_fault_show(struct device *dev, struct device_attribute *da,
@@ -876,14 +879,14 @@ static ssize_t cpld_fan_fault_show(struct device *dev, struct device_attribute *
    int err;
 
    if (!poll_interval) {
-      mutex_lock(&cpld->lock);
       err = cpld_read_fault(cpld);
-      mutex_unlock(&cpld->lock);
-      if (err)
+      if (err) {
          return err;
+      }
    }
 
-   return sprintf(buf, "%d\n", !slot->ok);
+   err = sysfs_emit(buf, "%d\n", !slot->ok);
+   return err;
 }
 
 static ssize_t cpld_fan_tach_show(struct device *dev, struct device_attribute *da,
@@ -898,35 +901,44 @@ static ssize_t cpld_fan_tach_show(struct device *dev, struct device_attribute *d
    int rpms;
 
    mutex_lock(&cpld->lock);
+
    err = cpld_read_fan_tach(fan);
-   mutex_unlock(&cpld->lock);
-   if (err)
+   if (err) {
+      mutex_unlock(&cpld->lock);
       return err;
+   }
 
    tach = slot->dual ? fan->tach_outer : fan->tach_inner;
    if (!tach) {
+      mutex_unlock(&cpld->lock);
       return -EINVAL;
    }
 
    rpms = ((cpld->info->tach_hz * 60) / tach) / slot->fan_id->pulses;
 
-   return sprintf(buf, "%d\n", rpms);
+   err = sysfs_emit(buf, "%d\n", rpms);
+   mutex_unlock(&cpld->lock);
+   return err;
 }
 
 static ssize_t cpld_fan_led_show(struct device *dev, struct device_attribute *da,
                                  char *buf)
 {
    struct sensor_device_attribute *attr = to_sensor_dev_attr(da);
+   struct cpld_data *cpld = dev_get_drvdata(dev);
    struct cpld_fan *fan = fan_from_dev(dev, attr->index);
    struct cpld_slot *slot = slot_from_fan(fan);
    int err;
    u8 val;
 
+   mutex_lock(&cpld->lock);
    err = cpld_read_slot_led(slot, &val);
-   if (err)
+   if (err) {
+      mutex_unlock(&cpld->lock);
       return err;
-
-   return sprintf(buf, "%hhu\n", val);
+   }
+   mutex_unlock(&cpld->lock);
+   return sysfs_emit(buf, "%hhu\n", val);
 }
 
 static ssize_t cpld_fan_led_store(struct device *dev, struct device_attribute *da,
@@ -961,7 +973,8 @@ static ssize_t cpld_fan_airflow_show(struct device *dev,
    struct sensor_device_attribute *attr = to_sensor_dev_attr(da);
    struct cpld_fan *fan = fan_from_dev(dev, attr->index);
    struct cpld_slot *slot = slot_from_fan(fan);
-   return sprintf(buf, "%s\n", (slot->forward) ? "forward" : "reverse");
+
+   return sysfs_emit(buf, "%s\n", (slot->forward) ? "forward" : "reverse");
 }
 
 static ssize_t cpld_fan_model_show(struct device *dev,
@@ -971,7 +984,16 @@ static ssize_t cpld_fan_model_show(struct device *dev,
    struct sensor_device_attribute *attr = to_sensor_dev_attr(da);
    struct cpld_fan *fan = fan_from_dev(dev, attr->index);
    struct cpld_slot *slot = slot_from_fan(fan);
-   return sprintf(buf, "%s\n", (slot->present) ? slot->fan_id->model : "Not present");
+   int err = 0;
+
+   if (!poll_interval) {
+      err = cpld_read_slot_id(slot);
+      if (err) {
+         return err;
+      }
+   }
+
+   return sysfs_emit(buf, "%s\n", (slot->present) ? slot->fan_id->model : "Not present");
 }
 
 #define FAN_DEVICE_ATTR(_name)                                                \
@@ -1037,7 +1059,7 @@ static ssize_t cpld_revision_show(struct device *dev, struct device_attribute *a
                                   char *buf)
 {
    struct cpld_data *cpld = dev_get_drvdata(dev);
-   return sprintf(buf, "%02x.%02x\n", cpld->major, cpld->minor);
+   return sysfs_emit(buf, "%02x.%02x\n", cpld->major, cpld->minor);
 }
 
 DEVICE_ATTR(cpld_revision, S_IRUGO, cpld_revision_show, NULL);
@@ -1110,24 +1132,30 @@ static int cpld_init(struct cpld_data *cpld)
       slot->index = i;
       slot->present = !!(cpld->present & (1 << i));
       slot->ok = !!(cpld->ok & (1 << i));
+      slot->fan_id = &cpld->info->fan_ids[FAN_ID_UNKNOWN];
+
       if (slot->present) {
          cpld_read_slot_id(slot);
-         for (j = 0; j < cpld->fans_per_slot; j++) {
-            fan = &slot->fans[j];
-            fan->slot = slot;
-            fan->index = j;
-            fan->global_index = i * cpld->fans_per_slot + j;
+      }
+
+      for (j = 0; j < cpld->fans_per_slot; j++) {
+         fan = &slot->fans[j];
+         fan->slot = slot;
+         fan->index = j;
+         fan->global_index = i * cpld->fans_per_slot + j;
+
+         if (slot->present) {
             cpld_read_fan_tach(fan);
             cpld_read_fan_pwm(fan);
             if (safe_mode)
                cpld_write_fan_pwm(fan, FAN_MAX_PWM);
          }
+      }
 
-         err = cpld_slot_led_init(slot);
-         if (err) {
-            cpld_leds_unregister(cpld, i);
-            return err;
-         }
+      err = cpld_slot_led_init(slot);
+      if (err) {
+         cpld_leds_unregister(cpld, i);
+         return err;
       }
    }
 
