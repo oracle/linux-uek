@@ -568,8 +568,8 @@ ip_link_add()
 {
 	local name=$1; shift
 
-	ip link add name "$name" "$@"
-	defer ip link del dev "$name"
+	ip link add name "$name" "$@" && \
+		defer ip link del dev "$name"
 }
 
 ip_link_set_master()
@@ -577,8 +577,8 @@ ip_link_set_master()
 	local member=$1; shift
 	local master=$1; shift
 
-	ip link set dev "$member" master "$master"
-	defer ip link set dev "$member" nomaster
+	ip link set dev "$member" master "$master" && \
+		defer ip link set dev "$member" nomaster
 }
 
 ip_link_set_addr()
@@ -587,8 +587,8 @@ ip_link_set_addr()
 	local addr=$1; shift
 
 	local old_addr=$(mac_get "$name")
-	ip link set dev "$name" address "$addr"
-	defer ip link set dev "$name" address "$old_addr"
+	ip link set dev "$name" address "$addr" && \
+		defer ip link set dev "$name" address "$old_addr"
 }
 
 ip_link_has_flag()
@@ -611,8 +611,8 @@ ip_link_set_up()
 	local name=$1; shift
 
 	if ! ip_link_is_up "$name"; then
-		ip link set dev "$name" up
-		defer ip link set dev "$name" down
+		ip link set dev "$name" up && \
+			defer ip link set dev "$name" down
 	fi
 }
 
@@ -621,8 +621,8 @@ ip_link_set_down()
 	local name=$1; shift
 
 	if ip_link_is_up "$name"; then
-		ip link set dev "$name" down
-		defer ip link set dev "$name" up
+		ip link set dev "$name" down && \
+			defer ip link set dev "$name" up
 	fi
 }
 
@@ -630,20 +630,20 @@ ip_addr_add()
 {
 	local name=$1; shift
 
-	ip addr add dev "$name" "$@"
-	defer ip addr del dev "$name" "$@"
+	ip addr add dev "$name" "$@" && \
+		defer ip addr del dev "$name" "$@"
 }
 
 ip_route_add()
 {
-	ip route add "$@"
-	defer ip route del "$@"
+	ip route add "$@" && \
+		defer ip route del "$@"
 }
 
 bridge_vlan_add()
 {
-	bridge vlan add "$@"
-	defer bridge vlan del "$@"
+	bridge vlan add "$@" && \
+		defer bridge vlan del "$@"
 }
 
 wait_local_port_listen()
