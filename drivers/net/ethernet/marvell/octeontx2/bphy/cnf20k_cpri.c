@@ -1370,7 +1370,7 @@ static int cpri_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	pci_set_master(pdev);
 
-	err = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(48));
+	err = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(48));
 	if (err) {
 		pr_err("Failed to set DMA mask for 48-bit addressing\n");
 		return err;
