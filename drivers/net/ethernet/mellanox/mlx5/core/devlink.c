@@ -10,6 +10,7 @@
 #include "esw/qos.h"
 #include "sf/dev/dev.h"
 #include "sf/sf.h"
+#include "lib/nv_param.h"
 
 static int mlx5_devlink_flash_update(struct devlink *devlink,
 				     struct devlink_flash_update_params *params,
@@ -898,8 +899,14 @@ int mlx5_devlink_params_register(struct devlink *devlink)
 	if (err)
 		goto max_uc_list_err;
 
+	err = mlx5_nv_param_register_dl_params(devlink);
+	if (err)
+		goto nv_param_err;
+
 	return 0;
 
+nv_param_err:
+	mlx5_devlink_max_uc_list_params_unregister(devlink);
 max_uc_list_err:
 	mlx5_devlink_auxdev_params_unregister(devlink);
 auxdev_reg_err:
@@ -910,6 +917,7 @@ auxdev_reg_err:
 
 void mlx5_devlink_params_unregister(struct devlink *devlink)
 {
+	mlx5_nv_param_unregister_dl_params(devlink);
 	mlx5_devlink_max_uc_list_params_unregister(devlink);
 	mlx5_devlink_auxdev_params_unregister(devlink);
 	devl_params_unregister(devlink, mlx5_devlink_params,
