@@ -45,6 +45,7 @@ modules:
 - mux-core
 - mux-gpio
 - mux-mmio
+- mvl_mhu
 - nand
 - nicpf
 - nicvf
