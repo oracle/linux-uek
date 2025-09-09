@@ -729,6 +729,9 @@ config ARM64_ERRATUM_1530923
 config ARM64_WORKAROUND_REPEAT_TLBI
 	bool
 
+config ARM64_WORKAROUND_REPEAT_TLBI_SYNC
+	bool
+
 config ARM64_ERRATUM_2441007
 	bool "Cortex-A55: Completion of affected memory accesses might not be guaranteed by completion of a TLBI (rare)"
 	select ARM64_WORKAROUND_REPEAT_TLBI

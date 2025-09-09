@@ -229,6 +229,12 @@ static const struct arm64_cpu_capabilities arm64_repeat_tlbi_list[] = {
 };
 #endif
 
+#ifdef CONFIG_ARM64_WORKAROUND_REPEAT_TLBI_SYNC
+static const struct arm64_cpu_capabilities arm64_repeat_tlbi_sync_list[] = {
+	{}
+};
+#endif
+
 #ifdef CONFIG_CAVIUM_ERRATUM_23154
 static const struct midr_range cavium_erratum_23154_cpus[] = {
 	MIDR_ALL_VERSIONS(MIDR_THUNDERX),
@@ -618,6 +624,15 @@ const struct arm64_cpu_capabilities arm64_errata[] = {
 		.type = ARM64_CPUCAP_LOCAL_CPU_ERRATUM,
 		.matches = cpucap_multi_entry_cap_matches,
 		.match_list = arm64_repeat_tlbi_list,
+	},
+#endif
+#ifdef CONFIG_ARM64_WORKAROUND_REPEAT_TLBI_SYNC
+	{
+		.desc = "Broken TLBI completion",
+		.capability = ARM64_WORKAROUND_REPEAT_TLBI_SYNC,
+		.type = ARM64_CPUCAP_LOCAL_CPU_ERRATUM,
+		.matches = cpucap_multi_entry_cap_matches,
+		.match_list = arm64_repeat_tlbi_sync_list,
 	},
 #endif
 #ifdef CONFIG_ARM64_ERRATUM_858921
