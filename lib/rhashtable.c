@@ -11,6 +11,7 @@
  * pointer as suggested by Josh Triplett
  */
 
+#include <linux/alloc_tag.h>
 #include <linux/atomic.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -119,7 +120,7 @@ static void bucket_table_free_rcu(struct rcu_head *head)
 	bucket_table_free(container_of(head, struct bucket_table, rcu));
 }
 
-static union nested_table *nested_table_alloc(struct rhashtable *ht,
+static union nested_table *nested_table_alloc_noprof(struct rhashtable *ht,
 					      union nested_table __rcu **prev,
 					      bool leaf)
 {
@@ -130,7 +131,7 @@ static union nested_table *nested_table_alloc(struct rhashtable *ht,
 	if (ntbl)
 		return ntbl;
 
-	ntbl = kzalloc(PAGE_SIZE, GFP_ATOMIC);
+	ntbl = kzalloc_noprof(PAGE_SIZE, GFP_ATOMIC);
 
 	if (ntbl && leaf) {
 		for (i = 0; i < PAGE_SIZE / sizeof(ntbl[0]); i++)
@@ -143,8 +144,10 @@ static union nested_table *nested_table_alloc(struct rhashtable *ht,
 	kfree(ntbl);
 	return rcu_dereference(*prev);
 }
+#define nested_table_alloc(...)		\
+	alloc_hooks(nested_table_alloc_noprof(__VA_ARGS__))
 
-static struct bucket_table *nested_bucket_table_alloc(struct rhashtable *ht,
+static struct bucket_table *nested_bucket_table_alloc_noprof(struct rhashtable *ht,
 						      size_t nbuckets,
 						      gfp_t gfp)
 {
@@ -157,7 +160,7 @@ static struct bucket_table *nested_bucket_table_alloc(struct rhashtable *ht,
 
 	size = sizeof(*tbl) + sizeof(tbl->buckets[0]);
 
-	tbl = kzalloc(size, gfp);
+	tbl = kzalloc_noprof(size, gfp);
 	if (!tbl)
 		return NULL;
 
@@ -171,8 +174,10 @@ static struct bucket_table *nested_bucket_table_alloc(struct rhashtable *ht,
 
 	return tbl;
 }
+#define nested_bucket_table_alloc(...)		\
+	alloc_hooks(nested_bucket_table_alloc_noprof(__VA_ARGS__))
 
-static struct bucket_table *bucket_table_alloc(struct rhashtable *ht,
+static struct bucket_table *bucket_table_alloc_noprof(struct rhashtable *ht,
 					       size_t nbuckets,
 					       gfp_t gfp)
 {
@@ -207,6 +212,8 @@ static struct bucket_table *bucket_table_alloc(struct rhashtable *ht,
 
 	return tbl;
 }
+#define bucket_table_alloc(...)		\
+	alloc_hooks(bucket_table_alloc_noprof(__VA_ARGS__))
 
 static struct bucket_table *rhashtable_last_table(struct rhashtable *ht,
 						  struct bucket_table *tbl)
@@ -1020,7 +1027,7 @@ static u32 rhashtable_jhash2(const void *key, u32 length, u32 seed)
  *	.obj_hashfn = my_hash_fn,
  * };
  */
-int rhashtable_init(struct rhashtable *ht,
+int rhashtable_init_noprof(struct rhashtable *ht,
 		    const struct rhashtable_params *params)
 {
 	struct bucket_table *tbl;
@@ -1080,7 +1087,7 @@ int rhashtable_init(struct rhashtable *ht,
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(rhashtable_init);
+EXPORT_SYMBOL_GPL(rhashtable_init_noprof);
 
 /**
  * rhltable_init - initialize a new hash list table
@@ -1091,15 +1098,15 @@ EXPORT_SYMBOL_GPL(rhashtable_init);
  *
  * See documentation for rhashtable_init.
  */
-int rhltable_init(struct rhltable *hlt, const struct rhashtable_params *params)
+int rhltable_init_noprof(struct rhltable *hlt, const struct rhashtable_params *params)
 {
 	int err;
 
-	err = rhashtable_init(&hlt->ht, params);
+	err = rhashtable_init_noprof(&hlt->ht, params);
 	hlt->ht.rhlist = true;
 	return err;
 }
-EXPORT_SYMBOL_GPL(rhltable_init);
+EXPORT_SYMBOL_GPL(rhltable_init_noprof);
 
 static void rhashtable_free_one(struct rhashtable *ht, struct rhash_head *obj,
 				void (*free_fn)(void *ptr, void *arg),
