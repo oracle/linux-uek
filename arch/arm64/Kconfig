@@ -858,6 +858,9 @@ config FUJITSU_ERRATUM_010001
 
 	  If unsure, say Y.
 
+config ARM64_WORKAROUND_REPEAT_TLBI_SYNC
+	bool
+
 endmenu
 
 config MRVL_OCTEONTX_EL0_INTR
