@@ -4,6 +4,7 @@
 
 struct netns_nftables {
 	u8			gencursor;
+	UEK_KABI_EXTEND(unsigned int	base_seq)
 };
 
 #endif
