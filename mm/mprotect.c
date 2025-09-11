@@ -209,7 +209,7 @@ static inline int pmd_none_or_clear_bad_unless_trans_huge(pmd_t *pmd)
 
 	if (pmd_none(pmdval))
 		return 1;
-	if (pmd_trans_huge(pmdval))
+	if (is_swap_pmd(pmdval) || pmd_trans_huge(pmdval))
 		return 0;
 	if (unlikely(pmd_bad(pmdval))) {
 		pmd_clear_bad(pmd);
@@ -245,7 +245,7 @@ static inline unsigned long change_pmd_range(struct vm_area_struct *vma,
 		 * Hence, it's necessary to atomically read the PMD value
 		 * for all the checks.
 		 */
-		if (!is_swap_pmd(*pmd) && !pmd_devmap(*pmd) &&
+		if (!pmd_devmap(*pmd) &&
 		     pmd_none_or_clear_bad_unless_trans_huge(pmd))
 			goto next;
 
