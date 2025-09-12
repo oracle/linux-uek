@@ -1898,7 +1898,8 @@ process_flow:
 
 	/* Proceed if NIXLF is attached or not for TX rules */
 	err = nix_get_nixlf(rvu, target, &nixlf, NULL);
-	if (err && is_npc_intf_rx(req->intf) && !pf_set_vfs_mac) {
+	if (err && is_npc_intf_rx(req->intf) && !pf_set_vfs_mac &&
+	    !is_pffunc_af(req->hdr.pcifunc)) {
 		rvu_npc_free_entry_for_flow_install(rvu, req->hdr.pcifunc,
 						    allocated, req->entry);
 		return NPC_FLOW_NO_NIXLF;

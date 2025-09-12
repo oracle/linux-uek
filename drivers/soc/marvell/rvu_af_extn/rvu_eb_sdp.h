@@ -30,8 +30,7 @@
 
 /* SDP mbox handlers */
 #define MBOX_EBLOCK_SDP_MESSAGES				\
-M(SDP_READ_CONST,    0x1001, sdp_read_const, msg_req,		\
-				sdp_rsp_const)			\
+M(SDP_READY, 0x1001, sdp_ready, msg_req, msg_rsp)		\
 M(SDP_RINGS_ALLOC, 0x1002, sdp_rings_alloc, sdp_rings_alloc_req, sdp_rings_alloc_rsp) \
 M(SDP_RINGS_FREE, 0x1003, sdp_rings_free, sdp_rings_free_req, msg_rsp) \
 M(SDP_RINGS_DEFAULT, 0x1004, sdp_rings_default, msg_req, sdp_rings_default_rsp)

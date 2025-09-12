@@ -34,7 +34,7 @@ static struct _req_type __maybe_unused					\
 	struct _req_type *req;						\
 									\
 	req = (struct _req_type *)otx2_mbox_alloc_msg_rsp(		\
-		&rvu->afvf_wq_info.mbox_up, devid, sizeof(struct _req_type), \
+		&rvu->afpf_wq_info.mbox_up, devid, sizeof(struct _req_type), \
 		sizeof(struct _rsp_type));				\
 	if (!req)							\
 		return NULL;						\
@@ -48,26 +48,26 @@ MBOX_EBLOCK_UP_SDP_MESSAGES
 #undef M
 
 /* Given a host pcifunc returns host VF number + 1 */
-static u16 get_sdp_evf(u16 host_pcifunc)
+static u16 get_sdp_evf(u16 epcifunc)
 {
-	return (host_pcifunc & RVU_PFVF_FUNC_MASK);
+	return (epcifunc & RVU_PFVF_FUNC_MASK);
 }
 
 /* Given a host pcifunc returns host PF number */
-static u16 get_sdp_epf(u16 host_pcifunc)
+static u16 get_sdp_epf(u16 epcifunc)
 {
-	return (host_pcifunc >> RVU_PFVF_PF_SHIFT) & RVU_PFVF_PF_MASK;
+	return (epcifunc >> RVU_PFVF_PF_SHIFT) & RVU_PFVF_PF_MASK;
 }
 
-/* Given a host pcifunc returns corresponding RVU pcifunc */
-static u16 cn20k_get_rvu_pcifunc(struct rvu *rvu, u16 host_pcifunc)
+/* Given a host pcifunc returns corresponding RVU pcifunc of VF handling IO */
+static u16 cn20k_get_rvu_pcifunc(struct rvu *rvu, u16 epcifunc)
 {
 	struct sdp_rsrc *sdp = &rvu->hw->sdp;
 	u8 host_pf, host_vf, rvu_pf;
 	u16 rvu_pcifunc;
 
-	host_vf = host_pcifunc & RVU_PFVF_FUNC_MASK;
-	host_pf = (host_pcifunc >> RVU_PFVF_PF_SHIFT) & RVU_PFVF_PF_MASK;
+	host_vf = epcifunc & RVU_PFVF_FUNC_MASK;
+	host_pf = (epcifunc >> RVU_PFVF_PF_SHIFT) & RVU_PFVF_PF_MASK;
 
 	rvu_pf = sdp->host2rvupf[host_pf];
 	/* Form RVU pcifunc */
@@ -80,31 +80,35 @@ static u16 cn20k_get_rvu_pcifunc(struct rvu *rvu, u16 host_pcifunc)
 	return rvu_pcifunc;
 }
 
-static int cn20k_create_host2rvupf_mapping(struct rvu *rvu, u8 *nr_sdp_pfs)
+static int cn20k_get_sdp_pfs(struct rvu *rvu, u8 *sdp_pfs, u8 *count)
 {
-	struct sdp_rsrc *sdp = &rvu->hw->sdp;
 	struct pci_dev *pdev = NULL;
-	u8 sdp_pfs = 0;
+	u8 pf = 0;
+	u8 pf_num;
+
+	if (!sdp_pfs)
+		return -EINVAL;
 
 	while (true) {
 		pdev = pci_get_device(PCI_VENDOR_ID_CAVIUM,
 				      PCI_DEVID_OCTEONTX2_GEN_PF, pdev);
 		if (!pdev)
-			return 0;
+			break;
 
-		if (sdp_pfs >= MAX_EPFS) {
+		if (pf >= MAX_EPFS) {
 			dev_err(rvu->dev, "SDP RVU PFs exceeded MAX EPFs\n");
 			pci_dev_put(pdev);
 			return -EINVAL;
 		}
 
-		/* save Host PFs to RVU PFs mapping */
-		sdp->host2rvupf[sdp_pfs] = pdev->bus->number - 1;
-		sdp_pfs++;
+		pf_num = pdev->bus->number - 1;
+		/* RVU domain starts at 2. Each domain has max of 32 PFs */
+		sdp_pfs[pf] = ((pci_domain_nr(pdev->bus) - 2) << 5) + pf_num;
+		pf++;
 	}
 
-	if (nr_sdp_pfs)
-		*nr_sdp_pfs = sdp_pfs;
+	if (count)
+		*count = pf;
 
 	return 0;
 }
@@ -173,9 +177,11 @@ static void cn20k_sdp_events_task(struct work_struct *work)
 static int cn20k_sdp_send_ring_msg(struct rvu *rvu, u16 target,
 				   u16 msg_id, u64 flags)
 {
+	struct sdp_rsrc *sdp = &rvu->hw->sdp;
 	struct sdp_config *sdp_pf_cfg;
 	struct sdp_vf_msg *msg;
 	struct rvu_pfvf *pf;
+	int pfid;
 
 	msg = kzalloc(sizeof(struct sdp_vf_msg), GFP_ATOMIC);
 	if (!msg)
@@ -184,6 +190,13 @@ static int cn20k_sdp_send_ring_msg(struct rvu *rvu, u16 target,
 	/* Get the PF's pfvf of target to send message since
 	 * AF can only send to PFs but not to a PF's VF.
 	 */
+	pfid = rvu_get_pf(target);
+	if (!test_bit(pfid, sdp->ready_pfs)) {
+		dev_err(rvu->dev, "PF%d is not ready to receive message\n",
+			pfid);
+		return -EAGAIN;
+	}
+
 	pf = rvu_get_pfvf(rvu, target & ~RVU_PFVF_FUNC_MASK);
 	sdp_pf_cfg = &pf->sdp_cfg;
 
@@ -208,13 +221,13 @@ static int cn20k_sdp_rings_init(struct rvu *rvu)
 	u16 rvu_pcifunc;
 	u16 max_rings;
 	int vf_rid;
-	u8 sdp_pfs;
+	u8 count;
 	u64 cfg;
 
 	if (!is_cn20k(rvu->pdev))
 		return 0;
 
-	err = cn20k_create_host2rvupf_mapping(rvu, &sdp_pfs);
+	err = cn20k_get_sdp_pfs(rvu, sdp->host2rvupf, &count);
 	if (err)
 		return err;
 
@@ -231,13 +244,16 @@ static int cn20k_sdp_rings_init(struct rvu *rvu)
 		goto free_vf_rsrc_map;
 	}
 
-
 	mutex_init(&sdp->cfg_lock);
+
+	sdp->ready_pfs = bitmap_zalloc(rvu->hw->total_pfs, GFP_KERNEL);
+	if (err)
+		goto free_fn_map;
 
 	sdp->rings.max = max_rings;
 	err = rvu_alloc_bitmap(&sdp->rings);
 	if (err)
-		goto free_fn_map;
+		goto free_pfs_bmap;
 
 	sdp->vf_rids.max = SDP_EVF_RSRCID_MAX;
 	err = rvu_alloc_bitmap(&sdp->vf_rids);
@@ -250,10 +266,10 @@ static int cn20k_sdp_rings_init(struct rvu *rvu)
 	for (ring = 0; ring < sdp->rings.max; ring++)
 		sdp->fn_map[ring] = 0xFFFF;
 
-	for (pf = 0; pf < sdp_pfs; pf++) {
+	for (pf = 0; pf < count; pf++) {
 		rvu_pcifunc = (sdp->host2rvupf[pf] & RVU_PFVF_PF_MASK) <<
 			      RVU_PFVF_PF_SHIFT;
-		pfvf = rvu_get_pfvf(rvu, rvu_pcifunc);
+		pfvf = rvu_get_pfvf(rvu, rvu_pcifunc & ~RVU_PFVF_FUNC_MASK);
 		sdp_cfg = &pfvf->sdp_cfg;
 
 		INIT_DELAYED_WORK(&sdp_cfg->dwork, cn20k_sdp_events_task);
@@ -264,6 +280,8 @@ static int cn20k_sdp_rings_init(struct rvu *rvu)
 
 	return 0;
 
+free_pfs_bmap:
+	bitmap_free(sdp->ready_pfs);
 free_rings_bmap:
 	rvu_free_bitmap(&sdp->rings);
 free_fn_map:
@@ -324,7 +342,7 @@ free_entries:
 	return rc;
 }
 
-static int cn20k_sdp_get_vfrid(struct rvu *rvu, u16 host_pcifunc)
+static int cn20k_sdp_get_vfrid(struct rvu *rvu, u16 epcifunc)
 {
 	struct sdp_rsrc *sdp = &rvu->hw->sdp;
 	int rid;
@@ -332,7 +350,7 @@ static int cn20k_sdp_get_vfrid(struct rvu *rvu, u16 host_pcifunc)
 	/* Allocate a new VF_RSRC_ID */
 	rid = rvu_alloc_rsrc(&sdp->vf_rids);
 	if (rid >= 0)
-		sdp->vf_rsrc_map[rid] = host_pcifunc;
+		sdp->vf_rsrc_map[rid] = epcifunc;
 
 	return rid;
 }
@@ -344,7 +362,7 @@ int rvu_mbox_handler_sdp_rings_alloc(struct rvu *rvu,
 	u16 rvu_pcifunc = cn20k_get_rvu_pcifunc(rvu, req->hdr.pcifunc);
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, rvu_pcifunc);
 	struct sdp_rsrc *sdp = &rvu->hw->sdp;
-	u16 host_pcifunc = req->hdr.pcifunc;
+	u16 epcifunc = req->hdr.pcifunc;
 	int qcount = num_online_cpus();
 	struct sdp_config *sdp_cfg;
 	int ring, rx_entry, slot;
@@ -352,7 +370,7 @@ int rvu_mbox_handler_sdp_rings_alloc(struct rvu *rvu,
 	u16 host_vf;
 	u64 cfg;
 
-	host_vf = get_sdp_evf(host_pcifunc);
+	host_vf = get_sdp_evf(epcifunc);
 	sdp_cfg = &pfvf->sdp_cfg;
 
 	if (!req->nr_rings)
@@ -375,7 +393,7 @@ int rvu_mbox_handler_sdp_rings_alloc(struct rvu *rvu,
 
 	/* In case of host VF get VF resource id of it */
 	if (host_vf) {
-		vf_rid = cn20k_sdp_get_vfrid(rvu, host_pcifunc);
+		vf_rid = cn20k_sdp_get_vfrid(rvu, epcifunc);
 		if (vf_rid < 0) {
 			dev_err(rvu->dev, "VF resource id allocation failed\n");
 			mutex_unlock(&sdp->cfg_lock);
@@ -402,8 +420,8 @@ int rvu_mbox_handler_sdp_rings_alloc(struct rvu *rvu,
 
 		sdp_cfg->mcam_rx_entries[slot] = rx_entry;
 
-		cfg = FIELD_PREP(SDP_R_MAP_VF_MASK, get_sdp_evf(host_pcifunc));
-		cfg |= FIELD_PREP(SDP_R_MAP_EPF_MASK, get_sdp_epf(host_pcifunc));
+		cfg = FIELD_PREP(SDP_R_MAP_VF_MASK, get_sdp_evf(epcifunc));
+		cfg |= FIELD_PREP(SDP_R_MAP_EPF_MASK, get_sdp_epf(epcifunc));
 		cfg |= FIELD_PREP(SDP_R_MAP_VRING_MASK, slot);
 		/* Use hardware ring number as channel number */
 		cfg |= FIELD_PREP(SDP_R_MAP_CHAN_MASK, ring);
@@ -425,7 +443,7 @@ int rvu_mbox_handler_sdp_rings_alloc(struct rvu *rvu,
 		sdp_cfg->nr_rings++;
 		rsp->count++;
 
-		sdp->fn_map[ring] = host_pcifunc;
+		sdp->fn_map[ring] = epcifunc;
 	}
 
 	if (rsp->count) {
@@ -485,13 +503,13 @@ int rvu_mbox_handler_sdp_rings_free(struct rvu *rvu,
 	u16 rvu_pcifunc = cn20k_get_rvu_pcifunc(rvu, req->hdr.pcifunc);
 	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, rvu_pcifunc);
 	struct sdp_rsrc *sdp = &rvu->hw->sdp;
-	u16 nr_rings, host_pcifunc, host_vf;
+	u16 nr_rings, epcifunc, host_vf;
 	struct sdp_config *sdp_cfg;
 	int rid, rc = 0;
 	u16 slot;
 
-	host_pcifunc = req->hdr.pcifunc;
-	host_vf = get_sdp_evf(host_pcifunc);
+	epcifunc = req->hdr.pcifunc;
+	host_vf = get_sdp_evf(epcifunc);
 
 	sdp_cfg = &pfvf->sdp_cfg;
 	if (!sdp_cfg->nr_rings) {
@@ -507,7 +525,7 @@ int rvu_mbox_handler_sdp_rings_free(struct rvu *rvu,
 
 	if (host_vf) {
 		for (rid = 0; rid < sdp->vf_rids.max; rid++) {
-			if (sdp->vf_rsrc_map[rid] == host_pcifunc)
+			if (sdp->vf_rsrc_map[rid] == epcifunc)
 				break;
 		}
 
@@ -537,6 +555,35 @@ int rvu_mbox_handler_sdp_rings_default(struct rvu *rvu,
 
 	return 0;
 }
+
+/* Message from RVU PF */
+int rvu_mbox_handler_start_up_msgs(struct rvu *rvu,
+				   struct msg_req *req,
+				   struct msg_rsp *rsp)
+{
+
+	int pf = rvu_get_pf(req->hdr.pcifunc);
+	struct sdp_rsrc *sdp = &rvu->hw->sdp;
+
+	bitmap_set(sdp->ready_pfs, pf, 1);
+
+	return 0;
+}
+
+/* Message from RVU PF */
+int rvu_mbox_handler_stop_up_msgs(struct rvu *rvu,
+				  struct msg_req *req,
+				  struct msg_rsp *rsp)
+{
+
+	int pf = rvu_get_pf(req->hdr.pcifunc);
+	struct sdp_rsrc *sdp = &rvu->hw->sdp;
+
+	bitmap_clear(sdp->ready_pfs, pf, 1);
+
+	return 0;
+}
+
 /* SDP Mbox handler */
 static int sdp_process_mbox_msg(struct otx2_mbox *mbox, int devid,
 				struct mbox_msghdr *req)
@@ -962,20 +1009,10 @@ static inline void rvu_afepf_mbox_up_handler(struct work_struct *work)
 	__sdp_mbox_up_handler(mwork, TYPE_AFEPF);
 }
 
-int rvu_mbox_handler_sdp_read_const(struct rvu *rvu,
-				    struct msg_req *req,
-				    struct sdp_rsp_const *rsp)
+int rvu_mbox_handler_sdp_ready(struct rvu *rvu, struct msg_req *req,
+			       struct msg_rsp *rsp)
 {
-	u64 sdp_const;
-	int blkaddr;
-
-	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SDP, req->hdr.pcifunc);
-	if (blkaddr < 0)
-		return -ENODEV;
-
-	sdp_const = rvu_read64(rvu, blkaddr, SDP_AF_CONST);
-	rsp->fifo_sz = sdp_const & 0xffff;
-	rsp->rings  = FIELD_GET(SDP_NUMBER_OF_RINGS_IMPL, sdp_const);
+	/* Nothing to do host pcifunc is set already in sdp_process_mbox_msg */
 	return 0;
 }
 

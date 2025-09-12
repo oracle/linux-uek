@@ -298,6 +298,7 @@ struct sdp_rsrc {
 	u16 *vf_rsrc_map; /* VF_RES_IDs to host VFs mapping */
 	struct mutex		cfg_lock;
 	u8 host2rvupf[MAX_EPFS];
+	unsigned long *ready_pfs; /* bitmap to store GEN PFs */
 };
 
 /* Structure for per RVU func info ie PF/VF */
