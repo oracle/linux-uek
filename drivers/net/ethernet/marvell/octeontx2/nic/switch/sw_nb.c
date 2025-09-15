@@ -80,7 +80,7 @@ bool sw_nb_is_valid_dev(struct net_device *netdev)
 	priv.flags = true;
 	priv.data = &cnt;
 
-	if (netif_is_bridge_master(netdev)) {
+	if (netif_is_bridge_master(netdev) || is_vlan_dev(netdev)) {
 		netdev_walk_all_lower_dev(netdev, sw_nb_check_slaves, &priv);
 		return priv.flags && !!*(int *)priv.data;
 	}
@@ -222,10 +222,8 @@ static int sw_nb_fib_event(struct notifier_block *nb,
 	}
 
 	entries = kcalloc(fi->fib_nhs, sizeof(*entries), GFP_ATOMIC);
-	if (!entries) {
-		pr_debug("%s:%d Err to alloc memory for fib nodes\n", __func__, __LINE__);
+	if (!entries)
 		return NOTIFY_DONE;
-	}
 
 	haddr = kcalloc(fi->fib_nhs, sizeof(u32), GFP_ATOMIC);
 
@@ -259,6 +257,10 @@ static int sw_nb_fib_event(struct notifier_block *nb,
 				pf_dev = lower;
 				break;
 			}
+		} else if (is_vlan_dev(dev)) {
+			iter->vlan_valid = 1;
+			pf_dev = vlan_dev_real_dev(dev);
+			iter->vlan_tag = vlan_dev_vlan_id(dev);
 		}
 
 		pf = netdev_priv(pf_dev);
@@ -296,6 +298,8 @@ static int sw_nb_fib_event(struct notifier_block *nb,
 	if (!cnt)
 		return NOTIFY_DONE;
 
+	pr_debug("pf_dev is %s cnt=%d\n", pf_dev->name, cnt);
+
 	sw_fib_add_to_list(pf_dev, entries, cnt);
 
 	if (!hcnt)
@@ -303,8 +307,8 @@ static int sw_nb_fib_event(struct notifier_block *nb,
 
 	entries = kcalloc(hcnt, sizeof(*entries), GFP_ATOMIC);
 	if (!entries) {
-		pr_debug("%s:%d Err to alloc memory for fib nodes\n",
-			 __func__, __LINE__);
+		pr_err("%s:%d Err to alloc memory for fib nodes\n",
+		       __func__, __LINE__);
 		return NOTIFY_DONE;
 	}
 	iter = entries;
@@ -371,6 +375,10 @@ static int sw_nb_net_event(struct notifier_block *nb,
 				pf_dev = lower;
 				break;
 			}
+		} else if (is_vlan_dev(n->dev)) {
+			entry->vlan_valid = 1;
+			pf_dev = vlan_dev_real_dev(n->dev);
+			entry->vlan_tag = vlan_dev_vlan_id(n->dev);
 		}
 
 		pf = netdev_priv(pf_dev);
@@ -399,7 +407,7 @@ static int sw_nb_inetaddr_event_to_otx2_event(int event)
 	default:
 		break;
 	}
-	pr_err("%s:%d Wrong interaddr event %d\n", __func__, __LINE__,  event);
+	pr_debug("%s:%d Wrong interaddr event %d\n", __func__, __LINE__,  event);
 	return -1;
 }
 
@@ -442,6 +450,10 @@ static int sw_nb_inetaddr_event(struct notifier_block *nb,
 			pf_dev = lower;
 			break;
 		}
+	} else if (is_vlan_dev(dev)) {
+		entry->vlan_valid = 1;
+		pf_dev = vlan_dev_real_dev(dev);
+		entry->vlan_tag = vlan_dev_vlan_id(dev);
 	}
 
 	pf = netdev_priv(pf_dev);
@@ -505,6 +517,10 @@ static int sw_nb_netdev_event(struct notifier_block *unused,
 			pf_dev = lower;
 			break;
 		}
+	} else if (is_vlan_dev(dev)) {
+		entry->vlan_valid = 1;
+		pf_dev = vlan_dev_real_dev(dev);
+		entry->vlan_tag = vlan_dev_vlan_id(dev);
 	}
 
 	pf = netdev_priv(pf_dev);
@@ -538,23 +554,23 @@ int sw_nb_unregister(void)
 	err = unregister_switchdev_notifier(&sw_nb_fdb);
 
 	if (err)
-		pr_debug("Failed to unregister switchdev nb\n");
+		pr_err("Failed to unregister switchdev nb\n");
 
 	err = unregister_fib_notifier(&init_net, &sw_nb_fib);
 	if (err)
-		pr_debug("Failed to unregister fib nb\n");
+		pr_err("Failed to unregister fib nb\n");
 
 	err = unregister_netevent_notifier(&sw_nb_netevent);
 	if (err)
-		pr_debug("Failed to unregister netevent\n");
+		pr_err("Failed to unregister netevent\n");
 
 	err = unregister_inetaddr_notifier(&sw_nb_inetaddr);
 	if (err)
-		pr_debug("Failed to unregister addr event\n");
+		pr_err("Failed to unregister addr event\n");
 
 	err = unregister_netdevice_notifier(&sw_nb_netdev);
 	if (err)
-		pr_debug("Failed to unregister netdev notifer\n");
+		pr_err("Failed to unregister netdev notifer\n");
 	return 0;
 }
 EXPORT_SYMBOL(sw_nb_unregister);
@@ -569,31 +585,31 @@ int sw_nb_register(void)
 
 	err = register_switchdev_notifier(&sw_nb_fdb);
 	if (err) {
-		pr_debug("Failed to register switchdev nb\n");
+		pr_err("Failed to register switchdev nb\n");
 		return err;
 	}
 
 	err = register_fib_notifier(&init_net, &sw_nb_fib, NULL, NULL);
 	if (err) {
-		pr_debug("Failed to register fb notifier block");
+		pr_err("Failed to register fb notifier block");
 		goto err1;
 	}
 
 	err = register_netevent_notifier(&sw_nb_netevent);
 	if (err) {
-		pr_debug("Failed to register netevent\n");
+		pr_err("Failed to register netevent\n");
 		goto err2;
 	}
 
 	err = register_inetaddr_notifier(&sw_nb_inetaddr);
 	if (err) {
-		pr_debug("Failed to register addr event\n");
+		pr_err("Failed to register addr event\n");
 		goto err3;
 	}
 
 	err = register_netdevice_notifier(&sw_nb_netdev);
 	if (err) {
-		pr_debug("Failed to register netdevice nb\n");
+		pr_err("Failed to register netdevice nb\n");
 		goto err4;
 	}
 
