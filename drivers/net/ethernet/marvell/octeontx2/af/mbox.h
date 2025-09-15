@@ -2342,8 +2342,10 @@ struct fib_entry {
 	u64 cmd;
 	u64 gw_valid : 1;
 	u64 mac_valid : 1;
+	u64 vlan_valid: 1;
 	u64 host    : 1;
 	u64 bridge  : 1;
+	u16 vlan_tag;
 	u32 dst;
 	u32 dst_len;
 	u32 gw;
