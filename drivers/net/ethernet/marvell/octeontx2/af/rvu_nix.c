@@ -5855,6 +5855,33 @@ int rvu_mbox_handler_nix_lso_alt_flags_cfg(struct rvu *rvu,
 	return 0;
 }
 
+int rvu_mbox_handler_nix_af_rx_flow_vec_ctrl_set(
+	struct rvu *rvu, struct nix_af_rx_flow_vec_ctrl_write_req *req,
+	struct msg_rsp *rsp)
+{
+	u16 pcifunc = req->hdr.pcifunc;
+	u8 flow_vec_idx;
+	int blkaddr;
+	u64 val;
+
+	if (!is_cn20k(rvu->pdev)) {
+		dev_err(rvu->dev, "Mbox support is only for cn20k\n");
+		return -EOPNOTSUPP;
+	}
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
+	if (blkaddr < 0)
+		return NIX_AF_ERR_AF_LF_INVALID;
+
+	for (flow_vec_idx = 0; flow_vec_idx < NIX_AF_RX_FLOW_VEC_CTRL_MAX; flow_vec_idx++) {
+		val = req->ctrl0x[flow_vec_idx].val;
+		rvu_write64(rvu, blkaddr, NIX_AF_RX_FLOW_VEC_CTRL0X(flow_vec_idx), val);
+		val = req->ctrl1x[flow_vec_idx].val;
+		rvu_write64(rvu, blkaddr, NIX_AF_RX_FLOW_VEC_CTRL1X(flow_vec_idx), val);
+	}
+	return 0;
+}
+
 #define IPSEC_GEN_CFG_EGRP    GENMASK_ULL(50, 48)
 #define IPSEC_GEN_CFG_OPCODE  GENMASK_ULL(47, 32)
 #define IPSEC_GEN_CFG_PARAM1  GENMASK_ULL(31, 16)

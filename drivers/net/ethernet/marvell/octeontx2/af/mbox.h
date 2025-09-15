@@ -444,6 +444,8 @@ M(NIX_CN20K_AQ_ENQ,	0x802f, nix_cn20k_aq_enq, nix_cn20k_aq_enq_req,		\
 				nix_cn20k_aq_enq_rsp)				\
 M(NIX_LSO_ALT_FLAGS_CFG, 0x8030, nix_lso_alt_flags_cfg, nix_lso_alt_flags_cfg_req, \
 				nix_lso_alt_flags_cfg_rsp)			\
+M(NIX_AF_RX_FLOW_VEC_CTRL_SET, 0x8034, nix_af_rx_flow_vec_ctrl_set,		\
+				       nix_af_rx_flow_vec_ctrl_write_req, msg_rsp)	\
 /* MCS mbox IDs (range 0xA000 - 0xBFFF) */					\
 M(MCS_ALLOC_RESOURCES,	0xa000, mcs_alloc_resources, mcs_alloc_rsrc_req,	\
 				mcs_alloc_rsrc_rsp)				\
@@ -1736,6 +1738,40 @@ struct nix_lso_alt_flags_cfg_req {
 struct nix_lso_alt_flags_cfg_rsp {
 	struct mbox_msghdr hdr;
 	u8 lso_alt_flags_idx;
+};
+
+union nix_af_rx_flow_vec_ctrl0x {
+	struct nix_af_rx_flow_vec_ctrl0x_s {
+		u64 eov_inv : 1;
+		u64 eov_mask : 16;
+		u64 eov_offset : 8;
+		u64 sov_inv : 1;
+		u64 sov_mask : 16;
+		u64 sov_offset : 8;
+		u64 reserved : 14;
+	} s;
+	uint64_t val;
+};
+
+union nix_af_rx_flow_vec_ctrl1x {
+	struct nix_af_rx_flow_vec_ctrl1x_s {
+		u64 ver_mask : 4;
+		u64 ver_match : 4;
+		u64 ver_offset : 9;
+		u64 ltype_mask : 4;
+		u64 ltype_match : 4;
+		u64 lid : 3;
+		u64 valid : 1;
+		u64 reserved : 35;
+	} s;
+	uint64_t val;
+};
+
+#define NIX_AF_RX_FLOW_VEC_CTRL_MAX 4
+struct nix_af_rx_flow_vec_ctrl_write_req {
+	struct mbox_msghdr hdr;
+	union nix_af_rx_flow_vec_ctrl0x ctrl0x[NIX_AF_RX_FLOW_VEC_CTRL_MAX];
+	union nix_af_rx_flow_vec_ctrl1x ctrl1x[NIX_AF_RX_FLOW_VEC_CTRL_MAX];
 };
 
 /* SSO mailbox error codes

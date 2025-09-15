@@ -396,6 +396,8 @@
 #define NIX_AF_TL3_TL2X_BP_STATUS(a)            (0x1610 | (a) << 16)
 #define NIX_AF_TL3_TL2X_LINKX_CFG(a, b)         (0x1700 | (a) << 16 | (b) << 3)
 #define NIX_AF_RX_FLOW_KEY_ALGX_FIELDX(a, b)    (0x1800 | (a) << 18 | (b) << 3)
+#define NIX_AF_RX_FLOW_VEC_CTRL0X(a)            (0x1840 | (a) << 3)
+#define NIX_AF_RX_FLOW_VEC_CTRL1X(a)            (0x1860 | (a) << 3)
 #define NIX_AF_TX_MCASTX(a)                     (0x1900 | (a) << 15)
 #define NIX_AF_TX_VTAG_DEFX_CTL(a)              (0x1A00 | (a) << 16)
 #define NIX_AF_TX_VTAG_DEFX_DATA(a)             (0x1A10 | (a) << 16)
