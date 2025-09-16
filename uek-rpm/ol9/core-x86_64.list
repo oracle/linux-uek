@@ -248,6 +248,7 @@ kernel/drivers/net/ethernet/mellanox/mlxfw/mlxfw.ko
 kernel/drivers/net/ethernet/mellanox/mstflint_access/mstflint_access.ko
 kernel/drivers/net/ethernet/pensando/ionic/ionic.ko
 kernel/drivers/net/geneve.ko
+kernel/drivers/net/ifb.ko
 kernel/drivers/net/ipvlan/ipvlan.ko
 kernel/drivers/net/macsec.ko
 kernel/drivers/net/macvlan.ko
