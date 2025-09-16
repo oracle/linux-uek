@@ -170,6 +170,7 @@ modules-core:
 - ib_uverbs
 - ice
 - ieee802154
+- ifb
 - igb
 - ionic
 - ip6_gre
@@ -971,7 +972,6 @@ modules:
 - idpf
 - ieee802154_6lowpan
 - ieee802154_socket
-- ifb
 - igbvf
 - igc
 - ina209
