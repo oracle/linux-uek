@@ -485,7 +485,7 @@ int core_tpg_register(
 		ret = core_tpg_add_lun(se_tpg, se_tpg->tpg_virt_lun0,
 				true, g_lun0_dev);
 		if (ret < 0) {
-			kfree(se_tpg->tpg_virt_lun0);
+			target_tpg_free_lun(&se_tpg->tpg_virt_lun0->rcu_head);
 			return ret;
 		}
 	}
@@ -532,7 +532,7 @@ int core_tpg_deregister(struct se_portal_group *se_tpg)
 
 	if (se_tpg->proto_id >= 0) {
 		core_tpg_remove_lun(se_tpg, se_tpg->tpg_virt_lun0);
-		kfree_rcu(se_tpg->tpg_virt_lun0, rcu_head);
+		call_rcu(&se_tpg->tpg_virt_lun0->rcu_head, target_tpg_free_lun);
 	}
 
 	return 0;
@@ -550,6 +550,13 @@ struct se_lun *core_tpg_alloc_lun(
 		pr_err("Unable to allocate se_lun memory\n");
 		return ERR_PTR(-ENOMEM);
 	}
+
+	lun->lun_stats = alloc_percpu(struct scsi_port_stats);
+	if (!lun->lun_stats) {
+		pr_err("Unable to allocate se_lun stats memory\n");
+		goto free_lun;
+	}
+
 	lun->unpacked_lun = unpacked_lun;
 	atomic_set(&lun->lun_acl_count, 0);
 	init_completion(&lun->lun_shutdown_comp);
@@ -563,6 +570,18 @@ struct se_lun *core_tpg_alloc_lun(
 	lun->lun_tpg = tpg;
 
 	return lun;
+
+free_lun:
+	kfree(lun);
+	return ERR_PTR(-ENOMEM);
+}
+
+void target_tpg_free_lun(struct rcu_head *head)
+{
+	struct se_lun *lun = container_of(head, struct se_lun, rcu_head);
+
+	free_percpu(lun->lun_stats);
+	kfree(lun);
 }
 
 int core_tpg_add_lun(
