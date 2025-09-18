@@ -399,10 +399,16 @@ struct io_ring_ctx {
 
 	struct callback_head		poll_wq_task_work;
 	struct list_head		defer_list;
+#ifdef __GENKSYMS__
+	struct io_alloc_cache           msg_cache;
+	spinlock_t                      msg_lock;
 
-	struct io_alloc_cache		msg_cache;
-	spinlock_t			msg_lock;
-
+#else
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
+	UEK_KABI_RESERVE(3)
+	UEK_KABI_RESERVE(4)
+#endif
 #ifdef CONFIG_NET_RX_BUSY_POLL
 	struct list_head	napi_list;	/* track busy poll napi_id */
 	spinlock_t		napi_lock;	/* napi_list lock */
