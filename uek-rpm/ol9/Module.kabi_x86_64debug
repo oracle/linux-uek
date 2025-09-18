@@ -560,7 +560,6 @@
 0x279d0ad7	vzalloc_node_noprof	vmlinux	EXPORT_SYMBOL
 0xbee3ddd5	vzalloc_noprof	vmlinux	EXPORT_SYMBOL
 0x6ca75d22	wait_for_completion	vmlinux	EXPORT_SYMBOL
-0x6ca75d22	wait_for_completion	vmlinux	EXPORT_SYMBOL
 0xa16ffc50	wait_for_completion_interruptible	vmlinux	EXPORT_SYMBOL
 0x7612885b	wait_for_completion_io_timeout	vmlinux	EXPORT_SYMBOL
 0x59c6748a	wait_for_completion_timeout	vmlinux	EXPORT_SYMBOL

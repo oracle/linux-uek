@@ -561,7 +561,6 @@
 	vzalloc_node_noprof
 	vzalloc_noprof
 	wait_for_completion
-	wait_for_completion
 	wait_for_completion_interruptible
 	wait_for_completion_io_timeout
 	wait_for_completion_timeout
