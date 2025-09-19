@@ -901,8 +901,12 @@ static void init_amd_gh(struct cpuinfo_x86 *c)
 	 */
 	msr_clear_bit(MSR_AMD64_BU_CFG2, 24);
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	if (cpu_has_amd_erratum(c, amd_erratum_383))
 		set_cpu_bug(c, X86_BUG_AMD_TLB_MMATCH);
+#else
+	WARN_ON(cpu_has_amd_erratum(c, amd_erratum_383));
+#endif
 }
 
 static void init_amd_ln(struct cpuinfo_x86 *c)

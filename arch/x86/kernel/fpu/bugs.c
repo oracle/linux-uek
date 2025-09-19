@@ -4,6 +4,8 @@
  */
 #include <asm/fpu/api.h>
 
+#ifdef CONFIG_X86_32
+
 /*
  * Boot time CPU/FPU FDIV bug detection code:
  */
@@ -57,3 +59,5 @@ void __init fpu__init_check_bugs(void)
 		pr_warn("Hmm, FPU with FDIV bug\n");
 	}
 }
+
+#endif /* CONFIG_X86_32 */

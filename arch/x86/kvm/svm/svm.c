@@ -486,6 +486,7 @@ static void svm_inject_exception(struct kvm_vcpu *vcpu)
 	svm->vmcb->control.event_inj_err = error_code;
 }
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 static void svm_init_erratum_383(void)
 {
 	u32 low, high;
@@ -509,6 +510,7 @@ static void svm_init_erratum_383(void)
 
 	erratum_383_found = true;
 }
+#endif
 
 static void svm_init_osvw(struct kvm_vcpu *vcpu)
 {
@@ -647,7 +649,9 @@ static int svm_hardware_enable(void)
 	} else
 		osvw_status = osvw_len = 0;
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	svm_init_erratum_383();
+#endif
 
 	if (cpu_feature_enabled(X86_FEATURE_SRSO_MSR_FIX)) {
 		int res = msr_set_bit(MSR_ZEN4_BP_CFG, MSR_ZEN4_BP_CFG_BP_SPEC_REDUCE_BIT);

@@ -467,30 +467,38 @@
  */
 #define X86_BUG(x)			(NCAPINTS*32 + (x))
 
-#define X86_BUG_F00F			X86_BUG(0) /* Intel F00F */
-#define X86_BUG_FDIV			X86_BUG(1) /* FPU FDIV */
-#define X86_BUG_COMA			X86_BUG(2) /* Cyrix 6x86 coma */
-#define X86_BUG_AMD_TLB_MMATCH		X86_BUG(3) /* "tlb_mmatch" AMD Erratum 383 */
-#ifdef WITHOUT_ORACLE_EXTENSIONS
-#define X86_BUG_AMD_APIC_C1E		X86_BUG(4) /* "" AMD Erratum 400 */
-#endif
-#define X86_BUG_11AP			X86_BUG(5) /* Bad local APIC aka 11AP */
+/*
+ * The following bug bits are reused (see below). Code referencing these
+ * bits depend on the CONFIG_X86_32 or WITHOUT_ORACLE_EXTENSIONS macro
+ * being defined.
+ *
+ * CONFIG_X86_32:
+ *   X86_BUG_F00F		X86_BUG(0)	- Intel F00F
+ *   X86_BUG_FDIV		X86_BUG(1)	- FPU FDIV
+ *   X86_BUG_COMA		X86_BUG(2)	- Cyrix 6x86 coma
+ *   X86_BUG_11AP		X86_BUG(5)	- Bad local APIC aka 11AP
+ *   X86_BUG_ESPFIX		X86_BUG(9)	- IRET to 16-bit SS corrupts ESP/RSP high bits
+ *
+ * WITHOUT_ORACLE_EXTENSIONS:
+ *   X86_BUG_AMD_TLB_MMATCH	X86_BUG(3)	- AMD Erratum 383
+ *   X86_BUG_AMD_APIC_C1E	X86_BUG(4)	- AMD Erratum 400
+ *   X86_BUG_AMD_E400		X86_BUG(13)	- CPU is among the affected by Erratum 400
+ */
+
+/* X86_BUG(0) is reused */
+/* X86_BUG(1) is reused */
+/* X86_BUG(2) is reused */
+/* X86_BUG(3) is reused */
+/* X86_BUG(4) is reused */
+/* X86_BUG(5) is reused */
 #define X86_BUG_FXSAVE_LEAK		X86_BUG(6) /* FXSAVE leaks FOP/FIP/FOP */
 #define X86_BUG_CLFLUSH_MONITOR		X86_BUG(7) /* AAI65, CLFLUSH required before MONITOR */
 #define X86_BUG_SYSRET_SS_ATTRS		X86_BUG(8) /* SYSRET doesn't fix up SS attrs */
-#ifdef CONFIG_X86_32
-/*
- * 64-bit kernels don't use X86_BUG_ESPFIX.  Make the define conditional
- * to avoid confusion.
- */
-#define X86_BUG_ESPFIX			X86_BUG(9) /* "" IRET to 16-bit SS corrupts ESP/RSP high bits */
-#endif
+/* X86_BUG(9) is reused  */
 #define X86_BUG_NULL_SEG		X86_BUG(10) /* Nulling a selector preserves the base */
 #define X86_BUG_SWAPGS_FENCE		X86_BUG(11) /* SWAPGS without input dep on GS */
 #define X86_BUG_MONITOR			X86_BUG(12) /* IPI required to wake up remote CPU */
-#ifdef WITHOUT_ORACLE_EXTENSIONS
-#define X86_BUG_AMD_E400		X86_BUG(13) /* "" CPU is among the affected by Erratum 400 */
-#endif
+/* X86_BUG(13) is reused */
 #define X86_BUG_CPU_MELTDOWN		X86_BUG(14) /* CPU is affected by meltdown attack and needs kernel page table isolation */
 #define X86_BUG_SPECTRE_V1		X86_BUG(15) /* CPU is affected by Spectre variant 1 attack with conditional branches */
 #define X86_BUG_SPECTRE_V2		X86_BUG(16) /* CPU is affected by Spectre variant 2 attack with indirect branches */
@@ -516,7 +524,14 @@
  * 0e52740ffd10 ("x86/bugs: Increase the x86 bugs vector size to two u32s")
  * but is not feasible in UEK without breaking the KABI so instead values at
  * the start of the vector that are only used by 32-bit kernels will be re-used.
+ *
+ * Bug numbers which are re-used should have their original definitions
+ * removed above. Otherwise they can conflict with new definitions, and
+ * the original name might still appear in the bugs output of /proc/cpuinfo
+ * (the list of bugs is created by arch/x86/kernel/cpu/mkcapflags.sh from
+ * #define's using X86_BUG).
  */
+
 #define X86_BUG_DIV0			X86_BUG(0) /* AMD DIV0 speculation bug (X86_BUG_F00F) */
 #define X86_BUG_BHI			X86_BUG(1) /* CPU is affected by Branch History Injection */
 #define X86_BUG_RFDS			X86_BUG(2) /* CPU is vulnerable to Register File Data Sampling */
