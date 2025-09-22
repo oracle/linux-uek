@@ -59,7 +59,7 @@ def load_kabi(kabi,filename):
 			break
 		if in_line == "\n":
 			continue
-		checksum,symbol,directory,type = in_line.split()
+		checksum,symbol,directory,type,*ns = in_line.split()
 
 		kabi[symbol] = in_line[0:-1]
 
@@ -72,18 +72,26 @@ def check_kabi(symvers,kabi):
 	changed_symbols=[]
 	moved_symbols=[]
 	retyped_symbols=[]
+	ns_symbols=[]
 
 	for symbol in kabi:
-		abi_hash,abi_sym,abi_dir,abi_type = kabi[symbol].split()
+		abi_hash,abi_sym,abi_dir,abi_type,*abi_ns = kabi[symbol].split()
+		abi_ns = abi_ns[0] if abi_ns else None
 		if symbol in symvers:
 			l = symvers[symbol].split()
 
 			sym_hash = l[0]
 
-			if len(l) == 4:
+			if len(l) == 5:
+				sym_ns = l[4]
+				sym_dir = l[2]
+				sym_type = l[3]
+			elif len(l) == 4:
+				sym_ns = None
 				sym_dir = l[2]
 				sym_type = l[3]
 			else:
+				sym_ns = None
 				sym_dir = l[3]
 				sym_type = l[4]
 
@@ -98,6 +106,10 @@ def check_kabi(symvers,kabi):
 			if abi_type != sym_type:
 				typeerr=1
 				retyped_symbols.append(symbol)
+
+			if abi_ns != sym_ns:
+			    warn=1
+			    ns_symbols.append(symbol)
 		else:
 			fail=1
 			changed_symbols.append(symbol)
@@ -129,6 +141,14 @@ def check_kabi(symvers,kabi):
 		for symbol in moved_symbols:
 			print (symbol)
 		print ("")
+
+	if ns_symbols:
+		 print("")
+		 print("The following symbols changed symbol namespaces:")
+		 print("")
+		 for symbol in ns_symbols:
+			  print(symbol)
+		 print("")
 
 	if fail or typeerr:
 		sys.exit(1)
