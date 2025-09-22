@@ -115,6 +115,7 @@ struct arm_pmu {
 
 	/* PMUv3 only */
 	int		pmuver;
+	bool		has_smt;
 	u64		reg_pmmir;
 	u64		reg_brbidr;
 #define ARMV8_PMUV3_MAX_COMMON_EVENTS		0x40
