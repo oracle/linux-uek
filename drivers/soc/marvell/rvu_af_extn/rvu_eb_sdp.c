@@ -781,11 +781,11 @@ static int sdp_get_mbox_regions(struct rvu *rvu, void **mbox_addr,
 			if (!test_bit(region, pf_bmap))
 				continue;
 
-			bar += region * MBOX_SIZE;
 			mbox_addr[region] = (void *)ioremap_wc(bar, MBOX_SIZE);
 
 			if (!mbox_addr[region])
 				goto error;
+			bar +=  MBOX_SIZE;
 		}
 	}
 	return 0;
