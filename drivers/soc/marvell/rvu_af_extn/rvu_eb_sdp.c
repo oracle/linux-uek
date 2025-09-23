@@ -565,6 +565,9 @@ int rvu_mbox_handler_start_up_msgs(struct rvu *rvu,
 	int pf = rvu_get_pf(req->hdr.pcifunc);
 	struct sdp_rsrc *sdp = &rvu->hw->sdp;
 
+	if (!is_block_implemented(rvu->hw, BLKADDR_SDP))
+		return 0;
+
 	bitmap_set(sdp->ready_pfs, pf, 1);
 
 	return 0;
@@ -578,6 +581,9 @@ int rvu_mbox_handler_stop_up_msgs(struct rvu *rvu,
 
 	int pf = rvu_get_pf(req->hdr.pcifunc);
 	struct sdp_rsrc *sdp = &rvu->hw->sdp;
+
+	if (!is_block_implemented(rvu->hw, BLKADDR_SDP))
+		return 0;
 
 	bitmap_clear(sdp->ready_pfs, pf, 1);
 
