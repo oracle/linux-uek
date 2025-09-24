@@ -23,6 +23,15 @@ enum penfw_opcodes {
 	PENFW_OP_GET_RANDOM,
 	PENFW_OP_GET_CHIP_CERT,
 	PENFW_OP_ATTEST_GET_TIME,
+	PENFW_OP_GET_PENTRUST_AR_NVCNTR,
+	PENFW_OP_COMMIT_PENTRUST_AR_NVCNTR,
+	PENFW_OP_GET_HMAC,
+	PENFW_OP_GET_SM_LOG,
+	PENFW_OP_BSM_SET_RUNNING,
+	PENFW_OP_GET_MMA_CLK,
+	PENFW_OP_SET_ETH_PLL_CLK,
+	PENFW_OP_ATOMIC_INC_AXI_LIMITER,
+	PENFW_OP_GET_SECURE_INTERRUPTS,
 	PENFW_OPCODE_MAX,
 };
 
@@ -50,10 +59,33 @@ struct penfw_time_attestation {
 	} signature;
 };
 
+struct penfw_intrreg {
+	// input
+	uint64_t addr;
+	// output
+	uint32_t value;
+	uint32_t valid;
+};
+
+struct penfw_secure_intrs {
+	uint32_t num_intr_regs;
+	struct penfw_intrreg *intr_regs;
+};
+
+typedef struct penfw_svc_args_s {
+	uint64_t func_id;
+	uint64_t sub_func_id;
+	uint16_t length_in;
+	uint64_t value;		// pointer to input/output data
+	uint16_t length_out;
+	uint64_t status;	// status of the smc operation
+} penfw_svc_args_t;
 
 #define PENFW_IOCTL_NUM  0xcd
 #define PENFW_FWCALL     _IOWR(PENFW_IOCTL_NUM, 1, struct penfw_call_args)
+#define PENFW_SVC        _IOWR(PENFW_IOCTL_NUM, 2, penfw_svc_args_t)
 
 void penfw_smc(struct penfw_call_args *args);
+long penfw_svc_smc(penfw_svc_args_t *args);
 
 #endif /* __PENFW_H__ */

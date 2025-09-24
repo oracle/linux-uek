@@ -23,7 +23,7 @@
 
 static int    majorNumber;
 static struct class *penfw_class;
-static struct device *penfw_dev;
+struct device *penfw_dev;
 static DEFINE_MUTEX(penfw_mutex);
 
 void *penfwdata;
@@ -39,33 +39,54 @@ static long penfw_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	long ret = 0;
 	void __user *argp = (void __user *)arg;
 	struct penfw_call_args penfw_args_ob;
+	penfw_svc_args_t penfw_svc_args;
 
-	mutex_lock(&penfw_mutex);
-
-	if (copy_from_user(&penfw_args_ob, argp, sizeof(penfw_args_ob))) {
-		dev_err(penfw_dev, "copy from user failed\n");
-		ret = -EFAULT;
-		goto err;
-	}
-
-	if (cmd != PENFW_FWCALL) {
+	switch (cmd) {
+	case PENFW_FWCALL:
+		if (copy_from_user(&penfw_args_ob, argp,
+					sizeof(penfw_args_ob))) {
+			dev_err(penfw_dev, "copy from user failed\n");
+			ret = -EFAULT;
+			goto err;
+		}
+		mutex_lock(&penfw_mutex);
+		penfw_smc(&penfw_args_ob);
+		mutex_unlock(&penfw_mutex);
+		// copy back data to user space struct
+		if (copy_to_user(argp, &penfw_args_ob, sizeof(penfw_args_ob))) {
+			dev_err(penfw_dev, "copy to user failed\n");
+			ret = -EFAULT;
+			goto err;
+		}
+		break;
+	case PENFW_SVC:
+		if (copy_from_user(&penfw_svc_args, argp,
+					sizeof(penfw_svc_args))) {
+			dev_err(penfw_dev, "copy from user failed\n");
+			ret = -EFAULT;
+			goto err;
+		}
+		ret = penfw_svc_smc(&penfw_svc_args);
+		if (ret != 0) {
+			dev_err(penfw_dev, "error in smc handling %ld\n",
+				ret);
+			goto err;
+		}
+		// copy back data to user space struct
+		if (copy_to_user(argp, &penfw_svc_args,
+					sizeof(penfw_svc_args))) {
+			dev_err(penfw_dev, "copy to user failed\n");
+			ret = -EFAULT;
+			goto err;
+		}
+		break;
+	default:
 		dev_err(penfw_dev, "received unsupported ioctl %u\n", cmd);
 		ret = -EOPNOTSUPP;
 		goto err;
 	}
 
-	penfw_smc(&penfw_args_ob);
-
-	// copy back data to user space struct
-	if (copy_to_user(argp, &penfw_args_ob, sizeof(penfw_args_ob))) {
-		dev_err(penfw_dev, "copy to user failed\n");
-		ret = -EFAULT;
-		goto err;
-	}
-
 err:
-	mutex_unlock(&penfw_mutex);
-
 	return ret;
 }
 
@@ -116,8 +137,8 @@ static int penfw_probe(struct platform_device *pdev)
 	dev_info(penfw_dev, "penfw sys initialization success\n");
 
 	// Allocate memory for smc calls
-	penfwdata = (struct penfw_data *)devm_get_free_pages(penfw_dev,
-									GFP_KERNEL | GFP_ATOMIC, 0);
+	penfwdata = (void *)devm_get_free_pages(penfw_dev,
+						GFP_KERNEL | GFP_ATOMIC, 0);
 	if (penfwdata == NULL) {
 		dev_err(penfw_dev, "penfw memory allocation failed\n");
 		return -1;

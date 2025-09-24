@@ -19,6 +19,8 @@
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/delay.h>
+#include <linux/arm-smccc.h>
+#include <asm/ptrace.h>
 
 #define MAX_DEVICES			4
 #define SBUS_SBUS_RST			0x20
@@ -26,6 +28,20 @@
 #define SBUS_SBUS_RD			0x22
 #define SBUS_INDIR_DATA_ADDR_LSB	8
 #define SBUS_INDIR_DATA_COMMAND_LSB	16
+
+/* Refer Pensando BL31 Function Registry.docx */
+#define PEN_SBUS_SMC_CALL_FID       0xC200000B
+
+enum pen_sbus_smc_sub_fid {
+    PEN_SBUS_SMC_REG_READ = 0,
+    PEN_SBUS_SMC_REG_WRITE = 1,
+};
+
+enum pen_sbus_smc_err_codes {
+    PEN_SBUS_SMC_ERR_NONE = 0,
+    PEN_SBUS_SMC_ERR_INVALID = -1,
+    PEN_SBUS_SMC_ERR_UNSUPPORTED = -2,
+};
 
 static dev_t sbus_dev;
 static struct class *dev_class;
@@ -37,12 +53,18 @@ struct sbus_ioctl_args {
 	u32 sbus_data;
 };
 
+struct sbus_reg_ops {
+	void (*write)(void __iomem *addr, uint32_t val);
+	uint32_t (*read)(void __iomem *addr);
+};
+
 struct sbusdev_info {
 	struct platform_device *pdev;
 	void __iomem *sbus_indir;
 	void __iomem *sbus_dhs;
 	spinlock_t sbus_lock;
 	struct cdev cdev;
+	struct sbus_reg_ops *rops;
 };
 
 #define SBUS_WRITE	_IOW('a', 'a', struct sbus_ioctl_args)
@@ -59,6 +81,46 @@ static int sbus_drv_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
+static void reg_write(void __iomem *addr, uint32_t val)
+{
+	iowrite32(val, addr);
+}
+
+static uint32_t reg_read(void __iomem *addr)
+{
+	return ioread32(addr);
+}
+
+static void reg_smc_write(void __iomem *addr, uint32_t val)
+{
+	struct arm_smccc_res res = {0};
+
+	arm_smccc_smc(PEN_SBUS_SMC_CALL_FID,
+		      PEN_SBUS_SMC_REG_WRITE, (uint64_t)addr,
+		      val, 0, 0, 0, 0, &res);
+
+	if (res.a0 != PEN_SBUS_SMC_ERR_NONE) {
+		pr_err("pensando-sbus: failed to write data! ret=%d\n", (int)res.a0);
+	}
+}
+
+static uint32_t reg_smc_read(void __iomem *addr)
+{
+	struct arm_smccc_res res = {0};
+
+	arm_smccc_smc(PEN_SBUS_SMC_CALL_FID,
+		      PEN_SBUS_SMC_REG_READ, (uint64_t)addr,
+		      0, 0, 0, 0, 0, &res);
+
+	if (res.a0 != PEN_SBUS_SMC_ERR_NONE) {
+		pr_err("pensando-sbus: read failed! ret=%ld\n", res.a0);
+		return (uint32_t)-1;
+	}
+
+	/* result passed back in a1 reg */
+	return (uint32_t)res.a1;
+}
+
 static void sbus_write(struct sbus_ioctl_args param,
 		       struct sbusdev_info *sbus_ring)
 {
@@ -73,8 +135,8 @@ static void sbus_write(struct sbus_ioctl_args param,
 
 	spin_lock(&sbus_ring->sbus_lock);
 
-	iowrite32(sbus_val, sbus_ring->sbus_indir);
-	iowrite32(param.sbus_data, sbus_ring->sbus_dhs);
+	sbus_ring->rops->write(sbus_ring->sbus_indir, sbus_val);
+	sbus_ring->rops->write(sbus_ring->sbus_dhs, param.sbus_data);
 
 	spin_unlock(&sbus_ring->sbus_lock);
 }
@@ -93,8 +155,8 @@ static uint32_t sbus_read(struct sbus_ioctl_args param,
 
 	spin_lock(&sbus_ring->sbus_lock);
 
-	iowrite32(sbus_val, sbus_ring->sbus_indir);
-	val = ioread32(sbus_ring->sbus_dhs);
+	sbus_ring->rops->write(sbus_ring->sbus_indir, sbus_val);
+	val = sbus_ring->rops->read(sbus_ring->sbus_dhs);
 
 	spin_unlock(&sbus_ring->sbus_lock);
 
@@ -115,8 +177,8 @@ static void sbus_reset(struct sbus_ioctl_args param,
 
 	spin_lock(&sbus_ring->sbus_lock);
 
-	iowrite32(sbus_val, sbus_ring->sbus_indir);
-	iowrite32(0, sbus_ring->sbus_dhs);
+	sbus_ring->rops->write(sbus_ring->sbus_indir, sbus_val);
+	sbus_ring->rops->write(sbus_ring->sbus_dhs, 0);
 
 	spin_unlock(&sbus_ring->sbus_lock);
 }
@@ -177,6 +239,39 @@ static const struct file_operations fops = {
 };
 
 /*
+ * Register operation structure (non-secure)
+ */
+static struct sbus_reg_ops ns_rops = {
+	.read = reg_read,
+	.write = reg_write,
+};
+
+/*
+ * Register operation structure (secure)
+ */
+static struct sbus_reg_ops sec_rops = {
+	.read = reg_smc_read,
+	.write = reg_smc_write,
+};
+
+static int of_get_secure_mode(void)
+{
+	struct device_node *of_secure_mode;
+	int enable = 0;
+
+	/* Get secure mode from OF */
+	of_secure_mode = of_find_node_by_path("/secure_mode");
+	if (of_secure_mode) {
+		if (of_property_read_u32(of_secure_mode, "enable", &enable)) {
+			return 0; /* non-secure */
+		} else {
+			return enable;
+		}
+	}
+	return 0; /* non-secure */
+}
+
+/*
  * Module Init function
  */
 static int sbus_probe(struct platform_device *pdev)
@@ -186,6 +281,8 @@ static int sbus_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct resource *res;
 	struct sbusdev_info *sbus_ring;
+	void __iomem *sbus_indir;
+	int is_secure = 0;
 
 	if (dev_inst > MAX_DEVICES-1)
 		return -ENODEV;
@@ -203,13 +300,19 @@ static int sbus_probe(struct platform_device *pdev)
 	sbus_ring->pdev = pdev;
 	platform_set_drvdata(pdev, sbus_ring);
 
+	is_secure = of_get_secure_mode();
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	sbus_ring->sbus_indir = devm_ioremap_resource(dev, res);
-	if (IS_ERR(sbus_ring->sbus_indir)) {
-		dev_err(dev, "Cannot remap sbus reg addresses.\n");
-		return PTR_ERR(sbus_ring->sbus_indir);
+	if (is_secure) {
+		sbus_indir = (void __iomem *)res->start;
+	} else {
+		sbus_indir = (void __iomem *)devm_ioremap_resource(dev, res);
+		if (IS_ERR(sbus_indir)) {
+			dev_err(dev, "Cannot remap sbus reg addresses.\n");
+			return PTR_ERR(sbus_indir);
+		}
 	}
-	sbus_ring->sbus_dhs = sbus_ring->sbus_indir + 0x4;
+	sbus_ring->sbus_indir = sbus_indir;
+	sbus_ring->sbus_dhs = (void __iomem *)(sbus_ring->sbus_indir + 0x4);
 
 	spin_lock_init(&sbus_ring->sbus_lock);
 
@@ -255,6 +358,15 @@ static int sbus_probe(struct platform_device *pdev)
 		goto r_device;
 	}
 	dev_inst++;
+
+	/* Set the reg read/write ops based on secure/non-secure mode of operation */
+	if (is_secure) {
+		pr_info("pensando-sbus: Using secure ops\n");
+		sbus_ring->rops = &sec_rops;
+	} else {
+		pr_info("pensando-sbus: Using non-secure ops\n");
+		sbus_ring->rops = &ns_rops;
+	}
 
 	return 0;
 
