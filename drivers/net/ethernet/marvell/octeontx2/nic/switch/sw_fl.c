@@ -121,23 +121,33 @@ static int sw_fl_parse_actions(struct otx2_nic *nic,
 			       struct fl_tuple *tuple)
 {
 	struct flow_action_entry *act;
+	struct otx2_nic *out_nic;
+
 	u64 op = 0;
+	int used = 0;
 	int i;
 
 	if (!flow_action_has_entries(flow_action))
 		return -EINVAL;
 
 	flow_action_for_each(i, act, flow_action) {
+		WARN_ON(used >= MANGLE_ARR_SZ);
+
 		switch (act->id) {
 		case FLOW_ACTION_REDIRECT:
+			tuple->in_pf = nic->pcifunc;
+			out_nic = netdev_priv(act->dev);
+			tuple->xmit_pf = out_nic->pcifunc;
 			op |= BIT_ULL(FLOW_ACTION_REDIRECT);
 			break;
 
 		case FLOW_ACTION_MANGLE:
-			tuple->mangle_valid |= BIT(act->mangle.htype);
-			tuple->mangle[act->mangle.htype].val = act->mangle.val;
-			tuple->mangle[act->mangle.htype].mask = act->mangle.mask;
-			tuple->mangle[act->mangle.htype].offset = act->mangle.offset;
+			tuple->mangle[used].type = act->mangle.htype;
+			tuple->mangle[used].val = act->mangle.val;
+			tuple->mangle[used].mask = act->mangle.mask;
+			tuple->mangle[used].offset = act->mangle.offset;
+			tuple->mangle_map[act->mangle.htype] |= BIT(used);
+			used++;
 			break;
 
 		default:
@@ -145,8 +155,10 @@ static int sw_fl_parse_actions(struct otx2_nic *nic,
 		}
 	}
 
+	tuple->mangle_cnt = used;
+
 	if (!op) {
-		pr_err("%s:%d Op is not valid\n", __func__, __LINE__);
+		pr_debug("%s:%d Op is not valid\n", __func__, __LINE__);
 		return -EOPNOTSUPP;
 	}
 
@@ -231,6 +243,18 @@ done:
 	return err;
 }
 
+static void sw_fl_dump_tuple(struct fl_tuple *tuple)
+{
+	pr_debug("smac=%pM dmac=%pM eth_type=%#x\n",
+		 tuple->smac, tuple->dmac, ntohs(tuple->eth_type));
+
+	pr_debug("sip=%pI4 dip=%pI4 proto=%u\n",
+		 &tuple->ip4src, &tuple->ip4dst, tuple->proto);
+
+	pr_debug("sport=%u dport=%u\n",
+		 tuple->sport, tuple->dport);
+}
+
 static int sw_fl_parse_flow(struct otx2_nic *nic, struct flow_cls_offload *f,
 			    struct fl_tuple *tuple, u64 *features)
 {
@@ -249,16 +273,19 @@ static int sw_fl_parse_flow(struct otx2_nic *nic, struct flow_cls_offload *f,
 		flow_rule_match_basic(rule, &match);
 
 		/* All EtherTypes can be matched, no hw limitation */
-		tuple->eth_type = match.key->n_proto;
-		*features |= BIT_ULL(NPC_ETYPE);
+
+		if (match.mask->n_proto) {
+			tuple->eth_type = match.key->n_proto;
+			tuple->m_eth_type = match.key->n_proto;
+			*features |= BIT_ULL(NPC_ETYPE);
+		}
 
 		if (match.mask->ip_proto &&
 		    (match.key->ip_proto != IPPROTO_TCP &&
 		     match.key->ip_proto != IPPROTO_UDP)) {
-			netdev_info(nic->netdev,
-				    "ip_proto=0x%x not supported\n",
-				    match.key->ip_proto);
-			return -EOPNOTSUPP;
+			netdev_dbg(nic->netdev,
+				   "ip_proto=0x%x not supported\n",
+				   match.key->ip_proto);
 		}
 
 		if (match.mask->ip_proto)
@@ -269,13 +296,36 @@ static int sw_fl_parse_flow(struct otx2_nic *nic, struct flow_cls_offload *f,
 		} else if (ip_proto == IPPROTO_TCP) {
 			*features |= BIT_ULL(NPC_IPPROTO_TCP);
 		} else {
-			netdev_info(nic->netdev,
-				    "ip_proto=0x%x not supported\n",
-				    match.key->ip_proto);
-			return -EOPNOTSUPP;
+			netdev_dbg(nic->netdev,
+				   "ip_proto=0x%x not supported\n",
+				   match.key->ip_proto);
 		}
 
 		tuple->proto = ip_proto;
+	}
+
+	if (flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_ETH_ADDRS)) {
+		struct flow_match_eth_addrs match;
+
+		flow_rule_match_eth_addrs(rule, &match);
+
+		if (!is_zero_ether_addr(match.key->dst)) {
+			ether_addr_copy(tuple->dmac,
+					match.key->dst);
+
+			ether_addr_copy(tuple->m_dmac,
+					match.mask->dst);
+
+			*features |= BIT_ULL(NPC_DMAC);
+		}
+
+		if (!is_zero_ether_addr(match.key->src)) {
+			ether_addr_copy(tuple->smac,
+					match.key->src);
+			ether_addr_copy(tuple->m_smac,
+					match.mask->src);
+			*features |= BIT_ULL(NPC_SMAC);
+		}
 	}
 
 	if (flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_IPV4_ADDRS)) {
@@ -283,17 +333,31 @@ static int sw_fl_parse_flow(struct otx2_nic *nic, struct flow_cls_offload *f,
 
 		flow_rule_match_ipv4_addrs(rule, &match);
 
-		tuple->ip4dst = match.key->dst;
-		*features |= BIT_ULL(NPC_DIP_IPV4);
+		if (match.mask->dst) {
+			tuple->ip4dst = match.key->dst;
+			tuple->m_ip4dst = match.mask->dst;
+			*features |= BIT_ULL(NPC_DIP_IPV4);
+		}
 
-		tuple->ip4src = match.key->src;
-		*features |= BIT_ULL(NPC_SIP_IPV4);
+		if (match.mask->src) {
+			tuple->ip4src = match.key->src;
+			tuple->m_ip4src = match.mask->src;
+			*features |= BIT_ULL(NPC_SIP_IPV4);
+		}
 	}
 
-	if (!tuple->ip4src || !tuple->ip4dst || tuple->ip4src == tuple->ip4dst) {
-		pr_err("%s:%d Invalid src=%pI4 and dst=%pI4 addresses\n",
-		       __func__, __LINE__, &tuple->ip4src, &tuple->ip4dst);
-		return -EINVAL;
+	if (!(*features & BIT_ULL(NPC_DMAC))) {
+		if (!tuple->ip4src || !tuple->ip4dst) {
+			pr_err("%s:%d Invalid src=%pI4 and dst=%pI4 addresses\n",
+			       __func__, __LINE__, &tuple->ip4src, &tuple->ip4dst);
+			return -EINVAL;
+		}
+
+		if ((tuple->ip4src & tuple->m_ip4src) == (tuple->ip4dst & tuple->m_ip4dst)) {
+			pr_err("%s:%d Masked values are same; Invalid src=%pI4 and dst=%pI4 addresses\n",
+			       __func__, __LINE__, &tuple->ip4src, &tuple->ip4dst);
+			return -EINVAL;
+		}
 	}
 
 	if (flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_PORTS)) {
@@ -302,32 +366,44 @@ static int sw_fl_parse_flow(struct otx2_nic *nic, struct flow_cls_offload *f,
 		flow_rule_match_ports(rule, &match);
 
 		if (ip_proto == IPPROTO_UDP) {
-			*features |= BIT_ULL(NPC_DPORT_UDP);
-			*features |= BIT_ULL(NPC_SPORT_UDP);
+			if (match.mask->dst)
+				*features |= BIT_ULL(NPC_DPORT_UDP);
+
+			if (match.mask->src)
+				*features |= BIT_ULL(NPC_SPORT_UDP);
 		} else if (ip_proto == IPPROTO_TCP) {
-			*features |= BIT_ULL(NPC_DPORT_TCP);
-			*features |= BIT_ULL(NPC_SPORT_TCP);
+			if (match.mask->dst)
+				*features |= BIT_ULL(NPC_DPORT_TCP);
+
+			if (match.mask->src)
+				*features |= BIT_ULL(NPC_SPORT_TCP);
 		}
 
-		tuple->sport = match.key->src;
-		tuple->dport = match.key->dst;
+		if (match.mask->src) {
+			tuple->sport = match.key->src;
+			tuple->m_sport = match.mask->src;
+		}
+
+		if (match.mask->dst) {
+			tuple->dport = match.key->dst;
+			tuple->m_dport = match.mask->dst;
+		}
+	}
+
+	if (!(*features & (BIT_ULL(NPC_DMAC) |
+			   BIT_ULL(NPC_SMAC) |
+			   BIT_ULL(NPC_DIP_IPV4) |
+			   BIT_ULL(NPC_SIP_IPV4) |
+			   BIT_ULL(NPC_DPORT_UDP) |
+			   BIT_ULL(NPC_SPORT_UDP) |
+			   BIT_ULL(NPC_DPORT_TCP) |
+			   BIT_ULL(NPC_SPORT_TCP)))) {
+		return -EINVAL;
 	}
 
 	tuple->features = *features;
 
 	return 0;
-}
-
-static void sw_fl_dump_tuple(struct fl_tuple *tuple)
-{
-	pr_debug("smac=%pM dmac=%pM eth_type=%#x\n",
-		 tuple->smac, tuple->dmac, ntohs(tuple->eth_type));
-
-	pr_debug("sip=%pI4 dip=%pI4 proto=%u\n",
-		 &tuple->ip4src, &tuple->ip4dst, tuple->proto);
-
-	pr_debug("sport=%u dport=%u\n",
-		 tuple->sport, tuple->dport);
 }
 
 static int sw_fl_add(struct otx2_nic *nic, struct flow_cls_offload *f)
@@ -341,29 +417,31 @@ static int sw_fl_add(struct otx2_nic *nic, struct flow_cls_offload *f)
 
 	rc = sw_fl_parse_actions(nic, &rule->action, f, &tuple);
 	if (rc) {
-		pr_err("%s:%d Error in parsing action\n", __func__, __LINE__);
+		pr_debug("%s:%d Error in parsing action\n", __func__, __LINE__);
 		return rc;
 	}
 
 	rc  = sw_fl_parse_flow(nic, f, &tuple, &features);
-	sw_fl_dump_tuple(&tuple);
 	if (rc) {
-		pr_err("%s:%d Error in parsing flow\n", __func__, __LINE__);
+		pr_debug("%s:%d Error in parsing flow\n", __func__, __LINE__);
 		return -EFAULT;
 	}
 
-	rc = sw_fl_get_pcifunc(tuple.ip4src, &tuple.in_pf, &tuple, true);
-	if (rc) {
-		pr_err("%s:%d Error in parsing src pcifunc\n", __func__, __LINE__);
-		return rc;
+	if (!netif_is_ovs_port(nic->netdev)) {
+		rc = sw_fl_get_pcifunc(tuple.ip4src, &tuple.in_pf, &tuple, true);
+		if (rc) {
+			pr_debug("%s:%d Error in parsing src pcifunc\n", __func__, __LINE__);
+			return rc;
+		}
+
+		rc = sw_fl_get_pcifunc(tuple.ip4dst, &tuple.xmit_pf, &tuple, false);
+		if (rc) {
+			pr_debug("%s:%d Error in parsing dst pcifunc\n", __func__, __LINE__);
+			return rc;
+		}
 	}
 
-	rc = sw_fl_get_pcifunc(tuple.ip4dst, &tuple.xmit_pf, &tuple, false);
-	if (rc) {
-		pr_err("%s:%d Error in parsing dst pcifunc\n", __func__, __LINE__);
-		return rc;
-	}
-
+	sw_fl_dump_tuple(&tuple);
 	sw_fl_add_to_list(nic, &tuple, f->cookie, true);
 	return 0;
 }
