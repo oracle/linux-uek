@@ -106,6 +106,7 @@ sw_fl_add_to_list(struct otx2_nic *pf, struct fl_tuple *tuple,
 	if (add_fl)
 		entry->tuple = *tuple;
 	entry->cookie = cookie;
+	entry->tuple.uni_di = netif_is_ovs_port(pf->netdev);
 
 	spin_lock(&sw_fl_lock);
 	list_add_tail(&entry->list, &sw_fl_lh);

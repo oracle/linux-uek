@@ -1599,6 +1599,13 @@ int otx2_setup_tc(struct net_device *netdev, enum tc_setup_type type,
 
 	switch (type) {
 	case TC_SETUP_BLOCK:
+		if (netif_is_ovs_port(netdev)) {
+			return flow_block_cb_setup_simple(type_data,
+							  &otx2_block_cb_list,
+							  sw_fl_setup_ft_block_ingress_cb,
+							  nic, nic, true);
+		}
+
 		return otx2_setup_tc_block(netdev, type_data);
 	case TC_SETUP_QDISC_HTB:
 		return otx2_setup_tc_htb(netdev, type_data);
