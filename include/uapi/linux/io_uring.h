@@ -19,6 +19,9 @@
 #ifndef UAPI_LINUX_IO_URING_H_SKIP_LINUX_TIME_TYPES_H
 #include <linux/time_types.h>
 #endif
+#ifdef __KERNEL__
+#include <linux/uek_kabi.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -50,7 +53,11 @@ struct io_uring_sqe {
 	};
 	__u32	len;		/* buffer size or number of iovecs */
 	union {
+#ifdef __KERNEL__
 		UEK_KABI_REPLACE(__kernel_rwf_t rw_flags, __u32 rw_flags)
+#else /* __KERNEL__ */
+		__u32		rw_flags;
+#endif /* __KERNEL__ */
 		__u32		fsync_flags;
 		__u16		poll_events;	/* compatibility */
 		__u32		poll32_events;	/* word-reversed for BE */
