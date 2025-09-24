@@ -53,6 +53,7 @@ struct sw_fl_stats_node {
 	unsigned long cookie;
 	u16 mcam_idx[2];
 	u64 opkts, npkts;
+	bool uni_di;
 };
 
 static LIST_HEAD(sw_fl_stats_lh);
@@ -60,7 +61,7 @@ static DEFINE_MUTEX(sw_fl_stats_lock);
 
 static int
 rvu_sw_fl_stats_sync2db_one_entry(unsigned long cookie, u8 disabled,
-				  u16 mcam_idx[2], u64 pkts)
+				  u16 mcam_idx[2], bool uni_di, u64 pkts)
 {
 	struct sw_fl_stats_node *snode, *tmp;
 
@@ -93,8 +94,11 @@ rvu_sw_fl_stats_sync2db_one_entry(unsigned long cookie, u8 disabled,
 
 	snode->cookie = cookie;
 	snode->mcam_idx[0] = mcam_idx[0];
-	snode->mcam_idx[1] = mcam_idx[1];
+	if (!uni_di)
+		snode->mcam_idx[1] = mcam_idx[1];
+
 	snode->npkts = pkts;
+	snode->uni_di = uni_di;
 	INIT_LIST_HEAD(&snode->list);
 
 	mutex_lock(&sw_fl_stats_lock);
@@ -104,15 +108,23 @@ rvu_sw_fl_stats_sync2db_one_entry(unsigned long cookie, u8 disabled,
 	return 0;
 }
 
-int rvu_sw_fl_stats_sync2db(struct rvu *rvu, unsigned long cookie[128],
-			    u8 disabled[128],
-			    u16 mcam_idx[128][2], int cnt)
+int rvu_sw_fl_stats_sync2db(struct rvu *rvu, struct fl_info *fl, int cnt)
 {
 	struct npc_mcam_get_mul_stats_req *req = NULL;
 	struct npc_mcam_get_mul_stats_rsp *rsp = NULL;
+	int tot = 0;
+	u16 i2idx_map[256];
 	int rc = 0;
 	u64 pkts;
 	int idx;
+
+	for (int i = 0; i < cnt; i++) {
+		tot++;
+		if (fl[i].uni_di)
+			continue;
+
+		tot++;
+	}
 
 	req = kcalloc(1, sizeof(*req), GFP_KERNEL);
 	if (!req) {
@@ -126,11 +138,16 @@ int rvu_sw_fl_stats_sync2db(struct rvu *rvu, unsigned long cookie[128],
 		goto fail;
 	}
 
-	req->cnt = cnt * 2;
-	for (int i = 0; i < cnt * 2; i += 2) {
-		idx = (i + 1) / 2;
-		req->entry[i] = mcam_idx[idx][0];
-		req->entry[i + 1] = mcam_idx[idx][1];
+	req->cnt = tot;
+	idx = 0;
+	for (int i = 0; i < tot; idx++) {
+		i2idx_map[i] = idx;
+		req->entry[i++] = fl[idx].mcam_idx[0];
+		if (fl[idx].uni_di)
+			continue;
+
+		i2idx_map[i] = idx;
+		req->entry[i++] = fl[idx].mcam_idx[1];
 	}
 
 	if (rvu_mbox_handler_npc_mcam_mul_stats(rvu, req, rsp)) {
@@ -139,11 +156,16 @@ int rvu_sw_fl_stats_sync2db(struct rvu *rvu, unsigned long cookie[128],
 		goto fail;
 	}
 
-	for (int i = 0; i < cnt; i++) {
-		idx = i * 2;
-		pkts = rsp->stat[idx] + rsp->stat[idx + 1];
-		rc |= rvu_sw_fl_stats_sync2db_one_entry(cookie[i], disabled[i],
-							mcam_idx[i], pkts);
+	for (int i = 0; i < tot;) {
+		idx = i2idx_map[i];
+		pkts =  rsp->stat[i++];
+
+		if (!fl[idx].uni_di)
+			pkts += rsp->stat[i++];
+
+		rc |= rvu_sw_fl_stats_sync2db_one_entry(fl[idx].cookie, fl[idx].dis,
+							fl[idx].mcam_idx,
+							fl[idx].uni_di, pkts);
 	}
 
 fail:

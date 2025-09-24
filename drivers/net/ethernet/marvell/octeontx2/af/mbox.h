@@ -392,13 +392,16 @@ M(NPC_MCAM_GET_DFT_RL_IDXS, 0x601e, npc_get_dft_rl_idxs,	\
 M(NPC_MCAM_GET_NPC_PFL_INFO, 0x601f, npc_get_pfl_info,		\
 					msg_req,		\
 					npc_get_pfl_info_rsp)	\
-M(NPC_MCAM_FLOW_DEL_N_FREE,	0x6020, npc_flow_del_n_free,			\
+M(NPC_MCAM_FLOW_DEL_N_FREE,	0x6020, npc_flow_del_n_free,		\
 				 npc_flow_del_n_free_req, msg_rsp)	\
 M(NPC_MCAM_READ_DEFAULT_RULE, 0x6021, npc_read_default_rule, msg_req,   \
 				      npc_mcam_read_base_rule_rsp)      \
 M(NPC_MCAM_GET_MUL_STATS, 0x6022, npc_mcam_mul_stats,                     \
 				   npc_mcam_get_mul_stats_req,              \
 				   npc_mcam_get_mul_stats_rsp)              \
+M(NPC_MCAM_GET_FEATURES, 0x6023, npc_mcam_get_features,			\
+				   msg_req,				\
+				   npc_mcam_get_features_rsp)		\
 /* NIX mbox IDs (range 0x8000 - 0xFFFF) */				\
 M(NIX_LF_ALLOC,		0x8000, nix_lf_alloc,				\
 				 nix_lf_alloc_req, nix_lf_alloc_rsp)	\
@@ -2405,24 +2408,36 @@ struct flow_msg {
 
 struct fl_tuple {
 	u32 ip4src;
+	u32 m_ip4src;
 	u32 ip4dst;
+	u32 m_ip4dst;
 	u16 sport;
+	u16 m_sport;
 	u16 dport;
+	u16 m_dport;
 	u16 eth_type;
+	u16 m_eth_type;
 	u8 proto;
-	u8 smac[16];
-	u8 dmac[16];
+	u8 smac[6];
+	u8 m_smac[6];
+	u8 dmac[6];
+	u8 m_dmac[6];
 	u64 is_xdev_br : 1;
 	u64 is_indev_br : 1;
+	u64 uni_di  : 1;
 	u16 in_pf;
 	u16 xmit_pf;
 	u64 features;
 	struct {				/* FLOW_ACTION_MANGLE */
-		u32		offset;
+		u8		offset;
+		u8		type;
 		u32		mask;
 		u32		val;
-	} mangle[6];
-	u8 mangle_valid;
+#define MANGLE_ARR_SZ 9
+	} mangle[MANGLE_ARR_SZ]; /* 2 for ETH, 1 for VLAN, 4 for IPv6, 2 for L4. */
+#define MANGLE_LAYER_CNT 4
+	u8 mangle_map[MANGLE_LAYER_CNT]; /* 1 for ETH,  1 for VLAN, 1 for L3, 1 for L4 */
+	u8 mangle_cnt;
 };
 
 struct fl_notify_req {
@@ -2606,6 +2621,12 @@ struct npc_mcam_get_mul_stats_rsp {
 struct npc_mcam_get_stats_req {
 	struct mbox_msghdr hdr;
 	u16 entry; /* mcam entry */
+};
+
+struct npc_mcam_get_features_rsp {
+	struct mbox_msghdr hdr;
+	u64 rx_features;
+	u64 tx_features;
 };
 
 struct npc_mcam_get_stats_rsp {
@@ -2840,6 +2861,13 @@ struct iface_get_info_rsp {
 	struct iface_info info[256 + 32]; /* 32 PFs + 256 Vs */
 };
 
+struct fl_info {
+	unsigned long cookie;
+	u16 mcam_idx[2];
+	u8 dis : 1;
+	u8 uni_di : 1;
+};
+
 struct swdev2af_notify_req {
 	struct  mbox_msghdr hdr;
 	u64 msg_type;
@@ -2848,13 +2876,13 @@ struct swdev2af_notify_req {
 #define	SWDEV2AF_MSG_TYPE_REFRESH_FL BIT_ULL(2)
 	u16 pcifunc;
 	union {
-		bool fw_up;
-		u8 mac[ETH_ALEN];
-		struct {
+		bool fw_up;		// FW_STATUS message
+
+		u8 mac[ETH_ALEN];	// fdb refresh message
+
+		struct {		// fl refresh message
 			int cnt;
-			unsigned long cookie[128];
-			u16 mcam_idx[128][2];
-			u8 dis[128];
+			struct fl_info fl[64];
 		};
 	};
 };

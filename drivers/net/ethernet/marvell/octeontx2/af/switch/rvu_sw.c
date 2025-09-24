@@ -40,8 +40,7 @@ int rvu_mbox_handler_swdev2af_notify(struct rvu *rvu,
 		break;
 
 	case SWDEV2AF_MSG_TYPE_REFRESH_FL:
-		rc = rvu_sw_fl_stats_sync2db(rvu, req->cookie, req->dis,
-					     req->mcam_idx, req->cnt);
+		rc = rvu_sw_fl_stats_sync2db(rvu, req->fl, req->cnt);
 		break;
 	}
 
