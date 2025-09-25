@@ -640,7 +640,7 @@ adf_ip_route_add()
 		defer ip route del "$@"
 }
 
-bridge_vlan_add()
+adf_bridge_vlan_add()
 {
 	bridge vlan add "$@" && \
 		defer bridge vlan del "$@"
