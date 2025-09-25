@@ -518,6 +518,7 @@ static const struct midr_range cavium_erratum_36890_cpus[] = {
 	MIDR_RANGE(MIDR_OCTX2_96XX, 0, 0, 1, 0),
 	/* Marvell OcteonTX 2, 95 pass A0/A1 */
 	MIDR_RANGE(MIDR_OCTX2_95XX, 0, 0, 0, 1),
+	{},
 };
 
 const struct arm64_cpu_capabilities arm64_errata[] = {
