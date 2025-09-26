@@ -101,6 +101,36 @@
 .endm
 
 /*
+ * Macros for indirect jmp/call with the specified register. Macros are
+ * different when building with CONFIG_MITIGATION_ITS. Do not use these
+ * directly; they only exist to make the definition of JMP_NOSPEC and
+ * CALL_NOSPEC below less ugly.
+ */
+#ifdef CONFIG_MITIGATION_ITS
+.macro JMP_REG reg:req
+	ALTERNATIVE __stringify(ANNOTATE_RETPOLINE_SAFE; jmp *%\reg),	\
+		__stringify(jmp __x86_indirect_its_thunk_\reg),		\
+		X86_FEATURE_INDIRECT_THUNK_ITS
+.endm
+
+.macro CALL_REG reg:req
+	ALTERNATIVE __stringify(ANNOTATE_RETPOLINE_SAFE; call *%\reg),	\
+		__stringify(call __x86_indirect_its_thunk_\reg),	\
+		X86_FEATURE_INDIRECT_THUNK_ITS
+.endm
+#else
+.macro JMP_REG reg:req
+	ANNOTATE_RETPOLINE_SAFE
+	jmp	*%\reg
+.endm
+
+.macro CALL_REG reg:req
+	ANNOTATE_RETPOLINE_SAFE
+	call	*%\reg
+.endm
+#endif
+
+/*
  * JMP_NOSPEC and CALL_NOSPEC macros can be used instead of a simple
  * indirect jmp/call which may be susceptible to the Spectre variant 2
  * attack.
@@ -108,8 +138,7 @@
 .macro JMP_NOSPEC reg:req
 #ifdef CONFIG_RETPOLINE
 	STATIC_JUMP_IF_TRUE .Lretpoline_jmp_\@, retpoline_enabled_key, def=0
-	ALTERNATIVE __stringify(ANNOTATE_RETPOLINE_SAFE; jmp *%\reg),	\
-		__stringify(jmp __x86_indirect_its_thunk_\reg), X86_FEATURE_INDIRECT_THUNK_ITS
+	JMP_REG \reg
 .Lretpoline_jmp_\@:
 	ALTERNATIVE_2 __stringify(jmp __x86_retpoline_\reg),							\
 		__stringify(lfence; ANNOTATE_RETPOLINE_SAFE; jmp *%\reg; int3), X86_FEATURE_RETPOLINE_LFENCE,	\
@@ -122,8 +151,7 @@
 .macro CALL_NOSPEC reg:req
 #ifdef CONFIG_RETPOLINE
 	STATIC_JUMP_IF_TRUE .Lretpoline_call_\@, retpoline_enabled_key, def=0
-	ALTERNATIVE __stringify(ANNOTATE_RETPOLINE_SAFE; call *%\reg),	\
-		__stringify(call __x86_indirect_its_thunk_\reg), X86_FEATURE_INDIRECT_THUNK_ITS
+	CALL_REG \reg
 	jmp	.Ldone_call_\@
 .Lretpoline_call_\@:
 	ALTERNATIVE_2 __stringify(ANNOTATE_RETPOLINE_SAFE; call *%\reg),	\
@@ -206,6 +234,25 @@
 #ifdef CONFIG_X86_64
 
 /*
+ * Macros to call the specified thunk target. Macros are different
+ * when building with CONFIG_MITIGATION_ITS. Do not use these
+ * directly; they only exist to make the definition of CALL_NOSPEC
+ * below less ugly.
+ */
+#ifdef CONFIG_MITIGATION_ITS
+#define CALL_THUNK_TARGET(thunk_tgt)				\
+	ALTERNATIVE(						\
+	ANNOTATE_RETPOLINE_SAFE					\
+	"call *%[" #thunk_tgt "]\n",				\
+	"call __x86_indirect_its_thunk_%V[" #thunk_tgt "];\n",	\
+	X86_FEATURE_INDIRECT_THUNK_ITS)
+#else
+#define CALL_THUNK_TARGET(thunk_tgt)				\
+	ANNOTATE_RETPOLINE_SAFE					\
+	"call *%[" #thunk_tgt "]\n"
+#endif
+
+/*
  * Inline asm uses the %V modifier which is only in newer GCC
  * which is ensured when CONFIG_RETPOLINE is defined.
  */
@@ -216,11 +263,7 @@
 	".long 901b - ., 902f - .\n"				\
 	_ASM_PTR "retpoline_enabled_key - .\n"			\
 	".popsection\n"						\
-	ALTERNATIVE(						\
-	ANNOTATE_RETPOLINE_SAFE					\
-	"call *%[thunk_target]\n",				\
-	"call __x86_indirect_its_thunk_%V[thunk_target];\n",	\
-	X86_FEATURE_INDIRECT_THUNK_ITS)				\
+	CALL_THUNK_TARGET(thunk_target)				\
 	"	jmp  903f\n"					\
 	"	.align 16\n"					\
 	"902:"							\
@@ -319,15 +362,19 @@ extern char __indirect_thunk_end[];
 
 #ifdef CONFIG_RETHUNK
 extern void __x86_return_thunk(void);
-extern void its_return_thunk(void);
 #else
 static inline void __x86_return_thunk(void) {}
-static inline void its_return_thunk(void) {}
 #endif
 
 extern void retbleed_return_thunk(void);
 extern void srso_return_thunk(void);
 extern void srso_alias_return_thunk(void);
+
+#ifdef CONFIG_MITIGATION_ITS
+extern void its_return_thunk(void);
+#else
+static inline void its_return_thunk(void) {}
+#endif
 
 extern void retbleed_untrain_ret(void);
 extern void srso_untrain_ret(void);

@@ -301,9 +301,12 @@ static int emit_indirect_jump_rax(u8 **pprog, u8 *ip)
 	int cnt = 0;
 
 #ifdef CONFIG_RETPOLINE
+#ifdef CONFIG_MITIGATION_ITS
 	if (cpu_feature_enabled(X86_FEATURE_INDIRECT_THUNK_ITS)) {
 		cnt += emit_jump(&prog, &__x86_indirect_its_thunk_rax, ip);
-	} else if (cpu_feature_enabled(X86_FEATURE_RETPOLINE_LFENCE)) {
+	} else
+#endif
+	if (cpu_feature_enabled(X86_FEATURE_RETPOLINE_LFENCE)) {
 		EMIT_LFENCE();
 		EMIT2(0xFF, 0xE0);
 	} else if (cpu_feature_enabled(X86_FEATURE_RETPOLINE)) {
