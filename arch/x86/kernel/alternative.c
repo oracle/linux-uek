@@ -248,7 +248,14 @@ static void *its_allocate_thunk(int reg)
 	return thunk;
 }
 
-#endif
+u8 *its_static_thunk(int reg)
+{
+	u8 *thunk = __x86_indirect_its_thunk_array[reg];
+
+	return thunk;
+}
+
+#endif /* CONFIG_MITIGATION_ITS */
 
 /*
  * Nomenclature for variable names to simplify and clarify this code and ease
@@ -782,13 +789,6 @@ static bool cpu_wants_indirect_its_thunk_at(unsigned long addr, int reg)
 
 	/* Lower-half of the cacheline? */
 	return !(addr & 0x20);
-}
-
-#else /* CONFIG_MITIGATION_ITS */
-
-static bool cpu_wants_indirect_its_thunk_at(unsigned long addr, int reg)
-{
-	return false;
 }
 #endif
 
