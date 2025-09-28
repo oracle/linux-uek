@@ -233,6 +233,7 @@ modules-core:
 - libfc
 - libfcoe
 - libie
+- libie_adminq
 - libiscsi
 - libiscsi_tcp
 - libnvdimm
@@ -370,6 +371,7 @@ modules-core:
 - nhpoly1305
 - nls_ucs2_utils
 - nls_utf8
+- libpoly1305-generic
 - nsh
 - nvme
 - nvme-auth
@@ -393,10 +395,10 @@ modules-core:
 - pci-hyperv
 - pci-hyperv-intf
 - pcrypt
+- pds_core
 - pkcs8_key_parser
 - pktgen
 - pm80xx
-- libpoly1305-generic
 - polynomial
 - psample
 - pvpanic
@@ -561,8 +563,6 @@ modules-core:
 - scsi_dh_alua
 - scsi_dh_emc
 - scsi_dh_rdac
-- sha1-ce
-- sha512-arm64
 - tag_brcm
 - tag_ksz
 - tag_lan9303
@@ -608,7 +608,6 @@ modules-core:
 - edac_mce_amd
 - erst-dbg
 - ext4
-- fwctl
 - ghash-clmulni-intel
 - i10nm_edac
 - i2c-i801
@@ -666,8 +665,6 @@ modules-core:
 - serpent-avx2
 - serpent-sse2-x86_64
 - sg
-- sha1-ssse3
-- sha512-ssse3
 - skx_edac
 - skx_edac_common
 - sr_mod
@@ -1187,7 +1184,6 @@ modules:
 - pcwd_usb
 - pdc_adma
 - pds-vfio-pci
-- pds_core
 - pds_vdpa
 - peak_pci
 - peak_pciefd
@@ -1196,9 +1192,9 @@ modules:
 - pfr_telemetry
 - pfr_update
 - phy-generic
+- phy_package
 - physmap
 - pi3usb30532
-- pktcdvd
 - platform_lcd
 - platform_profile
 - plusb
@@ -1342,17 +1338,34 @@ modules:
 - snd-gina20
 - snd-gina24
 - snd-hda-codec
+- snd-hda-codec-alc260
+- snd-hda-codec-alc262
+- snd-hda-codec-alc268
+- snd-hda-codec-alc269
+- snd-hda-codec-alc662
+- snd-hda-codec-alc680
+- snd-hda-codec-alc861
+- snd-hda-codec-alc861vd
+- snd-hda-codec-alc880
+- snd-hda-codec-alc882
 - snd-hda-codec-analog
+- snd-hda-codec-atihdmi
 - snd-hda-codec-ca0110
 - snd-hda-codec-ca0132
-- snd-hda-codec-cirrus
 - snd-hda-codec-cmedia
 - snd-hda-codec-conexant
+- snd-hda-codec-cs420x
+- snd-hda-codec-cs421x
 - snd-hda-codec-generic
 - snd-hda-codec-hdmi
 - snd-hda-codec-idt
-- snd-hda-codec-realtek
+- snd-hda-codec-intelhdmi
+- snd-hda-codec-nvhdmi
+- snd-hda-codec-nvhdmi-mcp
+- snd-hda-codec-realtek-lib
 - snd-hda-codec-si3054
+- snd-hda-codec-simplehdmi
+- snd-hda-codec-tegrahdmi
 - snd-hda-codec-via
 - snd-hda-core
 - snd-hda-intel
@@ -1855,6 +1868,7 @@ modules:
 - tc654
 - tc74
 - tee_bnxt_fw
+- tegra124-cpufreq
 - tegra20-cpufreq
 - thunder_bgx
 - thunder_xcv
@@ -1863,6 +1877,7 @@ modules:
 - tmp108
 - tpm_tis_spi
 - tps53679
+- ubwc_config
 - uleds
 - ulpi
 - usb-conn-gpio
@@ -2043,7 +2058,6 @@ modules:
 - i82975x_edac
 - iaa_crypto
 - ib700wdt
-- ib_qib
 - ibm_rtl
 - ibmasr
 - ics932s401
@@ -2208,6 +2222,7 @@ modules:
 - pmc551
 - pmt_class
 - pmt_crashlog
+- pmt_discovery
 - pmt_telemetry
 - pnd2_edac
 - powernow-k8
@@ -2283,6 +2298,7 @@ modules:
 - snd-emu10k1x
 - snd-emux-synth
 - snd-es1938
+- snd-hda-codec-cs8409
 - snd-hda-ext-core
 - snd-hdmi-lpe-audio
 - snd-ice1712
@@ -2526,7 +2542,6 @@ modules-extra:
 - snd-acp3x-pdm-dma
 - snd-acp5x-i2s
 - snd-acp5x-pcm-dma
-- snd-hda-codec-cs8409
 - snd-pci-acp5x
 - snd-rn-pci-acp3x
 - snd-soc-da7213
@@ -2855,7 +2870,7 @@ modules-desktop:
 - drm_buddy
 - drm_display_helper
 - drm_exec
-- drm_gpusvm
+- drm_gpusvm_helper
 - drm_gpuvm
 - drm_panel_backlight_quirks
 - drm_suballoc_helper
