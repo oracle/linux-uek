@@ -23,6 +23,7 @@
 #include "cn20k/nix.h"
 #include "ptp.h"
 #include "cn20k/reg.h"
+#include "cn20k/cplt.h"
 #include "mcs_fips_mbox.h"
 
 /* PCI device IDs */
@@ -700,26 +701,6 @@ struct rep_evtq_ent {
 	struct rep_event event;
 };
 
-struct rvu_cplt_rpm {
-#define PF_CPLTMAP_BASE		34 /* CPLT PF starts from 34 */
-	u16			cplt_mapped_vfs; /* maximum CPLT mapped VFs */
-	u8			cplt_mapped_pfs;
-	u8			cplt_cnt_max;	 /* CPLT port count max */
-	u16			*pf2cpltlmac_map; /* pf to cplt_lmac map */
-	u64			*cpltlmac2pf_map; /* bitmap of mapped pfs for
-						   * every CPLT lmac port
-						   */
-	unsigned long		cplt_pf_notify_bmap; /* Flags for PF notify */
-	unsigned long		lmac_bmap;
-	struct			work_struct cplt_evh_work;
-	struct			workqueue_struct *cplt_evh_wq;
-	spinlock_t		cplt_evq_lock; /* cplt event queue lock */
-	struct list_head	cplt_evq_head; /* cplt event queue head */
-	struct mutex		cplt_cfg_lock; /* serialize cplt config */
-	struct rvu		*rvu;
-	bool			ready;
-};
-
 struct rvu {
 	void __iomem		*afreg_base;
 	void __iomem		*pfreg_base;
@@ -1175,11 +1156,6 @@ static inline int rvu_get_pf(struct pci_dev *pdev, u16 pcifunc)
 
 /* CGX APIs */
 
-static inline bool is_pf_cgxcpltmapped(struct rvu *rvu, u8 pf)
-{
-	return (pf >= PF_CPLTMAP_BASE && pf < (PF_CPLTMAP_BASE + 16));
-}
-
 static inline bool is_pf_cgxmapped(struct rvu *rvu, u8 pf)
 {
 	return ((pf >= PF_CGXMAP_BASE && pf <= rvu->cgx_mapped_pfs) ||
@@ -1203,11 +1179,6 @@ unsigned long cplt_prepare_lmac_bmap(struct rvu *rvu, u8 max_lmac, int n_cplts);
 void pf_bmap_to_cpltlmac(u16 pf2cpltlmac_map, u8 *chiplet_id,
 			 u8 *rpm_id, u8 *lmac_id);
 unsigned long get_active_cplt_lmac(struct rvu *rvu, int rpm, int *pf, int *n);
-
-static inline bool is_cnf20ka(struct pci_dev *pdev)
-{
-	return ((pdev->subsystem_device & 0xFFFF) == 0xC320);
-}
 
 #define M(_name, _id, fn_name, req, rsp)				\
 int rvu_mbox_handler_ ## fn_name(struct rvu *, struct req *, struct rsp *);

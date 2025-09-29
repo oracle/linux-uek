@@ -49,6 +49,9 @@ bool is_mac_feature_supported(struct rvu *rvu, int pf, int feature)
 	if (!is_pf_cgxmapped(rvu, pf))
 		return 0;
 
+	if (is_pf_cpltmapped(rvu, pf))
+		return !!feature;
+
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 	cgxd = rvu_cgx_pdata(cgx_id, rvu);
 
@@ -953,6 +956,9 @@ static int rvu_cgx_ptp_rx_cfg(struct rvu *rvu, u16 pcifunc, bool enable)
 	struct mac_ops *mac_ops;
 	u8 cgx_id, lmac_id;
 	void *cgxd;
+
+	if (is_pf_cpltmapped(rvu, pf))
+		return 0;
 
 	if (!is_mac_feature_supported(rvu, pf, RVU_LMAC_FEAT_PTP))
 		return 0;
