@@ -830,6 +830,9 @@ static void __print_tlp_header(struct pci_dev *dev,
 
 static int aer_ratelimit(struct pci_dev *dev, unsigned int severity)
 {
+	if (!dev->aer_stats)
+		return 1;
+
 	switch (severity) {
 	case AER_NONFATAL:
 		return __ratelimit(&dev->aer_stats->nonfatal_ratelimit);
