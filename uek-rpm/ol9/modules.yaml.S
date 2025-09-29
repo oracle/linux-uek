@@ -2115,9 +2115,11 @@ modules:
 - mdev
 - mdio-bcm-unimac
 - mei-gsc
+- mei-txe
 - mei-vsc
 - mei-vsc-hw
 - mei_gsc_proxy
+- mei_hdcp
 - mei_pxp
 - mei_wdt
 - mena21_wdt
