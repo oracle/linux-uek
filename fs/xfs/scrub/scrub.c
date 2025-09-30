@@ -617,9 +617,6 @@ xfs_scrub_metadata(
 	if (error)
 		goto out;
 
-	xfs_warn_mount(mp, XFS_OPSTATE_WARNED_SCRUB,
- "EXPERIMENTAL online scrub feature in use. Use at your own risk!");
-
 	sc = kzalloc(sizeof(struct xfs_scrub), XCHK_GFP_FLAGS);
 	if (!sc) {
 		error = -ENOMEM;
