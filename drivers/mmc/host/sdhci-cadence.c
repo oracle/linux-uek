@@ -2255,6 +2255,7 @@ static const struct sdhci_ops sdhci_elba_ops = {
 	.get_timeout_clock = sdhci_cdns_get_timeout_clock,
 	.set_bus_width = sdhci_set_bus_width,
 	.reset = sdhci_reset,
+	.platform_execute_tuning = sdhci_cdns_execute_tuning,
 	.set_uhs_signaling = sdhci_cdns_set_uhs_signaling,
 	.adma_write_desc = elba_adma_write_desc,
 };
@@ -2270,6 +2271,7 @@ static const struct sdhci_ops sdhci_salina_ops = {
 	.get_timeout_clock = sdhci_cdns_get_timeout_clock,
 	.set_bus_width = sdhci_set_bus_width,
 	.reset = sdhci_reset,
+	.platform_execute_tuning = sdhci_cdns_execute_tuning,
 	.set_uhs_signaling = sdhci_cdns_set_uhs_signaling,
 	.adma_write_desc = elba_adma_write_desc,
 };
