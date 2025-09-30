@@ -1,5 +1,7 @@
 modules-core:
 - 8021q
+- 842_compress
+- 842_decompress
 - acpi_ipmi
 - acpi_tad
 - act_bpf
