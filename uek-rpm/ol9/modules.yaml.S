@@ -3238,7 +3238,9 @@ modules-desktop:
 - wm8739
 - wm8775
 - xc2028
+#if !defined(Flavour_64k) && !defined(Flavour_64kdebug)
 - xe
+#endif
 
 /* modules-desktop: */
 #ifdef Arch_aarch64
