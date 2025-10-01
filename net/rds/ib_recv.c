@@ -169,6 +169,7 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 		} else {
 			list_del_init(&frag->f_item);
 		}
+		frag->f_cache_entry.next = NULL;
 		count++;
 		if (!first_frag)
 			first_frag = frag;
@@ -194,9 +195,9 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 
 			while (el) {
 				frag = container_of(el, struct rds_page_frag, f_cache_entry);
+				el = lfstack_next(el);
 				rds_ib_free_one_frag(frag, ic->i_frag_sz);
 				rds_ib_stats_sub(s_ib_frag_pages_in_caches, ic->i_frag_pages);
-				el = lfstack_next(el);
 			}
 		}
 
