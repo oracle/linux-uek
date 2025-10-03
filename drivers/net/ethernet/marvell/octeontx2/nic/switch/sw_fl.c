@@ -11,12 +11,15 @@
 #include <net/netevent.h>
 #include <net/arp.h>
 #include <net/nexthop.h>
+#include <net/netfilter/nf_flow_table.h>
 
 #include "../otx2_reg.h"
 #include "../otx2_common.h"
 #include "../otx2_struct.h"
 #include "../cn10k.h"
 #include "sw_nb.h"
+#include "sw_trace.h"
+#include "sw_fl.h"
 
 #if !IS_ENABLED(CONFIG_OCTEONTX_SWITCH)
 int sw_fl_setup_ft_block_ingress_cb(enum tc_setup_type type,
@@ -119,12 +122,11 @@ sw_fl_add_to_list(struct otx2_nic *pf, struct fl_tuple *tuple,
 static int sw_fl_parse_actions(struct otx2_nic *nic,
 			       struct flow_action *flow_action,
 			       struct flow_cls_offload *f,
-			       struct fl_tuple *tuple)
+			       struct fl_tuple *tuple, u64 *op)
 {
 	struct flow_action_entry *act;
 	struct otx2_nic *out_nic;
-
-	u64 op = 0;
+	int err;
 	int used = 0;
 	int i;
 
@@ -136,13 +138,29 @@ static int sw_fl_parse_actions(struct otx2_nic *nic,
 
 		switch (act->id) {
 		case FLOW_ACTION_REDIRECT:
+			trace_sw_act_dump(__func__, __LINE__, act->id);
 			tuple->in_pf = nic->pcifunc;
 			out_nic = netdev_priv(act->dev);
 			tuple->xmit_pf = out_nic->pcifunc;
-			op |= BIT_ULL(FLOW_ACTION_REDIRECT);
+			*op |= BIT_ULL(FLOW_ACTION_REDIRECT);
+			break;
+
+		case FLOW_ACTION_CT:
+			trace_sw_act_dump(__func__, __LINE__, act->id);
+			err = nf_flow_table_offload_add_cb(act->ct.flow_table,
+							   sw_fl_setup_ft_block_ingress_cb,
+							   nic);
+			if (err != -EEXIST && err) {
+				pr_err("%s:%d Error to offload flow, err=%d\n",
+				       __func__, __LINE__, err);
+				break;
+			}
+
+			*op |= BIT_ULL(FLOW_ACTION_CT);
 			break;
 
 		case FLOW_ACTION_MANGLE:
+			trace_sw_act_dump(__func__, __LINE__, act->id);
 			tuple->mangle[used].type = act->mangle.htype;
 			tuple->mangle[used].val = act->mangle.val;
 			tuple->mangle[used].mask = act->mangle.mask;
@@ -152,13 +170,14 @@ static int sw_fl_parse_actions(struct otx2_nic *nic,
 			break;
 
 		default:
+			trace_sw_act_dump(__func__, __LINE__, act->id);
 			break;
 		}
 	}
 
 	tuple->mangle_cnt = used;
 
-	if (!op) {
+	if (!*op) {
 		pr_debug("%s:%d Op is not valid\n", __func__, __LINE__);
 		return -EOPNOTSUPP;
 	}
@@ -244,18 +263,6 @@ done:
 	return err;
 }
 
-static void sw_fl_dump_tuple(struct fl_tuple *tuple)
-{
-	pr_debug("smac=%pM dmac=%pM eth_type=%#x\n",
-		 tuple->smac, tuple->dmac, ntohs(tuple->eth_type));
-
-	pr_debug("sip=%pI4 dip=%pI4 proto=%u\n",
-		 &tuple->ip4src, &tuple->ip4dst, tuple->proto);
-
-	pr_debug("sport=%u dport=%u\n",
-		 tuple->sport, tuple->dport);
-}
-
 static int sw_fl_parse_flow(struct otx2_nic *nic, struct flow_cls_offload *f,
 			    struct fl_tuple *tuple, u64 *features)
 {
@@ -277,7 +284,7 @@ static int sw_fl_parse_flow(struct otx2_nic *nic, struct flow_cls_offload *f,
 
 		if (match.mask->n_proto) {
 			tuple->eth_type = match.key->n_proto;
-			tuple->m_eth_type = match.key->n_proto;
+			tuple->m_eth_type = match.mask->n_proto;
 			*features |= BIT_ULL(NPC_ETYPE);
 		}
 
@@ -285,7 +292,7 @@ static int sw_fl_parse_flow(struct otx2_nic *nic, struct flow_cls_offload *f,
 		    (match.key->ip_proto != IPPROTO_TCP &&
 		     match.key->ip_proto != IPPROTO_UDP)) {
 			netdev_dbg(nic->netdev,
-				   "ip_proto=0x%x not supported\n",
+				   "ip_proto=%u not supported\n",
 				   match.key->ip_proto);
 		}
 
@@ -298,7 +305,7 @@ static int sw_fl_parse_flow(struct otx2_nic *nic, struct flow_cls_offload *f,
 			*features |= BIT_ULL(NPC_IPPROTO_TCP);
 		} else {
 			netdev_dbg(nic->netdev,
-				   "ip_proto=0x%x not supported\n",
+				   "ip_proto=%u not supported\n",
 				   match.key->ip_proto);
 		}
 
@@ -310,7 +317,8 @@ static int sw_fl_parse_flow(struct otx2_nic *nic, struct flow_cls_offload *f,
 
 		flow_rule_match_eth_addrs(rule, &match);
 
-		if (!is_zero_ether_addr(match.key->dst)) {
+		if (!is_zero_ether_addr(match.key->dst) &&
+		    is_unicast_ether_addr(match.key->dst)) {
 			ether_addr_copy(tuple->dmac,
 					match.key->dst);
 
@@ -320,7 +328,8 @@ static int sw_fl_parse_flow(struct otx2_nic *nic, struct flow_cls_offload *f,
 			*features |= BIT_ULL(NPC_DMAC);
 		}
 
-		if (!is_zero_ether_addr(match.key->src)) {
+		if (!is_zero_ether_addr(match.key->src) &&
+		    is_unicast_ether_addr(match.key->src)) {
 			ether_addr_copy(tuple->smac,
 					match.key->src);
 			ether_addr_copy(tuple->m_smac,
@@ -334,13 +343,13 @@ static int sw_fl_parse_flow(struct otx2_nic *nic, struct flow_cls_offload *f,
 
 		flow_rule_match_ipv4_addrs(rule, &match);
 
-		if (match.mask->dst) {
+		if (match.key->dst) {
 			tuple->ip4dst = match.key->dst;
 			tuple->m_ip4dst = match.mask->dst;
 			*features |= BIT_ULL(NPC_DIP_IPV4);
 		}
 
-		if (match.mask->src) {
+		if (match.key->src) {
 			tuple->ip4src = match.key->src;
 			tuple->m_ip4src = match.mask->src;
 			*features |= BIT_ULL(NPC_SIP_IPV4);
@@ -367,16 +376,16 @@ static int sw_fl_parse_flow(struct otx2_nic *nic, struct flow_cls_offload *f,
 		flow_rule_match_ports(rule, &match);
 
 		if (ip_proto == IPPROTO_UDP) {
-			if (match.mask->dst)
+			if (match.key->dst)
 				*features |= BIT_ULL(NPC_DPORT_UDP);
 
-			if (match.mask->src)
+			if (match.key->src)
 				*features |= BIT_ULL(NPC_SPORT_UDP);
 		} else if (ip_proto == IPPROTO_TCP) {
-			if (match.mask->dst)
+			if (match.key->dst)
 				*features |= BIT_ULL(NPC_DPORT_TCP);
 
-			if (match.mask->src)
+			if (match.key->src)
 				*features |= BIT_ULL(NPC_SPORT_TCP);
 		}
 
@@ -412,37 +421,40 @@ static int sw_fl_add(struct otx2_nic *nic, struct flow_cls_offload *f)
 	struct fl_tuple tuple = { 0 };
 	struct flow_rule *rule;
 	u64 features = 0;
+	u64 op = 0;
 	int rc;
 
 	rule = flow_cls_offload_flow_rule(f);
 
-	rc = sw_fl_parse_actions(nic, &rule->action, f, &tuple);
+	rc = sw_fl_parse_actions(nic, &rule->action, f, &tuple, &op);
 	if (rc) {
-		pr_debug("%s:%d Error in parsing action\n", __func__, __LINE__);
 		return rc;
 	}
 
+	if (op & BIT_ULL(FLOW_ACTION_CT))
+		return 0;
+
 	rc  = sw_fl_parse_flow(nic, f, &tuple, &features);
 	if (rc) {
-		pr_debug("%s:%d Error in parsing flow\n", __func__, __LINE__);
+		trace_sw_fl_dump(__func__, __LINE__, &tuple);
 		return -EFAULT;
 	}
 
 	if (!netif_is_ovs_port(nic->netdev)) {
 		rc = sw_fl_get_pcifunc(tuple.ip4src, &tuple.in_pf, &tuple, true);
 		if (rc) {
-			pr_debug("%s:%d Error in parsing src pcifunc\n", __func__, __LINE__);
+			trace_sw_fl_dump(__func__, __LINE__, &tuple);
 			return rc;
 		}
 
 		rc = sw_fl_get_pcifunc(tuple.ip4dst, &tuple.xmit_pf, &tuple, false);
 		if (rc) {
-			pr_debug("%s:%d Error in parsing dst pcifunc\n", __func__, __LINE__);
+			trace_sw_fl_dump(__func__, __LINE__, &tuple);
 			return rc;
 		}
 	}
 
-	sw_fl_dump_tuple(&tuple);
+	trace_sw_fl_dump(__func__, __LINE__, &tuple);
 	sw_fl_add_to_list(nic, &tuple, f->cookie, true);
 	return 0;
 }
