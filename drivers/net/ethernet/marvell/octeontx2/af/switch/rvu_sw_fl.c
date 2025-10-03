@@ -77,6 +77,11 @@ rvu_sw_fl_stats_sync2db_one_entry(unsigned long cookie, u8 disabled,
 			return 0;
 		}
 
+		if (snode->uni_di != uni_di) {
+			snode->uni_di = uni_di;
+			snode->mcam_idx[1] = mcam_idx[1];
+		}
+
 		if (snode->opkts == pkts) {
 			mutex_unlock(&sw_fl_stats_lock);
 			return 0;
