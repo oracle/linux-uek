@@ -2,7 +2,7 @@
 #define _LINUX_SFF_8436_H
 
 #include <linux/types.h>
-#include <linux/memory.h>
+#include <linux/nvmem-consumer.h>
 
 /*
  * As seen through Linux I2C, differences between the most common types of I2C
@@ -24,7 +24,7 @@ struct sff_8436_platform_data {
 #define SFF_8436_FLAG_IRUGO		0x20	/* sysfs-entry will be world-readable */
 #define SFF_8436_FLAG_TAKE8ADDR	0x10	/* take always 8 addresses (24c00) */
 
-	void		(*setup)(struct memory_accessor *, void *context);
+	void		(*setup)(struct nvmem_device *nvmem, void *context);
 	void		*context;
 };
 
