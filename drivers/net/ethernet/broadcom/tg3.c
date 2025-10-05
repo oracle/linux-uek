@@ -1008,6 +1008,7 @@ static void tg3_disable_ints(struct tg3 *tp)
 static void tg3_enable_ints(struct tg3 *tp)
 {
 	int i;
+	static int first_called = 1;
 
 	tp->irq_sync = 0;
 	wmb();
@@ -1020,6 +1021,22 @@ static void tg3_enable_ints(struct tg3 *tp)
 		struct tg3_napi *tnapi = &tp->napi[i];
 
 		tw32_mailbox_f(tnapi->int_mbox, tnapi->last_tag << 24);
+
+		/* Because Aboot with unpatched kernel accesses
+		 * registers the old way, if Aboot shell uses the
+		 * network at all and then boots a system, somehow the new
+		 * way of accessing registers will fail to enable the
+		 * interrupt, effectively disabling the interface.
+		 *
+		 * To enable the interrupt, redo the above write
+		 * through mapped memory when this function is _first
+		 * called_, otherwise kernel lockups may occur again.
+		 */
+		if (first_called && tg3_flag(tp, ICH_WORKAROUND)) {
+			first_called = 0;
+			tg3_write32(tp, tnapi->int_mbox, tnapi->last_tag << 24);
+		}
+
 		if (tg3_flag(tp, 1SHOT_MSI))
 			tw32_mailbox_f(tnapi->int_mbox, tnapi->last_tag << 24);
 
@@ -16416,6 +16433,7 @@ static int tg3_get_invariants(struct tg3 *tp, const struct pci_device_id *ent)
 		if ((tp->pdev->bus->number == 0) &&
 		    (tp->pdev->devfn == PCI_DEVFN(0x14, 0x6))) {
 			tg3_flag_set(tp, 4G_DMA_ONLY);
+			tg3_flag_set(tp, ICH_WORKAROUND);
 		}
 	}
 
@@ -16675,13 +16693,6 @@ static int tg3_get_invariants(struct tg3 *tp, const struct pci_device_id *ent)
 		tp->write32_mbox = tg3_write_indirect_mbox;
 		tp->write32_tx_mbox = tg3_write_indirect_mbox;
 		tp->write32_rx_mbox = tg3_write_indirect_mbox;
-
-		iounmap(tp->regs);
-		tp->regs = NULL;
-
-		pci_read_config_word(tp->pdev, PCI_COMMAND, &pci_cmd);
-		pci_cmd &= ~PCI_COMMAND_MEMORY;
-		pci_write_config_word(tp->pdev, PCI_COMMAND, pci_cmd);
 	}
 	if (tg3_asic_rev(tp) == ASIC_REV_5906) {
 		tp->read32_mbox = tg3_read32_mbox_5906;
