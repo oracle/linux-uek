@@ -9431,6 +9431,15 @@ static int tg3_halt(struct tg3 *tp, int kind, bool silent)
 	return err;
 }
 
+static inline int is_valid_bcm_ether_addr(const u8 *addr)
+{
+	if (!is_valid_ether_addr(addr))
+		return 0;
+	/* Disallow Broadcom default MAC 00:10:18:00:00:00 to avoid conflicts */
+	return (addr[0] || addr[1] != 0x10 || addr[2] != 0x18 ||
+		addr[3] || addr[4] || addr[5]);
+}
+
 static int tg3_set_mac_addr(struct net_device *dev, void *p)
 {
 	struct tg3 *tp = netdev_priv(dev);
@@ -17071,28 +17080,18 @@ static int tg3_get_device_address(struct tg3 *tp, u8 *addr)
 		addr[5] = (lo >>  0) & 0xff;
 
 		/* Some old bootcode may report a 0 MAC address in SRAM */
-		addr_ok = is_valid_ether_addr(addr);
+		addr_ok = is_valid_bcm_ether_addr(addr);
 	}
 	if (!addr_ok) {
-		/* Next, try NVRAM. */
-		if (!tg3_flag(tp, NO_NVRAM) &&
-		    !tg3_nvram_read_be32(tp, mac_offset + 0, &hi) &&
-		    !tg3_nvram_read_be32(tp, mac_offset + 4, &lo)) {
-			memcpy(&addr[0], ((char *)&hi) + 2, 2);
-			memcpy(&addr[2], (char *)&lo, sizeof(lo));
-		}
-		/* Finally just fetch it out of the MAC control regs. */
-		else {
-			hi = tr32(MAC_ADDR_0_HIGH);
-			lo = tr32(MAC_ADDR_0_LOW);
+		hi = tr32(MAC_ADDR_0_HIGH);
+		lo = tr32(MAC_ADDR_0_LOW);
 
-			addr[5] = lo & 0xff;
-			addr[4] = (lo >> 8) & 0xff;
-			addr[3] = (lo >> 16) & 0xff;
-			addr[2] = (lo >> 24) & 0xff;
-			addr[1] = hi & 0xff;
-			addr[0] = (hi >> 8) & 0xff;
-		}
+		addr[5] = lo & 0xff;
+		addr[4] = (lo >> 8) & 0xff;
+		addr[3] = (lo >> 16) & 0xff;
+		addr[2] = (lo >> 24) & 0xff;
+		addr[1] = hi & 0xff;
+		addr[0] = (hi >> 8) & 0xff;
 	}
 
 	if (!is_valid_ether_addr(addr))
