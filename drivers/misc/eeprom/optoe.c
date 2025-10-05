@@ -802,7 +802,7 @@ static ssize_t optoe_bin_write(struct file *filp, struct kobject *kobj,
 	return optoe_read_write(optoe, buf, off, count, OPTOE_WRITE_OP);
 }
 
-static int optoe_remove(struct i2c_client *client)
+static void optoe_remove(struct i2c_client *client)
 {
 	struct optoe_data *optoe;
 	int i;
@@ -820,7 +820,6 @@ static int optoe_remove(struct i2c_client *client)
 
 	kfree(optoe->writebuf);
 	kfree(optoe);
-	return 0;
 }
 
 static ssize_t show_dev_write_max_size(struct device *dev,
