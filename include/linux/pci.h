@@ -807,6 +807,17 @@ static inline struct pci_dev *pci_upstream_bridge(struct pci_dev *dev)
 	return dev->bus->self;
 }
 
+#ifdef CONFIG_PCI_REASSIGN_PREF_MEM
+extern void pci_reassign_prefmem_res(void);
+extern int pci_bus_resize_prefmem(struct pci_bus *bus);
+#else
+static inline void pci_reassign_prefmem_res(void)
+{ }
+
+static inline int pci_bus_resize_prefmem(struct pci_bus *bus)
+{ return 0; }
+#endif
+
 #ifdef CONFIG_PCI_MSI
 static inline bool pci_dev_msi_enabled(struct pci_dev *pci_dev)
 {
