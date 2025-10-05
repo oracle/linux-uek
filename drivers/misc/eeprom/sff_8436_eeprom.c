@@ -99,7 +99,6 @@
 
 struct sff_8436_data {
 	struct sff_8436_platform_data chip;
-	struct memory_accessor macc;
 	int use_smbus;
 
 	/*
@@ -757,30 +756,6 @@ static int sff_8436_write(void *priv, unsigned int off, void *val, size_t count)
 
 /*-------------------------------------------------------------------------*/
 
-/*
- * This lets other kernel code access the eeprom data. For example, it
- * might hold a board's Ethernet address, or board-specific calibration
- * data generated on the manufacturing floor.
- */
-
-static ssize_t sff_8436_macc_read(struct memory_accessor *macc, char *buf,
-			 off_t offset, size_t count)
-{
-	struct sff_8436_data *sff_8436 = container_of(macc, struct sff_8436_data, macc);
-
-	return sff_8436_read_write(sff_8436, buf, offset, count, QSFP_READ_OP);
-}
-
-static ssize_t sff_8436_macc_write(struct memory_accessor *macc, const char *buf,
-             off_t offset, size_t count)
-{
-	struct sff_8436_data *sff_8436 = container_of(macc, struct sff_8436_data, macc);
-
-	return sff_8436_read_write(sff_8436, buf, offset, count, QSFP_WRITE_OP);
-}
-
-/*-------------------------------------------------------------------------*/
-
 static void sff_8436_remove(struct i2c_client *client)
 {
 	struct sff_8436_data *sff_8436;
@@ -859,8 +834,6 @@ static int sff_8436_eeprom_probe(struct i2c_client *client)
 	sff_8436->use_smbus = use_smbus;
 	sff_8436->chip = chip;
 
-	sff_8436->macc.read = sff_8436_macc_read;
-
 	if (!use_smbus ||
 			(i2c_check_functionality(client->adapter,
 				I2C_FUNC_SMBUS_WRITE_I2C_BLOCK)) ||
@@ -877,8 +850,6 @@ static int sff_8436_eeprom_probe(struct i2c_client *client)
 		 * Application Note AN-2071.
 		 */
 		unsigned write_max = 1;
-
-		sff_8436->macc.write = sff_8436_macc_write;
 
 		if (write_max > io_limit)
 			write_max = io_limit;
@@ -936,7 +907,7 @@ static int sff_8436_eeprom_probe(struct i2c_client *client)
 	}
 
 	if (chip.setup)
-		chip.setup(&sff_8436->macc, chip.context);
+		chip.setup(sff_8436->nvmem, chip.context);
 
 	return 0;
 
