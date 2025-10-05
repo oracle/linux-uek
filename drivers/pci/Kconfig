@@ -301,6 +301,12 @@ config VGA_ARB_MAX_GPUS
 	  Reserves space in the kernel to maintain resource locking for
 	  multiple GPUS.  The overhead for each GPU is very small.
 
+config PCI_REASSIGN_PREF_MEM
+	bool "PCI reassign prefetchable memory"
+	depends on PCI
+	help
+	  This allows all PCI devices' prefetchable memory resources to be reassigned.
+
 source "drivers/pci/hotplug/Kconfig"
 source "drivers/pci/controller/Kconfig"
 source "drivers/pci/endpoint/Kconfig"
