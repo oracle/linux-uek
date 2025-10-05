@@ -360,6 +360,7 @@ static int __init pcibios_assign_resources(void)
 		list_for_each_entry(bus, &pci_root_buses, node)
 			pcibios_allocate_rom_resources(bus);
 
+	pci_reassign_prefmem_res();
 	pci_assign_unassigned_resources();
 	pcibios_fw_addr_list_del();
 
