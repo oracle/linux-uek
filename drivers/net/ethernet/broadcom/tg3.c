@@ -234,6 +234,14 @@ static int tg3_debug = -1;	/* -1 == use TG3_DEF_MSG_ENABLE as value */
 module_param(tg3_debug, int, 0);
 MODULE_PARM_DESC(tg3_debug, "Tigon3 bitmapped debugging message enable value");
 
+static int short_preamble = 0;
+module_param(short_preamble, int, 0);
+MODULE_PARM_DESC(short_preamble, "Enable short preamble.");
+
+static int bcm5718s_reset = 0;
+module_param(bcm5718s_reset, int, 0);
+MODULE_PARM_DESC(bcm5718s_reset, "Enable BCM5718S reset support.");
+
 #define TG3_DRV_DATA_FLAG_10_100_ONLY	0x0001
 #define TG3_DRV_DATA_FLAG_5705_10_100	0x0002
 
@@ -1511,6 +1519,11 @@ static void tg3_mdio_config_5785(struct tg3 *tp)
 static void tg3_mdio_start(struct tg3 *tp)
 {
 	tp->mi_mode &= ~MAC_MI_MODE_AUTO_POLL;
+
+	if(short_preamble) {
+	    tp->mi_mode |= MAC_MI_MODE_SHORT_PREAMBLE;
+	}
+
 	tw32_f(MAC_MI_MODE, tp->mi_mode);
 	udelay(80);
 
@@ -2701,6 +2714,11 @@ static int tg3_phy_reset(struct tg3 *tp)
 			udelay(40);
 			tw32_f(TG3_CPMU_LSPD_1000MB_CLK, val);
 		}
+	}
+
+	if (bcm5718s_reset && tp->phy_id == TG3_PHY_ID_BCM5718S) {
+	    __tg3_writephy(tp, 0x8, 0x10, 0x1d0); /* set internal phy 0x8 to make linkup */
+	    __tg3_writephy(tp, 0x1f, 0x4, 0x5e1); /* enable 10/100 cability of external phy */
 	}
 
 	if (tg3_flag(tp, 5717_PLUS) &&
