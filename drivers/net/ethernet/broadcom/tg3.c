@@ -16385,6 +16385,16 @@ static int tg3_get_invariants(struct tg3 *tp, const struct pci_device_id *ent)
 		} while (bridge);
 	}
 
+	/* The embedded nic in ATI's SB800 can only dma to 32bit
+	 * addresses.  partno(noe) rev 5785041
+	 */
+	if (tg3_asic_rev(tp) == ASIC_REV_5785) {
+		if ((tp->pdev->bus->number == 0) &&
+		    (tp->pdev->devfn == PCI_DEVFN(0x14, 0x6))) {
+			tg3_flag_set(tp, 4G_DMA_ONLY);
+		}
+	}
+
 	if (tg3_asic_rev(tp) == ASIC_REV_5704 ||
 	    tg3_asic_rev(tp) == ASIC_REV_5714)
 		tp->pdev_peer = tg3_find_peer(tp);
@@ -16912,8 +16922,9 @@ static int tg3_get_invariants(struct tg3 *tp, const struct pci_device_id *ent)
 
 	if (tg3_asic_rev(tp) == ASIC_REV_5705 &&
 	    (grc_misc_cfg == GRC_MISC_CFG_BOARD_ID_5788 ||
-	     grc_misc_cfg == GRC_MISC_CFG_BOARD_ID_5788M))
-		tg3_flag_set(tp, IS_5788);
+	     grc_misc_cfg == GRC_MISC_CFG_BOARD_ID_5788M)) {
+		tg3_flag_set(tp, 4G_DMA_ONLY);
+	}
 
 	if (!tg3_flag(tp, IS_5788) &&
 	    tg3_asic_rev(tp) != ASIC_REV_5700)
@@ -17789,7 +17800,7 @@ static int tg3_init_one(struct pci_dev *pdev,
 	 * On 64-bit systems without IOMMU, use 64-bit dma_mask and
 	 * do DMA address check in __tg3_start_xmit().
 	 */
-	if (tg3_flag(tp, IS_5788))
+	if (tg3_flag(tp, 4G_DMA_ONLY))
 		persist_dma_mask = dma_mask = DMA_BIT_MASK(32);
 	else if (tg3_flag(tp, 40BIT_DMA_BUG)) {
 		persist_dma_mask = dma_mask = DMA_BIT_MASK(40);
