@@ -1797,8 +1797,13 @@ static int amd_probe(struct sdhci_pci_chip *chip)
 
 	pci_dev_put(smbus_dev);
 
-	if (gen == AMD_CHIPSET_BEFORE_ML || gen == AMD_CHIPSET_CZ)
+	dev_info(&chip->pdev->dev, "identified AMD generation %d chip\n", gen);
+
+	if (gen == AMD_CHIPSET_BEFORE_ML || gen == AMD_CHIPSET_CZ) {
+		chip->quirks |= SDHCI_QUIRK_BROKEN_ADMA;
+		chip->quirks2 |= SDHCI_QUIRK2_BROKEN_64_BIT_DMA;
 		chip->quirks2 |= SDHCI_QUIRK2_CLEAR_TRANSFERMODE_REG_BEFORE_CMD;
+	}
 
 	return 0;
 }
