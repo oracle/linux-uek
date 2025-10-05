@@ -269,6 +269,7 @@ enum tim_ring_interval {
 
 struct tim_rsrc {
 	u16 rings_per_intvl[TIM_INTERVAL_INVAL];
+	u8 max_rings_per_intvl;
 	enum tim_ring_interval *ring_intvls;
 };
 

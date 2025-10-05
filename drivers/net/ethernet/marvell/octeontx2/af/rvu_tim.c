@@ -32,6 +32,7 @@ static inline int tim_block_cn10k_init(struct rvu *rvu)
 {
 	struct rvu_hwinfo *hw = rvu->hw;
 	int lf, blkaddr;
+	u64 reg;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_TIM, 0);
 	if (blkaddr < 0)
@@ -47,6 +48,11 @@ static inline int tim_block_cn10k_init(struct rvu *rvu)
 	hw->tim.rings_per_intvl[TIM_INTERVAL_1US] = 0;
 	hw->tim.rings_per_intvl[TIM_INTERVAL_10US] = 0;
 	hw->tim.rings_per_intvl[TIM_INTERVAL_1MS] = 0;
+
+	reg = rvu_read64(rvu, blkaddr, TIM_AF_CONST);
+	reg = (reg >> 16) & 0xFF;
+
+	hw->tim.max_rings_per_intvl = 1 << (fls(reg) - 1);
 
 	return 0;
 }
@@ -105,9 +111,11 @@ static inline int tim_get_min_intvl(struct rvu *rvu, u8 clocksource,
 
 		*intvl_cyc = (u64)intvl;
 	} else {
-		if (tim->rings_per_intvl[TIM_INTERVAL_1US] < 8)
+		if (tim->rings_per_intvl[TIM_INTERVAL_1US] <
+		    tim->max_rings_per_intvl)
 			intvl = (u64)1E3;
-		else if (tim->rings_per_intvl[TIM_INTERVAL_10US] < 8)
+		else if (tim->rings_per_intvl[TIM_INTERVAL_10US] <
+			 tim->max_rings_per_intvl)
 			intvl = (u64)1E4;
 		else
 			intvl = (u64)1E6;
