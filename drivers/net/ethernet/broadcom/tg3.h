@@ -3122,6 +3122,7 @@ enum TG3_FLAGS {
 	TG3_FLAG_ROBOSWITCH,
 	TG3_FLAG_ONE_DMA_AT_ONCE,
 	TG3_FLAG_RGMII_MODE,
+	TG3_FLAG_4G_DMA_ONLY,
 
 	/* Add new flags before this comment and TG3_FLAG_NUMBER_OF_FLAGS */
 	TG3_FLAG_NUMBER_OF_FLAGS,	/* Last entry in enum TG3_FLAGS */
