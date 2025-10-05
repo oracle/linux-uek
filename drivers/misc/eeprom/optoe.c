@@ -158,6 +158,7 @@ struct optoe_platform_data {
  */
 #define TWO_ADDR_EEPROM_SIZE ((3 + OPTOE_ARCH_PAGES) * OPTOE_PAGE_SIZE)
 #define TWO_ADDR_EEPROM_UNPAGED_SIZE (4 * OPTOE_PAGE_SIZE)
+#define TWO_ADDR_NO_0X51_SIZE (2 * OPTOE_PAGE_SIZE)
 
 /* a few constants to find our way around the EEPROM */
 #define OPTOE_PAGE_SELECT_REG   0x7F
@@ -165,9 +166,12 @@ struct optoe_platform_data {
 #define ONE_ADDR_NOT_PAGEABLE (1<<2)
 #define TWO_ADDR_PAGEABLE_REG 0x40
 #define TWO_ADDR_PAGEABLE (1<<4)
+#define TWO_ADDR_0X51_REG 92
+#define TWO_ADDR_0X51_SUPP (1<<6)
 #define OPTOE_ID_REG 0
 #define OPTOE_READ_OP 0
 #define OPTOE_WRITE_OP 1
+#define OPTOE_EOF 0  /* used for access beyond end of device */
 
 struct optoe_data {
 	struct optoe_platform_data chip;
@@ -564,7 +568,7 @@ static ssize_t optoe_eeprom_update_client(struct optoe_data *optoe,
  * Returns updated len for this access:
  *     - entire access is legal, original len is returned.
  *     - access begins legal but is too long, len is truncated to fit.
- *     - initial offset exceeds supported pages, return -EINVAL
+ *     - initial offset exceeds supported pages, return OPTOE_EOF (zero)
  */
 static ssize_t optoe_page_legal(struct optoe_data *optoe,
 		loff_t off, size_t len)
@@ -578,12 +582,12 @@ static ssize_t optoe_page_legal(struct optoe_data *optoe,
 		return -EINVAL;
 	if (optoe->dev_class == TWO_ADDR) {
 		/* SFP case */
-		/* if no pages needed, we're good */
-		if ((off + len) <= TWO_ADDR_EEPROM_UNPAGED_SIZE)
+		/* if only using addr 0x50 (first 256 bytes) we're good */
+		if ((off + len) <= TWO_ADDR_NO_0X51_SIZE)
 			return len;
 		/* if offset exceeds possible pages, we're not good */
 		if (off >= TWO_ADDR_EEPROM_SIZE)
-			return -EINVAL;
+			return OPTOE_EOF;
 		/* in between, are pages supported? */
 		status = optoe_eeprom_read(optoe, client, &regval,
 				TWO_ADDR_PAGEABLE_REG, 1);
@@ -595,8 +599,23 @@ static ssize_t optoe_page_legal(struct optoe_data *optoe,
 		} else {
 			/* pages not supported, trim len to unpaged size */
 			if (off >= TWO_ADDR_EEPROM_UNPAGED_SIZE)
-				return -EINVAL;
-			maxlen = TWO_ADDR_EEPROM_UNPAGED_SIZE - off;
+				return OPTOE_EOF;
+
+			/* will be accessing addr 0x51, is that supported? */
+			/* byte 92, bit 6 implies DDM support, 0x51 support */
+			status = optoe_eeprom_read(optoe, client, &regval,
+						TWO_ADDR_0X51_REG, 1);
+			if (status < 0)
+				return status;
+			if (regval & TWO_ADDR_0X51_SUPP) {
+				/* addr 0x51 is OK */
+				maxlen = TWO_ADDR_EEPROM_UNPAGED_SIZE - off;
+			} else {
+				/* addr 0x51 NOT supported, trim to 256 max */
+				if (off >= TWO_ADDR_NO_0X51_SIZE)
+					return OPTOE_EOF;
+				maxlen = TWO_ADDR_NO_0X51_SIZE - off;
+			}
 		}
 		len = (len > maxlen) ? maxlen : len;
 		dev_dbg(&client->dev,
@@ -609,7 +628,7 @@ static ssize_t optoe_page_legal(struct optoe_data *optoe,
 			return len;
 		/* if offset exceeds possible pages, we're not good */
 		if (off >= ONE_ADDR_EEPROM_SIZE)
-			return -EINVAL;
+			return OPTOE_EOF;
 		/* in between, are pages supported? */
 		status = optoe_eeprom_read(optoe, client, &regval,
 				ONE_ADDR_PAGEABLE_REG, 1);
@@ -618,7 +637,7 @@ static ssize_t optoe_page_legal(struct optoe_data *optoe,
 		if (regval & ONE_ADDR_NOT_PAGEABLE) {
 			/* pages not supported, trim len to unpaged size */
 			if (off >= ONE_ADDR_EEPROM_UNPAGED_SIZE)
-				return -EINVAL;
+				return OPTOE_EOF;
 			maxlen = ONE_ADDR_EEPROM_UNPAGED_SIZE - off;
 		} else {
 			/* Pages supported, trim len to the end of pages */
@@ -659,8 +678,10 @@ static ssize_t optoe_read_write(struct optoe_data *optoe,
 	 * Confirm this access fits within the device suppored addr range
 	 */
 	status = optoe_page_legal(optoe, off, len);
-	if (status < 0)
-		goto err;
+	if ((status == OPTOE_EOF) || (status < 0)) {
+		mutex_unlock(&optoe->lock);
+		return status;
+	}
 	len = status;
 
 	/*
@@ -720,7 +741,11 @@ static ssize_t optoe_read_write(struct optoe_data *optoe,
 			dev_dbg(&client->dev,
 			"o_u_c: chunk %d c_offset %lld c_len %ld failed %d!\n",
 			chunk, chunk_offset, (long int) chunk_len, status);
-			goto err;
+			if (status > 0)
+				retval += status;
+			if (retval == 0)
+				retval = status;
+			break;
 		}
 		buf += status;
 		pending_len -= status;
@@ -729,11 +754,6 @@ static ssize_t optoe_read_write(struct optoe_data *optoe,
 	mutex_unlock(&optoe->lock);
 
 	return retval;
-
-err:
-	mutex_unlock(&optoe->lock);
-
-	return status;
 }
 
 static ssize_t optoe_bin_read(struct file *filp, struct kobject *kobj,
