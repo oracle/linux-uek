@@ -689,7 +689,7 @@ static ssize_t sff_8436_read_write(struct sff_8436_data *sff_8436,
 			if (off + pending_len < page_start_offset + SFF_8436_PAGE_SIZE) {
 				page_len = pending_len;
 			} else {
-				page_len = SFF_8436_PAGE_SIZE - off;
+				page_len = SFF_8436_PAGE_SIZE - (off - page_start_offset);
 			}
 		} else {
 			page_offset = page_start_offset;
