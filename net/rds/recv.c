@@ -557,8 +557,6 @@ static int rds_next_incoming(struct rds_sock *rs, struct rds_incoming **inc)
 					  struct rds_incoming,
 					  i_item);
 			rds_inc_addref(*inc);
-			/* Pulled a pending entry, decrement the count */
-			rs->rs_recv_pending--;
 		}
 		read_unlock_irqrestore(&rs->rs_recv_lock, flags);
 	}
@@ -582,6 +580,8 @@ static int rds_still_queued(struct rds_sock *rs, struct rds_incoming *inc,
 					      -be32_to_cpu(inc->i_hdr.h_len),
 					      inc->i_hdr.h_dport);
 			list_del_init(&inc->i_item);
+			/* Pulled a pending entry, decrement the count */
+			rs->rs_recv_pending--;
 			rds_inc_put(inc);
 		}
 	}
