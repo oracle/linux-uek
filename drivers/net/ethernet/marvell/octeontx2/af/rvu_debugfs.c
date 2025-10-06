@@ -429,14 +429,10 @@ RVU_DEBUG_SEQ_FOPS(mcs_rx_secy_stats, mcs_rx_secy_stats_display, NULL);
 static void rvu_dbg_mcs_init(struct rvu *rvu)
 {
 	struct mcs *mcs;
-	char *dname = NULL;
+	char dname[24];
 	int i;
 
 	if (!rvu->mcs_blk_cnt)
-		return;
-
-	dname = kmalloc_array(rvu->mcs_blk_cnt, sizeof(char), GFP_KERNEL);
-	if (!dname)
 		return;
 
 	rvu->rvu_dbg.mcs_root = debugfs_create_dir("mcs", rvu->rvu_dbg.root);
@@ -444,7 +440,7 @@ static void rvu_dbg_mcs_init(struct rvu *rvu)
 	for (i = 0; i < rvu->mcs_blk_cnt; i++) {
 		mcs = mcs_get_pdata(i);
 
-		sprintf(dname, "mcs%d", i);
+		snprintf(dname, sizeof(dname), "mcs%d", i);
 		rvu->rvu_dbg.mcs = debugfs_create_dir(dname,
 						      rvu->rvu_dbg.mcs_root);
 
@@ -482,8 +478,6 @@ static void rvu_dbg_mcs_init(struct rvu *rvu)
 		if (is_cn20k(rvu->pdev))
 			rvu_cn20ka_handle_port_mapped_stats(rvu, mcs, MCS_TX);
 	}
-
-	kfree(dname);
 }
 
 #define LMT_MAPTBL_ENTRY_SIZE 16
