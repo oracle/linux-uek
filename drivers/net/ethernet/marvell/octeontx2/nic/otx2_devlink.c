@@ -313,9 +313,21 @@ static int otx2_dl_serdes_link_set(struct devlink *devlink, u32 id,
 {
 	struct otx2_devlink *otx2_dl = devlink_priv(devlink);
 	struct otx2_nic *pfvf = otx2_dl->pfvf;
+	struct net_device *dev = pfvf->netdev;
+	bool if_up;
+	int ret;
 
-	if (!is_otx2_vf(pfvf->pcifunc))
-		return otx2_config_serdes_link_state(pfvf, ctx->val.vbool);
+	if (!is_otx2_vf(pfvf->pcifunc)) {
+		if_up = netif_running(dev);
+		if (if_up)
+			dev->netdev_ops->ndo_stop(dev);
+
+		ret = otx2_config_serdes_link_state(pfvf, ctx->val.vbool);
+
+		if (if_up)
+			dev->netdev_ops->ndo_open(dev);
+		return ret;
+	}
 
 	return -EOPNOTSUPP;
 }
