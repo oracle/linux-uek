@@ -5330,7 +5330,6 @@ static int rtnl_offload_xstats_fill(struct sk_buff *skb, struct net_device *dev,
 			return err;
 
 		have_data = true;
-skip_l3_stats:
 		*prividx = 0;
 	}
 
@@ -5355,6 +5354,7 @@ skip_l3_stats:
 			return err;
 
 		have_data = true;
+skip_l3_stats:
 		*prividx = 0;
 	}
 
