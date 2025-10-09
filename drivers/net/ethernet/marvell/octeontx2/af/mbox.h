@@ -2334,6 +2334,7 @@ struct rep_event {
 #define FIB_CMD	 BIT_ULL(2)
 #define FL_ADD	 BIT_ULL(3)
 #define FL_DEL	 BIT_ULL(4)
+#define DP_ADD	 BIT_ULL(5)
 
 struct fdb_notify_req {
 	struct  mbox_msghdr hdr;
