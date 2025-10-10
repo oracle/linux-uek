@@ -3531,8 +3531,8 @@ static int __npc_mcam_alloc_counter(struct rvu *rvu,
 }
 
 int rvu_mbox_handler_npc_mcam_alloc_counter(struct rvu *rvu,
-			struct npc_mcam_alloc_counter_req *req,
-			struct npc_mcam_alloc_counter_rsp *rsp)
+					    struct npc_mcam_alloc_counter_req *req,
+					    struct npc_mcam_alloc_counter_rsp *rsp)
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	int err;
@@ -3590,7 +3590,8 @@ static int __npc_mcam_free_counter(struct rvu *rvu,
 }
 
 int rvu_mbox_handler_npc_mcam_free_counter(struct rvu *rvu,
-		struct npc_mcam_oper_counter_req *req, struct msg_rsp *rsp)
+					   struct npc_mcam_oper_counter_req *req,
+					   struct msg_rsp *rsp)
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	int err;
@@ -3990,7 +3991,7 @@ int rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
 }
 
 int rvu_mbox_handler_npc_set_pkind(struct rvu *rvu,
-		                   struct npc_set_pkind *req,
+				   struct npc_set_pkind *req,
 				   struct msg_rsp *rsp)
 {
 	return rvu_npc_set_parse_mode(rvu, req->hdr.pcifunc, req->mode,

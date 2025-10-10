@@ -4141,7 +4141,7 @@ static int parse_sso_cmd_buffer(char *cmd_buf, size_t *count,
 	subtoken = strsep(&cmd_buf, " ");
 	if (subtoken && strcmp(subtoken, "all") == 0) {
 		*all = true;
-	} else{
+	} else {
 		ret = subtoken ? kstrtoint(subtoken, 10, ssolf) : -EINVAL;
 		if (ret < 0)
 			return ret;

@@ -1459,7 +1459,6 @@ int rvu_cgx_prio_flow_ctrl_cfg(struct rvu *rvu, u16 pcifunc, u8 tx_pause,
 	if (!is_pf_cgxmapped(rvu, pf))
 		return -ENODEV;
 
-
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 	cgxd = rvu_cgx_pdata(cgx_id, rvu);
 	mac_ops = get_mac_ops(cgxd);
@@ -1497,7 +1496,6 @@ int rvu_mbox_handler_cgx_prio_flow_ctrl_cfg(struct rvu *rvu,
 	 */
 	if (!is_pf_cgxmapped(rvu, pf))
 		return -ENODEV;
-
 
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 	cgxd = rvu_cgx_pdata(cgx_id, rvu);

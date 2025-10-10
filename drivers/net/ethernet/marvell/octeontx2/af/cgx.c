@@ -2318,7 +2318,6 @@ static int cgx_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_release_regions;
 	}
 
-
 	/* init wq for processing linkup requests */
 	INIT_WORK(&cgx->cgx_cmd_work, cgx_lmac_linkup_work);
 	cgx->cgx_cmd_workq = alloc_workqueue("cgx_cmd_workq", 0, 0);
@@ -2329,7 +2328,6 @@ static int cgx_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	}
 
 	list_add(&cgx->cgx_list, &cgx_list);
-
 
 	cgx_populate_features(cgx);
 

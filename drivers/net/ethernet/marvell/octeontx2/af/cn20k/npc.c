@@ -1442,7 +1442,7 @@ err:
 	rc = npc_idx_free(rvu, mcam_idx, cnt, false);
 	if (rc)
 		dev_err(rvu->dev,
-			"%s:%d Error happend while freeing cnt=%u indexes\n",
+			"%s:%d Error happened while freeing cnt=%u indexes\n",
 			__func__, __LINE__, cnt);
 
 	return -ENOSPC;
