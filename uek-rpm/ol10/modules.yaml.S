@@ -552,6 +552,8 @@ modules-core:
 - cppc_cpufreq
 - crct10dif-ce
 - ecdh_generic
+- ffa-core
+- ffa-module
 - ghash-ce
 - poly1305-neon
 - sbsa_gwdt
