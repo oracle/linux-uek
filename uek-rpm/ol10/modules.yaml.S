@@ -137,6 +137,8 @@ modules-core:
 - fat
 - fcoe
 - fcrypt
+- ffa-core
+- ffa-module
 - fou
 - fou6
 - ftdi_sio
