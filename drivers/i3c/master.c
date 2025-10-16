@@ -2494,12 +2494,12 @@ int i3c_master_register(struct i3c_master_controller *master,
 	INIT_LIST_HEAD(&master->boardinfo.i2c);
 	INIT_LIST_HEAD(&master->boardinfo.i3c);
 
-	ret = i3c_bus_init(i3cbus);
-	if (ret)
-		return ret;
-
 	device_initialize(&master->dev);
 	dev_set_name(&master->dev, "i3c-%d", i3cbus->id);
+
+	ret = i3c_bus_init(i3cbus);
+	if (ret)
+		goto err_put_dev;
 
 	ret = of_populate_i3c_bus(master);
 	if (ret)
