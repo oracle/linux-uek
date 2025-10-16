@@ -255,7 +255,8 @@ static inline int create_ctx_hdr(struct skcipher_request *req, u32 enc,
 	fctx->enc.enc_ctrl.e.iv_source = OTX2_CPT_FROM_CPTR;
 
 	if (ctx->cipher_type == OTX2_CPT_AES_XTS)
-		memcpy(fctx->enc.encr_key, ctx->enc_key, ctx->key_len * 2);
+		unsafe_memcpy(fctx->enc.encr_key, ctx->enc_key, ctx->key_len * 2,
+			      "fortified memcpy causes -Wrestrict warning");
 	else
 		memcpy(fctx->enc.encr_key, ctx->enc_key, ctx->key_len);
 
