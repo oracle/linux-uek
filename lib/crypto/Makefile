@@ -21,6 +21,17 @@ libarc4-y					:= arc4.o
 
 obj-$(CONFIG_CRYPTO_LIB_GF128MUL)		+= gf128mul.o
 
+################################################################################
+
+obj-$(CONFIG_CRYPTO_LIB_BLAKE2B) += libblake2b.o
+libblake2b-y := blake2b.o
+CFLAGS_blake2b.o := -Wframe-larger-than=4096 #  https://gcc.gnu.org/bugzilla/show_bug.cgi?id=105930
+ifeq ($(CONFIG_CRYPTO_LIB_BLAKE2B_ARCH),y)
+CFLAGS_blake2b.o += -I$(src)/$(SRCARCH)
+endif # CONFIG_CRYPTO_LIB_BLAKE2B_ARCH
+
+################################################################################
+
 # blake2s is used by the /dev/random driver which is always builtin
 obj-y						+= libblake2s.o
 libblake2s-y					:= blake2s.o
