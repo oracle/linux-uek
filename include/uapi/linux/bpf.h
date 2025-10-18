@@ -1413,6 +1413,9 @@ enum {
 
 /* Do not translate kernel bpf_arena pointers to user pointers */
 	BPF_F_NO_USER_CONV	= (1U << 18),
+
+/* Enable BPF ringbuf overwrite mode */
+	BPF_F_RB_OVERWRITE	= (1U << 19),
 };
 
 /* Flags for BPF_PROG_QUERY. */
@@ -6160,6 +6163,7 @@ enum {
 	BPF_RB_RING_SIZE = 1,
 	BPF_RB_CONS_POS = 2,
 	BPF_RB_PROD_POS = 3,
+	BPF_RB_OVERWRITE_POS = 4,
 };
 
 /* BPF ring buffer constants */
