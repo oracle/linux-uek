@@ -173,6 +173,22 @@ static inline void cpu_to_le32_array(u32 *buf, unsigned int words)
 	}
 }
 
+static inline void le64_to_cpu_array(u64 *buf, unsigned int words)
+{
+	while (words--) {
+		__le64_to_cpus(buf);
+		buf++;
+	}
+}
+
+static inline void cpu_to_le64_array(u64 *buf, unsigned int words)
+{
+	while (words--) {
+		__cpu_to_le64s(buf);
+		buf++;
+	}
+}
+
 static inline void be16_add_cpu(__be16 *var, u16 val)
 {
 	*var = cpu_to_be16(be16_to_cpu(*var) + val);
