@@ -816,7 +816,6 @@ void kvm_set_cpu_caps(void)
 		F(NO_NESTED_DATA_BP) | F(LFENCE_RDTSC) | 0 /* SmmPgCfgLock */ |
 		F(VERW_CLEAR) |
 		F(NULL_SEL_CLR_BASE) | F(AUTOIBRS) | 0 /* PrefetchCtlMsr */ |
-		F(IBPB_BRTYPE) | F(SRSO_USER_KERNEL_NO) |
 		F(WRMSR_XX_BASE_NS)
 	);
 
