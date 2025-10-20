@@ -394,6 +394,8 @@ static int mtk_iommu_create_mapping(struct device *dev,
 			return -EINVAL;
 
 		fwspec->iommu_priv = platform_get_drvdata(m4updev);
+
+		put_device(&m4updev->dev);
 	}
 
 	ret = iommu_fwspec_add_ids(dev, args->args, 1);
