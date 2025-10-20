@@ -293,6 +293,9 @@ static void cap_reset(void)
 	struct pciedev_info *pi = &pciedev_info;
 	u32 val;
 
+	if (!pi->ms_cfg_wdt || !pi->wdt)
+		goto skip_wdt;
+
 	pr_info(PFX "pensando reset!\n");
 
 	/* Enable WDT0 to reset the system */
@@ -305,6 +308,8 @@ static void cap_reset(void)
 	iowrite32(WDT_KICK_VAL, pi->wdt + WDT_CRR);
 	iowrite32(WDT_CR_PCLK_256, pi->wdt + WDT_CR);
 	iowrite32(WDT_CR_PCLK_256 | WDT_CR_ENABLE, pi->wdt + WDT_CR);
+
+skip_wdt:
 	for (;;)
 		asm volatile("wfi");
 	/* NOTREACHED */
@@ -350,9 +355,17 @@ static int map_resources(struct platform_device *pd)
 {
 	struct pciedev_info *pi = &pciedev_info;
 	struct device_node *dn = pd->dev.of_node;
+	struct resource res;
 
-	pi->ms_cfg_wdt = of_iomap(dn, MS_CFG_WDT_IDX);
-	pi->wdt = of_iomap(dn, WDT_IDX);
+	if (!of_address_to_resource(dn, MS_CFG_WDT_IDX, &res) &&
+	     resource_size(&res)) {
+		pi->ms_cfg_wdt = of_iomap(dn, MS_CFG_WDT_IDX);
+	}
+	if (!of_address_to_resource(dn, WDT_IDX, &res) &&
+	     resource_size(&res)) {
+		pi->wdt = of_iomap(dn, WDT_IDX);
+	}
+
 	pi->pcieva = of_iomap(dn, PCIE_IDX);
 
 	if (IS_ERR(pi->ms_cfg_wdt) ||
