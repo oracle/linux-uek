@@ -966,7 +966,7 @@ static void mlx5_register_hca_devcom_comp(struct mlx5_core_dev *dev)
 		mlx5_devcom_register_component(dev->priv.devc, MLX5_DEVCOM_HCA_PORTS,
 					       mlx5_query_nic_system_image_guid(dev),
 					       NULL, dev);
-	if (IS_ERR(dev->priv.hca_devcom_comp))
+	if (!dev->priv.hca_devcom_comp)
 		mlx5_core_err(dev, "Failed to register devcom HCA component\n");
 }
 
@@ -980,9 +980,8 @@ static int mlx5_init_once(struct mlx5_core_dev *dev)
 	int err;
 
 	dev->priv.devc = mlx5_devcom_register_device(dev);
-	if (IS_ERR(dev->priv.devc))
-		mlx5_core_warn(dev, "failed to register devcom device %ld\n",
-			       PTR_ERR(dev->priv.devc));
+	if (!dev->priv.devc)
+		mlx5_core_warn(dev, "failed to register devcom device\n");
 	mlx5_register_hca_devcom_comp(dev);
 
 	err = mlx5_query_board_id(dev);
