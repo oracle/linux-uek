@@ -103,13 +103,15 @@ kernels go out with a handful of known regressions though, hopefully, none
 of them are serious.
 
 Once a stable release is made, its ongoing maintenance is passed off to the
-"stable team," currently consisting of Greg Kroah-Hartman.  The stable team
-will release occasional updates to the stable release using the 4.x.y
-numbering scheme.  To be considered for an update release, a patch must (1)
-fix a significant bug, and (2) already be merged into the mainline for the
-next development kernel.  Kernels will typically receive stable updates for
-a little more than one development cycle past their initial release.  So,
-for example, the 4.13 kernel's history looked like:
+"stable team," currently consists of Greg Kroah-Hartman and Sasha Levin. The
+stable team will release occasional updates to the stable release using the
+5.x.y numbering scheme.
+
+To be considered for an update release, a patch must (1) fix a significant
+bug, and (2) already be merged into the mainline for the next development
+kernel. Kernels will typically receive stable updates for a little more
+than one development cycle past their initial release. So, for example, the
+5.2 kernel's history looked like this (all dates in 2019):
 
 	==============  ===============================
 	September 3 	4.13 stable release
