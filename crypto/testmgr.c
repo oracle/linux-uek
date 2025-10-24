@@ -1993,9 +1993,11 @@ static int __alg_test_hash(struct crypto_alg *alg,
 	if (err)
 		goto out;
 
-	err = check_alg(alg, stfm->base.__crt_alg);
-	if (err)
-		goto out;
+	if (stfm) {
+		err = check_alg(alg, stfm->base.__crt_alg);
+		if (err)
+			goto out;
+	}
 
 	tsgl = kmalloc(sizeof(*tsgl), GFP_KERNEL);
 	if (!tsgl || init_test_sglist(tsgl) != 0) {
