@@ -513,6 +513,12 @@ int crypto_register_template(struct crypto_template *tmpl)
 	crypto_check_module_sig(tmpl->module);
 
 	list_for_each_entry(q, &crypto_template_list, list) {
+		/*
+		 * If we find a template already registered with the same
+		 * name, refuse to register a new one.
+		 */
+		if (!strcmp(q->name, tmpl->name))
+			goto out;
 		if (q == tmpl)
 			goto out;
 	}
