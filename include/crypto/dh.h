@@ -50,7 +50,9 @@ struct dh {
  *
  * Return: size of the key in bytes
  */
-DECLARE_CRYPTO_API1(crypto_dh_key_len, unsigned int, const struct dh *, params);
+DECLARE_CRYPTO_API(crypto_dh_key_len, unsigned int,
+	(const struct dh *params),
+	(params));
 
 /**
  * crypto_dh_encode_key() - encode the private key
@@ -65,7 +67,9 @@ DECLARE_CRYPTO_API1(crypto_dh_key_len, unsigned int, const struct dh *, params);
  *
  * Return:	-EINVAL if buffer has insufficient size, 0 on success
  */
-DECLARE_CRYPTO_API3(crypto_dh_encode_key, int, char *, buf, unsigned int, len, const struct dh *, params);
+DECLARE_CRYPTO_API(crypto_dh_encode_key, int,
+	(char *buf, unsigned int len, const struct dh *params),
+	(buf, len, params));
 
 /**
  * crypto_dh_decode_key() - decode a private key
@@ -79,7 +83,9 @@ DECLARE_CRYPTO_API3(crypto_dh_encode_key, int, char *, buf, unsigned int, len, c
  *
  * Return:	-EINVAL if buffer has insufficient size, 0 on success
  */
-DECLARE_CRYPTO_API3(crypto_dh_decode_key, int, const char *, buf, unsigned int, len, struct dh *, params);
+DECLARE_CRYPTO_API(crypto_dh_decode_key, int,
+	(const char *buf, unsigned int len, struct dh *params),
+	(buf, len, params));
 
 /**
  * __crypto_dh_decode_key() - decode a private key without parameter checks

@@ -34,9 +34,13 @@ struct sha1_state {
 
 struct shash_desc;
 
-DECLARE_CRYPTO_API3(crypto_sha1_update, int, struct shash_desc *, desc, const u8 *, data, unsigned int, len);
+DECLARE_CRYPTO_API(crypto_sha1_update, int,
+	(struct shash_desc *desc, const u8 *data, unsigned int len),
+	(desc, data, len));
 
-DECLARE_CRYPTO_API4(crypto_sha1_finup, int, struct shash_desc *, desc, const u8 *, data, unsigned int, len, u8 *, hash);
+DECLARE_CRYPTO_API(crypto_sha1_finup, int,
+	(struct shash_desc *desc, const u8 *data, unsigned int len, u8 *hash),
+	(desc, data, len, hash));
 
 /*
  * An implementation of SHA-1's compression function.  Don't use in new code!

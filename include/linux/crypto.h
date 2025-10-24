@@ -398,7 +398,9 @@ struct crypto_wait {
 /*
  * Async ops completion helper functioons
  */
-DECLARE_CRYPTO_API2(crypto_req_done, void, void *, req, int, err);
+DECLARE_CRYPTO_API(crypto_req_done, void,
+		(void *req, int err),
+		(req, err));
 
 static inline int crypto_wait_req(int err, struct crypto_wait *wait)
 {
@@ -422,7 +424,9 @@ static inline void crypto_init_wait(struct crypto_wait *wait)
 /*
  * Algorithm query interface.
  */
-DECLARE_CRYPTO_API3(crypto_has_alg, int, const char *, name, u32, type, u32, mask);
+DECLARE_CRYPTO_API(crypto_has_alg, int,
+		(const char *name, u32 type, u32 mask),
+		(name, type, mask));
 
 /*
  * Transforms: user-instantiated objects which encapsulate algorithms
@@ -452,8 +456,12 @@ struct crypto_comp {
  * Transform user interface.
  */
  
-DECLARE_CRYPTO_API3(crypto_alloc_base, struct crypto_tfm *, const char *, alg_name, u32, type, u32, mask);
-DECLARE_CRYPTO_API2(crypto_destroy_tfm, void, void *, mem, struct crypto_tfm *, tfm);
+DECLARE_CRYPTO_API(crypto_alloc_base, struct crypto_tfm *,
+		(const char *alg_name, u32 type, u32 mask),
+		(alg_name, type, mask));
+DECLARE_CRYPTO_API(crypto_destroy_tfm, void,
+		(void *mem, struct crypto_tfm *tfm),
+		(mem, tfm));
 
 static inline void crypto_free_tfm(struct crypto_tfm *tfm)
 {
