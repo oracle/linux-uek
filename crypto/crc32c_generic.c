@@ -30,6 +30,7 @@
  * Copyright (c) 2008 Herbert Xu <herbert@gondor.apana.org.au>
  */
 
+#include <crypto/api.h>
 #include <linux/unaligned.h>
 #include <crypto/internal/hash.h>
 #include <linux/init.h>
@@ -158,8 +159,8 @@ static void __exit crc32c_mod_fini(void)
 	crypto_unregister_shash(&alg);
 }
 
-subsys_initcall(crc32c_mod_init);
-module_exit(crc32c_mod_fini);
+crypto_subsys_initcall(crc32c_mod_init);
+crypto_module_exit(crc32c_mod_fini);
 
 MODULE_AUTHOR("Clay Haapala <chaapala@cisco.com>");
 MODULE_DESCRIPTION("CRC32c (Castagnoli) calculations wrapper for lib/crc32c");
