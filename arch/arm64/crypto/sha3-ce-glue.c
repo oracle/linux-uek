@@ -162,5 +162,5 @@ static void __exit sha3_neon_mod_fini(void)
 	crypto_unregister_shashes(algs, ARRAY_SIZE(algs));
 }
 
-module_cpu_feature_match(SHA3, sha3_neon_mod_init);
+crypto_module_cpu_feature_match(SHA3, sha3_neon_mod_init);
 crypto_module_exit(sha3_neon_mod_fini);
