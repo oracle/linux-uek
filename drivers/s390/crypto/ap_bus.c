@@ -1614,14 +1614,14 @@ static int __init ap_module_init(void)
 	int max_domain_id;
 	int rc, i;
 
-	rc = ap_debug_init();
-	if (rc)
-		return rc;
-
 	if (!ap_instructions_available()) {
 		pr_warn("The hardware system does not support AP instructions\n");
 		return -ENODEV;
 	}
+
+	rc = ap_debug_init();
+	if (rc)
+		return rc;
 
 	/* set up the AP permissions (ioctls, ap and aq masks) */
 	ap_perms_init();
