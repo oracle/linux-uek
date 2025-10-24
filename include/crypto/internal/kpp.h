@@ -159,7 +159,7 @@ static inline void *kpp_instance_ctx(struct kpp_instance *inst)
  *
  * Return: zero on success; error code in case of error
  */
-int crypto_register_kpp(struct kpp_alg *alg);
+DECLARE_CRYPTO_API(crypto_register_kpp, int, (struct kpp_alg *alg), (alg));
 
 /**
  * crypto_unregister_kpp() -- Unregister key-agreement protocol primitive
@@ -170,7 +170,7 @@ int crypto_register_kpp(struct kpp_alg *alg);
  *
  * @alg:	algorithm definition
  */
-void crypto_unregister_kpp(struct kpp_alg *alg);
+DECLARE_CRYPTO_API(crypto_unregister_kpp, void, (struct kpp_alg *alg), (alg));
 
 /**
  * kpp_register_instance() - Register a KPP template instance.
@@ -178,8 +178,8 @@ void crypto_unregister_kpp(struct kpp_alg *alg);
  * @inst: The KPP template instance to be registered.
  * Return: %0 on success, negative error code otherwise.
  */
-int kpp_register_instance(struct crypto_template *tmpl,
-			  struct kpp_instance *inst);
+DECLARE_CRYPTO_API(kpp_register_instance, int, (struct crypto_template *tmpl,
+			  struct kpp_instance *inst), (tmpl, inst));
 
 /*
  * KPP spawn related functions.
@@ -193,9 +193,9 @@ int kpp_register_instance(struct crypto_template *tmpl,
  * @mask: The mask bismask to pass on to the lookup.
  * Return: %0 on success, a negative error code otherwise.
  */
-int crypto_grab_kpp(struct crypto_kpp_spawn *spawn,
+DECLARE_CRYPTO_API(crypto_grab_kpp, int, (struct crypto_kpp_spawn *spawn,
 		    struct crypto_instance *inst,
-		    const char *name, u32 type, u32 mask);
+		    const char *name, u32 type, u32 mask), (spawn, inst, name, type, mask));
 
 /**
  * crypto_drop_kpp() - Release a spawn previously bound via crypto_grab_kpp().
