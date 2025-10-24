@@ -5869,7 +5869,7 @@ static const struct alg_test_desc alg_test_descs[] = {
 #endif
 		.alg = "xxhash64",
 		.test = alg_test_hash,
-		.fips_allowed = FIPS_ALLOWED,
+		.fips_allowed = FIPS_ALLOWED | FIPS_NON_CRYPTOGRAPHIC,
 		.suite = {
 			.hash = __VECS(xxhash64_tv_template)
 		}
