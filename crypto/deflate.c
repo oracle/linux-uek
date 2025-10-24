@@ -20,6 +20,7 @@
  * it is not needed for IPCOMP and keeps the code simpler.  It can be
  * implemented if someone wants it.
  */
+#include <crypto/api.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/crypto.h>
@@ -304,8 +305,8 @@ static void __exit deflate_mod_fini(void)
 	crypto_unregister_scomp(&scomp);
 }
 
-subsys_initcall(deflate_mod_init);
-module_exit(deflate_mod_fini);
+crypto_subsys_initcall(deflate_mod_init);
+crypto_module_exit(deflate_mod_fini);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Deflate Compression Algorithm for IPCOMP");
