@@ -214,6 +214,9 @@ $(obj)/arch/arm64/crypto/sha256-core.S: $(src)/arch/arm64/crypto/sha512-armv8.pl
 	$(call cmd,perlasm)
 
 clean-files += $(addprefix arch/arm64/crypto/, sha256-core.S sha512-core.S)
+
+# crct10dif-ce
+arch-y := crct10dif-ce-core.o crct10dif-ce-glue.o
 endif
 
 #
