@@ -159,12 +159,12 @@ int rsa_get_qinv(void *context, size_t hdrlen, unsigned char tag,
  *
  * Return:	0 on success or error code in case of error
  */
-int rsa_parse_pub_key(struct rsa_key *rsa_key, const void *key,
+int CRYPTO_API(rsa_parse_pub_key)(struct rsa_key *rsa_key, const void *key,
 		      unsigned int key_len)
 {
 	return asn1_ber_decoder(&rsapubkey_decoder, rsa_key, key, key_len);
 }
-EXPORT_SYMBOL_GPL(rsa_parse_pub_key);
+DEFINE_CRYPTO_API(rsa_parse_pub_key);
 
 /**
  * rsa_parse_priv_key() - decodes the BER encoded buffer and stores in the
@@ -178,9 +178,9 @@ EXPORT_SYMBOL_GPL(rsa_parse_pub_key);
  *
  * Return:	0 on success or error code in case of error
  */
-int rsa_parse_priv_key(struct rsa_key *rsa_key, const void *key,
+int CRYPTO_API(rsa_parse_priv_key)(struct rsa_key *rsa_key, const void *key,
 		       unsigned int key_len)
 {
 	return asn1_ber_decoder(&rsaprivkey_decoder, rsa_key, key, key_len);
 }
-EXPORT_SYMBOL_GPL(rsa_parse_priv_key);
+DEFINE_CRYPTO_API(rsa_parse_priv_key);
