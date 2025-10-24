@@ -134,9 +134,9 @@ DECLARE_CRYPTO_API3(__crypto_alloc_tfm, struct crypto_tfm *, struct crypto_alg *
 DECLARE_CRYPTO_API3(crypto_create_tfm_node, void *, struct crypto_alg *, alg, const struct crypto_type *, frontend, int, node);
 DECLARE_CRYPTO_API2(crypto_clone_tfm, void *, const struct crypto_type *, frontend, struct crypto_tfm *, otfm);
 
-int crypto_akcipher_sync_prep(struct crypto_akcipher_sync_data *data);
-int crypto_akcipher_sync_post(struct crypto_akcipher_sync_data *data, int err);
-int crypto_init_akcipher_ops_sig(struct crypto_tfm *tfm);
+DECLARE_CRYPTO_API(crypto_akcipher_sync_prep, int, (struct crypto_akcipher_sync_data *data), (data));
+DECLARE_CRYPTO_API(crypto_akcipher_sync_post, int, (struct crypto_akcipher_sync_data *data, int err), (data, err));
+DECLARE_CRYPTO_API(crypto_init_akcipher_ops_sig, int, (struct crypto_tfm *tfm), (tfm));
 
 static inline void *crypto_create_tfm(struct crypto_alg *alg,
 			const struct crypto_type *frontend)
