@@ -172,7 +172,7 @@ static int cryptomgr_test(void *data)
 	err = alg_test(alg, alg->cra_driver_name, alg->cra_name,
 		alg->cra_flags, CRYPTO_ALG_TESTED);
 
-	crypto_alg_tested(alg->cra_driver_name, err);
+	crypto_alg_tested(alg, err);
 
 	crypto_mod_put(alg);
 	module_put_and_kthread_exit(0);
