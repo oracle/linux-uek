@@ -131,7 +131,6 @@ modules-core:
 - crc7
 - crc8
 - crct10dif-ce
-- cryptd
 - crypto_engine
 - crypto_user
 - des_generic
