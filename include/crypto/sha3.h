@@ -28,8 +28,14 @@ struct sha3_state {
 	u8		buf[SHA3_224_BLOCK_SIZE];
 };
 
-DECLARE_CRYPTO_API1(crypto_sha3_init, int, struct shash_desc *, desc);
-DECLARE_CRYPTO_API3(crypto_sha3_update, int, struct shash_desc *, desc, const u8 *, data, unsigned int, len);
-DECLARE_CRYPTO_API2(crypto_sha3_final, int, struct shash_desc *, desc, u8 *, out);
+DECLARE_CRYPTO_API(crypto_sha3_init, int,
+	(struct shash_desc *desc),
+	(desc));
+DECLARE_CRYPTO_API(crypto_sha3_update, int,
+	(struct shash_desc *desc, const u8 *data, unsigned int len),
+	(desc, data, len));
+DECLARE_CRYPTO_API(crypto_sha3_final, int,
+	(struct shash_desc *desc, u8 *out),
+	(desc, out));
 
 #endif
