@@ -125,6 +125,14 @@
 #define CRYPTO_ALG_FIPS_INTERNAL	0x00020000
 
 /*
+ * The algorithm is provided by the FIPS module.
+ *
+ * NOTE: an algorithm can be provided by the FIPS module and not be
+ * approved, depending on the exact parameters like key size, etc.
+ */
+#define CRYPTO_ALG_FIPS_PROVIDED	0x00040000
+
+/*
  * Transform masks and values (for crt_flags).
  */
 #define CRYPTO_TFM_NEED_KEY		0x00000001
