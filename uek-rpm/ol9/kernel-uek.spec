@@ -1203,6 +1203,7 @@ BuildKernel() {
     fi
 
     echo USING ARCH=$Arch
+    scripts/config -e CRYPTO_FIPS140_EXTMOD
     %{make} ARCH=$Arch %{?_kernel_cc} olddefconfig > /dev/null
 
     # This ensures build-ids are unique to allow parallel debuginfo
