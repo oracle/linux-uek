@@ -94,3 +94,11 @@ MODULE_DESCRIPTION("SHA1 Secure Hash Algorithm");
 
 MODULE_ALIAS_CRYPTO("sha1");
 MODULE_ALIAS_CRYPTO("sha1-generic");
+
+#ifdef FIPS_MODULE
+#undef EXPORT_SYMBOL
+#define EXPORT_SYMBOL(x)
+
+#define sha1_final _sha1_final
+#include <../lib/crypto/sha1.c>
+#endif
