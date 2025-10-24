@@ -50,6 +50,7 @@ int restrict_link_by_builtin_trusted(struct key *dest_keyring,
 	return restrict_link_by_signature(dest_keyring, type, payload,
 					  builtin_trusted_keys);
 }
+EXPORT_SYMBOL_GPL(restrict_link_by_builtin_trusted);
 
 /**
  * restrict_link_by_digsig_builtin - Restrict digitalSignature key additions by the built-in keyring
@@ -102,6 +103,7 @@ int restrict_link_by_builtin_and_secondary_trusted(
 	return restrict_link_by_signature(dest_keyring, type, payload,
 					  secondary_trusted_keys);
 }
+EXPORT_SYMBOL_GPL(restrict_link_by_builtin_and_secondary_trusted);
 
 /**
  * restrict_link_by_digsig_builtin_and_secondary - Restrict by digitalSignature.
