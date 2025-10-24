@@ -91,13 +91,21 @@ struct sha512_state {
 
 struct shash_desc;
 
-DECLARE_CRYPTO_API3(crypto_sha256_update, int, struct shash_desc *, desc, const u8 *, data, unsigned int, len);
+DECLARE_CRYPTO_API(crypto_sha256_update, int,
+	(struct shash_desc *desc, const u8 *data, unsigned int len),
+	(desc, data, len));
 
-DECLARE_CRYPTO_API4(crypto_sha256_finup, int, struct shash_desc *, desc, const u8 *, data, unsigned int, len, u8 *, hash);
+DECLARE_CRYPTO_API(crypto_sha256_finup, int,
+	(struct shash_desc *desc, const u8 *data, unsigned int len, u8 *hash),
+	(desc, data, len, hash));
 
-DECLARE_CRYPTO_API3(crypto_sha512_update, int, struct shash_desc *, desc, const u8 *, data, unsigned int, len);
+DECLARE_CRYPTO_API(crypto_sha512_update, int,
+	(struct shash_desc *desc, const u8 *data, unsigned int len),
+	(desc, data, len));
 
-DECLARE_CRYPTO_API4(crypto_sha512_finup, int, struct shash_desc *, desc, const u8 *, data, unsigned int, len, u8 *, hash);
+DECLARE_CRYPTO_API(crypto_sha512_finup, int,
+	(struct shash_desc *desc, const u8 *data, unsigned int len, u8 *hash),
+	(desc, data, len, hash));
 
 /*
  * Stand-alone implementation of the SHA256 algorithm. It is designed to
