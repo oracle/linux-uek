@@ -7,7 +7,9 @@ obj-$(CONFIG_CRYPTO) += crypto.o
 crypto-y := api.o cipher.o compress.o
 
 obj-$(CONFIG_CRYPTO_ENGINE) += crypto_engine.o
+ifneq ($(CONFIG_CRYPTO_FIPS140_EXTMOD),y)
 obj-$(CONFIG_CRYPTO_FIPS) += fips.o
+endif
 
 crypto_algapi-$(CONFIG_PROC_FS) += proc.o
 crypto_algapi-y := algapi.o scatterwalk.o $(crypto_algapi-y)
@@ -208,3 +210,25 @@ obj-$(CONFIG_CRYPTO_SIMD) += crypto_simd.o
 # Key derivation function
 #
 obj-$(CONFIG_CRYPTO_KDF800108_CTR) += kdf_sp800108.o
+
+#
+# Loader for precompiled FIPS 140 module
+#
+
+obj-$(CONFIG_CRYPTO_FIPS140_EXTMOD) += fips-loader.o
+
+#
+# Precompiled FIPS 140 module
+#
+
+quiet_cmd_ld_bin = LD      $@
+      cmd_ld_bin = (cd "$(dir $<)" && \
+                    $(LD) -r -b binary -o $(abspath $@) $(notdir $<) && \
+                    $(OBJCOPY) --rename-section .data=$(2) $(abspath $@))
+
+$(obj)/fips140-module.o: $(src)/fips140.ko FORCE
+	$(call if_changed,ld_bin,__fips140_module)
+$(obj)/fips140-digest.o: $(src)/fips140.hmac FORCE
+	$(call if_changed,ld_bin,__fips140_digest)
+
+obj-$(CONFIG_CRYPTO_FIPS140_EXTMOD) += fips140-module.o fips140-digest.o
