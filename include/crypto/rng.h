@@ -57,10 +57,8 @@ struct crypto_rng {
 	struct crypto_tfm base;
 };
 
-extern struct crypto_rng *crypto_default_rng;
-
-int crypto_get_default_rng(void);
-void crypto_put_default_rng(void);
+int crypto_get_default_rng(struct crypto_rng **rng);
+void crypto_put_default_rng(struct crypto_rng **rng);
 
 /**
  * DOC: Random number generator API

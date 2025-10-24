@@ -1376,17 +1376,17 @@ static bool hpre_key_is_zero(char *key, unsigned short key_sz)
 static int ecdh_gen_privkey(struct hpre_ctx *ctx, struct ecdh *params)
 {
 	struct device *dev = ctx->dev;
+	struct crypto_rng *rng;
 	int ret;
 
-	ret = crypto_get_default_rng();
+	ret = crypto_get_default_rng(&rng);
 	if (ret) {
 		dev_err(dev, "failed to get default rng, ret = %d!\n", ret);
 		return ret;
 	}
 
-	ret = crypto_rng_get_bytes(crypto_default_rng, (u8 *)params->key,
-				   params->key_size);
-	crypto_put_default_rng();
+	ret = crypto_rng_get_bytes(rng, (u8 *)params->key, params->key_size);
+	crypto_put_default_rng(&rng);
 	if (ret)
 		dev_err(dev, "failed to get rng, ret = %d!\n", ret);
 
