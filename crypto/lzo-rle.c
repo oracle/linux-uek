@@ -3,6 +3,7 @@
  * Cryptographic API.
  */
 
+#include <crypto/api.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/crypto.h>
@@ -155,8 +156,8 @@ static void __exit lzorle_mod_fini(void)
 	crypto_unregister_scomp(&scomp);
 }
 
-subsys_initcall(lzorle_mod_init);
-module_exit(lzorle_mod_fini);
+crypto_subsys_initcall(lzorle_mod_init);
+crypto_module_exit(lzorle_mod_fini);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("LZO-RLE Compression Algorithm");
