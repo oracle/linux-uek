@@ -434,6 +434,16 @@ int crypto_register_alg(struct crypto_alg *alg)
 	if (err)
 		return err;
 
+	/* Blatant API misuse */
+	BUG_ON(alg->cra_flags & CRYPTO_ALG_FIPS_PROVIDED);
+
+#ifdef FIPS_MODULE
+	if (alg->cra_module == THIS_MODULE) {
+		alg->cra_flags |= CRYPTO_ALG_FIPS_PROVIDED;
+		alg->cra_priority |= 4096;
+	}
+#endif
+
 	down_write(&crypto_alg_sem);
 	larval = __crypto_register_alg(alg, &algs_to_put);
 	if (!IS_ERR_OR_NULL(larval)) {
@@ -632,12 +642,18 @@ int crypto_register_instance(struct crypto_template *tmpl,
 	struct crypto_larval *larval;
 	struct crypto_spawn *spawn;
 	u32 fips_internal = 0;
+#ifdef FIPS_MODULE
+	u32 fips_provided = ~0;
+#endif
 	LIST_HEAD(algs_to_put);
 	int err;
 
 	err = crypto_check_alg(&inst->alg);
 	if (err)
 		return err;
+
+	/* Blatant API misuse */
+	BUG_ON(inst->alg.cra_flags & CRYPTO_ALG_FIPS_PROVIDED);
 
 	inst->alg.cra_module = tmpl->module;
 	inst->alg.cra_flags |= CRYPTO_ALG_INSTANCE;
@@ -657,12 +673,26 @@ int crypto_register_instance(struct crypto_template *tmpl,
 
 		fips_internal |= spawn->alg->cra_flags;
 
+#ifdef FIPS_MODULE
+		if (spawn->alg->cra_module == THIS_MODULE)
+			fips_provided &= spawn->alg->cra_flags;
+		else
+			fips_provided = 0;
+#endif
+
 		crypto_mod_put(spawn->alg);
 
 		spawn = next;
 	}
 
 	inst->alg.cra_flags |= (fips_internal & CRYPTO_ALG_FIPS_INTERNAL);
+
+#ifdef FIPS_MODULE
+	if (tmpl->module == THIS_MODULE && (fips_provided & CRYPTO_ALG_FIPS_PROVIDED)) {
+		inst->alg.cra_flags |= CRYPTO_ALG_FIPS_PROVIDED;
+		inst->alg.cra_priority |= 4096;
+	}
+#endif
 
 	larval = __crypto_register_alg(&inst->alg, &algs_to_put);
 	if (IS_ERR(larval))
