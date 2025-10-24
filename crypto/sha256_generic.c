@@ -33,13 +33,13 @@ const u8 sha256_zero_message_hash[SHA256_DIGEST_SIZE] = {
 };
 EXPORT_SYMBOL_GPL(sha256_zero_message_hash);
 
-int crypto_sha256_update(struct shash_desc *desc, const u8 *data,
+int CRYPTO_API(crypto_sha256_update)(struct shash_desc *desc, const u8 *data,
 			  unsigned int len)
 {
 	sha256_update(shash_desc_ctx(desc), data, len);
 	return 0;
 }
-EXPORT_SYMBOL(crypto_sha256_update);
+DEFINE_CRYPTO_API(crypto_sha256_update);
 
 static int crypto_sha256_final(struct shash_desc *desc, u8 *out)
 {
@@ -50,13 +50,13 @@ static int crypto_sha256_final(struct shash_desc *desc, u8 *out)
 	return 0;
 }
 
-int crypto_sha256_finup(struct shash_desc *desc, const u8 *data,
+int CRYPTO_API(crypto_sha256_finup)(struct shash_desc *desc, const u8 *data,
 			unsigned int len, u8 *hash)
 {
 	sha256_update(shash_desc_ctx(desc), data, len);
 	return crypto_sha256_final(desc, hash);
 }
-EXPORT_SYMBOL(crypto_sha256_finup);
+DEFINE_CRYPTO_API(crypto_sha256_finup);
 
 static struct shash_alg sha256_algs[2] = { {
 	.digestsize	=	SHA256_DIGEST_SIZE,
