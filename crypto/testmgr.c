@@ -5876,15 +5876,23 @@ static int alg_fips_disabled(const char *driver, const char *alg)
 	return -ECANCELED;
 }
 
-static int alg_test_fips_disabled(const struct alg_test_desc *desc)
+static int alg_test_fips_disabled(const struct crypto_alg *alg, const struct alg_test_desc *desc)
 {
 	if (!fips_enabled)
 		return 0;
 
 	/*
-	 * Only allow FIPS-allowed algorithms to be tested.
+	 * If the algorithm is completely provided by the FIPS module
+	 * we still require it to be allowed accoding to our test table.
 	 */
-	return !(desc->fips_allowed & FIPS_ALLOWED);
+	if (alg->cra_flags & CRYPTO_ALG_FIPS_PROVIDED)
+		return !(desc->fips_allowed & FIPS_ALLOWED);
+
+	/*
+	 * If the algorithm is not provided by the FIPS module, then
+	 * it must be FIPS_NON_CRYPTOGRAPHIC.
+	 */
+	return !(desc->fips_allowed & FIPS_NON_CRYPTOGRAPHIC);
 }
 
 int alg_test(struct crypto_alg *alg, const char *driver, const char *name, u32 type, u32 mask)
@@ -5911,7 +5919,7 @@ int alg_test(struct crypto_alg *alg, const char *driver, const char *name, u32 t
 		if (i < 0)
 			goto notest;
 
-		if (alg_test_fips_disabled(&alg_test_descs[i]))
+		if (alg_test_fips_disabled(alg, &alg_test_descs[i]))
 			goto non_fips_alg;
 
 		rc = alg_test_cipher(alg_test_descs + i, driver, type, mask);
@@ -5923,12 +5931,10 @@ int alg_test(struct crypto_alg *alg, const char *driver, const char *name, u32 t
 	if (i < 0 && j < 0)
 		goto notest;
 
-	if (fips_enabled) {
-		if (j >= 0 && alg_test_fips_disabled(&alg_test_descs[j]))
-			return -EINVAL;
-		if (i >= 0 && alg_test_fips_disabled(&alg_test_descs[i]))
-			goto non_fips_alg;
-	}
+	if (j >= 0 && alg_test_fips_disabled(alg, &alg_test_descs[j]))
+		return -EINVAL;
+	if (i >= 0 && alg_test_fips_disabled(alg, &alg_test_descs[i]))
+		goto non_fips_alg;
 
 	rc = 0;
 	if (i >= 0)
@@ -5971,7 +5977,7 @@ notest:
 		if (i < 0)
 			goto notest2;
 
-		if (alg_test_fips_disabled(&alg_test_descs[i]))
+		if (alg_test_fips_disabled(alg, &alg_test_descs[i]))
 			goto non_fips_alg;
 
 		rc = alg_test_skcipher(alg_test_descs + i, driver, type, mask);
