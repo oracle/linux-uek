@@ -176,4 +176,4 @@ static void __exit aes_mod_exit(void)
 }
 
 module_cpu_feature_match(AES, aes_mod_init);
-module_exit(aes_mod_exit);
+crypto_module_exit(aes_mod_exit);

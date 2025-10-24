@@ -54,8 +54,8 @@ static void __exit aes_fini(void)
 	crypto_unregister_alg(&aes_alg);
 }
 
-module_init(aes_init);
-module_exit(aes_fini);
+crypto_module_init(aes_init);
+crypto_module_exit(aes_fini);
 
 MODULE_DESCRIPTION("Scalar AES cipher for arm64");
 MODULE_AUTHOR("Ard Biesheuvel <ard.biesheuvel@linaro.org>");
