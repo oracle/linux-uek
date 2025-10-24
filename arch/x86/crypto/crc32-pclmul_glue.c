@@ -26,6 +26,7 @@
  *
  * Wrappers for kernel crypto shash api to pclmulqdq crc32 implementation.
  */
+#include <crypto/api.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/string.h>
@@ -191,8 +192,8 @@ static void __exit crc32_pclmul_mod_fini(void)
 	crypto_unregister_shash(&alg);
 }
 
-module_init(crc32_pclmul_mod_init);
-module_exit(crc32_pclmul_mod_fini);
+crypto_module_init(crc32_pclmul_mod_init);
+crypto_module_exit(crc32_pclmul_mod_fini);
 
 MODULE_AUTHOR("Alexander Boyko <alexander_boyko@xyratex.com>");
 MODULE_DESCRIPTION("CRC32 algorithm (IEEE 802.3) accelerated with PCLMULQDQ");
