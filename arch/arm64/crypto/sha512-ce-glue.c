@@ -117,5 +117,5 @@ static void __exit sha512_ce_mod_fini(void)
 	crypto_unregister_shashes(algs, ARRAY_SIZE(algs));
 }
 
-module_cpu_feature_match(SHA512, sha512_ce_mod_init);
+crypto_module_cpu_feature_match(SHA512, sha512_ce_mod_init);
 crypto_module_exit(sha512_ce_mod_fini);
