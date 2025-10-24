@@ -261,6 +261,7 @@ SECTIONS
 		INIT_RAM_FS
 		*(.init.altinstructions .init.bss .init.bss.*)	/* from the EFI stub */
 	}
+	FIPS140
 	.exit.data : {
 		EXIT_DATA
 	}

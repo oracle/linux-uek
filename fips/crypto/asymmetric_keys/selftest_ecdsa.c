@@ -1,0 +1,1 @@
+../../../crypto/asymmetric_keys/selftest_ecdsa.c
