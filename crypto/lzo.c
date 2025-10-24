@@ -3,6 +3,7 @@
  * Cryptographic API.
  */
 
+#include <crypto/api.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/crypto.h>
@@ -155,8 +156,8 @@ static void __exit lzo_mod_fini(void)
 	crypto_unregister_scomp(&scomp);
 }
 
-subsys_initcall(lzo_mod_init);
-module_exit(lzo_mod_fini);
+crypto_subsys_initcall(lzo_mod_init);
+crypto_module_exit(lzo_mod_fini);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("LZO Compression Algorithm");
