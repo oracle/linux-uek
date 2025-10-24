@@ -7,6 +7,7 @@
 #ifndef _CRYPTO_ALGAPI_H
 #define _CRYPTO_ALGAPI_H
 
+#include <crypto/api.h>
 #include <crypto/utils.h>
 #include <linux/align.h>
 #include <linux/cache.h>
@@ -140,7 +141,7 @@ void crypto_unregister_alg(struct crypto_alg *alg);
 int crypto_register_algs(struct crypto_alg *algs, int count);
 void crypto_unregister_algs(struct crypto_alg *algs, int count);
 
-void crypto_mod_put(struct crypto_alg *alg);
+DECLARE_CRYPTO_API1(crypto_mod_put, void, struct crypto_alg *, alg);
 
 int crypto_register_template(struct crypto_template *tmpl);
 int crypto_register_templates(struct crypto_template *tmpls, int count);
