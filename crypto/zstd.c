@@ -4,6 +4,7 @@
  *
  * Copyright (c) 2017-present, Facebook, Inc.
  */
+#include <crypto/api.h>
 #include <linux/crypto.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
@@ -250,9 +251,30 @@ static void __exit zstd_mod_fini(void)
 	crypto_unregister_scomp(&scomp);
 }
 
-subsys_initcall(zstd_mod_init);
-module_exit(zstd_mod_fini);
+crypto_subsys_initcall(zstd_mod_init);
+crypto_module_exit(zstd_mod_fini);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Zstd Compression Algorithm");
 MODULE_ALIAS_CRYPTO("zstd");
+
+#ifdef FIPS_MODULE
+#undef EXPORT_SYMBOL
+#define EXPORT_SYMBOL(x)
+
+#undef current
+
+#include <../lib/zstd/zstd_compress_module.c>
+#include <../lib/zstd/compress/zstd_compress.c>
+#include <../lib/zstd/compress/zstd_compress_literals.c>
+#include <../lib/zstd/compress/zstd_compress_superblock.c>
+#include <../lib/zstd/compress/zstd_compress_sequences.c>
+#include <../lib/zstd/compress/zstd_fast.c>
+#include <../lib/zstd/compress/zstd_lazy.c>
+#include <../lib/zstd/compress/zstd_ldm.c>
+#include <../lib/zstd/compress/zstd_opt.c>
+#include <../lib/zstd/compress/fse_compress.c>
+#include <../lib/zstd/compress/huf_compress.c>
+#include <../lib/zstd/compress/hist.c>
+#include <../lib/zstd/compress/zstd_double_fast.c>
+#endif
