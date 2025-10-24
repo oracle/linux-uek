@@ -108,6 +108,8 @@ fips140-y += crypto/rng.o
 fips140-y += crypto/sig.o
 fips140-y += crypto/geniv.o
 
+fips140-y += crypto/xxhash_generic.o
+
 #
 # crypto/asymmetric_keys/Makefile
 #
