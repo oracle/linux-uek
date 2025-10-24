@@ -1215,7 +1215,7 @@ BuildKernel() {
     %{make} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} modules_prepare
 
     # Build fips140.ko
-    %{make} ARCH=$Arch M=fips/ KBUILD_MODPOST_WARN=1
+    %{make} ARCH=$Arch M=fips/ KBUILD_MODPOST_WARN=1 KBUILD_SYMTYPES=y
 
     # Copy fips140.ko in preparation for stripping
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer/fips
@@ -1373,6 +1373,11 @@ BuildKernel() {
     if [ ! -e Module.symvers ]; then
       touch Module.symvers
     fi
+%if %{with_fips_build}
+    cp fips/Module.symvers $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/fips
+    # include fips symvers for kABI checking
+    cat fips/Module.symvers >> Module.symvers
+%endif
     cp Module.symvers $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
     cp System.map $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
     if [ -s Module.markers ]; then
