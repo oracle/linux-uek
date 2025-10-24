@@ -54,6 +54,22 @@ config CRYPTO_FIPS_VERSION
 	  This option provides the ability to override the FIPS Module Version.
 	  By default the KERNELRELEASE value is used.
 
+config CRYPTO_FIPS140_EXTMOD
+	bool "FIPS 140-3 external module"
+	depends on CRYPTO_FIPS
+	help
+	  Support loading a prebuilt FIPS 140-3 cryptographic module.
+
+config CRYPTO_FIPS140_HMAC_KEY
+	string "FIPS 140-3 external module HMAC key"
+	depends on CRYPTO_FIPS140_EXTMOD
+	default "Sphinx of black quartz, judge my vow"
+	help
+	  This is the HMAC key used to build and verify the integrity of
+	  the FIPS module.
+
+	  Must be at least 14 characters.
+
 config CRYPTO_ALGAPI
 	tristate
 	select CRYPTO_ALGAPI2
