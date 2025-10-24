@@ -49,9 +49,13 @@ struct rsa_key {
 	size_t qinv_sz;
 };
 
-DECLARE_CRYPTO_API3(rsa_parse_pub_key, int, struct rsa_key *, rsa_key, const void *, key, unsigned int, key_len);
+DECLARE_CRYPTO_API(rsa_parse_pub_key, int,
+	(struct rsa_key *rsa_key, const void *key, unsigned int key_len),
+	(rsa_key, key, key_len));
 
-DECLARE_CRYPTO_API3(rsa_parse_priv_key, int, struct rsa_key *, rsa_key, const void *, key, unsigned int, key_len);
+DECLARE_CRYPTO_API(rsa_parse_priv_key, int,
+	(struct rsa_key *rsa_key, const void *key, unsigned int key_len),
+	(rsa_key, key, key_len));
 
 extern struct crypto_template rsa_pkcs1pad_tmpl;
 #endif
