@@ -370,20 +370,22 @@ static int __init init_trusted(void)
 
 			trusted_key_exit = trusted_key_sources[i].ops->exit;
 			migratable = trusted_key_sources[i].ops->migratable;
+			return 0;
 		}
 
-		if (!ret || ret != -ENODEV)
-			break;
+		/*
+		 * The crypto API returns -ENOENT if it doesn't support a
+		 * given hashing algorithm (e.g. SHA1 in FIPS mode).
+		 */
+		if (ret != -ENODEV && ret != -ENOENT)
+			return ret;
 	}
 
 	/*
-	 * encrypted_keys.ko depends on successful load of this module even if
-	 * trusted key implementation is not found.
+	 * encrypted_keys.ko and dm-crypt depend on successful load of
+	 * this module even if trusted key implementation is not found.
 	 */
-	if (ret == -ENODEV)
-		return 0;
-
-	return ret;
+	return 0;
 }
 
 static void __exit cleanup_trusted(void)
