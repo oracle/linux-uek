@@ -60,6 +60,16 @@ enum {
 /* Maximum number of (rtattr) parameters for each template. */
 #define CRYPTO_MAX_ATTRS 32
 
+#ifndef FIPS_MODULE
+#define crypto_alg_list nonfips_crypto_alg_list
+#define crypto_alg_sem nonfips_crypto_alg_sem
+#define crypto_chain nonfips_crypto_chain
+#else
+#define crypto_alg_list fips_crypto_alg_list
+#define crypto_alg_sem fips_crypto_alg_sem
+#define crypto_chain fips_crypto_chain
+#endif
+
 extern struct list_head crypto_alg_list;
 extern struct rw_semaphore crypto_alg_sem;
 extern struct blocking_notifier_head crypto_chain;
@@ -109,25 +119,21 @@ static inline unsigned int crypto_compress_ctxsize(struct crypto_alg *alg)
 	return alg->cra_ctxsize;
 }
 
-struct crypto_alg *crypto_mod_get(struct crypto_alg *alg);
-struct crypto_alg *crypto_alg_mod_lookup(const char *name, u32 type, u32 mask);
+DECLARE_CRYPTO_API1(crypto_mod_get, struct crypto_alg *, struct crypto_alg *, alg);
+DECLARE_CRYPTO_API3(crypto_alg_mod_lookup, struct crypto_alg *, const char *, name, u32, type, u32, mask);
 
-struct crypto_larval *crypto_larval_alloc(const char *name, u32 type, u32 mask);
-void crypto_schedule_test(struct crypto_larval *larval);
-void crypto_alg_tested(struct crypto_alg *alg, int err);
+DECLARE_CRYPTO_API3(crypto_larval_alloc, struct crypto_larval *, const char *, name, u32, type, u32, mask);
+DECLARE_CRYPTO_API1(crypto_schedule_test, void, struct crypto_larval *, larval);
+DECLARE_CRYPTO_API2(crypto_alg_tested, void, struct crypto_alg *, alg, int, err);
 
 void crypto_remove_spawns(struct crypto_alg *alg, struct list_head *list,
 			  struct crypto_alg *nalg);
 void crypto_remove_final(struct list_head *list);
-void crypto_shoot_alg(struct crypto_alg *alg);
-struct crypto_tfm *__crypto_alloc_tfmgfp(struct crypto_alg *alg, u32 type,
-					 u32 mask, gfp_t gfp);
-struct crypto_tfm *__crypto_alloc_tfm(struct crypto_alg *alg, u32 type,
-				      u32 mask);
-void *crypto_create_tfm_node(struct crypto_alg *alg,
-			const struct crypto_type *frontend, int node);
-void *crypto_clone_tfm(const struct crypto_type *frontend,
-		       struct crypto_tfm *otfm);
+DECLARE_CRYPTO_API1(crypto_shoot_alg, void, struct crypto_alg *, alg);
+DECLARE_CRYPTO_API4(__crypto_alloc_tfmgfp, struct crypto_tfm *, struct crypto_alg *, alg, u32, type, u32, mask, gfp_t, gfp);
+DECLARE_CRYPTO_API3(__crypto_alloc_tfm, struct crypto_tfm *, struct crypto_alg *, alg, u32, type, u32, mask);
+DECLARE_CRYPTO_API3(crypto_create_tfm_node, void *, struct crypto_alg *, alg, const struct crypto_type *, frontend, int, node);
+DECLARE_CRYPTO_API2(crypto_clone_tfm, void *, const struct crypto_type *, frontend, struct crypto_tfm *, otfm);
 
 int crypto_akcipher_sync_prep(struct crypto_akcipher_sync_data *data);
 int crypto_akcipher_sync_post(struct crypto_akcipher_sync_data *data, int err);
@@ -139,13 +145,9 @@ static inline void *crypto_create_tfm(struct crypto_alg *alg,
 	return crypto_create_tfm_node(alg, frontend, NUMA_NO_NODE);
 }
 
-struct crypto_alg *crypto_find_alg(const char *alg_name,
-				   const struct crypto_type *frontend,
-				   u32 type, u32 mask);
+DECLARE_CRYPTO_API4(crypto_find_alg, struct crypto_alg *, const char *, alg_name, const struct crypto_type *, frontend, u32, type, u32, mask);
 
-void *crypto_alloc_tfm_node(const char *alg_name,
-		       const struct crypto_type *frontend, u32 type, u32 mask,
-		       int node);
+DECLARE_CRYPTO_API5(crypto_alloc_tfm_node, void *, const char *, alg_name, const struct crypto_type *, frontend, u32, type, u32, mask, int, node);
 
 static inline void *crypto_alloc_tfm(const char *alg_name,
 		       const struct crypto_type *frontend, u32 type, u32 mask)
@@ -153,7 +155,7 @@ static inline void *crypto_alloc_tfm(const char *alg_name,
 	return crypto_alloc_tfm_node(alg_name, frontend, type, mask, NUMA_NO_NODE);
 }
 
-int crypto_probing_notify(unsigned long val, void *v);
+DECLARE_CRYPTO_API2(crypto_probing_notify, int, unsigned long, val, void *, v);
 
 unsigned int crypto_alg_extsize(struct crypto_alg *alg);
 
