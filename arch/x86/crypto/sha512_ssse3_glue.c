@@ -291,7 +291,7 @@ static const struct x86_cpu_id module_cpu_ids[] = {
 	X86_MATCH_FEATURE(X86_FEATURE_SSSE3, NULL),
 	{}
 };
-MODULE_DEVICE_TABLE(x86cpu, module_cpu_ids);
+CRYPTO_MODULE_DEVICE_TABLE(x86cpu, module_cpu_ids);
 
 static void unregister_sha512_avx2(void)
 {
