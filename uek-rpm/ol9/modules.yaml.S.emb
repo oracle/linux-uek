@@ -140,8 +140,6 @@ modules-core:
 - dns_resolver
 - ebtable_broute
 - ebtables
-- ecc
-- ecdh_generic
 - ecdsa_generic
 - echainiv
 - encrypted-keys
