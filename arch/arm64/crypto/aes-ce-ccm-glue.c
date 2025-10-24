@@ -342,8 +342,8 @@ static void __exit aes_mod_exit(void)
 	crypto_unregister_aead(&ccm_aes_alg);
 }
 
-module_init(aes_mod_init);
-module_exit(aes_mod_exit);
+crypto_module_init(aes_mod_init);
+crypto_module_exit(aes_mod_exit);
 
 MODULE_DESCRIPTION("Synchronous AES in CCM mode using ARMv8 Crypto Extensions");
 MODULE_AUTHOR("Ard Biesheuvel <ardb@kernel.org>");

@@ -1124,8 +1124,8 @@ static void __exit crypto_algapi_exit(void)
  * We run this at late_initcall so that all the built-in algorithms
  * have had a chance to register themselves first.
  */
-late_initcall(crypto_algapi_init);
-module_exit(crypto_algapi_exit);
+crypto_late_initcall(crypto_algapi_init);
+crypto_module_exit(crypto_algapi_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Cryptographic algorithms API");
