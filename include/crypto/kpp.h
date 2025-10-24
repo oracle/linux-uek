@@ -107,9 +107,9 @@ struct kpp_alg {
  * Return: allocated handle in case of success; IS_ERR() is true in case of
  *	   an error, PTR_ERR() returns the error code.
  */
-struct crypto_kpp *crypto_alloc_kpp(const char *alg_name, u32 type, u32 mask);
+DECLARE_CRYPTO_API(crypto_alloc_kpp, struct crypto_kpp *, (const char *alg_name, u32 type, u32 mask), (alg_name, type, mask));
 
-int crypto_has_kpp(const char *alg_name, u32 type, u32 mask);
+DECLARE_CRYPTO_API(crypto_has_kpp, int, (const char *alg_name, u32 type, u32 mask), (alg_name, type, mask));
 
 static inline struct crypto_tfm *crypto_kpp_tfm(struct crypto_kpp *tfm)
 {
