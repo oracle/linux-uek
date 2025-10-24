@@ -4,6 +4,7 @@
 
 /* Undef any of these macros coming from string_32.h. */
 #undef memcpy
+#undef memmove
 #undef memset
 #undef memcmp
 
@@ -15,8 +16,11 @@ int bcmp(const void *s1, const void *s2, size_t len);
 
 /* Access builtin version by default. */
 #define memcpy(d,s,l) __builtin_memcpy(d,s,l)
+#define memmove(d,s,l) __builtin_memmove(d,s,l)
 #define memset(d,c,l) __builtin_memset(d,c,l)
 #define memcmp	__builtin_memcmp
+
+#undef strlen
 
 extern int strcmp(const char *str1, const char *str2);
 extern int strncmp(const char *cs, const char *ct, size_t count);
