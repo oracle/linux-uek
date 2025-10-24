@@ -57,7 +57,10 @@ EXPORT_SYMBOL(crc32c);
 static int __init libcrc32c_mod_init(void)
 {
 	tfm = crypto_alloc_shash("crc32c", 0, 0);
-	return PTR_ERR_OR_ZERO(tfm);
+	if (IS_ERR_OR_NULL(tfm))
+		panic("Failed to allocate crc32c tfm: %ld", PTR_ERR(tfm));
+
+	return 0;
 }
 
 static void __exit libcrc32c_mod_fini(void)
