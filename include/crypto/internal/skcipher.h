@@ -130,13 +130,13 @@ static inline void skcipher_request_complete(struct skcipher_request *req, int e
 	crypto_request_complete(&req->base, err);
 }
 
-int crypto_grab_skcipher(struct crypto_skcipher_spawn *spawn,
+DECLARE_CRYPTO_API(crypto_grab_skcipher, int, (struct crypto_skcipher_spawn *spawn,
 			 struct crypto_instance *inst,
-			 const char *name, u32 type, u32 mask);
+			 const char *name, u32 type, u32 mask), (spawn, inst, name, type, mask));
 
-int crypto_grab_lskcipher(struct crypto_lskcipher_spawn *spawn,
+DECLARE_CRYPTO_API(crypto_grab_lskcipher, int, (struct crypto_lskcipher_spawn *spawn,
 			  struct crypto_instance *inst,
-			  const char *name, u32 type, u32 mask);
+			  const char *name, u32 type, u32 mask), (spawn, inst, name, type, mask));
 
 static inline void crypto_drop_skcipher(struct crypto_skcipher_spawn *spawn)
 {
@@ -191,31 +191,31 @@ static inline void crypto_skcipher_set_reqsize_dma(
 	skcipher->reqsize = reqsize;
 }
 
-int crypto_register_skcipher(struct skcipher_alg *alg);
-void crypto_unregister_skcipher(struct skcipher_alg *alg);
-int crypto_register_skciphers(struct skcipher_alg *algs, int count);
-void crypto_unregister_skciphers(struct skcipher_alg *algs, int count);
-int skcipher_register_instance(struct crypto_template *tmpl,
-			       struct skcipher_instance *inst);
+DECLARE_CRYPTO_API(crypto_register_skcipher, int, (struct skcipher_alg *alg), (alg));
+DECLARE_CRYPTO_API(crypto_unregister_skcipher, void, (struct skcipher_alg *alg), (alg));
+DECLARE_CRYPTO_API(crypto_register_skciphers, int, (struct skcipher_alg *algs, int count), (algs, count));
+DECLARE_CRYPTO_API(crypto_unregister_skciphers, void, (struct skcipher_alg *algs, int count), (algs, count));
+DECLARE_CRYPTO_API(skcipher_register_instance, int, (struct crypto_template *tmpl,
+			       struct skcipher_instance *inst), (tmpl, inst));
 
-int crypto_register_lskcipher(struct lskcipher_alg *alg);
-void crypto_unregister_lskcipher(struct lskcipher_alg *alg);
-int crypto_register_lskciphers(struct lskcipher_alg *algs, int count);
-void crypto_unregister_lskciphers(struct lskcipher_alg *algs, int count);
-int lskcipher_register_instance(struct crypto_template *tmpl,
-				struct lskcipher_instance *inst);
+DECLARE_CRYPTO_API(crypto_register_lskcipher, int, (struct lskcipher_alg *alg), (alg));
+DECLARE_CRYPTO_API(crypto_unregister_lskcipher, void, (struct lskcipher_alg *alg), (alg));
+DECLARE_CRYPTO_API(crypto_register_lskciphers, int, (struct lskcipher_alg *algs, int count), (algs, count));
+DECLARE_CRYPTO_API(crypto_unregister_lskciphers, void, (struct lskcipher_alg *algs, int count), (algs, count));
+DECLARE_CRYPTO_API(lskcipher_register_instance, int, (struct crypto_template *tmpl,
+				struct lskcipher_instance *inst), (tmpl, inst));
 
-int skcipher_walk_done(struct skcipher_walk *walk, int err);
-int skcipher_walk_virt(struct skcipher_walk *walk,
+DECLARE_CRYPTO_API(skcipher_walk_done, int, (struct skcipher_walk *walk, int err), (walk, err));
+DECLARE_CRYPTO_API(skcipher_walk_virt, int, (struct skcipher_walk *walk,
 		       struct skcipher_request *req,
-		       bool atomic);
-int skcipher_walk_async(struct skcipher_walk *walk,
-			struct skcipher_request *req);
-int skcipher_walk_aead_encrypt(struct skcipher_walk *walk,
-			       struct aead_request *req, bool atomic);
-int skcipher_walk_aead_decrypt(struct skcipher_walk *walk,
-			       struct aead_request *req, bool atomic);
-void skcipher_walk_complete(struct skcipher_walk *walk, int err);
+		       bool atomic), (walk, req, atomic));
+DECLARE_CRYPTO_API(skcipher_walk_async, int, (struct skcipher_walk *walk,
+			struct skcipher_request *req), (walk, req));
+DECLARE_CRYPTO_API(skcipher_walk_aead_encrypt, int, (struct skcipher_walk *walk,
+			       struct aead_request *req, bool atomic), (walk, req, atomic));
+DECLARE_CRYPTO_API(skcipher_walk_aead_decrypt, int, (struct skcipher_walk *walk,
+			       struct aead_request *req, bool atomic), (walk, req, atomic));
+DECLARE_CRYPTO_API(skcipher_walk_complete, void, (struct skcipher_walk *walk, int err), (walk, err));
 
 static inline void skcipher_walk_abort(struct skcipher_walk *walk)
 {
@@ -269,8 +269,7 @@ skcipher_cipher_simple(struct crypto_skcipher *tfm)
 	return ctx->cipher;
 }
 
-struct skcipher_instance *skcipher_alloc_instance_simple(
-	struct crypto_template *tmpl, struct rtattr **tb);
+DECLARE_CRYPTO_API(skcipher_alloc_instance_simple, struct skcipher_instance *, (struct crypto_template *tmpl, struct rtattr **tb), (tmpl, tb));
 
 static inline struct crypto_alg *skcipher_ialg_simple(
 	struct skcipher_instance *inst)
@@ -288,8 +287,7 @@ static inline struct crypto_lskcipher *lskcipher_cipher_simple(
 	return *ctx;
 }
 
-struct lskcipher_instance *lskcipher_alloc_instance_simple(
-	struct crypto_template *tmpl, struct rtattr **tb);
+DECLARE_CRYPTO_API(lskcipher_alloc_instance_simple, struct lskcipher_instance *, (struct crypto_template *tmpl, struct rtattr **tb), (tmpl, tb));
 
 static inline struct lskcipher_alg *lskcipher_ialg_simple(
 	struct lskcipher_instance *inst)
