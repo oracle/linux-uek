@@ -1,0 +1,53 @@
+#! /usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# Extract FIPS 140 cryptographic module (and hmac) from vmlinuz.
+#
+# Copyright © 2025, Oracle and/or its affiliates.
+#
+
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+extract_vmlinux = os.path.join(os.path.dirname(__file__), 'extract-vmlinux')
+
+parser = argparse.ArgumentParser()
+parser.add_argument('vmlinux')
+
+args = parser.parse_args()
+
+warnings = False
+
+with tempfile.TemporaryDirectory() as tmp_dir:
+    vmlinux_path = os.path.join(tmp_dir, 'vmlinux')
+    with open(vmlinux_path, 'w') as f:
+        subprocess.check_call([extract_vmlinux, args.vmlinux], stdout=f)
+
+    def extract_section(input_path, output_path, section):
+        tmp_output_path = os.path.join(tmp_dir, output_path)
+
+        subprocess.check_call([
+            'objcopy',
+            '--only-section', section,
+            '--output-target', 'binary',
+            input_path,
+            tmp_output_path,
+        ])
+
+        if os.path.getsize(tmp_output_path) == 0:
+            print(f"warning: failed to extract {output_path}; empty section {section}?", file=sys.stderr)
+            global warnings
+            warnings = True
+        else:
+            shutil.move(tmp_output_path, output_path)
+            print(f"extracted {output_path}")
+
+    extract_section(vmlinux_path, 'fips140.ko', '__fips140_module')
+    extract_section(vmlinux_path, 'fips140.hmac', '__fips140_digest')
+
+if warnings:
+    sys.exit(1)
