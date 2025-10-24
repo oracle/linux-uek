@@ -74,7 +74,6 @@ modules-core:
 - crc-itu-t
 - crc32_generic
 - crc7
-- cryptd
 - crypto_engine
 - crypto_user
 - cuse
