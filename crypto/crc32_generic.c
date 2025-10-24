@@ -7,6 +7,7 @@
  * This is crypto api shash wrappers to crc32_le.
  */
 
+#include <crypto/api.h>
 #include <linux/unaligned.h>
 #include <linux/crc32.h>
 #include <crypto/internal/hash.h>
@@ -122,8 +123,8 @@ static void __exit crc32_mod_fini(void)
 	crypto_unregister_shash(&alg);
 }
 
-subsys_initcall(crc32_mod_init);
-module_exit(crc32_mod_fini);
+crypto_subsys_initcall(crc32_mod_init);
+crypto_module_exit(crc32_mod_fini);
 
 MODULE_AUTHOR("Alexander Boyko <alexander_boyko@xyratex.com>");
 MODULE_DESCRIPTION("CRC32 calculations wrapper for lib/crc32");
