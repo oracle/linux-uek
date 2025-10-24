@@ -126,9 +126,8 @@ DECLARE_CRYPTO_API3(crypto_larval_alloc, struct crypto_larval *, const char *, n
 DECLARE_CRYPTO_API1(crypto_schedule_test, void, struct crypto_larval *, larval);
 DECLARE_CRYPTO_API2(crypto_alg_tested, void, struct crypto_alg *, alg, int, err);
 
-void crypto_remove_spawns(struct crypto_alg *alg, struct list_head *list,
-			  struct crypto_alg *nalg);
-void crypto_remove_final(struct list_head *list);
+DECLARE_CRYPTO_API3(crypto_remove_spawns, void, struct crypto_alg *, alg, struct list_head *, list, struct crypto_alg *, nalg);
+DECLARE_CRYPTO_API1(crypto_remove_final, void, struct list_head *, list);
 DECLARE_CRYPTO_API1(crypto_shoot_alg, void, struct crypto_alg *, alg);
 DECLARE_CRYPTO_API4(__crypto_alloc_tfmgfp, struct crypto_tfm *, struct crypto_alg *, alg, u32, type, u32, mask, gfp_t, gfp);
 DECLARE_CRYPTO_API3(__crypto_alloc_tfm, struct crypto_tfm *, struct crypto_alg *, alg, u32, type, u32, mask);
@@ -157,10 +156,9 @@ static inline void *crypto_alloc_tfm(const char *alg_name,
 
 DECLARE_CRYPTO_API2(crypto_probing_notify, int, unsigned long, val, void *, v);
 
-unsigned int crypto_alg_extsize(struct crypto_alg *alg);
+DECLARE_CRYPTO_API1(crypto_alg_extsize, unsigned int, struct crypto_alg *, alg);
 
-int crypto_type_has_alg(const char *name, const struct crypto_type *frontend,
-			u32 type, u32 mask);
+DECLARE_CRYPTO_API4(crypto_type_has_alg, int, const char *, name, const struct crypto_type *, frontend, u32, type, u32, mask);
 
 static inline struct crypto_alg *crypto_alg_get(struct crypto_alg *alg)
 {
