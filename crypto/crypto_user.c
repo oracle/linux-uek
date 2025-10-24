@@ -485,12 +485,17 @@ static void crypto_netlink_rcv(struct sk_buff *skb)
 
 static int __net_init crypto_netlink_init(struct net *net)
 {
+	struct sock *nlsk;
 	struct netlink_kernel_cfg cfg = {
 		.input	= crypto_netlink_rcv,
 	};
 
-	net->crypto_nlsk = netlink_kernel_create(net, NETLINK_CRYPTO, &cfg);
-	return net->crypto_nlsk == NULL ? -ENOMEM : 0;
+	nlsk = netlink_kernel_create(net, NETLINK_CRYPTO, &cfg);
+	if (!nlsk)
+		return -ENOMEM;
+
+	net->crypto_nlsk = nlsk;
+	return 0;
 }
 
 static void __net_exit crypto_netlink_exit(struct net *net)
