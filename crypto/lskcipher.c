@@ -50,7 +50,7 @@ static int lskcipher_setkey_unaligned(struct crypto_lskcipher *tfm,
 	return ret;
 }
 
-int crypto_lskcipher_setkey(struct crypto_lskcipher *tfm, const u8 *key,
+int CRYPTO_API(crypto_lskcipher_setkey)(struct crypto_lskcipher *tfm, const u8 *key,
 			    unsigned int keylen)
 {
 	unsigned long alignmask = crypto_lskcipher_alignmask(tfm);
@@ -64,7 +64,7 @@ int crypto_lskcipher_setkey(struct crypto_lskcipher *tfm, const u8 *key,
 	else
 		return cipher->setkey(tfm, key, keylen);
 }
-EXPORT_SYMBOL_GPL(crypto_lskcipher_setkey);
+DEFINE_CRYPTO_API(crypto_lskcipher_setkey);
 
 static int crypto_lskcipher_crypt_unaligned(
 	struct crypto_lskcipher *tfm, const u8 *src, u8 *dst, unsigned len,
@@ -137,23 +137,23 @@ static int crypto_lskcipher_crypt(struct crypto_lskcipher *tfm, const u8 *src,
 	return crypt(tfm, src, dst, len, iv, CRYPTO_LSKCIPHER_FLAG_FINAL);
 }
 
-int crypto_lskcipher_encrypt(struct crypto_lskcipher *tfm, const u8 *src,
+int CRYPTO_API(crypto_lskcipher_encrypt)(struct crypto_lskcipher *tfm, const u8 *src,
 			     u8 *dst, unsigned len, u8 *iv)
 {
 	struct lskcipher_alg *alg = crypto_lskcipher_alg(tfm);
 
 	return crypto_lskcipher_crypt(tfm, src, dst, len, iv, alg->encrypt);
 }
-EXPORT_SYMBOL_GPL(crypto_lskcipher_encrypt);
+DEFINE_CRYPTO_API(crypto_lskcipher_encrypt);
 
-int crypto_lskcipher_decrypt(struct crypto_lskcipher *tfm, const u8 *src,
+int CRYPTO_API(crypto_lskcipher_decrypt)(struct crypto_lskcipher *tfm, const u8 *src,
 			     u8 *dst, unsigned len, u8 *iv)
 {
 	struct lskcipher_alg *alg = crypto_lskcipher_alg(tfm);
 
 	return crypto_lskcipher_crypt(tfm, src, dst, len, iv, alg->decrypt);
 }
-EXPORT_SYMBOL_GPL(crypto_lskcipher_decrypt);
+DEFINE_CRYPTO_API(crypto_lskcipher_decrypt);
 
 static int crypto_lskcipher_crypt_sg(struct skcipher_request *req,
 				     int (*crypt)(struct crypto_lskcipher *tfm,
@@ -324,21 +324,21 @@ int crypto_init_lskcipher_ops_sg(struct crypto_tfm *tfm)
 	return 0;
 }
 
-int crypto_grab_lskcipher(struct crypto_lskcipher_spawn *spawn,
+int CRYPTO_API(crypto_grab_lskcipher)(struct crypto_lskcipher_spawn *spawn,
 			  struct crypto_instance *inst,
 			  const char *name, u32 type, u32 mask)
 {
 	spawn->base.frontend = &crypto_lskcipher_type;
 	return crypto_grab_spawn(&spawn->base, inst, name, type, mask);
 }
-EXPORT_SYMBOL_GPL(crypto_grab_lskcipher);
+DEFINE_CRYPTO_API(crypto_grab_lskcipher);
 
-struct crypto_lskcipher *crypto_alloc_lskcipher(const char *alg_name,
+struct crypto_lskcipher *CRYPTO_API(crypto_alloc_lskcipher)(const char *alg_name,
 						u32 type, u32 mask)
 {
 	return crypto_alloc_tfm(alg_name, &crypto_lskcipher_type, type, mask);
 }
-EXPORT_SYMBOL_GPL(crypto_alloc_lskcipher);
+DEFINE_CRYPTO_API(crypto_alloc_lskcipher);
 
 static int lskcipher_prepare_alg(struct lskcipher_alg *alg)
 {
@@ -358,7 +358,7 @@ static int lskcipher_prepare_alg(struct lskcipher_alg *alg)
 	return 0;
 }
 
-int crypto_register_lskcipher(struct lskcipher_alg *alg)
+int CRYPTO_API(crypto_register_lskcipher)(struct lskcipher_alg *alg)
 {
 	struct crypto_alg *base = &alg->co.base;
 	int err;
@@ -369,15 +369,15 @@ int crypto_register_lskcipher(struct lskcipher_alg *alg)
 
 	return crypto_register_alg(base);
 }
-EXPORT_SYMBOL_GPL(crypto_register_lskcipher);
+DEFINE_CRYPTO_API(crypto_register_lskcipher);
 
-void crypto_unregister_lskcipher(struct lskcipher_alg *alg)
+void CRYPTO_API(crypto_unregister_lskcipher)(struct lskcipher_alg *alg)
 {
 	crypto_unregister_alg(&alg->co.base);
 }
-EXPORT_SYMBOL_GPL(crypto_unregister_lskcipher);
+DEFINE_CRYPTO_API(crypto_unregister_lskcipher);
 
-int crypto_register_lskciphers(struct lskcipher_alg *algs, int count)
+int CRYPTO_API(crypto_register_lskciphers)(struct lskcipher_alg *algs, int count)
 {
 	int i, ret;
 
@@ -395,18 +395,18 @@ err:
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(crypto_register_lskciphers);
+DEFINE_CRYPTO_API(crypto_register_lskciphers);
 
-void crypto_unregister_lskciphers(struct lskcipher_alg *algs, int count)
+void CRYPTO_API(crypto_unregister_lskciphers)(struct lskcipher_alg *algs, int count)
 {
 	int i;
 
 	for (i = count - 1; i >= 0; --i)
 		crypto_unregister_lskcipher(&algs[i]);
 }
-EXPORT_SYMBOL_GPL(crypto_unregister_lskciphers);
+DEFINE_CRYPTO_API(crypto_unregister_lskciphers);
 
-int lskcipher_register_instance(struct crypto_template *tmpl,
+int CRYPTO_API(lskcipher_register_instance)(struct crypto_template *tmpl,
 				struct lskcipher_instance *inst)
 {
 	int err;
@@ -420,7 +420,7 @@ int lskcipher_register_instance(struct crypto_template *tmpl,
 
 	return crypto_register_instance(tmpl, lskcipher_crypto_instance(inst));
 }
-EXPORT_SYMBOL_GPL(lskcipher_register_instance);
+DEFINE_CRYPTO_API(lskcipher_register_instance);
 
 static int lskcipher_setkey_simple(struct crypto_lskcipher *tfm, const u8 *key,
 				   unsigned int keylen)
@@ -479,7 +479,7 @@ static void lskcipher_free_instance_simple(struct lskcipher_instance *inst)
  * Return: a pointer to the new instance, or an ERR_PTR().  The caller still
  *	   needs to register the instance.
  */
-struct lskcipher_instance *lskcipher_alloc_instance_simple(
+struct lskcipher_instance *CRYPTO_API(lskcipher_alloc_instance_simple)(
 	struct crypto_template *tmpl, struct rtattr **tb)
 {
 	u32 mask;
@@ -589,4 +589,4 @@ err_free_inst:
 	lskcipher_free_instance_simple(inst);
 	return ERR_PTR(err);
 }
-EXPORT_SYMBOL_GPL(lskcipher_alloc_instance_simple);
+DEFINE_CRYPTO_API(lskcipher_alloc_instance_simple);
