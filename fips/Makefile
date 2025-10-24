@@ -115,6 +115,7 @@ fips140-y += crypto/lz4.o
 fips140-y += crypto/lz4hc.o
 fips140-y += crypto/lzo.o
 fips140-y += crypto/lzo-rle.o
+fips140-y += crypto/zstd.o
 fips140-y += crypto/xxhash_generic.o
 
 #
