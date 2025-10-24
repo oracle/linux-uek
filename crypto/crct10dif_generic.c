@@ -24,6 +24,7 @@
  *
  */
 
+#include <crypto/api.h>
 #include <linux/module.h>
 #include <linux/crc-t10dif.h>
 #include <crypto/internal/hash.h>
@@ -112,8 +113,8 @@ static void __exit crct10dif_mod_fini(void)
 	crypto_unregister_shash(&alg);
 }
 
-subsys_initcall(crct10dif_mod_init);
-module_exit(crct10dif_mod_fini);
+crypto_subsys_initcall(crct10dif_mod_init);
+crypto_module_exit(crct10dif_mod_fini);
 
 MODULE_AUTHOR("Tim Chen <tim.c.chen@linux.intel.com>");
 MODULE_DESCRIPTION("T10 DIF CRC calculation.");

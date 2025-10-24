@@ -110,6 +110,7 @@ fips140-y += crypto/geniv.o
 
 fips140-y += crypto/crc32_generic.o
 fips140-y += crypto/crc32c_generic.o
+fips140-y += crypto/crct10dif_generic.o
 fips140-y += crypto/xxhash_generic.o
 
 #
