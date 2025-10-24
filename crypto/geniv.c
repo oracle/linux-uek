@@ -15,6 +15,7 @@
 #include <linux/module.h>
 #include <linux/rtnetlink.h>
 #include <linux/slab.h>
+#include <crypto/api.h>
 
 static int aead_geniv_setkey(struct crypto_aead *tfm,
 			     const u8 *key, unsigned int keylen)
@@ -38,7 +39,7 @@ static void aead_geniv_free(struct aead_instance *inst)
 	kfree(inst);
 }
 
-struct aead_instance *aead_geniv_alloc(struct crypto_template *tmpl,
+struct aead_instance *CRYPTO_API(aead_geniv_alloc)(struct crypto_template *tmpl,
 				       struct rtattr **tb)
 {
 	struct crypto_aead_spawn *spawn;
@@ -104,9 +105,9 @@ err_free_inst:
 	inst = ERR_PTR(err);
 	goto out;
 }
-EXPORT_SYMBOL_GPL(aead_geniv_alloc);
+DEFINE_CRYPTO_API(aead_geniv_alloc);
 
-int aead_init_geniv(struct crypto_aead *aead)
+int CRYPTO_API(aead_init_geniv)(struct crypto_aead *aead)
 {
 	struct aead_geniv_ctx *ctx = crypto_aead_ctx(aead);
 	struct aead_instance *inst = aead_alg_instance(aead);
@@ -148,16 +149,16 @@ drop_null:
 	crypto_put_default_null_skcipher();
 	goto out;
 }
-EXPORT_SYMBOL_GPL(aead_init_geniv);
+DEFINE_CRYPTO_API(aead_init_geniv);
 
-void aead_exit_geniv(struct crypto_aead *tfm)
+void CRYPTO_API(aead_exit_geniv)(struct crypto_aead *tfm)
 {
 	struct aead_geniv_ctx *ctx = crypto_aead_ctx(tfm);
 
 	crypto_free_aead(ctx->child);
 	crypto_put_default_null_skcipher();
 }
-EXPORT_SYMBOL_GPL(aead_exit_geniv);
+DEFINE_CRYPTO_API(aead_exit_geniv);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Shared IV generator code");
