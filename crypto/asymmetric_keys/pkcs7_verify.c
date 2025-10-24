@@ -391,7 +391,7 @@ static int pkcs7_verify_one(struct pkcs7_message *pkcs7,
  *  (*) -ENOPKG if none of the signature chains are verifiable because suitable
  *	crypto modules couldn't be found.
  */
-int pkcs7_verify(struct pkcs7_message *pkcs7,
+int CRYPTO_API(pkcs7_verify)(struct pkcs7_message *pkcs7,
 		 enum key_being_used_for usage)
 {
 	struct pkcs7_signed_info *sinfo;
@@ -459,7 +459,7 @@ int pkcs7_verify(struct pkcs7_message *pkcs7,
 	kleave(" = %d", actual_ret);
 	return actual_ret;
 }
-EXPORT_SYMBOL_GPL(pkcs7_verify);
+DEFINE_CRYPTO_API(pkcs7_verify);
 
 /**
  * pkcs7_supply_detached_data - Supply the data needed to verify a PKCS#7 message
@@ -474,7 +474,7 @@ EXPORT_SYMBOL_GPL(pkcs7_verify);
  *
  * Returns -EINVAL if data is already supplied in the message, 0 otherwise.
  */
-int pkcs7_supply_detached_data(struct pkcs7_message *pkcs7,
+int CRYPTO_API(pkcs7_supply_detached_data)(struct pkcs7_message *pkcs7,
 			       const void *data, size_t datalen)
 {
 	if (pkcs7->data) {
@@ -485,4 +485,4 @@ int pkcs7_supply_detached_data(struct pkcs7_message *pkcs7,
 	pkcs7->data_len = datalen;
 	return 0;
 }
-EXPORT_SYMBOL_GPL(pkcs7_supply_detached_data);
+DEFINE_CRYPTO_API(pkcs7_supply_detached_data);
