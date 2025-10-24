@@ -4,6 +4,7 @@
  *
  * Copyright (c) 2013 Chanho Min <chanho.min@lge.com>
  */
+#include <crypto/api.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/crypto.h>
@@ -153,9 +154,16 @@ static void __exit lz4hc_mod_fini(void)
 	crypto_unregister_scomp(&scomp);
 }
 
-subsys_initcall(lz4hc_mod_init);
-module_exit(lz4hc_mod_fini);
+crypto_subsys_initcall(lz4hc_mod_init);
+crypto_module_exit(lz4hc_mod_fini);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("LZ4HC Compression Algorithm");
 MODULE_ALIAS_CRYPTO("lz4hc");
+
+#ifdef FIPS_MODULE
+#undef EXPORT_SYMBOL
+#define EXPORT_SYMBOL(x)
+
+#include <../lib/lz4/lz4hc_compress.c>
+#endif
