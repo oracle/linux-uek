@@ -18,28 +18,20 @@ struct pkcs7_message;
 /*
  * pkcs7_parser.c
  */
-extern struct pkcs7_message *pkcs7_parse_message(const void *data,
-						 size_t datalen);
-extern void pkcs7_free_message(struct pkcs7_message *pkcs7);
+DECLARE_CRYPTO_API(pkcs7_parse_message, struct pkcs7_message *, (const void *data, size_t datalen), (data, datalen));
+DECLARE_CRYPTO_API(pkcs7_free_message, void, (struct pkcs7_message *pkcs7), (pkcs7));
 
-extern int pkcs7_get_content_data(const struct pkcs7_message *pkcs7,
-				  const void **_data, size_t *_datalen,
-				  size_t *_headerlen);
-
+DECLARE_CRYPTO_API(pkcs7_get_content_data, int, (const struct pkcs7_message *pkcs7, const void **_data, size_t *_datalen, size_t *_headerlen), (pkcs7, _data, _datalen, _headerlen));
 /*
  * pkcs7_trust.c
  */
-extern int pkcs7_validate_trust(struct pkcs7_message *pkcs7,
-				struct key *trust_keyring);
+DECLARE_CRYPTO_API(pkcs7_validate_trust, int, (struct pkcs7_message *pkcs7, struct key *trust_keyring), (pkcs7, trust_keyring));
 
 /*
  * pkcs7_verify.c
  */
-extern int pkcs7_verify(struct pkcs7_message *pkcs7,
-			enum key_being_used_for usage);
-
-extern int pkcs7_supply_detached_data(struct pkcs7_message *pkcs7,
-				      const void *data, size_t datalen);
+DECLARE_CRYPTO_API(pkcs7_verify, int, (struct pkcs7_message *pkcs7, enum key_being_used_for usage), (pkcs7, usage));
+DECLARE_CRYPTO_API(pkcs7_supply_detached_data, int, (struct pkcs7_message *pkcs7, const void *data, size_t datalen), (pkcs7, data, datalen));
 
 extern int pkcs7_get_digest(struct pkcs7_message *pkcs7, const u8 **buf,
 			    u32 *len, enum hash_algo *hash_algo);
