@@ -20,6 +20,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %endif
 %define ol_release_name Oracle Linux %{oraclelinux}
 
+%define fips_name Oracle Linux Unbreakable Enterprise Kernel (UEK %{uek_release}) FIPS Cryptographic Module
+
 # identify the toolchain to use
 %define uek_toolset gcc-toolset-14
 
@@ -1036,7 +1038,7 @@ echo 'CONFIG_DTRACE=y' >> configs/config-debug
 %ifarch aarch64 x86_64
 for i in configs/config*; do
   sed -i 's/CONFIG_CRYPTO_FIPS_NAME="_FIPS_CONTAINER_KERNEL_"/CONFIG_CRYPTO_FIPS_NAME="%{ol_release_name} Container Kernel Cryptographic Module for %{uek_release_name}"/' $i
-  sed -i 's/CONFIG_CRYPTO_FIPS_NAME="_FIPS_KERNEL_"/CONFIG_CRYPTO_FIPS_NAME="%{ol_release_name} %{uek_release_name_full} Crypto API"/' $i
+  sed -i 's/CONFIG_CRYPTO_FIPS_NAME="_FIPS_KERNEL_"/CONFIG_CRYPTO_FIPS_NAME="%{fips_name}"/' $i
   sed -i 's/\(CONFIG_CRYPTO_FIPS140_HMAC_KEY\)="_FIPS_HMAC_KEY_"/\1="%{FIPS140_HMAC_KEY}"/' $i
 done
 %endif
