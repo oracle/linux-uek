@@ -41,12 +41,6 @@ struct cryptomgr_param {
 	u32 omask;
 };
 
-struct crypto_test_param {
-	char driver[CRYPTO_MAX_ALG_NAME];
-	char alg[CRYPTO_MAX_ALG_NAME];
-	u32 type;
-};
-
 static int cryptomgr_probe(void *data)
 {
 	struct cryptomgr_param *param = data;
@@ -172,22 +166,21 @@ err:
 
 static int cryptomgr_test(void *data)
 {
-	struct crypto_test_param *param = data;
-	u32 type = param->type;
+	struct crypto_alg *alg = data;
 	int err;
 
-	err = alg_test(param->driver, param->alg, type, CRYPTO_ALG_TESTED);
+	err = alg_test(alg, alg->cra_driver_name, alg->cra_name,
+		alg->cra_flags, CRYPTO_ALG_TESTED);
 
-	crypto_alg_tested(param->driver, err);
+	crypto_alg_tested(alg->cra_driver_name, err);
 
-	kfree(param);
+	crypto_mod_put(alg);
 	module_put_and_kthread_exit(0);
 }
 
 static int cryptomgr_schedule_test(struct crypto_alg *alg)
 {
 	struct task_struct *thread;
-	struct crypto_test_param *param;
 
 	if (IS_ENABLED(CONFIG_CRYPTO_MANAGER_DISABLE_TESTS))
 		return NOTIFY_DONE;
@@ -195,22 +188,17 @@ static int cryptomgr_schedule_test(struct crypto_alg *alg)
 	if (!try_module_get(THIS_MODULE))
 		goto err;
 
-	param = kzalloc(sizeof(*param), GFP_KERNEL);
-	if (!param)
+	if (!crypto_mod_get(alg))
 		goto err_put_module;
 
-	memcpy(param->driver, alg->cra_driver_name, sizeof(param->driver));
-	memcpy(param->alg, alg->cra_name, sizeof(param->alg));
-	param->type = alg->cra_flags;
-
-	thread = kthread_run(cryptomgr_test, param, "cryptomgr_test");
+	thread = kthread_run(cryptomgr_test, alg, "cryptomgr_test");
 	if (IS_ERR(thread))
-		goto err_free_param;
+		goto err_put_alg;
 
 	return NOTIFY_STOP;
 
-err_free_param:
-	kfree(param);
+err_put_alg:
+	crypto_mod_put(alg);
 err_put_module:
 	module_put(THIS_MODULE);
 err:
