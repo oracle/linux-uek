@@ -7,6 +7,7 @@
  *  (C) Neil Horman <nhorman@tuxdriver.com>
  */
 
+#include <crypto/api.h>
 #include <crypto/internal/cipher.h>
 #include <crypto/internal/rng.h>
 #include <linux/err.h>
@@ -346,6 +347,7 @@ static void cprng_exit(struct crypto_tfm *tfm)
 	free_prng_context(crypto_tfm_ctx(tfm));
 }
 
+#ifndef FIPS_MODULE
 static int cprng_get_random(struct crypto_rng *tfm,
 			    const u8 *src, unsigned int slen,
 			    u8 *rdata, unsigned int dlen)
@@ -354,6 +356,7 @@ static int cprng_get_random(struct crypto_rng *tfm,
 
 	return get_prng_bytes(rdata, dlen, prng, 0);
 }
+#endif
 
 /*
  *  This is the cprng_registered reset method the seed value is
@@ -421,7 +424,9 @@ out:
 }
 #endif
 
-static struct rng_alg rng_algs[] = { {
+static struct rng_alg rng_algs[] = {
+#ifndef FIPS_MODULE
+{
 	.generate		= cprng_get_random,
 	.seed			= cprng_reset,
 	.seedsize		= DEFAULT_PRNG_KSZ + 2 * DEFAULT_BLK_SZ,
@@ -434,8 +439,10 @@ static struct rng_alg rng_algs[] = { {
 		.cra_init		= cprng_init,
 		.cra_exit		= cprng_exit,
 	}
+},
+#endif
 #ifdef CONFIG_CRYPTO_FIPS
-}, {
+{
 	.generate		= fips_cprng_get_random,
 	.seed			= fips_cprng_reset,
 	.seedsize		= DEFAULT_PRNG_KSZ + 2 * DEFAULT_BLK_SZ,
@@ -448,8 +455,9 @@ static struct rng_alg rng_algs[] = { {
 		.cra_init		= cprng_init,
 		.cra_exit		= cprng_exit,
 	}
+},
 #endif
-} };
+};
 
 /* Module initalization */
 static int __init prng_mod_init(void)
@@ -467,8 +475,8 @@ MODULE_DESCRIPTION("Software Pseudo Random Number Generator");
 MODULE_AUTHOR("Neil Horman <nhorman@tuxdriver.com>");
 module_param(dbg, int, 0);
 MODULE_PARM_DESC(dbg, "Boolean to enable debugging (0/1 == off/on)");
-subsys_initcall(prng_mod_init);
-module_exit(prng_mod_fini);
+crypto_subsys_initcall(prng_mod_init);
+crypto_module_exit(prng_mod_fini);
 MODULE_ALIAS_CRYPTO("stdrng");
 MODULE_ALIAS_CRYPTO("ansi_cprng");
 MODULE_IMPORT_NS(CRYPTO_INTERNAL);
