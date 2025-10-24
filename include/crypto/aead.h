@@ -178,7 +178,7 @@ static inline struct crypto_aead *__crypto_aead_cast(struct crypto_tfm *tfm)
  * Return: allocated cipher handle in case of success; IS_ERR() is true in case
  *	   of an error, PTR_ERR() returns the error code.
  */
-struct crypto_aead *crypto_alloc_aead(const char *alg_name, u32 type, u32 mask);
+DECLARE_CRYPTO_API(crypto_alloc_aead, struct crypto_aead *, (const char *alg_name, u32 type, u32 mask), (alg_name, type, mask));
 
 static inline struct crypto_tfm *crypto_aead_tfm(struct crypto_aead *tfm)
 {
@@ -206,7 +206,7 @@ static inline void crypto_free_aead(struct crypto_aead *tfm)
  * Return: true when the aead is known to the kernel crypto API; false
  *	   otherwise
  */
-int crypto_has_aead(const char *alg_name, u32 type, u32 mask);
+DECLARE_CRYPTO_API(crypto_has_aead, int, (const char *alg_name, u32 type, u32 mask), (alg_name, type, mask));
 
 static inline const char *crypto_aead_driver_name(struct crypto_aead *tfm)
 {
@@ -316,8 +316,8 @@ static inline void crypto_aead_clear_flags(struct crypto_aead *tfm, u32 flags)
  *
  * Return: 0 if the setting of the key was successful; < 0 if an error occurred
  */
-int crypto_aead_setkey(struct crypto_aead *tfm,
-		       const u8 *key, unsigned int keylen);
+DECLARE_CRYPTO_API(crypto_aead_setkey, int, (struct crypto_aead *tfm,
+		       const u8 *key, unsigned int keylen), (tfm, key, keylen));
 
 /**
  * crypto_aead_setauthsize() - set authentication data size
@@ -329,7 +329,7 @@ int crypto_aead_setkey(struct crypto_aead *tfm,
  *
  * Return: 0 if the setting of the key was successful; < 0 if an error occurred
  */
-int crypto_aead_setauthsize(struct crypto_aead *tfm, unsigned int authsize);
+DECLARE_CRYPTO_API(crypto_aead_setauthsize, int, (struct crypto_aead *tfm, unsigned int authsize), (tfm, authsize));
 
 static inline struct crypto_aead *crypto_aead_reqtfm(struct aead_request *req)
 {
@@ -355,7 +355,7 @@ static inline struct crypto_aead *crypto_aead_reqtfm(struct aead_request *req)
  *
  * Return: 0 if the cipher operation was successful; < 0 if an error occurred
  */
-int crypto_aead_encrypt(struct aead_request *req);
+DECLARE_CRYPTO_API(crypto_aead_encrypt, int, (struct aead_request *req), (req));
 
 /**
  * crypto_aead_decrypt() - decrypt ciphertext
@@ -379,7 +379,7 @@ int crypto_aead_encrypt(struct aead_request *req);
  *	   integrity of the ciphertext or the associated data was violated);
  *	   < 0 if an error occurred.
  */
-int crypto_aead_decrypt(struct aead_request *req);
+DECLARE_CRYPTO_API(crypto_aead_decrypt, int, (struct aead_request *req), (req));
 
 /**
  * DOC: Asynchronous AEAD Request Handle
