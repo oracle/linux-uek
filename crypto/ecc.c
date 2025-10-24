@@ -1525,6 +1525,7 @@ int ecc_gen_privkey(unsigned int curve_id, unsigned int ndigits,
 	const struct ecc_curve *curve = ecc_get_curve(curve_id);
 	unsigned int nbytes = ndigits << ECC_DIGITS_TO_BYTES_SHIFT;
 	unsigned int nbits = vli_num_bits(curve->n, ndigits);
+	struct crypto_rng *rng;
 	int err;
 
 	/*
@@ -1545,13 +1546,12 @@ int ecc_gen_privkey(unsigned int curve_id, unsigned int ndigits,
 	 * This condition is met by the default RNG because it selects a favored
 	 * DRBG with a security strength of 256.
 	 */
-	if (crypto_get_default_rng())
+	if (crypto_get_default_rng(&rng))
 		return -EFAULT;
 
 	/* Step 3: obtain N returned_bits from the DRBG. */
-	err = crypto_rng_get_bytes(crypto_default_rng,
-				   (u8 *)private_key, nbytes);
-	crypto_put_default_rng();
+	err = crypto_rng_get_bytes(rng, (u8 *)private_key, nbytes);
+	crypto_put_default_rng(&rng);
 	if (err)
 		return err;
 
