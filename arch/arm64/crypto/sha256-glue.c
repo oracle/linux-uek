@@ -190,5 +190,5 @@ static void __exit sha256_mod_fini(void)
 	crypto_unregister_shashes(algs, ARRAY_SIZE(algs));
 }
 
-module_init(sha256_mod_init);
-module_exit(sha256_mod_fini);
+crypto_module_init(sha256_mod_init);
+crypto_module_exit(sha256_mod_fini);

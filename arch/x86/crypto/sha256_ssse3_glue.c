@@ -447,8 +447,8 @@ static void __exit sha256_ssse3_mod_fini(void)
 	unregister_sha256_ssse3();
 }
 
-module_init(sha256_ssse3_mod_init);
-module_exit(sha256_ssse3_mod_fini);
+crypto_module_init(sha256_ssse3_mod_init);
+crypto_module_exit(sha256_ssse3_mod_fini);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("SHA256 Secure Hash Algorithm, Supplemental SSE3 accelerated");

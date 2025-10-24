@@ -118,4 +118,4 @@ static void __exit sha512_ce_mod_fini(void)
 }
 
 module_cpu_feature_match(SHA512, sha512_ce_mod_init);
-module_exit(sha512_ce_mod_fini);
+crypto_module_exit(sha512_ce_mod_fini);

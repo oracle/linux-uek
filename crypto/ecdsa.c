@@ -378,8 +378,8 @@ static void __exit ecdsa_exit(void)
 	crypto_unregister_akcipher(&ecdsa_nist_p521);
 }
 
-subsys_initcall(ecdsa_init);
-module_exit(ecdsa_exit);
+crypto_subsys_initcall(ecdsa_init);
+crypto_module_exit(ecdsa_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Stefan Berger <stefanb@linux.ibm.com>");

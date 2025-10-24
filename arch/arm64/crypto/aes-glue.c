@@ -1050,11 +1050,11 @@ unregister_ciphers:
 module_cpu_feature_match(AES, aes_init);
 EXPORT_SYMBOL_NS(ce_aes_mac_update, CRYPTO_INTERNAL);
 #else
-module_init(aes_init);
+crypto_module_init(aes_init);
 EXPORT_SYMBOL(neon_aes_ecb_encrypt);
 EXPORT_SYMBOL(neon_aes_cbc_encrypt);
 EXPORT_SYMBOL(neon_aes_ctr_encrypt);
 EXPORT_SYMBOL(neon_aes_xts_encrypt);
 EXPORT_SYMBOL(neon_aes_xts_decrypt);
 #endif
-module_exit(aes_exit);
+crypto_module_exit(aes_exit);
