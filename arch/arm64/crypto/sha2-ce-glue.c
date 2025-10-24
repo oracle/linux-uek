@@ -189,4 +189,4 @@ static void __exit sha2_ce_mod_fini(void)
 }
 
 module_cpu_feature_match(SHA2, sha2_ce_mod_init);
-module_exit(sha2_ce_mod_fini);
+crypto_module_exit(sha2_ce_mod_fini);

@@ -219,8 +219,8 @@ static void __exit crypto_ecb_module_exit(void)
 	crypto_unregister_template(&crypto_ecb_tmpl);
 }
 
-subsys_initcall(crypto_ecb_module_init);
-module_exit(crypto_ecb_module_exit);
+crypto_subsys_initcall(crypto_ecb_module_init);
+crypto_module_exit(crypto_ecb_module_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("ECB block cipher mode of operation");

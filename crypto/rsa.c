@@ -5,6 +5,7 @@
  * Authors: Tadeusz Struk <tadeusz.struk@intel.com>
  */
 
+#include <crypto/api.h>
 #include <linux/fips.h>
 #include <linux/module.h>
 #include <linux/mpi.h>
@@ -421,8 +422,8 @@ static void __exit rsa_exit(void)
 	crypto_unregister_akcipher(&rsa);
 }
 
-subsys_initcall(rsa_init);
-module_exit(rsa_exit);
+crypto_subsys_initcall(rsa_init);
+crypto_module_exit(rsa_exit);
 MODULE_ALIAS_CRYPTO("rsa");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("RSA generic algorithm");

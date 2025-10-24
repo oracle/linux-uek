@@ -231,8 +231,8 @@ static void __exit crypto_null_mod_fini(void)
 	crypto_unregister_skcipher(&skcipher_null);
 }
 
-subsys_initcall(crypto_null_mod_init);
-module_exit(crypto_null_mod_fini);
+crypto_subsys_initcall(crypto_null_mod_init);
+crypto_module_exit(crypto_null_mod_fini);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Null Cryptographic Algorithms");

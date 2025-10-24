@@ -731,10 +731,10 @@ static int __init libaesgcm_init(void)
 	}
 	return 0;
 }
-module_init(libaesgcm_init);
+crypto_module_init(libaesgcm_init);
 
 static void __exit libaesgcm_exit(void)
 {
 }
-module_exit(libaesgcm_exit);
+crypto_module_exit(libaesgcm_exit);
 #endif

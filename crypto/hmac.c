@@ -259,8 +259,8 @@ static void __exit hmac_module_exit(void)
 	crypto_unregister_template(&hmac_tmpl);
 }
 
-subsys_initcall(hmac_module_init);
-module_exit(hmac_module_exit);
+crypto_subsys_initcall(hmac_module_init);
+crypto_module_exit(hmac_module_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("HMAC hash algorithm");

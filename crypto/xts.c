@@ -466,8 +466,8 @@ static void __exit xts_module_exit(void)
 	crypto_unregister_template(&xts_tmpl);
 }
 
-subsys_initcall(xts_module_init);
-module_exit(xts_module_exit);
+crypto_subsys_initcall(xts_module_init);
+crypto_module_exit(xts_module_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("XTS block cipher mode");
