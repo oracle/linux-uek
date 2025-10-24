@@ -5,6 +5,7 @@
  * Copyright (C) 2016 - 2017 Linaro Ltd <ard.biesheuvel@linaro.org>
  */
 
+#include <crypto/api.h>
 #include <linux/cpufeature.h>
 #include <linux/crc-t10dif.h>
 #include <linux/init.h>
@@ -134,8 +135,8 @@ static void __exit crc_t10dif_mod_exit(void)
 		crypto_unregister_shash(crc_t10dif_alg);
 }
 
-module_cpu_feature_match(ASIMD, crc_t10dif_mod_init);
-module_exit(crc_t10dif_mod_exit);
+crypto_module_cpu_feature_match(ASIMD, crc_t10dif_mod_init);
+crypto_module_exit(crc_t10dif_mod_exit);
 
 MODULE_AUTHOR("Ard Biesheuvel <ard.biesheuvel@linaro.org>");
 MODULE_DESCRIPTION("CRC-T10DIF using arm64 NEON and Crypto Extensions");
