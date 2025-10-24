@@ -22,6 +22,7 @@
  *
  */
 
+#include <crypto/api.h>
 #include <linux/types.h>
 #include <linux/module.h>
 #include <linux/crc-t10dif.h>
@@ -117,7 +118,7 @@ static const struct x86_cpu_id crct10dif_cpu_id[] = {
 	X86_MATCH_FEATURE(X86_FEATURE_PCLMULQDQ, NULL),
 	{}
 };
-MODULE_DEVICE_TABLE(x86cpu, crct10dif_cpu_id);
+CRYPTO_MODULE_DEVICE_TABLE(x86cpu, crct10dif_cpu_id);
 
 static int __init crct10dif_intel_mod_init(void)
 {
@@ -132,8 +133,8 @@ static void __exit crct10dif_intel_mod_fini(void)
 	crypto_unregister_shash(&alg);
 }
 
-module_init(crct10dif_intel_mod_init);
-module_exit(crct10dif_intel_mod_fini);
+crypto_module_init(crct10dif_intel_mod_init);
+crypto_module_exit(crct10dif_intel_mod_fini);
 
 MODULE_AUTHOR("Tim Chen <tim.c.chen@linux.intel.com>");
 MODULE_DESCRIPTION("T10 DIF CRC calculation accelerated with PCLMULQDQ.");
