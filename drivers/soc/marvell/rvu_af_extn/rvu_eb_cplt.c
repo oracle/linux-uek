@@ -43,6 +43,19 @@ MBOX_EBLOCK_UP_CPLT_MESSAGES
 
 #define CPLT_OFFSET(x, y)	((((x) * (rvu->fwdata->num_rpm_in_chiplet)) \
 					+ (y)) * (rvu->hw->lmac_per_cplt))
+static u8 cplt_to_cgxlmac(struct rvu *rvu, u8 cplt_id, u8 rpm_id, u8 lmac_id)
+{
+	u64 nix_const = rvu_read64(rvu, BLKADDR_NIX0, NIX_AF_CONST);
+	u8 cgx_id_map;
+	int comp_cgx_cnt;
+
+	comp_cgx_cnt = ((nix_const >> 12) & 0xFULL);
+	cgx_id_map = cgxlmac_id_to_bmap(rpm_id + (comp_cgx_cnt + (cplt_id *
+					rvu->fwdata->num_rpm_in_chiplet)),
+					lmac_id);
+
+	return cgx_id_map;
+}
 
 /* Returns bitmap of mapped PF/s */
 static u64 cpltlmac_to_pfmap(struct rvu *rvu, u8 cplt_id, u8 rpm, u8 lmac)
@@ -51,9 +64,9 @@ static u64 cpltlmac_to_pfmap(struct rvu *rvu, u8 cplt_id, u8 rpm, u8 lmac)
 }
 
 /* Assume each chiplet has max 3 RPMs */
-static int rpm_to_cplt(int rpm)
+static int rpm_to_cplt(struct rvu *rvu, int rpm)
 {
-	if (rpm >= 1 && rpm <= 12)
+	if (rpm >= 1 && rpm <= (NODE_MAX - 1) * rvu->fwdata->num_rpm_in_chiplet)
 		return (rpm - 1) / 3 + 1;
 
 	return 0;
@@ -63,9 +76,9 @@ unsigned long get_active_cplt_lmac(struct rvu *rvu, int rpm, int *pf, int *node)
 {
 	int eth;
 
-	*node = rpm_to_cplt(rpm);
+	*node = rpm_to_cplt(rvu, rpm);
 	eth = (rpm - 1) % 3;
-	if (rpm == 1)
+	if (rpm == 1 && pf)
 		*pf = PF_CPLTMAP_BASE;
 
 	return rvu->fwdata->csr_rpmx_cmr_num_lmacs[*node][eth];
@@ -204,11 +217,10 @@ int rvu_mbox_handler_cplt_rpm_get_chan_info(struct rvu *rvu,
 					    struct cplt_rpm_get_chan_info_req *req,
 					    struct cplt_rpm_get_chan_info_rsp *rsp)
 {
-	u8 chiplet_id, rpm_id, lmac_id;
+	u8 chiplet_id, rpm_id, lmac_id, cgx_lmac_map;
 	unsigned long pf_map;
 	u64 lmac_exist;
-	u16 base;
-	int pf;
+	int pf, link;
 
 	chiplet_id = req->chiplet_id;
 	rpm_id = req->rpm_id;
@@ -220,22 +232,23 @@ int rvu_mbox_handler_cplt_rpm_get_chan_info(struct rvu *rvu,
 	/* Excluding compute chiplet, If no. of chiplets are 2,
 	 * RPM2 is fused out, for now consider as 2 chiplets.
 	 */
-	lmac_exist = rvu->fwdata->csr_rpmx_cmr_num_lmacs[chiplet_id][0];
+	lmac_exist = rvu->fwdata->csr_rpmx_cmr_num_lmacs[chiplet_id + 1][0];
 
 	if (!(lmac_exist & BIT_ULL(req->lmac_id)))
 		return CPLT_AF_ERR_PARAM;
 
 	if (chiplet_id == 0 || chiplet_id == 1)
-		base = rvu->hw->cplt_chan_base;
+		pf_map = cpltlmac_to_pfmap(rvu, chiplet_id, rpm_id, lmac_id);
 	else
 		return CPLT_AF_ERR_PARAM;
 
-	pf_map = cpltlmac_to_pfmap(rvu, chiplet_id, rpm_id, lmac_id);
-
 	pf = find_first_bit(&pf_map, 64);
 
-	rsp->chan_base = base + (CPLT_OFFSET(chiplet_id, rpm_id) +
-				 (lmac_id)) * 16;
+	/* BPHY chiplet start from 0 index in BPHY ODP app perspective */
+	cgx_lmac_map = cplt_to_cgxlmac(rvu, chiplet_id, rpm_id, lmac_id);
+	link = rvu->cgxchan2link_map[cgx_lmac_map];
+	rsp->chan_base = rvu_read64(rvu, BLKADDR_NIX0, NIX_AF_LINKX_CFG(link)) &
+				    0xFFFUL;
 	rsp->pkind = rvu_npc_get_pkind(rvu, pf);
 	rsp->chiplet_id = req->chiplet_id;
 	rsp->rpm_id = req->rpm_id;

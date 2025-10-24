@@ -456,13 +456,30 @@ err_put:
 	pci_dev_put(pdev);
 }
 
+int cplt_lmac_cnt(struct rvu *rvu, int node)
+{
+	unsigned long lmac_bmap;
+	int set_bits, rpm;
+
+	for (rpm = 0; rpm < rvu->fwdata->num_rpm_in_chiplet; rpm++) {
+		lmac_bmap = rvu->fwdata->csr_rpmx_cmr_num_lmacs[node][rpm];
+		set_bits += hweight64(lmac_bmap);
+	}
+
+	return set_bits;
+}
+
 static void __rvu_nix_set_channels(struct rvu *rvu, int blkaddr)
 {
 	u64 nix_const1 = rvu_read64(rvu, blkaddr, NIX_AF_CONST1);
 	u64 nix_const = rvu_read64(rvu, blkaddr, NIX_AF_CONST);
 	u16 cgx_chans, lbk_chans, sdp_chans, cpt_chans;
+	u8 cgx_lmac_map, cplt_cgx_base = 1;
 	struct rvu_hwinfo *hw = rvu->hw;
+	int node, lmac = 0, size;
+	unsigned long lmac_bmap;
 	int link, nix_link = 0;
+	bool found = 0;
 	u16 start;
 	u64 cfg;
 
@@ -471,20 +488,50 @@ static void __rvu_nix_set_channels(struct rvu *rvu, int blkaddr)
 	sdp_chans = nix_const1 & 0xFFFULL;
 	cpt_chans = (nix_const >> 32) & 0xFFFULL;
 
+	/* NIX links */
+	size = (((nix_const >> 48) & 0xFFULL) * sizeof(u16));
+	rvu->link2cgxchan_map = devm_kzalloc(rvu->dev, size, GFP_KERNEL);
+	if (!rvu->link2cgxchan_map)
+		return;
+
+	/* Reverse map table */
+	rvu->cgxchan2link_map =
+		devm_kzalloc(rvu->dev,
+			     NODE_MAX * rvu->cgx_cnt_max * 10 * sizeof(u16),
+			     GFP_KERNEL);
+	if (!rvu->cgxchan2link_map)
+		return;
+
 	start = hw->cgx_chan_base;
 	for (link = 0; link < hw->cgx_links; link++, nix_link++) {
 		cfg = rvu_read64(rvu, blkaddr, NIX_AF_LINKX_CFG(nix_link));
 		cfg &= ~(NIX_AF_LINKX_BASE_MASK | NIX_AF_LINKX_RANGE_MASK);
 		cfg |=	FIELD_PREP(NIX_AF_LINKX_RANGE_MASK, ilog2(cgx_chans));
-		cfg |=	FIELD_PREP(NIX_AF_LINKX_BASE_MASK, start);
 		if (is_cnf20ka(rvu->pdev) && rvu->fwdata &&
 		    (link >= 4 && link < hw->cplt_links + 4)) {
-			if (link == 4)
-				hw->cplt_chan_base = start;
+			found = 0;
+			for ( ; lmac < 4 && !found; lmac++) {
+				lmac_bmap = get_active_cplt_lmac(rvu,
+								 cplt_cgx_base,
+								 NULL, &node);
+				for_each_set_bit_wrap(lmac, &lmac_bmap,
+						      rvu->hw->lmac_per_cgx,
+						      lmac) {
+					cgx_lmac_map =
+						cgxlmac_id_to_bmap(cplt_cgx_base,
+								   lmac);
+					found = 1;
+					break;
+				}
+				if (lmac >= 3) {
+					lmac = -1;
+					cplt_cgx_base++;
+				}
+			}
 			cfg |=	FIELD_PREP(GENMASK_ULL(21, 20), 2);
 			cfg |=	FIELD_PREP(GENMASK_ULL(26, 25), 2);
 			if (!rvu->fwdata->csr_rpmx_cmr_num_lmacs[2][0] ||
-			    (link < (hw->cplt_links / 2 + 4))) {
+			    (link < cplt_lmac_cnt(rvu, 1) + 4)) {
 				cfg |=	FIELD_PREP(GENMASK_ULL(31, 30), 0);
 				cfg |=	FIELD_PREP(GENMASK_ULL(35, 32),
 						   link - 4);
@@ -492,10 +539,14 @@ static void __rvu_nix_set_channels(struct rvu *rvu, int blkaddr)
 				cfg |=	FIELD_PREP(GENMASK_ULL(31, 30), 2);
 				cfg |=	FIELD_PREP(GENMASK_ULL(35, 32),
 						   link %
-						   (hw->cplt_links / 2 + 4));
+						   (cplt_lmac_cnt(rvu, 1) + 4));
 			}
 		}
+		cfg |=	FIELD_PREP(NIX_AF_LINKX_BASE_MASK, start);
 		rvu_write64(rvu, blkaddr, NIX_AF_LINKX_CFG(nix_link), cfg);
+		rvu->link2cgxchan_map[link] = cgx_lmac_map;
+		rvu->cgxchan2link_map[cgx_lmac_map] = link;
+
 		start += cgx_chans;
 	}
 

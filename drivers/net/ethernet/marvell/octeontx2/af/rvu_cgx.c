@@ -79,7 +79,7 @@ int cgxlmac_to_pf(struct rvu *rvu, int cgx_id, int lmac_id)
 				      rvu->cgx_cnt_max * rvu->hw->lmac_per_cgx);
 }
 
-static u8 cgxlmac_id_to_bmap(u8 cgx_id, u8 lmac_id)
+u8 cgxlmac_id_to_bmap(u8 cgx_id, u8 lmac_id)
 {
 	return ((cgx_id & 0xF) << 4) | (lmac_id & 0xF);
 }
@@ -778,6 +778,9 @@ int rvu_mbox_handler_cgx_fec_stats(struct rvu *rvu,
 	struct mac_ops *mac_ops;
 	u8 cgx_idx, lmac;
 	void *cgxd;
+
+	if (is_pf_cgxcpltmapped(rvu, pf))
+		return 0;
 
 	if (!is_cgx_config_permitted(rvu, req->hdr.pcifunc))
 		return LMAC_AF_ERR_PERM_DENIED;

@@ -803,6 +803,8 @@ struct rvu {
 
 	struct ng_rvu           *ng_rvu;
 	struct rvu_cplt_rpm	*cplt_rpm;
+	u16			*link2cgxchan_map;
+	u16			*cgxchan2link_map;
 };
 
 static inline void rvu_write64(struct rvu *rvu, u64 block, u64 offset, u64 val)
@@ -1015,18 +1017,26 @@ static inline bool is_rvu_nix_spi_to_sa_en(struct rvu *rvu)
 	return false;
 }
 
+u8 cgxlmac_id_to_bmap(u8 cgx_id, u8 lmac_id);
 static inline u16 rvu_nix_chan_cgx(struct rvu *rvu, u8 cgxid,
 				   u8 lmacid, u8 chan)
 {
 	u64 nix_const = rvu_read64(rvu, BLKADDR_NIX0, NIX_AF_CONST);
 	u16 cgx_chans = nix_const & 0xFFULL;
 	struct rvu_hwinfo *hw = rvu->hw;
+	int link;
 
 	if (!hw->cap.programmable_chans)
 		return NIX_CHAN_CGX_LMAC_CHX(cgxid, lmacid, chan);
 
-	return rvu->hw->cgx_chan_base +
-		(cgxid * hw->lmac_per_cgx + lmacid) * cgx_chans + chan;
+	if (is_cnf20ka(rvu->pdev) && cgxid) {
+		link = rvu->cgxchan2link_map[cgxlmac_id_to_bmap(cgxid, lmacid)];
+		return rvu_read64(rvu, BLKADDR_NIX0, NIX_AF_LINKX_CFG(link)) &
+				  0xFFFUL;
+	} else {
+		return rvu->hw->cgx_chan_base +
+			(cgxid * hw->lmac_per_cgx + lmacid) * cgx_chans + chan;
+	}
 }
 
 static inline u16 rvu_nix_chan_lbk(struct rvu *rvu, u8 lbkid,

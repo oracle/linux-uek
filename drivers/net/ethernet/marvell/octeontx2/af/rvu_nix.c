@@ -372,6 +372,8 @@ static int nix_interface_init(struct rvu *rvu, u16 pcifunc, int type, int nixlf,
 		pfvf->tx_chan_cnt = 1;
 		rsp->tx_link = cgx_id * hw->lmac_per_cgx + lmac_id;
 
+		if (is_cnf20ka(rvu->pdev) && cgx_id)
+			rsp->tx_link = rvu->cgxchan2link_map[cgxlmac_id_to_bmap(cgx_id, lmac_id)];
 		if (rvu_cgx_is_pkind_config_permitted(rvu, pcifunc)) {
 			cgx_set_pkind(rvu_cgx_pdata(cgx_id, rvu), lmac_id,
 				      pkind);
@@ -528,7 +530,8 @@ static int nix_setup_bpids(struct rvu *rvu, struct nix_hw *hw, int blkaddr)
 	max_bpids =  FIELD_GET(NIX_CONST_MAX_BPIDS, cfg);
 
 	/* Reserve the BPIds for CGX and SDP */
-	bp->cgx_bpid_cnt = rvu->hw->cgx_links * NIX_BPIDS_PER_LMAC;
+	bp->cgx_bpid_cnt = (rvu->hw->cgx_links + rvu->hw->cplt_links) *
+		NIX_BPIDS_PER_LMAC;
 	bp->sdp_bpid_cnt = rvu->hw->sdp_links * FIELD_GET(NIX_CONST_SDP_CHANS, cfg);
 	bp->free_pool_base = bp->cgx_bpid_cnt + bp->sdp_bpid_cnt +
 			     NIX_BPIDS_PER_CPT;
@@ -2284,7 +2287,10 @@ static int nix_get_tx_link(struct rvu *rvu, u16 pcifunc)
 		return hw->cgx_links;
 	} else if (is_pf_cgxmapped(rvu, pf)) {
 		rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
-		return (cgx_id * hw->lmac_per_cgx) + lmac_id;
+		if (is_cnf20ka(rvu->pdev) && cgx_id)
+			return rvu->cgxchan2link_map[cgxlmac_id_to_bmap(cgx_id, lmac_id)];
+		else
+			return (cgx_id * hw->lmac_per_cgx) + lmac_id;
 	}
 
 	/* SDP link */
@@ -4929,7 +4935,10 @@ int rvu_mbox_handler_nix_set_hw_frs(struct rvu *rvu, struct nix_frs_cfg *req,
 	if (is_pf_cgxmapped(rvu, pf)) {
 		/* Get CGX and LMAC to which this PF is mapped and find link */
 		rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx, &lmac);
-		link = (cgx * hw->lmac_per_cgx) + lmac;
+		if (is_cnf20ka(rvu->pdev) && cgx)
+			link = rvu->cgxchan2link_map[cgxlmac_id_to_bmap(cgx, lmac)];
+		else
+			link = (cgx * hw->lmac_per_cgx) + lmac;
 	} else if (pf == 0) {
 		/* For VFs of PF0 ingress is LBK port, so config LBK link */
 		pfvf = rvu_get_pfvf(rvu, pcifunc);
