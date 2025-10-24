@@ -11,7 +11,7 @@
 #define NULL_DIGEST_SIZE	0
 #define NULL_IV_SIZE		0
 
-DECLARE_CRYPTO_API0(crypto_get_default_null_skcipher, struct crypto_sync_skcipher *);
-DECLARE_CRYPTO_API0(crypto_put_default_null_skcipher, void);
+DECLARE_CRYPTO_API(crypto_get_default_null_skcipher, struct crypto_sync_skcipher *, (void), ());
+DECLARE_CRYPTO_API(crypto_put_default_null_skcipher, void, (void), ());
 
 #endif
