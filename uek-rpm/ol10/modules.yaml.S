@@ -552,7 +552,6 @@ modules-core:
 - chacha-neon
 - cppc_cpufreq
 - crct10dif-ce
-- ecdh_generic
 - ffa-core
 - ffa-module
 - ghash-ce
