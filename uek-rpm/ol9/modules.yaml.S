@@ -238,6 +238,7 @@ modules-core:
 - libfcoe
 - libie
 - libie_adminq
+- libie_fwlog
 - libiscsi
 - libiscsi_tcp
 - libnvdimm
