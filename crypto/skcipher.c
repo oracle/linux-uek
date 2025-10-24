@@ -594,7 +594,7 @@ static int skcipher_setkey_unaligned(struct crypto_skcipher *tfm,
 	return ret;
 }
 
-int crypto_skcipher_setkey(struct crypto_skcipher *tfm, const u8 *key,
+int CRYPTO_API(crypto_skcipher_setkey)(struct crypto_skcipher *tfm, const u8 *key,
 			   unsigned int keylen)
 {
 	struct skcipher_alg *cipher = crypto_skcipher_alg(tfm);
