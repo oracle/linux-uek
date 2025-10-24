@@ -59,7 +59,6 @@ modules-core:
 - cuse
 - dh_generic
 - dns_resolver
-- ecdh_generic
 - efivarfs
 - em_cmp
 - em_meta
