@@ -58,21 +58,37 @@ struct crypto_shash_spawn {
 	struct crypto_spawn base;
 };
 
-DECLARE_CRYPTO_API2(crypto_hash_walk_done, int, struct crypto_hash_walk *, walk, int, err);
-DECLARE_CRYPTO_API2(crypto_hash_walk_first, int, struct ahash_request *, req, struct crypto_hash_walk *, walk);
+DECLARE_CRYPTO_API(crypto_hash_walk_done, int,
+		(struct crypto_hash_walk *walk, int err),
+		(walk, err));
+DECLARE_CRYPTO_API(crypto_hash_walk_first, int,
+		(struct ahash_request *req, struct crypto_hash_walk *walk),
+		(req, walk));
 
 static inline int crypto_hash_walk_last(struct crypto_hash_walk *walk)
 {
 	return !(walk->entrylen | walk->total);
 }
 
-DECLARE_CRYPTO_API1(crypto_register_ahash, int, struct ahash_alg *, alg);
-DECLARE_CRYPTO_API1(crypto_unregister_ahash, void, struct ahash_alg *, alg);
-DECLARE_CRYPTO_API2(crypto_register_ahashes, int, struct ahash_alg *, algs, int, count);
-DECLARE_CRYPTO_API2(crypto_unregister_ahashes, void, struct ahash_alg *, algs, int, count);
-DECLARE_CRYPTO_API2(ahash_register_instance, int, struct crypto_template *, tmpl, struct ahash_instance *, inst);
+DECLARE_CRYPTO_API(crypto_register_ahash, int,
+		(struct ahash_alg *alg),
+		(alg));
+DECLARE_CRYPTO_API(crypto_unregister_ahash, void,
+		(struct ahash_alg *alg),
+		(alg));
+DECLARE_CRYPTO_API(crypto_register_ahashes, int,
+		(struct ahash_alg *algs, int count),
+		(algs, count));
+DECLARE_CRYPTO_API(crypto_unregister_ahashes, void,
+		(struct ahash_alg *algs, int count),
+		(algs, count));
+DECLARE_CRYPTO_API(ahash_register_instance, int,
+		(struct crypto_template *tmpl, struct ahash_instance *inst),
+		(tmpl, inst));
 
-DECLARE_CRYPTO_API1(crypto_shash_alg_has_setkey, bool, struct shash_alg *, alg);
+DECLARE_CRYPTO_API(crypto_shash_alg_has_setkey, bool,
+		(struct shash_alg *alg),
+		(alg));
 
 static inline bool crypto_shash_alg_needs_key(struct shash_alg *alg)
 {
@@ -80,7 +96,10 @@ static inline bool crypto_shash_alg_needs_key(struct shash_alg *alg)
 		!(alg->base.cra_flags & CRYPTO_ALG_OPTIONAL_KEY);
 }
 
-DECLARE_CRYPTO_API5(crypto_grab_ahash, int, struct crypto_ahash_spawn *, spawn, struct crypto_instance *, inst, const char *, name, u32, type, u32, mask);
+DECLARE_CRYPTO_API(crypto_grab_ahash, int,
+		(struct crypto_ahash_spawn *spawn, struct crypto_instance *inst,
+		 const char *name, u32 type, u32 mask),
+		(spawn, inst, name, type, mask));
 
 static inline void crypto_drop_ahash(struct crypto_ahash_spawn *spawn)
 {
@@ -93,14 +112,28 @@ static inline struct hash_alg_common *crypto_spawn_ahash_alg(
 	return __crypto_hash_alg_common(spawn->base.alg);
 }
 
-DECLARE_CRYPTO_API1(crypto_register_shash, int, struct shash_alg *, alg);
-DECLARE_CRYPTO_API1(crypto_unregister_shash, void, struct shash_alg *, alg);
-DECLARE_CRYPTO_API2(crypto_register_shashes, int, struct shash_alg *, algs, int, count);
-DECLARE_CRYPTO_API2(crypto_unregister_shashes, void, struct shash_alg *, algs, int, count);
-DECLARE_CRYPTO_API2(shash_register_instance, int, struct crypto_template *, tmpl, struct shash_instance *, inst);
-DECLARE_CRYPTO_API1(shash_free_singlespawn_instance, void, struct shash_instance *, inst);
+DECLARE_CRYPTO_API(crypto_register_shash, int,
+	(struct shash_alg *alg),
+	(alg));
+DECLARE_CRYPTO_API(crypto_unregister_shash, void,
+	(struct shash_alg *alg),
+	(alg));
+DECLARE_CRYPTO_API(crypto_register_shashes, int,
+	(struct shash_alg *algs, int count),
+	(algs, count));
+DECLARE_CRYPTO_API(crypto_unregister_shashes, void,
+	(struct shash_alg *algs, int count),
+	(algs, count));
+DECLARE_CRYPTO_API(shash_register_instance, int,
+	(struct crypto_template *tmpl, struct shash_instance *inst),
+	(tmpl, inst));
+DECLARE_CRYPTO_API(shash_free_singlespawn_instance, void,
+	(struct shash_instance *inst),
+	(inst));
 
-DECLARE_CRYPTO_API5(crypto_grab_shash, int, struct crypto_shash_spawn *, spawn, struct crypto_instance *, inst, const char *, name, u32, type, u32, mask);
+DECLARE_CRYPTO_API(crypto_grab_shash, int,
+	(struct crypto_shash_spawn *spawn, struct crypto_instance *inst, const char *name, u32 type, u32 mask),
+	(spawn, inst, name, type, mask));
 
 static inline void crypto_drop_shash(struct crypto_shash_spawn *spawn)
 {
@@ -113,9 +146,15 @@ static inline struct shash_alg *crypto_spawn_shash_alg(
 	return __crypto_shash_alg(spawn->base.alg);
 }
 
-DECLARE_CRYPTO_API2(shash_ahash_update, int, struct ahash_request *, req, struct shash_desc *, desc);
-DECLARE_CRYPTO_API2(shash_ahash_finup, int, struct ahash_request *, req, struct shash_desc *, desc);
-DECLARE_CRYPTO_API2(shash_ahash_digest, int, struct ahash_request *, req, struct shash_desc *, desc);
+DECLARE_CRYPTO_API(shash_ahash_update, int,
+	(struct ahash_request *req, struct shash_desc *desc),
+	(req, desc));
+DECLARE_CRYPTO_API(shash_ahash_finup, int,
+	(struct ahash_request *req, struct shash_desc *desc),
+	(req, desc));
+DECLARE_CRYPTO_API(shash_ahash_digest, int,
+	(struct ahash_request *req, struct shash_desc *desc),
+	(req, desc));
 
 static inline void *crypto_ahash_ctx(struct crypto_ahash *tfm)
 {
