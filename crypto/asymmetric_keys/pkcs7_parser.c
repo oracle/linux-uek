@@ -54,7 +54,7 @@ static void pkcs7_free_signed_info(struct pkcs7_signed_info *sinfo)
  * pkcs7_free_message - Free a PKCS#7 message
  * @pkcs7: The PKCS#7 message to free
  */
-void pkcs7_free_message(struct pkcs7_message *pkcs7)
+void CRYPTO_API(pkcs7_free_message)(struct pkcs7_message *pkcs7)
 {
 	struct x509_certificate *cert;
 	struct pkcs7_signed_info *sinfo;
@@ -78,7 +78,7 @@ void pkcs7_free_message(struct pkcs7_message *pkcs7)
 		kfree(pkcs7);
 	}
 }
-EXPORT_SYMBOL_GPL(pkcs7_free_message);
+DEFINE_CRYPTO_API(pkcs7_free_message);
 
 /*
  * Check authenticatedAttributes are provided or not provided consistently.
@@ -112,7 +112,7 @@ inconsistent:
  * @data: The raw binary ASN.1 encoded message to be parsed
  * @datalen: The size of the encoded message
  */
-struct pkcs7_message *pkcs7_parse_message(const void *data, size_t datalen)
+struct pkcs7_message *CRYPTO_API(pkcs7_parse_message)(const void *data, size_t datalen)
 {
 	struct pkcs7_parse_context *ctx;
 	struct pkcs7_message *msg = ERR_PTR(-ENOMEM);
@@ -167,7 +167,7 @@ out_no_msg:
 out_no_ctx:
 	return msg;
 }
-EXPORT_SYMBOL_GPL(pkcs7_parse_message);
+DEFINE_CRYPTO_API(pkcs7_parse_message);
 
 /**
  * pkcs7_get_content_data - Get access to the PKCS#7 content
@@ -182,7 +182,7 @@ EXPORT_SYMBOL_GPL(pkcs7_parse_message);
  *
  * Returns -ENODATA if the data object was missing from the message.
  */
-int pkcs7_get_content_data(const struct pkcs7_message *pkcs7,
+int CRYPTO_API(pkcs7_get_content_data)(const struct pkcs7_message *pkcs7,
 			   const void **_data, size_t *_data_len,
 			   size_t *_headerlen)
 {
@@ -195,7 +195,7 @@ int pkcs7_get_content_data(const struct pkcs7_message *pkcs7,
 		*_headerlen = pkcs7->data_hdrlen;
 	return 0;
 }
-EXPORT_SYMBOL_GPL(pkcs7_get_content_data);
+DEFINE_CRYPTO_API(pkcs7_get_content_data);
 
 /*
  * Note an OID when we find one for later processing when we know how
