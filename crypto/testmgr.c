@@ -5860,7 +5860,7 @@ static int alg_find_test(const char *alg)
 
 static int alg_fips_disabled(const char *driver, const char *alg)
 {
-	pr_info("alg: %s (%s) is disabled due to FIPS\n", alg, driver);
+	pr_info("alg: %s (driver %s) is disabled due to FIPS\n", alg, driver);
 
 	return -ECANCELED;
 }
@@ -5921,19 +5921,19 @@ test_done:
 	if (rc) {
 		if (fips_enabled || panic_on_fail) {
 			fips_fail_notify();
-			panic("alg: self-tests for %s (%s) failed in %s mode!\n",
-			      driver, alg,
+			panic("alg: self-tests for %s (driver %s) failed in %s mode!\n",
+			      alg, driver,
 			      fips_enabled ? "fips" : "panic_on_fail");
 		}
-		pr_warn("alg: self-tests for %s using %s failed (rc=%d)",
+		pr_warn("alg: self-tests for %s (driver %s) failed (rc=%d)",
 			alg, driver, rc);
 		WARN(rc != -ENOENT,
-		     "alg: self-tests for %s using %s failed (rc=%d)",
+		     "alg: self-tests for %s (driver %s) failed (rc=%d)",
 		     alg, driver, rc);
 	} else {
 		if (fips_enabled)
-			pr_info("alg: self-tests for %s (%s) passed\n",
-				driver, alg);
+			pr_info("alg: self-tests for %s (driver %s) passed\n",
+				alg, driver);
 	}
 
 	return rc;
@@ -5958,7 +5958,7 @@ notest:
 	}
 
 notest2:
-	printk(KERN_INFO "alg: No test for %s (%s)\n", alg, driver);
+	printk(KERN_INFO "alg: No test for %s (driver %s)\n", alg, driver);
 
 	if (type & CRYPTO_ALG_FIPS_INTERNAL)
 		return alg_fips_disabled(driver, alg);
