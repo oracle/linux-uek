@@ -1133,14 +1133,14 @@ EXPORT_SYMBOL_GPL(crypto_it_tab);
  *
  * Return: 0 on success; -EINVAL on failure (only happens for bad key lengths)
  */
-int crypto_aes_set_key(struct crypto_tfm *tfm, const u8 *in_key,
+int CRYPTO_API(crypto_aes_set_key)(struct crypto_tfm *tfm, const u8 *in_key,
 		unsigned int key_len)
 {
 	struct crypto_aes_ctx *ctx = crypto_tfm_ctx(tfm);
 
 	return aes_expandkey(ctx, in_key, key_len);
 }
-EXPORT_SYMBOL_GPL(crypto_aes_set_key);
+DEFINE_CRYPTO_API(crypto_aes_set_key);
 
 /* encrypt a block of text */
 
