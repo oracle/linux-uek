@@ -223,6 +223,7 @@ static int kmb_ecc_point_mult(struct ocs_ecc_dev *ecc_dev,
 			      u64 *scalar,
 			      const struct ecc_curve *curve)
 {
+	struct crypto_rng *rng;
 	u8 sca[KMB_ECC_VLI_MAX_BYTES]; /* Use the maximum data size. */
 	u32 op_size = (curve->g.ndigits > ECC_CURVE_NIST_P256_DIGITS) ?
 		      OCS_ECC_OP_SIZE_384 : OCS_ECC_OP_SIZE_256;
@@ -230,12 +231,12 @@ static int kmb_ecc_point_mult(struct ocs_ecc_dev *ecc_dev,
 	int rc = 0;
 
 	/* Generate random nbytes for Simple and Differential SCA protection. */
-	rc = crypto_get_default_rng();
+	rc = crypto_get_default_rng(&rng);
 	if (rc)
 		return rc;
 
-	rc = crypto_rng_get_bytes(crypto_default_rng, sca, nbytes);
-	crypto_put_default_rng();
+	rc = crypto_rng_get_bytes(rng, sca, nbytes);
+	crypto_put_default_rng(&rng);
 	if (rc)
 		return rc;
 
@@ -490,6 +491,7 @@ static int kmb_ecc_is_key_valid(const struct ecc_curve *curve,
  */
 static int kmb_ecc_gen_privkey(const struct ecc_curve *curve, u64 *privkey)
 {
+	struct crypto_rng *rng;
 	size_t nbytes = digits_to_bytes(curve->g.ndigits);
 	u64 priv[KMB_ECC_VLI_MAX_DIGITS];
 	size_t nbits;
@@ -512,11 +514,11 @@ static int kmb_ecc_gen_privkey(const struct ecc_curve *curve, u64 *privkey)
 	 * This condition is met by the default RNG because it selects a favored
 	 * DRBG with a security strength of 256.
 	 */
-	if (crypto_get_default_rng())
+	if (crypto_get_default_rng(&rng))
 		return -EFAULT;
 
-	rc = crypto_rng_get_bytes(crypto_default_rng, (u8 *)priv, nbytes);
-	crypto_put_default_rng();
+	rc = crypto_rng_get_bytes(rng, (u8 *)priv, nbytes);
+	crypto_put_default_rng(&rng);
 	if (rc)
 		goto cleanup;
 
