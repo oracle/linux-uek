@@ -60,21 +60,21 @@ static const struct crypto_type crypto_sig_type = {
 	.tfmsize = offsetof(struct crypto_sig, base),
 };
 
-struct crypto_sig *crypto_alloc_sig(const char *alg_name, u32 type, u32 mask)
+struct crypto_sig *CRYPTO_API(crypto_alloc_sig)(const char *alg_name, u32 type, u32 mask)
 {
 	return crypto_alloc_tfm(alg_name, &crypto_sig_type, type, mask);
 }
-EXPORT_SYMBOL_GPL(crypto_alloc_sig);
+DEFINE_CRYPTO_API(crypto_alloc_sig);
 
-int crypto_sig_maxsize(struct crypto_sig *tfm)
+int CRYPTO_API(crypto_sig_maxsize)(struct crypto_sig *tfm)
 {
 	struct crypto_akcipher **ctx = crypto_sig_ctx(tfm);
 
 	return crypto_akcipher_maxsize(*ctx);
 }
-EXPORT_SYMBOL_GPL(crypto_sig_maxsize);
+DEFINE_CRYPTO_API(crypto_sig_maxsize);
 
-int crypto_sig_sign(struct crypto_sig *tfm,
+int CRYPTO_API(crypto_sig_sign)(struct crypto_sig *tfm,
 		    const void *src, unsigned int slen,
 		    void *dst, unsigned int dlen)
 {
@@ -91,9 +91,9 @@ int crypto_sig_sign(struct crypto_sig *tfm,
 	       crypto_akcipher_sync_post(&data,
 					 crypto_akcipher_sign(data.req));
 }
-EXPORT_SYMBOL_GPL(crypto_sig_sign);
+DEFINE_CRYPTO_API(crypto_sig_sign);
 
-int crypto_sig_verify(struct crypto_sig *tfm,
+int CRYPTO_API(crypto_sig_verify)(struct crypto_sig *tfm,
 		      const void *src, unsigned int slen,
 		      const void *digest, unsigned int dlen)
 {
@@ -115,25 +115,25 @@ int crypto_sig_verify(struct crypto_sig *tfm,
 	return crypto_akcipher_sync_post(&data,
 					 crypto_akcipher_verify(data.req));
 }
-EXPORT_SYMBOL_GPL(crypto_sig_verify);
+DEFINE_CRYPTO_API(crypto_sig_verify);
 
-int crypto_sig_set_pubkey(struct crypto_sig *tfm,
+int CRYPTO_API(crypto_sig_set_pubkey)(struct crypto_sig *tfm,
 			  const void *key, unsigned int keylen)
 {
 	struct crypto_akcipher **ctx = crypto_sig_ctx(tfm);
 
 	return crypto_akcipher_set_pub_key(*ctx, key, keylen);
 }
-EXPORT_SYMBOL_GPL(crypto_sig_set_pubkey);
+DEFINE_CRYPTO_API(crypto_sig_set_pubkey);
 
-int crypto_sig_set_privkey(struct crypto_sig *tfm,
+int CRYPTO_API(crypto_sig_set_privkey)(struct crypto_sig *tfm,
 			  const void *key, unsigned int keylen)
 {
 	struct crypto_akcipher **ctx = crypto_sig_ctx(tfm);
 
 	return crypto_akcipher_set_priv_key(*ctx, key, keylen);
 }
-EXPORT_SYMBOL_GPL(crypto_sig_set_privkey);
+DEFINE_CRYPTO_API(crypto_sig_set_privkey);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Public Key Signature Algorithms");
