@@ -5,6 +5,8 @@
 #ifndef __CRYPTO_SHA3_H__
 #define __CRYPTO_SHA3_H__
 
+#include <crypto/api.h>
+
 #define SHA3_224_DIGEST_SIZE	(224 / 8)
 #define SHA3_224_BLOCK_SIZE	(200 - 2 * SHA3_224_DIGEST_SIZE)
 
@@ -26,9 +28,8 @@ struct sha3_state {
 	u8		buf[SHA3_224_BLOCK_SIZE];
 };
 
-int crypto_sha3_init(struct shash_desc *desc);
-int crypto_sha3_update(struct shash_desc *desc, const u8 *data,
-		       unsigned int len);
-int crypto_sha3_final(struct shash_desc *desc, u8 *out);
+DECLARE_CRYPTO_API1(crypto_sha3_init, int, struct shash_desc *, desc);
+DECLARE_CRYPTO_API3(crypto_sha3_update, int, struct shash_desc *, desc, const u8 *, data, unsigned int, len);
+DECLARE_CRYPTO_API2(crypto_sha3_final, int, struct shash_desc *, desc, u8 *, out);
 
 #endif
