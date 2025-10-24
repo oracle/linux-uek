@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 
+#include <crypto/api.h>
 #include <crypto/internal/hash.h>
 #include <linux/init.h>
 #include <linux/module.h>
@@ -96,11 +97,18 @@ static void __exit xxhash_mod_fini(void)
 	crypto_unregister_shash(&alg);
 }
 
-subsys_initcall(xxhash_mod_init);
-module_exit(xxhash_mod_fini);
+crypto_subsys_initcall(xxhash_mod_init);
+crypto_module_exit(xxhash_mod_fini);
 
 MODULE_AUTHOR("Nikolay Borisov <nborisov@suse.com>");
 MODULE_DESCRIPTION("xxhash calculations wrapper for lib/xxhash.c");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS_CRYPTO("xxhash64");
 MODULE_ALIAS_CRYPTO("xxhash64-generic");
+
+#ifdef FIPS_MODULE
+#undef EXPORT_SYMBOL
+#define EXPORT_SYMBOL(x)
+
+#include <../lib/xxhash.c>
+#endif
