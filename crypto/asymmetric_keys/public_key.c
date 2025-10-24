@@ -39,7 +39,7 @@ static void public_key_describe(const struct key *asymmetric_key,
 /*
  * Destroy a public key algorithm key.
  */
-void public_key_free(struct public_key *key)
+void CRYPTO_API(public_key_free)(struct public_key *key)
 {
 	if (key) {
 		kfree_sensitive(key->key);
@@ -47,7 +47,7 @@ void public_key_free(struct public_key *key)
 		kfree(key);
 	}
 }
-EXPORT_SYMBOL_GPL(public_key_free);
+DEFINE_CRYPTO_API(public_key_free);
 
 /*
  * Destroy a public key algorithm key.
@@ -384,7 +384,7 @@ error_free_key:
 /*
  * Verify a signature using a public key.
  */
-int public_key_verify_signature(const struct public_key *pkey,
+int CRYPTO_API(public_key_verify_signature)(const struct public_key *pkey,
 				const struct public_key_signature *sig)
 {
 	char alg_name[CRYPTO_MAX_ALG_NAME];
@@ -456,7 +456,7 @@ error_free_tfm:
 		ret = -EINVAL;
 	return ret;
 }
-EXPORT_SYMBOL_GPL(public_key_verify_signature);
+DEFINE_CRYPTO_API(public_key_verify_signature);
 
 static int public_key_verify_signature_2(const struct key *key,
 					 const struct public_key_signature *sig)

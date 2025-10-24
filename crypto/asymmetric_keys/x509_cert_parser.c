@@ -41,7 +41,7 @@ struct x509_parse_context {
 /*
  * Free an X.509 certificate
  */
-void x509_free_certificate(struct x509_certificate *cert)
+void CRYPTO_API(x509_free_certificate)(struct x509_certificate *cert)
 {
 	if (cert) {
 		public_key_free(cert->pub);
@@ -53,12 +53,12 @@ void x509_free_certificate(struct x509_certificate *cert)
 		kfree(cert);
 	}
 }
-EXPORT_SYMBOL_GPL(x509_free_certificate);
+DEFINE_CRYPTO_API(x509_free_certificate);
 
 /*
  * Parse an X.509 certificate
  */
-struct x509_certificate *x509_cert_parse(const void *data, size_t datalen)
+struct x509_certificate *CRYPTO_API(x509_cert_parse)(const void *data, size_t datalen)
 {
 	struct x509_certificate *cert __free(x509_free_certificate);
 	struct x509_parse_context *ctx __free(kfree) = NULL;
@@ -132,7 +132,7 @@ struct x509_certificate *x509_cert_parse(const void *data, size_t datalen)
 
 	return_ptr(cert);
 }
-EXPORT_SYMBOL_GPL(x509_cert_parse);
+DEFINE_CRYPTO_API(x509_cert_parse);
 
 /*
  * Note an OID when we find one for later processing when we know how
@@ -650,7 +650,7 @@ int x509_process_extension(void *context, size_t hdrlen,
  *	applications MUST be able to process validity dates that are encoded in
  *	either UTCTime or GeneralizedTime.
  */
-int x509_decode_time(time64_t *_t,  size_t hdrlen,
+int CRYPTO_API(x509_decode_time)(time64_t *_t,  size_t hdrlen,
 		     unsigned char tag,
 		     const unsigned char *value, size_t vlen)
 {
@@ -725,7 +725,7 @@ invalid_time:
 		 tag, (int)vlen, value);
 	return -EBADMSG;
 }
-EXPORT_SYMBOL_GPL(x509_decode_time);
+DEFINE_CRYPTO_API(x509_decode_time);
 
 int x509_note_not_before(void *context, size_t hdrlen,
 			 unsigned char tag,
