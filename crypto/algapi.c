@@ -30,7 +30,20 @@ EXPORT_PER_CPU_SYMBOL_GPL(crypto_simd_disabled_for_test);
 
 static inline void crypto_check_module_sig(struct module *mod)
 {
-	if (fips_enabled && mod && !module_sig_ok(mod))
+#ifdef FIPS_MODULE
+	/*
+	 * The FIPS module should ignore module signatures while it is
+	 * not yet operational (i.e. while it is still loading its
+	 * individual unsigned kernel modules).
+	 */
+	if (!fips_operational)
+		return;
+#else
+	if (!fips_enabled)
+		return;
+#endif
+
+	if (mod && !module_sig_ok(mod))
 		panic("Module %s signature verification failed in FIPS mode\n",
 		      module_name(mod));
 }
