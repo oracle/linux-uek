@@ -382,6 +382,7 @@ static void *dh_safe_prime_gen_privkey(const struct dh_safe_prime *safe_prime,
 {
 	unsigned int n, oversampling_size;
 	__be64 *key;
+	struct crypto_rng *rng;
 	int err;
 	u64 h, o;
 
@@ -419,12 +420,11 @@ static void *dh_safe_prime_gen_privkey(const struct dh_safe_prime *safe_prime,
 	 * random bits and interpret them as a big endian integer.
 	 */
 	err = -EFAULT;
-	if (crypto_get_default_rng())
+	if (crypto_get_default_rng(&rng))
 		goto out_err;
 
-	err = crypto_rng_get_bytes(crypto_default_rng, (u8 *)key,
-				   oversampling_size);
-	crypto_put_default_rng();
+	err = crypto_rng_get_bytes(rng, (u8 *)key, oversampling_size);
+	crypto_put_default_rng(&rng);
 	if (err)
 		goto out_err;
 
