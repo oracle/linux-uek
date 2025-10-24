@@ -82,26 +82,26 @@ static const struct crypto_type crypto_kpp_type = {
 	.tfmsize = offsetof(struct crypto_kpp, base),
 };
 
-struct crypto_kpp *crypto_alloc_kpp(const char *alg_name, u32 type, u32 mask)
+struct crypto_kpp *CRYPTO_API(crypto_alloc_kpp)(const char *alg_name, u32 type, u32 mask)
 {
 	return crypto_alloc_tfm(alg_name, &crypto_kpp_type, type, mask);
 }
-EXPORT_SYMBOL_GPL(crypto_alloc_kpp);
+DEFINE_CRYPTO_API(crypto_alloc_kpp);
 
-int crypto_grab_kpp(struct crypto_kpp_spawn *spawn,
+int CRYPTO_API(crypto_grab_kpp)(struct crypto_kpp_spawn *spawn,
 		    struct crypto_instance *inst,
 		    const char *name, u32 type, u32 mask)
 {
 	spawn->base.frontend = &crypto_kpp_type;
 	return crypto_grab_spawn(&spawn->base, inst, name, type, mask);
 }
-EXPORT_SYMBOL_GPL(crypto_grab_kpp);
+DEFINE_CRYPTO_API(crypto_grab_kpp);
 
-int crypto_has_kpp(const char *alg_name, u32 type, u32 mask)
+int CRYPTO_API(crypto_has_kpp)(const char *alg_name, u32 type, u32 mask)
 {
 	return crypto_type_has_alg(alg_name, &crypto_kpp_type, type, mask);
 }
-EXPORT_SYMBOL_GPL(crypto_has_kpp);
+DEFINE_CRYPTO_API(crypto_has_kpp);
 
 static void kpp_prepare_alg(struct kpp_alg *alg)
 {
@@ -112,22 +112,22 @@ static void kpp_prepare_alg(struct kpp_alg *alg)
 	base->cra_flags |= CRYPTO_ALG_TYPE_KPP;
 }
 
-int crypto_register_kpp(struct kpp_alg *alg)
+int CRYPTO_API(crypto_register_kpp)(struct kpp_alg *alg)
 {
 	struct crypto_alg *base = &alg->base;
 
 	kpp_prepare_alg(alg);
 	return crypto_register_alg(base);
 }
-EXPORT_SYMBOL_GPL(crypto_register_kpp);
+DEFINE_CRYPTO_API(crypto_register_kpp);
 
-void crypto_unregister_kpp(struct kpp_alg *alg)
+void CRYPTO_API(crypto_unregister_kpp)(struct kpp_alg *alg)
 {
 	crypto_unregister_alg(&alg->base);
 }
-EXPORT_SYMBOL_GPL(crypto_unregister_kpp);
+DEFINE_CRYPTO_API(crypto_unregister_kpp);
 
-int kpp_register_instance(struct crypto_template *tmpl,
+int CRYPTO_API(kpp_register_instance)(struct crypto_template *tmpl,
 			  struct kpp_instance *inst)
 {
 	if (WARN_ON(!inst->free))
@@ -137,7 +137,7 @@ int kpp_register_instance(struct crypto_template *tmpl,
 
 	return crypto_register_instance(tmpl, kpp_crypto_instance(inst));
 }
-EXPORT_SYMBOL_GPL(kpp_register_instance);
+DEFINE_CRYPTO_API(kpp_register_instance);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Key-agreement Protocol Primitives");
