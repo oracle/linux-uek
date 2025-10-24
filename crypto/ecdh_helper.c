@@ -24,14 +24,14 @@ static inline const u8 *ecdh_unpack_data(void *dst, const void *src, size_t sz)
 	return src + sz;
 }
 
-unsigned int crypto_ecdh_key_len(const struct ecdh *params)
+unsigned int CRYPTO_API(crypto_ecdh_key_len)(const struct ecdh *params)
 {
 	return ECDH_KPP_SECRET_MIN_SIZE + params->key_size;
 }
-EXPORT_SYMBOL_GPL(crypto_ecdh_key_len);
+DEFINE_CRYPTO_API(crypto_ecdh_key_len);
 
-int crypto_ecdh_encode_key(char *buf, unsigned int len,
-			   const struct ecdh *params)
+int CRYPTO_API(crypto_ecdh_encode_key)(char *buf, unsigned int len,
+				       const struct ecdh *params)
 {
 	u8 *ptr = buf;
 	struct kpp_secret secret = {
@@ -51,10 +51,10 @@ int crypto_ecdh_encode_key(char *buf, unsigned int len,
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(crypto_ecdh_encode_key);
+DEFINE_CRYPTO_API(crypto_ecdh_encode_key);
 
-int crypto_ecdh_decode_key(const char *buf, unsigned int len,
-			   struct ecdh *params)
+int CRYPTO_API(crypto_ecdh_decode_key)(const char *buf, unsigned int len,
+				       struct ecdh *params)
 {
 	const u8 *ptr = buf;
 	struct kpp_secret secret;
@@ -80,4 +80,4 @@ int crypto_ecdh_decode_key(const char *buf, unsigned int len,
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(crypto_ecdh_decode_key);
+DEFINE_CRYPTO_API(crypto_ecdh_decode_key);
