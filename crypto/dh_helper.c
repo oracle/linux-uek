@@ -31,13 +31,13 @@ static inline unsigned int dh_data_size(const struct dh *p)
 	return p->key_size + p->p_size + p->g_size;
 }
 
-unsigned int crypto_dh_key_len(const struct dh *p)
+unsigned int CRYPTO_API(crypto_dh_key_len)(const struct dh *p)
 {
 	return DH_KPP_SECRET_MIN_SIZE + dh_data_size(p);
 }
-EXPORT_SYMBOL_GPL(crypto_dh_key_len);
+DEFINE_CRYPTO_API(crypto_dh_key_len);
 
-int crypto_dh_encode_key(char *buf, unsigned int len, const struct dh *params)
+int CRYPTO_API(crypto_dh_encode_key)(char *buf, unsigned int len, const struct dh *params)
 {
 	u8 *ptr = buf;
 	u8 * const end = ptr + len;
@@ -61,7 +61,7 @@ int crypto_dh_encode_key(char *buf, unsigned int len, const struct dh *params)
 		return -EINVAL;
 	return 0;
 }
-EXPORT_SYMBOL_GPL(crypto_dh_encode_key);
+DEFINE_CRYPTO_API(crypto_dh_encode_key);
 
 int __crypto_dh_decode_key(const char *buf, unsigned int len, struct dh *params)
 {
@@ -91,7 +91,7 @@ int __crypto_dh_decode_key(const char *buf, unsigned int len, struct dh *params)
 	return 0;
 }
 
-int crypto_dh_decode_key(const char *buf, unsigned int len, struct dh *params)
+int CRYPTO_API(crypto_dh_decode_key)(const char *buf, unsigned int len, struct dh *params)
 {
 	int err;
 
@@ -117,4 +117,4 @@ int crypto_dh_decode_key(const char *buf, unsigned int len, struct dh *params)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(crypto_dh_decode_key);
+DEFINE_CRYPTO_API(crypto_dh_decode_key);
