@@ -360,10 +360,9 @@ err:
 	goto out;
 }
 
-void crypto_alg_tested(const char *name, int err)
+void crypto_alg_tested(struct crypto_alg *alg, int err)
 {
 	struct crypto_larval *test;
-	struct crypto_alg *alg;
 	struct crypto_alg *q;
 	LIST_HEAD(list);
 
@@ -373,18 +372,16 @@ void crypto_alg_tested(const char *name, int err)
 			continue;
 
 		test = (struct crypto_larval *)q;
-
-		if (!strcmp(q->cra_driver_name, name))
+		if (test->adult == alg)
 			goto found;
 	}
 
-	pr_err("alg: Unexpected test result for %s: %d\n", name, err);
+	pr_err("alg: Unexpected test result for %s: %d\n", alg->cra_driver_name, err);
 	up_write(&crypto_alg_sem);
 	return;
 
 found:
 	q->cra_flags |= CRYPTO_ALG_DEAD;
-	alg = test->adult;
 
 	if (crypto_is_dead(alg))
 		goto complete;
