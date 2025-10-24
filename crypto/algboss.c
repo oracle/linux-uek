@@ -241,8 +241,8 @@ static void __exit cryptomgr_exit(void)
  * generic implementations so that they're available for comparison tests when
  * other implementations are registered later by module_init().
  */
-arch_initcall(cryptomgr_init);
-module_exit(cryptomgr_exit);
+crypto_arch_initcall(cryptomgr_init);
+crypto_module_exit(cryptomgr_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Crypto Algorithm Manager");

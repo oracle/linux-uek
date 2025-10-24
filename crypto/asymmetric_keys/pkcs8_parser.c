@@ -173,8 +173,8 @@ static void __exit pkcs8_key_exit(void)
 	unregister_asymmetric_key_parser(&pkcs8_key_parser);
 }
 
-module_init(pkcs8_key_init);
-module_exit(pkcs8_key_exit);
+crypto_module_init(pkcs8_key_init);
+crypto_module_exit(pkcs8_key_exit);
 
 MODULE_DESCRIPTION("PKCS#8 certificate parser");
 MODULE_LICENSE("GPL");
