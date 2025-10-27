@@ -1834,6 +1834,16 @@ config RSEQ_SLICE_EXTENSION
 	  so that other threads are not stuck on a conflicted resource,
 	  while the task is scheduled out.
 
+config RSEQ_STATS
+	default n
+	bool "Enable lightweight statistics of restartable sequences" if EXPERT
+	depends on RSEQ && DEBUG_FS
+	help
+	  Enable lightweight counters which expose information about the
+	  frequency of RSEQ operations via debugfs. Mostly interesting for
+	  kernel debugging or performance analysis. While lightweight it's
+	  still adding code into the user/kernel mode transitions.
+
 	  If unsure, say N.
 
 config DEBUG_RSEQ

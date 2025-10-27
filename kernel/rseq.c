@@ -8,10 +8,15 @@
  * Mathieu Desnoyers <mathieu.desnoyers@efficios.com>
  */
 
+/* Required to select the proper per_cpu ops for rseq_stats_inc() */
+#define RSEQ_BUILD_SLOW_PATH
+
+#include <linux/debugfs.h>
+#include <linux/ratelimit.h>
 #include <linux/sched.h>
-#include <linux/uaccess.h>
+#include <linux/rseq_entry.h>
 #include <linux/syscalls.h>
-#include <linux/rseq.h>
+#include <linux/uaccess.h>
 #include <linux/types.h>
 #include <asm/ptrace.h>
 
@@ -80,6 +85,42 @@
  *       [abort_ip]
  *   F1. <failure>
  */
+
+#ifdef CONFIG_RSEQ_STATS
+DEFINE_PER_CPU(struct rseq_stats, rseq_stats);
+
+static int rseq_debug_show(struct seq_file *m, void *p)
+{
+	struct rseq_stats stats = { };
+	unsigned int cpu;
+
+	for_each_possible_cpu(cpu) {
+	}
+
+	return 0;
+}
+
+static int rseq_debug_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, rseq_debug_show, inode->i_private);
+}
+
+static const struct file_operations dfs_ops = {
+	.open		= rseq_debug_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int __init rseq_debugfs_init(void)
+{
+	struct dentry *root_dir = debugfs_create_dir("rseq", NULL);
+
+	debugfs_create_file("stats", 0444, root_dir, NULL, &dfs_ops);
+	return 0;
+}
+__initcall(rseq_debugfs_init);
+#endif /* CONFIG_RSEQ_STATS */
 
 static int rseq_update_cpu_id(struct task_struct *t)
 {
