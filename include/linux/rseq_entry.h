@@ -26,6 +26,8 @@ DECLARE_PER_CPU(struct rseq_stats, rseq_stats);
 #define rseq_stat_inc(x)	do { } while (0)
 #endif /* !CONFIG_RSEQ_STATS */
 
+DECLARE_STATIC_KEY_MAYBE(CONFIG_RSEQ_DEBUG_DEFAULT_ENABLE, rseq_debug_enabled);
+
 #ifdef CONFIG_RSEQ
 #include <linux/jump_label.h>
 
