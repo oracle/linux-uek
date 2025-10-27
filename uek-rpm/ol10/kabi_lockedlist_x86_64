@@ -106,6 +106,9 @@
 	acfs_only_symbol
 	add_timer
 	add_wait_queue
+	aesgcm_decrypt
+	aesgcm_encrypt
+	aesgcm_expandkey
 	alloc_chrdev_region
 	alloc_pages_noprof
 	alloc_workqueue
@@ -161,6 +164,7 @@
 	complete
 	complete_all
 	const_pcpu_hot
+	crypto_authenc_extractkeys
 	d_add
 	d_alloc
 	d_drop
@@ -237,6 +241,272 @@
 	filp_open
 	find_vma
 	finish_wait
+	fips___crypto_alloc_tfm
+	fips___crypto_alloc_tfmgfp
+	fips___crypto_memneq
+	fips___crypto_xor
+	fips_aead_exit_geniv
+	fips_aead_geniv_alloc
+	fips_aead_init_geniv
+	fips_aead_register_instance
+	fips_ahash_register_instance
+	fips_akcipher_register_instance
+	fips_alg_test
+	fips_asymmetric_key_generate_id
+	fips_asymmetric_key_id_partial
+	fips_asymmetric_key_id_same
+	fips_create_signature
+	fips_cryptd_aead_child
+	fips_cryptd_aead_queued
+	fips_cryptd_ahash_child
+	fips_cryptd_ahash_queued
+	fips_cryptd_alloc_aead
+	fips_cryptd_alloc_ahash
+	fips_cryptd_alloc_skcipher
+	fips_cryptd_free_aead
+	fips_cryptd_free_ahash
+	fips_cryptd_free_skcipher
+	fips_cryptd_shash_desc
+	fips_cryptd_skcipher_child
+	fips_cryptd_skcipher_queued
+	fips_crypto_aead_decrypt
+	fips_crypto_aead_encrypt
+	fips_crypto_aead_setauthsize
+	fips_crypto_aead_setkey
+	fips_crypto_aes_set_key
+	fips_crypto_ahash_digest
+	fips_crypto_ahash_export
+	fips_crypto_ahash_final
+	fips_crypto_ahash_finup
+	fips_crypto_ahash_import
+	fips_crypto_ahash_init
+	fips_crypto_ahash_setkey
+	fips_crypto_ahash_update
+	fips_crypto_akcipher_sync_decrypt
+	fips_crypto_akcipher_sync_encrypt
+	fips_crypto_akcipher_sync_post
+	fips_crypto_akcipher_sync_prep
+	fips_crypto_alg_extsize
+	fips_crypto_alg_list
+	fips_crypto_alg_mod_lookup
+	fips_crypto_alg_sem
+	fips_crypto_alg_tested
+	fips_crypto_alloc_aead
+	fips_crypto_alloc_ahash
+	fips_crypto_alloc_akcipher
+	fips_crypto_alloc_base
+	fips_crypto_alloc_kpp
+	fips_crypto_alloc_lskcipher
+	fips_crypto_alloc_rng
+	fips_crypto_alloc_shash
+	fips_crypto_alloc_sig
+	fips_crypto_alloc_skcipher
+	fips_crypto_alloc_sync_skcipher
+	fips_crypto_alloc_tfm_node
+	fips_crypto_attr_alg_name
+	fips_crypto_chain
+	fips_crypto_check_attr_type
+	fips_crypto_cipher_decrypt_one
+	fips_crypto_cipher_encrypt_one
+	fips_crypto_cipher_setkey
+	fips_crypto_clone_ahash
+	fips_crypto_clone_cipher
+	fips_crypto_clone_shash
+	fips_crypto_clone_tfm
+	fips_crypto_create_tfm_node
+	fips_crypto_default_rng
+	fips_crypto_del_default_rng
+	fips_crypto_dequeue_request
+	fips_crypto_destroy_tfm
+	fips_crypto_dh_decode_key
+	fips_crypto_dh_encode_key
+	fips_crypto_dh_key_len
+	fips_crypto_drop_spawn
+	fips_crypto_ecdh_decode_key
+	fips_crypto_ecdh_encode_key
+	fips_crypto_ecdh_key_len
+	fips_crypto_ecdh_shared_secret
+	fips_crypto_enqueue_request
+	fips_crypto_enqueue_request_head
+	fips_crypto_find_alg
+	fips_crypto_ft_tab
+	fips_crypto_get_attr_type
+	fips_crypto_get_default_null_skcipher
+	fips_crypto_get_default_rng
+	fips_crypto_grab_aead
+	fips_crypto_grab_ahash
+	fips_crypto_grab_akcipher
+	fips_crypto_grab_kpp
+	fips_crypto_grab_lskcipher
+	fips_crypto_grab_shash
+	fips_crypto_grab_skcipher
+	fips_crypto_grab_spawn
+	fips_crypto_has_aead
+	fips_crypto_has_ahash
+	fips_crypto_has_alg
+	fips_crypto_has_kpp
+	fips_crypto_has_shash
+	fips_crypto_has_skcipher
+	fips_crypto_hash_walk_done
+	fips_crypto_hash_walk_first
+	fips_crypto_inc
+	fips_crypto_init_akcipher_ops_sig
+	fips_crypto_init_queue
+	fips_crypto_inst_setname
+	fips_crypto_it_tab
+	fips_crypto_larval_alloc
+	fips_crypto_lookup_template
+	fips_crypto_lskcipher_decrypt
+	fips_crypto_lskcipher_encrypt
+	fips_crypto_lskcipher_setkey
+	fips_crypto_mod_get
+	fips_crypto_mod_put
+	fips_crypto_probing_notify
+	fips_crypto_put_default_null_skcipher
+	fips_crypto_put_default_rng
+	fips_crypto_register_aead
+	fips_crypto_register_aeads
+	fips_crypto_register_ahash
+	fips_crypto_register_ahashes
+	fips_crypto_register_akcipher
+	fips_crypto_register_alg
+	fips_crypto_register_algs
+	fips_crypto_register_instance
+	fips_crypto_register_kpp
+	fips_crypto_register_lskcipher
+	fips_crypto_register_lskciphers
+	fips_crypto_register_notifier
+	fips_crypto_register_rng
+	fips_crypto_register_rngs
+	fips_crypto_register_shash
+	fips_crypto_register_shashes
+	fips_crypto_register_skcipher
+	fips_crypto_register_skciphers
+	fips_crypto_register_template
+	fips_crypto_register_templates
+	fips_crypto_remove_final
+	fips_crypto_remove_spawns
+	fips_crypto_req_done
+	fips_crypto_rng_reset
+	fips_crypto_schedule_test
+	fips_crypto_sha1_finup
+	fips_crypto_sha1_update
+	fips_crypto_sha256_finup
+	fips_crypto_sha256_update
+	fips_crypto_sha3_final
+	fips_crypto_sha3_init
+	fips_crypto_sha3_update
+	fips_crypto_sha512_finup
+	fips_crypto_sha512_update
+	fips_crypto_shash_alg_has_setkey
+	fips_crypto_shash_digest
+	fips_crypto_shash_export
+	fips_crypto_shash_final
+	fips_crypto_shash_finup
+	fips_crypto_shash_import
+	fips_crypto_shash_setkey
+	fips_crypto_shash_tfm_digest
+	fips_crypto_shash_update
+	fips_crypto_shoot_alg
+	fips_crypto_sig_maxsize
+	fips_crypto_sig_set_privkey
+	fips_crypto_sig_set_pubkey
+	fips_crypto_sig_sign
+	fips_crypto_sig_verify
+	fips_crypto_skcipher_decrypt
+	fips_crypto_skcipher_encrypt
+	fips_crypto_skcipher_export
+	fips_crypto_skcipher_import
+	fips_crypto_skcipher_setkey
+	fips_crypto_spawn_tfm
+	fips_crypto_spawn_tfm2
+	fips_crypto_type_has_alg
+	fips_crypto_unregister_aead
+	fips_crypto_unregister_aeads
+	fips_crypto_unregister_ahash
+	fips_crypto_unregister_ahashes
+	fips_crypto_unregister_akcipher
+	fips_crypto_unregister_alg
+	fips_crypto_unregister_algs
+	fips_crypto_unregister_instance
+	fips_crypto_unregister_kpp
+	fips_crypto_unregister_lskcipher
+	fips_crypto_unregister_lskciphers
+	fips_crypto_unregister_notifier
+	fips_crypto_unregister_rng
+	fips_crypto_unregister_rngs
+	fips_crypto_unregister_shash
+	fips_crypto_unregister_shashes
+	fips_crypto_unregister_skcipher
+	fips_crypto_unregister_skciphers
+	fips_crypto_unregister_template
+	fips_crypto_unregister_templates
+	fips_decrypt_blob
+	fips_ecc_alloc_point
+	fips_ecc_digits_from_bytes
+	fips_ecc_free_point
+	fips_ecc_gen_privkey
+	fips_ecc_get_curve
+	fips_ecc_get_curve25519
+	fips_ecc_is_key_valid
+	fips_ecc_is_pubkey_valid_full
+	fips_ecc_is_pubkey_valid_partial
+	fips_ecc_make_pub_key
+	fips_ecc_point_is_zero
+	fips_ecc_point_mult_shamir
+	fips_encrypt_blob
+	fips_find_asymmetric_key
+	fips_key_being_used_for
+	fips_key_type_asymmetric
+	fips_kpp_register_instance
+	fips_lskcipher_alloc_instance_simple
+	fips_lskcipher_register_instance
+	fips_pkcs7_free_message
+	fips_pkcs7_get_content_data
+	fips_pkcs7_parse_message
+	fips_pkcs7_supply_detached_data
+	fips_pkcs7_validate_trust
+	fips_pkcs7_verify
+	fips_public_key_free
+	fips_public_key_signature_free
+	fips_public_key_subtype
+	fips_public_key_verify_signature
+	fips_query_asymmetric_key
+	fips_register_asymmetric_key_parser
+	fips_rsa_parse_priv_key
+	fips_rsa_parse_pub_key
+	fips_sha1_zero_message_hash
+	fips_sha224_zero_message_hash
+	fips_sha256_zero_message_hash
+	fips_sha384_zero_message_hash
+	fips_sha512_zero_message_hash
+	fips_shash_ahash_digest
+	fips_shash_ahash_finup
+	fips_shash_ahash_update
+	fips_shash_free_singlespawn_instance
+	fips_shash_register_instance
+	fips_skcipher_alloc_instance_simple
+	fips_skcipher_register_instance
+	fips_skcipher_walk_aead_decrypt
+	fips_skcipher_walk_aead_encrypt
+	fips_skcipher_walk_async
+	fips_skcipher_walk_complete
+	fips_skcipher_walk_done
+	fips_skcipher_walk_virt
+	fips_unregister_asymmetric_key_parser
+	fips_verify_signature
+	fips_vli_cmp
+	fips_vli_from_be64
+	fips_vli_from_le64
+	fips_vli_is_zero
+	fips_vli_mod_inv
+	fips_vli_mod_mult_slow
+	fips_vli_num_bits
+	fips_vli_sub
+	fips_x509_cert_parse
+	fips_x509_decode_time
+	fips_x509_free_certificate
+	fips_x509_load_certificate_list
 	fixed_size_llseek
 	flush_signals
 	folio_mark_dirty
@@ -264,6 +534,16 @@
 	get_free_pages_noprof
 	get_random_bytes
 	get_user_pages
+	gf128mul_4k_bbe
+	gf128mul_4k_lle
+	gf128mul_64k_bbe
+	gf128mul_bbe
+	gf128mul_free_64k
+	gf128mul_init_4k_bbe
+	gf128mul_init_4k_lle
+	gf128mul_init_64k_bbe
+	gf128mul_lle
+	gf128mul_x8_ble
 	grab_cache_page_write_begin
 	hugetlb_optimize_vmemmap_key
 	igrab
@@ -485,6 +765,12 @@
 	sg_next
 	si_meminfo
 	sigprocmask
+	simd_register_aeads_compat
+	simd_register_skciphers_compat
+	simd_skcipher_create_compat
+	simd_skcipher_free
+	simd_unregister_aeads
+	simd_unregister_skciphers
 	simple_read_from_buffer
 	simple_strtol
 	simple_strtoull
