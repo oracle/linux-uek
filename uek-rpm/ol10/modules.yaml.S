@@ -464,7 +464,6 @@ modules-core:
 - tcp_nv
 - tcrypt
 - tea
-- tee
 - tls
 - ts_bm
 - ts_fsm
@@ -548,7 +547,6 @@ modules-core:
 - aes-neon-bs
 - arm_dmc620_pmu
 - arm_spe_pmu
-- asn1_encoder
 - backlight
 - button
 - cppc_cpufreq
@@ -570,7 +568,6 @@ modules-core:
 - tag_qca
 - tpm_tis
 - tpm_tis_core
-- trusted
 - xgene-hwmon
 - xor-neon
 #endif /* Arch_aarch64 */
@@ -665,6 +662,7 @@ modules-core:
 - skx_edac_common
 - sr_mod
 - tpm_svsm
+- tee
 - twofish-avx-x86_64
 - twofish-x86_64
 - twofish-x86_64-3way
