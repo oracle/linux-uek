@@ -1897,7 +1897,8 @@ static struct mst_dev_data* mst_device_create(enum dev_type type, struct pci_dev
     if (alloc_chrdev_region(&dev->my_dev, 0, 1, dev->name)) {
         mst_err("failed to allocate chrdev_region\n");
     }
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0) || \
+    (defined(CONFIG_RHEL_DIFFERENCES))
     dev->cl = class_create(dev->name);
 #else
     dev->cl = class_create(THIS_MODULE, dev->name);
