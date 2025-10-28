@@ -54,11 +54,7 @@
  #error "The CPU Jitter random number generator must not be compiled with optimizations. See documentation. Use the compiler switch -O0 for compiling jitterentropy.c."
 #endif
 
-typedef	unsigned long long	__u64;
-typedef	long long		__s64;
-typedef	unsigned int		__u32;
-typedef unsigned char		u8;
-#define NULL    ((void *) 0)
+#include <linux/types.h>
 
 /* The entropy pool */
 struct rand_data {
