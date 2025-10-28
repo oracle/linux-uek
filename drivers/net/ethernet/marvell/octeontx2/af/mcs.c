@@ -408,11 +408,6 @@ void mcs_secy_plcy_write(struct mcs *mcs, u64 plcy, int secy_id, int dir)
 	else
 		reg = MCSX_CPM_TX_SLAVE_SECY_PLCY_MEMX(secy_id);
 
-	if ((devtype == CN20KA_MCS || devtype == CNF20KA_MCS) && dir == MCS_TX) {
-		val = plcy >> 21;
-		plcy &= GENMASK_ULL(21, 0);
-		plcy |= val << 22;
-	}
 	mcs_reg_write(mcs, reg, plcy);
 
 	if (devtype != CNF10KB_MCS  && dir == MCS_RX)
