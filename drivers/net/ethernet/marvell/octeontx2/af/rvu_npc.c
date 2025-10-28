@@ -1598,8 +1598,13 @@ static void npc_program_kpu_profile(struct rvu *rvu, int blkaddr, int kpu,
 
 	max_entries = rvu->hw->npc_kpu_entries;
 
+	WARN(profile->cam_entries > max_entries,
+	     "KPU%u: err: hw max entries=%u, input entries=%u\n",
+	     kpu,  rvu->hw->npc_kpu_entries, profile->cam_entries);
+
 	/* Program CAM match entries for previous KPU extracted data */
 	num_entries = min_t(int, profile->cam_entries, max_entries);
+
 	for (entry = 0; entry < num_entries; entry++)
 		npc_config_kpucam(rvu, blkaddr,
 				  adapter->from_fs ? (void *)&profile->cam2[entry] :
