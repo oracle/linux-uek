@@ -558,6 +558,18 @@ static void remove_inode_hugepages(struct inode *inode, loff_t lstart,
 			unlock_page(page);
 			if (!truncate_op)
 				mutex_unlock(&hugetlb_fault_mutex_table[hash]);
+
+			/*
+			 * Poisoned mapped large pages still have an extra
+			 * reference taken by try_memory_failure_hugetlb()
+			 * and will not be freed by huge_pagevec_release()
+			 * because of that.
+			 * Print this information for MFD_MF_KEEP_UE_MAPPED
+			 * poisoned large pages.
+			 */
+			if (PageHWPoison(page) && mapping_mf_keep_ue_mapped(mapping))
+				pr_info("%#lx: Dropping poisoned page of size: 0x%lx\n",
+					page_to_pfn(page), page_size(page));
 		}
 		huge_pagevec_release(&pvec);
 		cond_resched();

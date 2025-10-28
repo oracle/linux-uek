@@ -261,7 +261,8 @@ long memfd_fcntl(struct file *file, unsigned int cmd, unsigned long arg)
 #define MFD_NAME_PREFIX_LEN (sizeof(MFD_NAME_PREFIX) - 1)
 #define MFD_NAME_MAX_LEN (NAME_MAX - MFD_NAME_PREFIX_LEN)
 
-#define MFD_ALL_FLAGS (MFD_CLOEXEC | MFD_ALLOW_SEALING | MFD_HUGETLB)
+#define MFD_ALL_FLAGS (MFD_CLOEXEC | MFD_ALLOW_SEALING | MFD_HUGETLB | \
+		       MFD_MF_KEEP_UE_MAPPED)
 
 SYSCALL_DEFINE2(memfd_create,
 		const char __user *, uname,
@@ -276,11 +277,24 @@ SYSCALL_DEFINE2(memfd_create,
 	if (!(flags & MFD_HUGETLB)) {
 		if (flags & ~(unsigned int)MFD_ALL_FLAGS)
 			return -EINVAL;
+		if (flags & MFD_MF_KEEP_UE_MAPPED)
+			return -EINVAL;
 	} else {
 		/* Allow huge page size encoding in flags. */
 		if (flags & ~(unsigned int)(MFD_ALL_FLAGS |
 				(MFD_HUGE_MASK << MFD_HUGE_SHIFT)))
 			return -EINVAL;
+		/* MFD_MF_KEEP_UE_MAPPED can't use 1G hugepages and larger */
+		if (flags & MFD_MF_KEEP_UE_MAPPED) {
+			if (flags & (MFD_HUGE_MASK << MFD_HUGE_SHIFT)) {
+				if (((flags >> MFD_HUGE_SHIFT) &
+				    MFD_HUGE_MASK) > PMD_SHIFT)
+					return -EINVAL;
+			} else {
+				if (huge_page_size(&default_hstate) > PMD_SIZE)
+					return -EINVAL;
+			}
+		}
 	}
 
 	/* length includes terminating zero */
@@ -327,6 +341,16 @@ SYSCALL_DEFINE2(memfd_create,
 	}
 	file->f_mode |= FMODE_LSEEK | FMODE_PREAD | FMODE_PWRITE;
 	file->f_flags |= O_LARGEFILE;
+
+	/*
+	 * MFD_MF_KEEP_UE_MAPPED can only be specified in memfd_create; no API
+	 * to update it once memfd is created. MFD_MF_KEEP_UE_MAPPED is not
+	 * seal-able.
+	 *
+	 * For now MFD_MF_KEEP_UE_MAPPED is only supported by HugeTLBFS.
+	 */
+	if (flags & MFD_MF_KEEP_UE_MAPPED)
+		mapping_set_mf_keep_ue_mapped(file->f_mapping);
 
 	if (flags & MFD_ALLOW_SEALING) {
 		file_seals = memfd_file_seals_ptr(file);

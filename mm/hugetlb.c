@@ -5594,6 +5594,20 @@ static inline vm_fault_t hugetlb_handle_userfault(struct vm_area_struct *vma,
 	return handle_userfault(&vmf, reason);
 }
 
+#ifdef CONFIG_MEMORY_FAILURE
+bool hugetlb_should_keep_hwpoison_mapped(struct page *page,
+					 struct address_space *mapping)
+{
+	if (WARN_ON_ONCE(!PageHuge(page)))
+		return false;
+
+	if (!mapping)
+		return false;
+
+	return mapping_mf_keep_ue_mapped(mapping);
+}
+#endif
+
 static vm_fault_t hugetlb_no_page(struct mm_struct *mm,
 			struct vm_area_struct *vma,
 			struct address_space *mapping, pgoff_t idx,
@@ -5694,9 +5708,11 @@ static vm_fault_t hugetlb_no_page(struct mm_struct *mm,
 		 * So we need to block hugepage fault by PG_hwpoison bit check.
 		 */
 		if (unlikely(PageHWPoison(page))) {
-			ret = VM_FAULT_HWPOISON_LARGE |
-				VM_FAULT_SET_HINDEX(hstate_index(h));
-			goto backout_unlocked;
+			if (!mapping_mf_keep_ue_mapped(mapping)) {
+				ret = VM_FAULT_HWPOISON_LARGE |
+					VM_FAULT_SET_HINDEX(hstate_index(h));
+				goto backout_unlocked;
+			}
 		}
 
 		/* Check for page in userfault range. */

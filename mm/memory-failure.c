@@ -363,6 +363,8 @@ static void add_to_kill(struct task_struct *tsk, struct page *p,
 		       struct list_head *to_kill)
 {
 	struct to_kill *tk;
+	struct page *hpage;
+	struct address_space *mapping;
 
 	tk = kmalloc(sizeof(struct to_kill), GFP_ATOMIC);
 	if (!tk) {
@@ -373,8 +375,19 @@ static void add_to_kill(struct task_struct *tsk, struct page *p,
 	tk->addr = page_address_in_vma(p, vma);
 	if (is_zone_device_page(p))
 		tk->size_shift = dev_pagemap_mapping_shift(p, vma);
-	else
-		tk->size_shift = page_shift(compound_head(p));
+	else {
+		hpage = compound_head(p);
+		mapping = page_mapping(hpage);
+		if (mapping && mapping_mf_keep_ue_mapped(mapping))
+			/*
+			 * Let userspace know the radius of HWPoison is
+			 * the size of raw page; accessing other sub-pages
+			 * inside the large page is still ok.
+			 */
+			tk->size_shift = PAGE_SHIFT;
+		else
+			tk->size_shift = page_shift(hpage);
+	}
 
 	/*
 	 * Send SIGKILL if "tk->addr == -EFAULT". Also, as
@@ -1110,6 +1123,13 @@ static int me_huge_page(struct page_state *ps, struct page *p)
 		}
 	}
 
+	/*
+	 * MF still needs to hold a refcount to prevent HWPoisoned pages
+	 * from being freed in remove_inode_hugepages().
+	 */
+	if (hugetlb_should_keep_hwpoison_mapped(hpage, mapping))
+		return res;
+
 	if (has_extra_refcount(ps, p, extra_pins))
 		res = MF_FAILED;
 
@@ -1358,6 +1378,7 @@ static bool hwpoison_user_mappings(struct page *p, unsigned long pfn,
 	struct address_space *mapping;
 	LIST_HEAD(tokill);
 	bool unmap_success;
+	bool keep_mapped = false;
 	int kill = 1, forcekill;
 	bool mlocked = PageMlocked(hpage);
 
@@ -1421,27 +1442,31 @@ static bool hwpoison_user_mappings(struct page *p, unsigned long pfn,
 	if (!PageHuge(hpage)) {
 		try_to_unmap(hpage, ttu);
 	} else {
-		if (!PageAnon(hpage)) {
-			/*
-			 * For hugetlb pages in shared mappings, try_to_unmap
-			 * could potentially call huge_pmd_unshare.  Because of
-			 * this, take semaphore in write mode here and set
-			 * TTU_RMAP_LOCKED to indicate we have taken the lock
-			 * at this higher level.
-			 */
-			mapping = hugetlb_page_mapping_lock_write(hpage);
-			if (mapping) {
-				try_to_unmap(hpage, ttu|TTU_RMAP_LOCKED);
-				i_mmap_unlock_write(mapping);
-			} else
-				pr_info("Memory failure: %#lx: could not lock mapping for mapped huge page\n", pfn);
-		} else {
-			try_to_unmap(hpage, ttu);
+		keep_mapped = hugetlb_should_keep_hwpoison_mapped(hpage, mapping);
+		if (!keep_mapped) {
+			if (!PageAnon(hpage)) {
+				/*
+				 * For hugetlb pages in shared mappings, try_to_unmap
+				 * could potentially call huge_pmd_unshare.  Because of
+				 * this, take semaphore in write mode here and set
+				 * TTU_RMAP_LOCKED to indicate we have taken the lock
+				 * at this higher level.
+				 */
+				mapping = hugetlb_page_mapping_lock_write(hpage);
+				if (mapping) {
+					try_to_unmap(hpage, ttu|TTU_RMAP_LOCKED);
+					i_mmap_unlock_write(mapping);
+				} else
+					pr_info("Memory failure: %#lx: could not lock mapping for mapped huge page\n",
+						pfn);
+			} else {
+				try_to_unmap(hpage, ttu);
+			}
 		}
 	}
 
 	unmap_success = !page_mapped(p);
-	if (!unmap_success)
+	if (!keep_mapped && !unmap_success)
 		pr_err("Memory failure: %#lx: failed to unmap page (mapcount=%d)\n",
 		       pfn, page_mapcount(p));
 
@@ -1465,7 +1490,7 @@ static bool hwpoison_user_mappings(struct page *p, unsigned long pfn,
 	forcekill = PageDirty(hpage) || (flags & MF_MUST_KILL);
 	kill_procs(&tokill, forcekill, pfn, flags);
 
-	return unmap_success;
+	return unmap_success || keep_mapped;
 }
 
 static int identify_page_state(unsigned long pfn, struct page *p,
@@ -1568,6 +1593,7 @@ static int try_memory_failure_hugetlb(unsigned long pfn, int flags, int *hugetlb
 	struct page *head;
 	unsigned long page_flags;
 	bool retry = true;
+	struct address_space *mapping;
 
 	*hugetlb = 1;
 retry:
@@ -1575,10 +1601,14 @@ retry:
 	if (res == 2) { /* fallback to normal page handling */
 		*hugetlb = 0;
 		return 0;
+	}
+	head = compound_head(p);
+	mapping = page_mapping(head);
+	if ((res == -EHWPOISON) && hugetlb_should_keep_hwpoison_mapped(head, mapping)) {
+		res = 1;
 	} else if (res == -EHWPOISON) {
 		pr_err("Memory failure: %#lx: already hardware poisoned\n", pfn);
 		if (flags & MF_ACTION_REQUIRED) {
-			head = compound_head(p);
 			res = kill_accessing_process(current, page_to_pfn(head), flags);
 			action_result(pfn, MF_MSG_ALREADY_POISONED, MF_FAILED);
 		}
@@ -1592,7 +1622,6 @@ retry:
 		return res;
 	}
 
-	head = compound_head(p);
 	lock_page(head);
 
 	if (hwpoison_filter(p)) {

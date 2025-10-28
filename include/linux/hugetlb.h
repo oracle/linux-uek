@@ -798,6 +798,16 @@ static inline int hstate_index(struct hstate *h)
 extern int dissolve_free_huge_page(struct page *page);
 extern int dissolve_free_huge_pages(unsigned long start_pfn,
 				    unsigned long end_pfn);
+#ifdef CONFIG_MEMORY_FAILURE
+extern bool hugetlb_should_keep_hwpoison_mapped(struct page *pvec,
+						struct address_space *mapping);
+#else
+static inline bool hugetlb_should_keep_hwpoison_mapped(struct page *pvec,
+						struct address_space *mapping)
+{
+	return false;
+}
+#endif
 
 #ifdef CONFIG_ARCH_ENABLE_HUGEPAGE_MIGRATION
 #ifndef arch_hugetlb_migration_supported

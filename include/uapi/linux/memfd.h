@@ -8,6 +8,12 @@
 #define MFD_CLOEXEC		0x0001U
 #define MFD_ALLOW_SEALING	0x0002U
 #define MFD_HUGETLB		0x0004U
+/*
+ * Keep owned large pages mapped when uncorrectable memory errors (UE) causes
+ * memory failure (MF) within the page. Only at the end of the mapping
+ * will its HWPoison-ed pages be dealt with.
+ */
+#define MFD_MF_KEEP_UE_MAPPED	0x0020U
 
 /*
  * Huge page size encoding when MFD_HUGETLB is specified, and a huge page
