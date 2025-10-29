@@ -2279,7 +2279,6 @@ fi
 %{debuginfodir}/lib/modules/%{KVERREL}%{?2:.%{2}}\
 %{debuginfodir}/usr/src/kernels/%{KVERREL}%{?2:.%{2}}\
 %if %{with_fips_build}\
-%{expand:%%files -f fips-debuginfo-%{KVERREL}%{?2:.%{2}}.list}\
 %{expand:%%files -f fips-src-build-support.list -n %{variant_name}-fips-build-support}\
 %dir /usr/lib/fips-build-support\
 /usr/lib/fips-build-support/%{KVERREL}%{?2:.%{2}}/fips140.ko\
