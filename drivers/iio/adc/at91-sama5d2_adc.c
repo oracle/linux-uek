@@ -1887,6 +1887,7 @@ static int at91_adc_remove(struct platform_device *pdev)
 	struct at91_adc_state *st = iio_priv(indio_dev);
 
 	iio_device_unregister(indio_dev);
+	cancel_work_sync(&st->touch_st.workq);
 
 	at91_adc_dma_disable(pdev);
 
