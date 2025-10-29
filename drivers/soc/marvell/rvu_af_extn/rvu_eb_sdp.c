@@ -408,7 +408,8 @@ int rvu_mbox_handler_sdp_rings_alloc(struct rvu *rvu,
 			break;
 
 		err = cn20k_sdp_mcam_alloc(rvu, rvu_pcifunc,
-					   pfvf->rx_chan_base + ring, &rx_entry);
+					   rvu->hw->sdp_chan_base + ring,
+					   &rx_entry);
 		if (err) {
 			/* Unable to allocate mcam entry for ring */
 			dev_err(rvu->dev,
@@ -439,7 +440,7 @@ int rvu_mbox_handler_sdp_rings_alloc(struct rvu *rvu,
 
 		sdp_cfg->hw_ring_map[slot] = ring;
 		/* TX and RX channels are same */
-		sdp_cfg->channels[slot] = pfvf->rx_chan_base + ring;
+		sdp_cfg->channels[slot] = rvu->hw->sdp_chan_base + ring;
 		sdp_cfg->nr_rings++;
 		rsp->count++;
 
