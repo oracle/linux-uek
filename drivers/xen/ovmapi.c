@@ -1118,20 +1118,24 @@ static int ovmapi_init_watcher(struct notifier_block *notifier,
 	return NOTIFY_DONE;
 }
 
-static int ovmapi_syscore_suspend(void)
+static int ovmapi_syscore_suspend(void *data)
 {
 	return 0;
 }
 
-static void ovmapi_syscore_resume(void)
+static void ovmapi_syscore_resume(void *data)
 {
     ovmapi_info.last_read_message = 0;
     ovmapi_info.last_write_message = 0;
 }
 
-static struct syscore_ops ovmapi_syscore_ops = {
+static const struct syscore_ops ovmapi_syscore_ops = {
 	.suspend = ovmapi_syscore_suspend,
 	.resume = ovmapi_syscore_resume,
+};
+
+static struct syscore ovmapi_syscore = {
+	.ops = &ovmapi_syscore_ops,
 };
 
 static const struct file_operations ovmapi_fops = {
@@ -1183,7 +1187,7 @@ static int __init ovmapi_init(void)
 	xenstore_notifier.notifier_call = ovmapi_init_watcher;
 	ovmapi_info.event_counter = 0;
 	register_xenstore_notifier(&xenstore_notifier);
-	register_syscore_ops(&ovmapi_syscore_ops);
+	register_syscore(&ovmapi_syscore);
 
 	return 0;
 }
