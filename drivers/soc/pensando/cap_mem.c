@@ -227,11 +227,32 @@ out:
 }
 #endif
 
+#define CAP_MEM_MMAP_ALIGN SZ_2M
+
+static bool cap_mem_mmap_type_try(int *type, bool *type_set, int type_new)
+{
+	if (*type_set && *type != type_new) {
+		pr_err_ratelimited("capmem: inconsistent mapping type: %d vs %d, "
+				   "mmap() requests spanning differently typed "
+				   "ranges are not supported\n",
+				   *type, type_new);
+		return false;
+	}
+
+	*type = type_new;
+	*type_set = true;
+
+	return true;
+}
+
 static int cap_mem_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	size_t size = vma->vm_end - vma->vm_start;
 	phys_addr_t p_start = (phys_addr_t)vma->vm_pgoff << PAGE_SHIFT;
 	phys_addr_t p_end = p_start + size - 1;
+	bool start_matched = false, end_matched = false;
+	int type;
+	bool type_set = false;
 	pgprot_t pgprot = vma->vm_page_prot;
 	int i;
 
@@ -243,15 +264,71 @@ static int cap_mem_mmap(struct file *file, struct vm_area_struct *vma)
 	if (!(vma->vm_flags & VM_MAYSHARE))
 		return -EINVAL;
 
-	// find permitted range
-	for (i = 0; i < nmem_ranges; i++)
-		if (p_start >= mem_range[i].start &&
-		    p_end < (mem_range[i].start + mem_range[i].len))
-			break;
-	if (i == nmem_ranges)
+	/*
+	 * To reject obviously-incorrect mmap() requests we require that:
+	 * mmap() start is inside a valid range (after adjusting that range
+	 * start down to CAP_MEM_MMAP_ALIGN), AND:
+	 * mmap() len is CAP_MEM_MMAP_ALIGN and mmap() start is
+	 * CAP_MEM_MMAP_ALIGN-aligned OR mmap() end is inside any allowed range
+	 * (not necessary the same range as the start was).
+	 */
+	for (i = 0; i < nmem_ranges && !(start_matched && end_matched); i++) {
+		uint64_t start_aligned = ALIGN_DOWN(mem_range[i].start,
+						    CAP_MEM_MMAP_ALIGN);
+		uint64_t range_end = mem_range[i].start +
+			(mem_range[i].len - 1);
+
+		/* check if the requested range start is inside this allowed aligned range */
+		if (p_start >= start_aligned && p_start <= range_end) {
+			start_matched = true;
+
+			if (IS_ALIGNED(p_start, CAP_MEM_MMAP_ALIGN) &&
+			    size == CAP_MEM_MMAP_ALIGN)
+				end_matched = true;
+
+			/*
+			 * If the requested range actually intersects this
+			 * allowed range take this allowed range type into
+			 * consideration when selecting the overall type of the
+			 * mapping.
+			 */
+			if (p_start >= mem_range[i].start) {
+				if (!cap_mem_mmap_type_try(&type, &type_set,
+							   mem_range[i].type))
+					return -EINVAL;
+			}
+		}
+
+		/* check if the requested range end is inside this allowed aligned range */
+		if (p_end >= start_aligned && p_end <= range_end) {
+			end_matched = true;
+
+			/*
+			 * Same as in the previous "if" block, but takes care of
+			 * allowed ranges that intersect the tail end of the requested
+			 * range.
+			 */
+			if (p_end >= mem_range[i].start) {
+				if (!cap_mem_mmap_type_try(&type, &type_set,
+							   mem_range[i].type))
+					return -EINVAL;
+			}
+		}
+	}
+
+	if (!start_matched || !end_matched)
 		return -EPERM;
 
-	switch (mem_range[i].type) {
+	/*
+	 * Possible if no allowed range actually intersects the requested range.
+	 * In this case arbitrarily select some type - it should not matter
+	 * since all userspace memory accesses should abort anyway.
+	 */
+	if (!type_set) {
+		type = CAPMEM_TYPE_COHERENT;
+	}
+
+	switch (type) {
 	case CAPMEM_TYPE_DEVICE:
 		/* register space must be device-mapped */
 		pgprot = pgprot_device(pgprot);
