@@ -24,8 +24,10 @@
 
 #define SDP_EVF_RSRCID_MAX		256
 
+#define SDP_MAX_VECS			81
+
 struct sdp_drvdata sdp_data; /*global struct to hold mbox_wqs */
-struct sdp_irq_data epf_cookie[SDP_MAX_EPF];
+struct sdp_irq_data vec_data[SDP_MAX_VECS];
 
 #define M(_name, _id, _fn_name, _req_type, _rsp_type)			\
 static struct _req_type __maybe_unused					\
@@ -903,9 +905,9 @@ free_bitmap:
 
 static irqreturn_t rvu_mbox_epf_intr_handler(int irq, void *cookie)
 {
-	struct sdp_irq_data *epf_cookie = cookie;
-	struct rvu *rvu = epf_cookie->block->rvu;
-	int epf_id = epf_cookie->pf_data;
+	struct sdp_irq_data *vec_data = cookie;
+	struct rvu *rvu = vec_data->block->rvu;
+	int epf_id = vec_data->pf_data;
 	u64 epf_intr;
 
 	epf_intr = rvu_read64(rvu, BLKADDR_SDP, SDP_AF_AP_EPFX_MBOX_LINT(epf_id));
@@ -924,7 +926,7 @@ static irqreturn_t rvu_mbox_epf_intr_handler(int irq, void *cookie)
 static void rvu_sdp_unregister_interrupts_block(struct rvu_block *block,
 						void *data)
 {
-	int i, offs, blkaddr;
+	int vec, offs, blkaddr, reg_index;
 	struct rvu *rvu = block->rvu;
 
 	blkaddr = block->addr;
@@ -936,27 +938,30 @@ static void rvu_sdp_unregister_interrupts_block(struct rvu_block *block,
 		return;
 	}
 
-	for (i = 0; i < SDP_MBOX_VEC_CNT; i++) {
-		rvu_write64(rvu, blkaddr, SDP_AF_AP_EPFX_MBOX_LINT_ENA_W1S(i), 0x1);
-		if (rvu->irq_allocated[offs + i]) {
-			free_irq(pci_irq_vector(rvu->pdev, offs + i), block);
-			rvu->irq_allocated[offs + i] = false;
+	for (vec = SDP_MBOX_LINT_EPF_0; vec < SDP_MBOX_LINT_EPF_0 +
+	     SDP_MBOX_VEC_CNT; vec++) {
+		reg_index = vec - SDP_MBOX_LINT_EPF_0;
+		rvu_write64(rvu, blkaddr,
+			    SDP_AF_AP_EPFX_MBOX_LINT_ENA_W1C(reg_index), 0x1);
+		if (rvu->irq_allocated[offs + vec]) {
+			free_irq(pci_irq_vector(rvu->pdev, offs + vec), NULL);
+			rvu->irq_allocated[offs + vec] = false;
 		}
 	}
 }
 
-static int rvu_sdp_af_request_irq(struct sdp_irq_data *epf_cookie,
+static int rvu_sdp_af_request_irq(struct sdp_irq_data *vec_data,
 				  int offset, irq_handler_t handler,
 				  const char *name)
 {
-	struct rvu *rvu = epf_cookie->block->rvu;
+	struct rvu *rvu = vec_data->block->rvu;
 	int ret = 0;
 
 	WARN_ON(rvu->irq_allocated[offset]);
 	rvu->irq_allocated[offset] = false;
 	sprintf(&rvu->irq_name[offset * NAME_SIZE], "%s", name);
 	ret = request_irq(pci_irq_vector(rvu->pdev, offset), handler, 0,
-			  &rvu->irq_name[offset * NAME_SIZE], epf_cookie);
+			  &rvu->irq_name[offset * NAME_SIZE], vec_data);
 	if (ret)
 		dev_warn(rvu->dev, "Failed to register %s irq\n", name);
 	else
@@ -968,8 +973,9 @@ static int rvu_sdp_af_request_irq(struct sdp_irq_data *epf_cookie,
 static int rvu_sdp_register_interrupts_block(struct rvu_block *block,
 					     void *data)
 {
-	int offs, blkaddr, ret = 0, epf;
+	int offs, blkaddr, ret = 0, vec;
 	struct rvu *rvu = block->rvu;
+	int reg_index;
 
 	blkaddr = block->addr;
 
@@ -980,17 +986,22 @@ static int rvu_sdp_register_interrupts_block(struct rvu_block *block,
 			 "Failed to get SDP_AF_INT vector offsets");
 		return 0;
 	}
+
 	/* Register and enable mbox interrupt */
-	for (epf = 0; epf < SDP_MBOX_VEC_CNT; epf++) {
-		epf_cookie[epf].block = block;
-		epf_cookie[epf].pf_data = epf;
-		sprintf(epf_cookie[epf].irq_name, "epf%d_intr_handler", epf);
-		ret = rvu_sdp_af_request_irq(&epf_cookie[epf], offs + SDP_MBOX_LINT_EPF_0 + epf,
-					     rvu_mbox_epf_intr_handler, epf_cookie[epf].irq_name);
+	for (vec = SDP_MBOX_LINT_EPF_0; vec < SDP_MBOX_LINT_EPF_0 +
+	     SDP_MBOX_VEC_CNT; vec++) {
+		reg_index = vec - SDP_MBOX_LINT_EPF_0;
+		vec_data[vec].block = block;
+		vec_data[vec].pf_data = reg_index;
+		sprintf(vec_data[vec].irq_name, "epf%d_intr_handler", reg_index);
+		ret = rvu_sdp_af_request_irq(&vec_data[vec], offs + vec,
+					     rvu_mbox_epf_intr_handler,
+					     vec_data[vec].irq_name);
 		if (!ret)
 			goto err;
 
-		rvu_write64(rvu, block->addr, SDP_AF_AP_EPFX_MBOX_LINT_ENA_W1S(epf), ~0ULL);
+		rvu_write64(rvu, block->addr,
+			    SDP_AF_AP_EPFX_MBOX_LINT_ENA_W1S(reg_index), ~0ULL);
 	}
 
 	return 0;

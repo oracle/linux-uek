@@ -21,6 +21,7 @@
 #define SDP_PRIV_AF_INT_CFG			   0xc000000
 #define SDP_AF_AP_EPFX_MBOX_LINT(a)		   (0x40c0040 + 0x400000 * ((a) & 0xf))
 #define SDP_AF_AP_EPFX_MBOX_LINT_ENA_W1S(a)        (0x40c0058 + 0x400000 * ((a) & 0xf))
+#define SDP_AF_AP_EPFX_MBOX_LINT_ENA_W1C(a)        (0x40c0050  + 0x400000 * ((a) & 0xf))
 
 /* SDP IRQ */
 #define SDP_MBOX_VEC_CNT			   0x10
