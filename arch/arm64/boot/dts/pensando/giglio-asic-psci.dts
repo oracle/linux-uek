@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: GPL-2.0
+
+/dts-v1/;
+
+/ {
+	model = "Giglio ASIC Board";
+	compatible = "pensando,giglio";
+
+	aliases {
+		serial0 = &uart0;
+		spi0 = &spi0;
+		spi1 = &qspi;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+};
+
+#include "giglio.dtsi"
+#include "elba-16core.dtsi"
+#include "elba-16core-psci.dtsi"
+#include "giglio-asic-common.dtsi"
+#include "elba-flash-parts.dtsi"
+#include "elba-asic-memory.dtsi"
+#include "elba-mdev.dtsi"

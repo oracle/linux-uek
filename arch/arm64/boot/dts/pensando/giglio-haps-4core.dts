@@ -1,0 +1,46 @@
+// SPDX-License-Identifier: GPL-2.0
+
+/dts-v1/;
+
+/ {
+	model = "Giglio HAPS Emulation Board";
+	compatible = "pensando,giglio";
+
+	aliases {
+		serial0 = &uart0;
+		spi0 = &spi0;
+		spi1 = &qspi;
+	};
+
+	chosen {
+		stdout-path = "serial0:19200n8";
+	};
+};
+
+#include "giglio.dtsi"
+#include "elba-4core.dtsi"
+#include "giglio-haps-common.dtsi"
+#include "elba-flash-parts.dtsi"
+#include "elba-asic-memory.dtsi"
+#include "elba-mdev.dtsi"
+
+&i2c0 {
+	clock-frequency = <100000>;
+	status = "okay";
+};
+
+&i2c1 {
+	clock-frequency = <100000>;
+	status = "okay";
+};
+
+
+&i2c2 {
+	clock-frequency = <100000>;
+	status = "okay";
+};
+
+&i2c3 {
+	clock-frequency = <100000>;
+	status = "okay";
+};
