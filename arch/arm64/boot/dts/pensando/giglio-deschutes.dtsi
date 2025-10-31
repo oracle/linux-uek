@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: GPL-2.0
+
+&i2c0 {
+	clock-frequency = <100000>;
+	status = "okay";
+
+	regulator@60 {
+		compatible = "ti,tps53689";
+		reg = <0x60>;
+	};
+	vdd_vrm@62 {
+		compatible = "ti,tps53689";
+		reg = <0x62>;
+	};
+};
+
+&i2c2 {
+	clock-frequency = <100000>;
+	status = "okay";
+
+	temp-sensor@4c {
+		status = "disabled";
+	};
+
+	rtc@51 {
+		status = "disabled";
+	};
+
+	regulator@62 {
+		status = "disabled";
+	};
+};
