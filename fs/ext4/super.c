@@ -719,7 +719,7 @@ static void ext4_handle_error(struct super_block *sb, bool force_ro, int error,
 	if (!continue_fs && !sb_rdonly(sb)) {
 		set_bit(EXT4_FLAGS_SHUTDOWN, &EXT4_SB(sb)->s_ext4_flags);
 		if (journal)
-			jbd2_journal_abort(journal, -EIO);
+			jbd2_journal_abort(journal, -error);
 	}
 
 	if (!bdev_read_only(sb->s_bdev)) {
@@ -5849,7 +5849,7 @@ static int ext4_journal_bmap(journal_t *journal, sector_t *block)
 		ext4_msg(journal->j_inode->i_sb, KERN_CRIT,
 			 "journal bmap failed: block %llu ret %d\n",
 			 *block, ret);
-		jbd2_journal_abort(journal, ret ? ret : -EIO);
+		jbd2_journal_abort(journal, ret ? ret : -EFSCORRUPTED);
 		return ret;
 	}
 	*block = map.m_pblk;
