@@ -17,3 +17,4 @@ obj-$(CONFIG_PENSANDO_SOC_RSTCAUSE) += cap_rstcause.o
 obj-$(CONFIG_PENSANDO_SOC_CRASH) += cap_crash.o
 obj-$(CONFIG_PENSANDO_SOC_BSM) += cap_bsm.o
 obj-$(CONFIG_PENSANDO_SOC_SBUS) += sbus.o
+obj-$(CONFIG_ARCH_PENSANDO_ELBA_SOC) += giglio_emmc_irq.o
