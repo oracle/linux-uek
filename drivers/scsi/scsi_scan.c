@@ -331,6 +331,8 @@ static struct scsi_device *scsi_alloc_sdev(struct scsi_target *starget,
 	blk_queue_flag_set(QUEUE_FLAG_SCSI_PASSTHROUGH, q);
 	WARN_ON_ONCE(!blk_get_queue(q));
 
+	scsi_sysfs_device_initialize(sdev);
+
 	depth = sdev->host->cmd_per_lun ?: 1;
 
 	/*
@@ -346,8 +348,6 @@ static struct scsi_device *scsi_alloc_sdev(struct scsi_target *starget,
 	}
 
 	scsi_change_queue_depth(sdev, depth);
-
-	scsi_sysfs_device_initialize(sdev);
 
 	if (shost->hostt->slave_alloc) {
 		ret = shost->hostt->slave_alloc(sdev);
@@ -1032,6 +1032,7 @@ static int scsi_add_lun(struct scsi_device *sdev, unsigned char *inq_result,
 
 	transport_configure_device(&sdev->sdev_gendev);
 
+	sdev->sdev_bflags = *bflags;
 	if (sdev->host->hostt->slave_configure) {
 		ret = sdev->host->hostt->slave_configure(sdev);
 		if (ret) {
@@ -1059,7 +1060,6 @@ static int scsi_add_lun(struct scsi_device *sdev, unsigned char *inq_result,
 
 	sdev->max_queue_depth = sdev->queue_depth;
 	WARN_ON_ONCE(sdev->max_queue_depth > sdev->budget_map.depth);
-	sdev->sdev_bflags = *bflags;
 
 	/*
 	 * Ok, the device is now all set up, we can
