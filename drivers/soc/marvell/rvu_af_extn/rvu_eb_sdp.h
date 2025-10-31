@@ -22,10 +22,14 @@
 #define SDP_AF_AP_EPFX_MBOX_LINT(a)		   (0x40c0040 + 0x400000 * ((a) & 0xf))
 #define SDP_AF_AP_EPFX_MBOX_LINT_ENA_W1S(a)        (0x40c0058 + 0x400000 * ((a) & 0xf))
 #define SDP_AF_AP_EPFX_MBOX_LINT_ENA_W1C(a)        (0x40c0050  + 0x400000 * ((a) & 0xf))
+#define SDP_AF_FLR_RING_LINT_ENA_W1SX(a)	   (0x40905c0 + 0x8 * ((a) & 0xf))
+#define SDP_AF_FLR_RING_LINT_ENA_W1CX(a)	   (0x4090580 + 0x8 * ((a) & 0xf))
+#define SDP_AF_FLR_RING_LINTX(a)		   (0x4090500 + 0x8 * ((a) & 0xf))
 
 /* SDP IRQ */
 #define SDP_MBOX_VEC_CNT			   0x10
 #define SDP_MBOX_LINT_EPF_0			   0x20
+#define SDP_FLR_RING_LINT_CNT			   8
 
 #define PEMX_EPF_IDX				   8
 

@@ -214,6 +214,39 @@ static int cn20k_sdp_send_ring_msg(struct rvu *rvu, u16 target,
 	return 0;
 }
 
+static void sdp_flr_handler(struct work_struct *work)
+{
+
+	struct sdp_flr_work *flrwrk = container_of(work, struct sdp_flr_work,
+						   work);
+	struct sdp_rings_free_req free_req = { 0 };
+	struct rvu *rvu = flrwrk->rvu;
+	struct sdp_rsrc *sdp;
+	int vec, ring;
+	u16 epcifunc;
+	u64 rings;
+
+	sdp = &rvu->hw->sdp;
+
+	for (vec = 0; vec < SDP_FLR_RING_LINT_CNT; vec++) {
+		rings = flrwrk->regs[vec];
+		for_each_set_bit(ring, (unsigned long *)&rings, 64) {
+			epcifunc = sdp->fn_map[ring];
+
+			free_req.hdr.pcifunc = epcifunc;
+			free_req.all = 1;
+			rvu_mbox_handler_sdp_rings_free(rvu, &free_req, NULL);
+		}
+	}
+
+	/* TODO Signal corresponding PF FLR to PCP via PCI VSEC cap */
+
+	for (vec = 0; vec < SDP_FLR_RING_LINT_CNT; vec++)
+		/* Enable interrupts back */
+		rvu_write64(rvu, BLKADDR_SDP,
+			    SDP_AF_FLR_RING_LINT_ENA_W1SX(vec), ~0ULL);
+}
+
 static int cn20k_sdp_rings_init(struct rvu *rvu)
 {
 	struct sdp_rsrc *sdp = &rvu->hw->sdp;
@@ -280,8 +313,22 @@ static int cn20k_sdp_rings_init(struct rvu *rvu)
 		sdp_cfg->rvu_pf_num = sdp->host2rvupf[pf];
 	}
 
+	sdp->flr_wq = alloc_workqueue("sdp_flr_wq",
+				      WQ_HIGHPRI | WQ_MEM_RECLAIM, 0);
+	if (!sdp->flr_wq) {
+		err = -ENOMEM;
+		goto free_vfrids_bmap;
+	}
+
+	sdp->flr_wrk.rvu = rvu;
+	INIT_WORK(&sdp->flr_wrk.work, sdp_flr_handler);
+
+	spin_lock_init(&sdp->flr_intr_lock);
+
 	return 0;
 
+free_vfrids_bmap:
+	rvu_free_bitmap(&sdp->vf_rids);
 free_pfs_bmap:
 	bitmap_free(sdp->ready_pfs);
 free_rings_bmap:
@@ -516,8 +563,8 @@ int rvu_mbox_handler_sdp_rings_free(struct rvu *rvu,
 
 	sdp_cfg = &pfvf->sdp_cfg;
 	if (!sdp_cfg->nr_rings) {
-		dev_err(rvu->dev, "No rings allocated\n");
-		return -ENODEV;
+		dev_dbg(rvu->dev, "No rings allocated..nothing to do\n");
+		return 0;
 	}
 
 	mutex_lock(&sdp->cfg_lock);
@@ -923,6 +970,43 @@ static irqreturn_t rvu_mbox_epf_intr_handler(int irq, void *cookie)
 	return IRQ_HANDLED;
 }
 
+static irqreturn_t rvu_sdp_flr_intr_handler(int irq, void *cookie)
+{
+	struct sdp_irq_data *vec_data = cookie;
+	struct rvu *rvu = vec_data->block->rvu;
+	struct sdp_rsrc *sdp = &rvu->hw->sdp;
+	struct sdp_flr_work *wrk;
+	bool queue = false;
+	u64 intr_status;
+	int vec;
+
+	spin_lock(&sdp->flr_intr_lock);
+
+	wrk = &sdp->flr_wrk;
+	for (vec = 0; vec < SDP_FLR_RING_LINT_CNT; vec++) {
+		/* Disable further interrupts */
+		rvu_write64(rvu, BLKADDR_SDP,
+			    SDP_AF_FLR_RING_LINT_ENA_W1CX(vec), ~0ULL);
+
+		intr_status = rvu_read64(rvu, BLKADDR_SDP,
+					 SDP_AF_FLR_RING_LINTX(vec));
+		wrk->regs[vec] = intr_status;
+		if (!intr_status)
+			continue;
+
+		rvu_write64(rvu, BLKADDR_SDP,
+			    SDP_AF_FLR_RING_LINTX(vec), intr_status);
+		queue = true;
+	}
+
+	if (queue)
+		queue_work(sdp->flr_wq, &wrk->work);
+
+	spin_unlock(&sdp->flr_intr_lock);
+
+	return IRQ_HANDLED;
+}
+
 static void rvu_sdp_unregister_interrupts_block(struct rvu_block *block,
 						void *data)
 {
@@ -936,6 +1020,15 @@ static void rvu_sdp_unregister_interrupts_block(struct rvu_block *block,
 		dev_warn(rvu->dev,
 			 "Failed to get SDP_AF_INT vector offsets");
 		return;
+	}
+
+	for (vec = 0; vec < SDP_FLR_RING_LINT_CNT; vec++) {
+		rvu_write64(rvu, blkaddr,
+			    SDP_AF_FLR_RING_LINT_ENA_W1CX(vec), ~0ULL);
+		if (rvu->irq_allocated[offs + vec]) {
+			free_irq(pci_irq_vector(rvu->pdev, offs + vec), NULL);
+			rvu->irq_allocated[offs + vec] = false;
+		}
 	}
 
 	for (vec = SDP_MBOX_LINT_EPF_0; vec < SDP_MBOX_LINT_EPF_0 +
@@ -985,6 +1078,21 @@ static int rvu_sdp_register_interrupts_block(struct rvu_block *block,
 		dev_warn(rvu->dev,
 			 "Failed to get SDP_AF_INT vector offsets");
 		return 0;
+	}
+
+	/* SDP_FLR_RING_LINT vector starts at 0 in SDP block */
+	for (vec = 0; vec < SDP_FLR_RING_LINT_CNT; vec++) {
+		vec_data[vec].block = block;
+		vec_data[vec].pf_data = vec;
+		sprintf(vec_data[vec].irq_name, "sdp_flr%d_intr_handler", vec);
+		ret = rvu_sdp_af_request_irq(&vec_data[vec], offs + vec,
+					     rvu_sdp_flr_intr_handler,
+					     vec_data[vec].irq_name);
+		if (!ret)
+			goto err;
+
+		rvu_write64(rvu, blkaddr,
+			    SDP_AF_FLR_RING_LINT_ENA_W1SX(vec), ~0ULL);
 	}
 
 	/* Register and enable mbox interrupt */

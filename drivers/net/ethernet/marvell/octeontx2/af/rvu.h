@@ -291,6 +291,13 @@ struct sdp_config {
 
 #define MAX_EPFS		32
 
+struct sdp_flr_work {
+	struct	work_struct work;
+	struct	rvu *rvu;
+#define SDP_FLR_RING_LINT_CNT	8
+	u64 regs[SDP_FLR_RING_LINT_CNT];
+};
+
 struct sdp_rsrc {
 	struct rsrc_bmap	rings;
 	struct rsrc_bmap	vf_rids;
@@ -299,6 +306,9 @@ struct sdp_rsrc {
 	struct mutex		cfg_lock;
 	u8 host2rvupf[MAX_EPFS];
 	unsigned long *ready_pfs; /* bitmap to store GEN PFs */
+	struct sdp_flr_work flr_wrk;
+	struct workqueue_struct *flr_wq;
+	spinlock_t flr_intr_lock; /* Serialize FLR INTs from multiple CPUs */
 };
 
 /* Structure for per RVU func info ie PF/VF */
