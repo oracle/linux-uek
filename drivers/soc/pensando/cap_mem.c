@@ -24,6 +24,8 @@
 
 #define CAPMEM_REGION_ALIGN		PMD_SIZE
 
+u32 entries[CAPMEM_MAX_RANGES][5];
+
 /*
  * Memory range information provided by U-Boot on the kernel commandline:
  * Syntax:
@@ -485,7 +487,6 @@ syntax:
  */
 static int load_of_ranges(struct platform_device *pdev, const char *pname)
 {
-	u32 entries[CAPMEM_MAX_RANGES][5];
 	int r, n, i, type;
 	u64 start, len;
 	u32 attr;

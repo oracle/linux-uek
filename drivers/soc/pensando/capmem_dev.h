@@ -28,7 +28,7 @@ struct capmem_ranges_args {
 	int nranges;
 };
 
-#define CAPMEM_MAX_RANGES	64
+#define CAPMEM_MAX_RANGES	256
 
 #define CAPMEM_GET_NRANGES	_IOR(CAPMEM_IOCTL_NUM, 1, int)
 #define CAPMEM_GET_RANGES	_IOWR(CAPMEM_IOCTL_NUM, 2, struct capmem_ranges_args)
