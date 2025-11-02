@@ -55,7 +55,6 @@ modules-core:
 - crc32_generic
 - crc7
 - crct10dif-ce
-- cryptd
 - crypto_engine
 - crypto_user
 - deflate
@@ -95,7 +94,6 @@ modules-core:
 - dw_mmc-pltfm
 - ebtable_broute
 - ebtables
-- ecdh_generic
 - einj
 - esp4
 - esp4_offload
@@ -110,8 +108,11 @@ modules-core:
 - fou
 - fou6
 - garp
+- gcm
 - geneve
+- gf128mul
 - ghash-ce
+- ghash-generic
 - gpio-mlxbf
 - gpio-mlxbf2
 - gpio-mlxbf3
@@ -195,9 +196,6 @@ modules-core:
 - lz4_compress
 - lz4hc
 - lz4hc_compress
-- lzo
-- lzo-rle
-- lzo_compress
 - macsec
 - md4
 - mdio-mux
@@ -371,6 +369,8 @@ modules-core:
 - tcrypt
 - tea
 - tee
+- tipc
+- tipc_diag
 - tpm_tis
 - tpm_tis_core
 - trusted
