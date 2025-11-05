@@ -562,9 +562,13 @@ static void early_init_amd_mc(struct cpuinfo_x86 *c)
 static void tsa_set_cpuid_flags(struct cpuinfo_x86 *c)
 {
 	if (!cpu_has(c, X86_FEATURE_HYPERVISOR) && c->x86 != 0x19) {
-		setup_force_cpu_cap(X86_FEATURE_TSA_SQ_NO);
-		setup_force_cpu_cap(X86_FEATURE_TSA_L1_NO);
+		if (!cpu_has(c, X86_FEATURE_ZEN5)) {
+			setup_force_cpu_cap(X86_FEATURE_TSA_SQ_NO);
+			setup_force_cpu_cap(X86_FEATURE_TSA_L1_NO);
+		}
 	}
+	if (!cpu_has(c, X86_FEATURE_HYPERVISOR) && !cpu_has(c, X86_FEATURE_ZEN5))
+		setup_force_cpu_cap(X86_FEATURE_TSA_FILL_NO);
 }
 
 static void bsp_init_amd(struct cpuinfo_x86 *c)
