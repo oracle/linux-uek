@@ -1186,6 +1186,21 @@ static bool __init avic_want_avic_enabled(void)
 	if (!avic || !npt_enabled)
 		return false;
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (boot_cpu_has(X86_FEATURE_AVIC) &&
+	   !boot_cpu_has(X86_FEATURE_X2AVIC) && static_key_enabled(&on_oci)) {
+		/*
+		 * For certain platforms with known errata, avoid enabling the
+		 * AVIC feature even if the firmware advertises the capability.
+		 * As a proxy for a platform identifier, use the fact that only
+		 * Zen4 and newer platforms support X2AVIC, and avoid enabling
+		 * AVIC on earlier ones.
+		 */
+		pr_notice("Disabling AVIC on pre-Zen4 processors\n");
+		return false;
+	}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	/* AVIC is a prerequisite for x2AVIC. */
 	if (!boot_cpu_has(X86_FEATURE_AVIC) && !force_avic) {
 		if (boot_cpu_has(X86_FEATURE_X2AVIC))
