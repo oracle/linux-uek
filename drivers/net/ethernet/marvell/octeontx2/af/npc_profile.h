@@ -3178,15 +3178,6 @@ static struct npc_kpu_profile_cam kpu2_cam_entries[] = {
 		0x0000,
 		0x0000,
 	},
-	{
-		NPC_S_NA, 0X00,
-		0x0000,
-		0x0000,
-		0x0000,
-		0x0000,
-		0x0000,
-		0x0000,
-	},
 };
 
 static struct npc_kpu_profile_cam kpu3_cam_entries[] = {
@@ -11018,14 +11009,6 @@ static struct npc_kpu_profile_action kpu2_action_entries[] = {
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		0, 0, 0, 0, 0,
 		NPC_S_KPU3_CTAG_C, 0, 0,
-		NPC_LID_LB, NPC_LT_NA,
-		0,
-		0, 0, 0, 0,
-	},
-	{
-		NPC_ERRLEV_LB, NPC_EC_L2_K3,
-		0, 0, 0, 0, 1,
-		NPC_S_NA, 0, 0,
 		NPC_LID_LB, NPC_LT_NA,
 		0,
 		0, 0, 0, 0,
