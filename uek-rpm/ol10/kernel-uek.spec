@@ -122,6 +122,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 #build kernel with 4k & 64k page size for aarch64
 %define with_64k_ps %{?_with_64k_ps: %{_with_64k_ps}} %{?!_with_64k_ps: 0}
 %define with_64k_ps_debug %{?_with_64k_ps_debug: %{_with_64k_ps_debug}} %{?!_with_64k_ps_debug: 0}
+# build the ONOS kernel
+%define with_onos %{?_without_onos: 0} %{?!_without_onos: 1}
 # verbose build, i.e. no silent rules and V=1
 %define with_verbose %{?_with_verbose:        1} %{?!_with_verbose:      0}
 
@@ -159,6 +161,9 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 
 # Only build the 64k page size kernel (--with 64konly):
 %define with_64konly    %{?_with_64konly:      1} %{?!_with_64konly:     0}
+
+# Only build the ONOS kernel (--with onosonly)
+%define with_onosonly %{?_with_onosonly: 1} %{?!_with_onosonly: 0}
 
 # should we do C=1 builds with sparse
 %define with_sparse     %{?_with_sparse:       1} %{?!_with_sparse:      0}
@@ -235,6 +240,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define with_debug 0
 %define with_64k_ps 0
 %define with_64k_ps_debug 0
+%define with_onos 0
 %endif
 
 %define all_x86 i386 i686
@@ -255,6 +261,10 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %ifnarch aarch64
 %define with_64k_ps       0
 %define with_64k_ps_debug 0
+%endif
+
+%ifnarch x86_64
+%define with_onos 0
 %endif
 
 # only package docs noarch
@@ -300,6 +310,14 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 # by the bootloader.
 #
 %define container_cflags       EXTRA_CFLAGS="-Wa,-mx86-used-note=no"
+%elif %{with_onosonly}
+%define with_up 0
+%define with_container 0
+%define with_debug 0
+%define with_headers 0
+%define with_bpftool 0
+%define with_tools 0
+%define with_onos 1
 %endif
 %endif
 
@@ -507,6 +525,8 @@ Source43: generate_bls_conf.sh
 Source44: filter-modules.py
 Source45: modules.yaml.S
 Source46: denylist.txt.S
+Source47: modules.yaml.S.onos
+Source48: denylist.txt.S.onos
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
@@ -514,6 +534,7 @@ Source1002: config-x86_64-container
 Source1007: config-aarch64
 Source1008: config-aarch64-debug
 Source1009: config-aarch64-container
+Source1010: config-x86_64-onos
 
 Source25: Module.kabi_x86_64
 Source26: Module.kabi_aarch64
@@ -793,9 +814,10 @@ This package provides less commonly used kernel modules for the %{variant_name}-
 #
 # This macro creates a kernel%%{?variant}-<subpackage>-modules package.
 #       %%kernel_modules_package [-o] <subpackage>
+# -e flag denotes embedded kernels, skips the dependency on linux-firmware
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_modules_package(o) \
+%define kernel_modules_package(eo) \
 %define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
 %package -n %{variant_name}-modules\
 Summary: kernel modules to match the %{variant_name}-core kernel\
@@ -806,7 +828,9 @@ Provides: installonlypkg(%{installonly_variant_name}-modules)\
 Provides: %{variant_name}-modules-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
+%if 0%{!?-e:1}\
 Requires: linux-firmware >= 999:20250203-999.38.git0fd450ee\
+%endif\
 AutoReq: no\
 AutoProv: yes\
 %description -n %{variant_name}-modules\
@@ -816,9 +840,10 @@ This package provides commonly used kernel modules for the %{variant_name}-core 
 #
 # This macro creates a kernel%%{?variant}-<subpackage>-modules-core package.
 #       %%kernel_modules_core_package [-o] <subpackage>
+# -e flag denotes embedded kernels, skips the dependency on linux-firmware
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_modules_core_package(o) \
+%define kernel_modules_core_package(eo) \
 %define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
 %package -n %{variant_name}-modules-core\
 Summary: Core kernel modules to match the %{variant_name}-core kernel\
@@ -828,7 +853,9 @@ Provides: %{variant_name}-modules-core = %{version}-%{release}%{?1:.%{1}}\
 Provides: installonlypkg(%{installonly_variant_name}-modules-core)\
 Provides: %{variant_name}-modules-core-uname-r = %{KVERREL}%{?1:.%{1}}\
 Requires: %{variant_name}-core-uname-r = %{KVERREL}%{?1:.%{1}}\
+%if 0%{!?-e:1}\
 Requires: linux-firmware-core >= 999:20250203-999.38.git0fd450ee\
+%endif\
 Requires: libdnf >= 0.69.0-6.0.2\
 AutoReq: no\
 AutoProv: yes\
@@ -858,9 +885,10 @@ The meta-package for the %{1} kernel.\
 # This macro creates a kernel%%{?variant}-<subpackage> and its -devel and -debuginfo too.
 #       %%define variant_summary The Linux kernel compiled for <configuration>
 #       %%kernel_variant_package [-o] <subpackage>
+# -e flag denotes embedded kernels, skips the dependency on linux-firmware
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_variant_package(o) \
+%define kernel_variant_package(eo) \
 %define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
 %package -n %{variant_name}-core\
 Summary: %{variant_summary}\
@@ -878,8 +906,8 @@ Provides: kernel-ueknano = %{KVERREL}%{?1:.%{1}}\
 %{expand:%%kernel_meta_package %{-o:%{-o}} %{?1:%{1}}}\
 %endif\
 %{expand:%%kernel_devel_package %{-o:%{-o}} %{?1:%{1}}}\
-%{expand:%%kernel_modules_package %{-o:%{-o}} %{?1:%{1}}}\
-%{expand:%%kernel_modules_core_package %{-o:%{-o}} %{?1:%{1}}}\
+%{expand:%%kernel_modules_package %{?-e:-e} %{-o:%{-o}} %{?1:%{1}}}\
+%{expand:%%kernel_modules_core_package %{?-e:-e} %{-o:%{-o}} %{?1:%{1}}}\
 %{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s extra %{?1:%{1}}}\
 %{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s desktop %{?1:%{1}}}\
 %{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s deprecated %{?1:%{1}}}\
@@ -900,6 +928,11 @@ This package includes 64k page size for aarch64 kernel.
 %kernel_variant_package -o 64kdebug
 %description -n kernel%{?variant}64kdebug-core
 This package include debug kernel for 64k page size.
+
+%define variant_summary A kernel for an ONOS platform
+%kernel_variant_package -eo onos
+%description -n kernel%{?variant}onos-core
+This package includes an ONOS  kernel
 
 %define variant_summary The Linux kernel compiled with extra debugging enabled
 %kernel_variant_package debug
@@ -960,6 +993,7 @@ mkdir -p configs
     cp %{SOURCE1002} configs/config-container
     cp %{SOURCE1001} configs/config-debug
     cp %{SOURCE1000} configs/config
+    cp %{SOURCE1010} configs/config-onos
 %endif
 
 %ifarch aarch64
@@ -1105,19 +1139,32 @@ BuildKernel() {
     if [ "$Flavour" == "debug" ]; then
         cp configs/config-debug .config
         modlistVariant="$PWD/../kernel%{?variant}-debug"
+        modlistSrc=modules.yaml.S
+        denylistSrc=denylist.txt.S
     elif [ "$Flavour" == "64k" ]; then
         sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config
         echo 'CONFIG_ARM64_64K_PAGES=y' >> configs/config
         cp configs/config .config
         modlistVariant="$PWD/../kernel%{?variant}64k"
+        modlistSrc=modules.yaml.S
+        denylistSrc=denylist.txt.S
     elif [ "$Flavour" == "64kdebug" ]; then
         sed -i '/^CONFIG_ARM64_[0-9]\+K_PAGES=/d' configs/config-debug
         echo 'CONFIG_ARM64_64K_PAGES=y' >> configs/config-debug
         cp configs/config-debug .config
         modlistVariant="$PWD/../kernel%{?variant}64kdebug"
+        modlistSrc=modules.yaml.S
+        denylistSrc=denylist.txt.S
+    elif [ "$Flavour" == "onos" ]; then
+        cp configs/config-onos .config
+        modlistVariant="$PWD/../kernel%{?variant}onos"
+        modlistSrc=modules.yaml.S.onos
+        denylistSrc=denylist.txt.S.onos
     else
         cp configs/config .config
         modlistVariant="$PWD/../kernel%{?variant}${Flavour:+-${Flavour}}"
+        modlistSrc=modules.yaml.S
+        denylistSrc=denylist.txt.S
     fi
 
     echo USING ARCH=$Arch
@@ -1170,7 +1217,7 @@ BuildKernel() {
     openssl dgst -sha256 -hmac "%{FIPS140_HMAC_KEY}" < $fips_golden_module_path/fips140.ko -out $RPM_BUILD_ROOT/lib/modules/$KernelVer/.vmlinuz-$KernelVer-fips.hmac
 %endif
 
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ]; then
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "onos" ]; then
        %{make} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
     else
        %{make} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
@@ -1311,8 +1358,8 @@ BuildKernel() {
     rm -f $RPM_BUILD_ROOT/kernel-$KernelVer-kabideps
     %_sourcedir/kabitool -s Module.symvers -o $RPM_BUILD_ROOT/kernel-$KernelVer-kabideps
 
-%if %{with kabichk}
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "debug" ]; then
+%if %{with_kabichk}
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "debug" ] && [ "$Flavour" != "onos" ]; then
        # Create symbol type data which can be used to introspect kABI breakages
        python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
 
@@ -1490,8 +1537,8 @@ BuildKernel() {
         --output ${modlistVariant} \
         -D"Arch_%{_target_cpu}" \
         -D"Flavour_${Flavour}" \
-        $RPM_SOURCE_DIR/modules.yaml.S \
-        $RPM_SOURCE_DIR/denylist.txt.S)
+        $RPM_SOURCE_DIR/${modlistSrc} \
+        $RPM_SOURCE_DIR/${denylistSrc})
 
     # Copy the System.map file for depmod to use, and create a backup of the
     # full module tree so we can restore it after we're done filtering
@@ -1686,6 +1733,10 @@ BuildKernel %make_target %kernel_image 64k
 BuildKernel %make_target %kernel_image 64kdebug
 %endif
 
+%if %{with_onos}
+BuildKernel %make_target %kernel_image onos
+%endif
+
 %global bpftool_make \
   %{make} EXTRA_CFLAGS="${RPM_OPT_FLAGS}" EXTRA_LDFLAGS="%{__global_ldflags}" DESTDIR=$RPM_BUILD_ROOT VMLINUX_H=$RPM_BUILD_ROOT/$BpfDevelDir/vmlinux.h
 %if %{with_bpftool}
@@ -1768,7 +1819,12 @@ BuildKernel %make_target %kernel_image 64kdebug
        mv certs/signing_key.pem.sign.64kdebug certs/signing_key.pem \
        mv certs/signing_key.x509.sign.64kdebug certs/signing_key.x509 \
        %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.64kdebug/ %{dgst} \
-     fi \
+    fi \
+    if [ "%{with_onos}" -ne "0" ]; then \
+       mv certs/signing_key.pem.sign.onos certs/signing_key.pem \
+       mv certs/signing_key.x509.sign.onos certs/signing_key.x509 \
+       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.onos/ %{dgst} \
+    fi \
   fi \
 %{nil}
 
@@ -2142,6 +2198,11 @@ fi\
 %kernel_variant_postun -o -v 64kdebug
 %kernel_variant_post -o -v 64kdebug
 
+%kernel_variant_pre -o onos
+%kernel_variant_preun -o onos
+%kernel_variant_postun -o -v onos
+%kernel_variant_post -o -v onos
+
 if [ -x /sbin/ldconfig ]
 then
     /sbin/ldconfig -X || exit $?
@@ -2312,5 +2373,6 @@ fi
 
 %kernel_variant_files -o %{with_64k_ps} 64k
 %kernel_variant_files -o %{with_64k_ps_debug} 64kdebug
+%kernel_variant_files -o %{with_onos} onos
 
 %changelog
