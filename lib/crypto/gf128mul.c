@@ -53,6 +53,15 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 
+#ifdef FIPS_MODULE
+/*
+ * We want the FIPS module to use its own, non-experted version of
+ * these functions.
+ */
+#undef EXPORT_SYMBOL
+#define EXPORT_SYMBOL(x)
+#endif
+
 #define gf128mul_dat(q) { \
 	q(0x00), q(0x01), q(0x02), q(0x03), q(0x04), q(0x05), q(0x06), q(0x07),\
 	q(0x08), q(0x09), q(0x0a), q(0x0b), q(0x0c), q(0x0d), q(0x0e), q(0x0f),\
