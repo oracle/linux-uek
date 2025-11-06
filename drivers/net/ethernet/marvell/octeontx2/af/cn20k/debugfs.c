@@ -21,6 +21,168 @@
 #define rvu_dbg_NULL NULL
 #define rvu_dbg_open_NULL NULL
 
+static void npc_subbank_srch_order_dbgfs_usage(void)
+{
+	pr_err("Usage: echo \"[0]=[8],[1]=7,[2]=30,...[31]=0\" > <debugfs>/subbank_srch_order\n");
+}
+
+static int
+npc_subbank_srch_order_parse_n_fill(struct rvu *rvu, char *options, int num_subbanks)
+{
+	unsigned long w1 = 0, w2 = 0;
+	char *p, *last, *t1, *t2;
+	int (*arr)[2];
+	int idx, val;
+	int cnt, ret;
+
+	cnt = 0;
+
+	options[strcspn(options, "\r\n")] = 0;
+	last = strrchr(options, ' ');
+
+	arr = kcalloc(num_subbanks, sizeof(*arr), GFP_KERNEL);
+	if (!arr)
+		return -ENOMEM;
+
+	while ((p = strsep(&options, " ,")) != NULL) {
+		if (!*p)
+			continue;
+
+		t1 = strsep(&p, "=");
+		t2 = strsep(&p, "");
+
+		if (strlen(t1) < 3) {
+			pr_err("%s:%d Bad Token %s=%s\n",
+			       __func__, __LINE__, t1, t2);
+			goto err;
+		}
+
+		if (t1[0] != '[' || t1[strlen(t1) - 1] != ']') {
+			pr_err("%s:%d Bad Token %s=%s\n",
+			       __func__, __LINE__, t1, t2);
+			goto err;
+		}
+
+		t1[0] = ' ';
+		t1[strlen(t1) - 1] = ' ';
+		t1 = strim(t1);
+
+		ret = kstrtoint(t1, 10, &idx);
+		if (ret) {
+			pr_err("%s:%d Bad Token %s=%s\n",
+			       __func__, __LINE__, t1, t2);
+			goto err;
+		}
+
+		ret = kstrtoint(t2, 10, &val);
+		if (ret) {
+			pr_err("%s:%d Bad Token %s=%s\n",
+			       __func__, __LINE__, t1, t2);
+			goto err;
+		}
+
+		(*(arr + cnt))[0] = idx;
+		(*(arr + cnt))[1] = val;
+
+		cnt++;
+	}
+
+	if (cnt != num_subbanks) {
+		pr_err("Could find %u tokens, but exact %u tokens needed\n",
+		       cnt, num_subbanks);
+		goto err;
+	}
+
+	for (int i = 0; i < cnt; i++) {
+		w1 |= BIT_ULL((*(arr + i))[0]);
+		w2 |= BIT_ULL((*(arr + i))[1]);
+	}
+
+	if (bitmap_weight(&w1, cnt) != cnt) {
+		pr_err("Missed to fill for [%lu]=\n",
+		       find_first_zero_bit(&w1, cnt));
+		goto err;
+	}
+
+	if (bitmap_weight(&w2, cnt) != cnt) {
+		pr_err("Missed to fill value %lu\n",
+		       find_first_zero_bit(&w2, cnt));
+		goto err;
+	}
+
+	npc_cn20k_search_order_set(rvu, arr, cnt);
+
+	kfree(arr);
+	return 0;
+err:
+	kfree(arr);
+	return -EINVAL;
+}
+
+static ssize_t
+npc_subbank_srch_order_write(struct file *file, const char __user *user_buf,
+			     size_t count, loff_t *ppos)
+{
+	struct npc_priv_t *npc_priv;
+	struct rvu *rvu;
+	char buf[1024];
+	int len;
+
+	npc_priv = npc_priv_get();
+
+	rvu = file->private_data;
+
+	len = simple_write_to_buffer(buf, sizeof(buf), ppos, user_buf, count);
+	if (npc_subbank_srch_order_parse_n_fill(rvu, buf, npc_priv->num_subbanks)) {
+		npc_subbank_srch_order_dbgfs_usage();
+		return -EFAULT;
+	}
+
+	return len;
+}
+
+static ssize_t
+npc_subbank_srch_order_read(struct file *file, char __user *user_buf,
+			    size_t count, loff_t *ppos)
+{
+	struct npc_priv_t *npc_priv;
+	bool restricted_order;
+	const int *srch_order;
+	struct rvu *rvu;
+	char buf[1024];
+	int len = 0;
+
+	npc_priv = npc_priv_get();
+	rvu = file->private_data;
+
+	len += snprintf(buf + len, sizeof(buf) - len, "%s",
+			"Usage: echo \"[0]=0,[1]=1,[2]=2,..[31]=31\" > <debugfs>/subbank_srch_order\n");
+
+	len += snprintf(buf + len, sizeof(buf) - len, "%s",
+			"Search order\n");
+
+	srch_order = npc_cn20k_search_order_get(&restricted_order);
+
+	for (int i = 0;  i < npc_priv->num_subbanks; i++)
+		len += snprintf(buf + len, sizeof(buf) - len, "[%d]=%d,",
+				i, srch_order[i]);
+
+	len += snprintf(buf + len - 1, sizeof(buf) - len, "%s", "\n");
+
+	if (restricted_order)
+		len += snprintf(buf + len, sizeof(buf) - len,
+				"Restricted allocation for subbanks %u, %u\n",
+				npc_priv->num_subbanks - 1, 0);
+
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+}
+
+static const struct file_operations npc_subbank_srch_order_ops = {
+	.open           = simple_open,
+	.write		= npc_subbank_srch_order_write,
+	.read		= npc_subbank_srch_order_read,
+};
+
 #define RVU_DEBUG_SEQ_FOPS(name, read_op, write_op)	\
 static int rvu_dbg_open_##name(struct inode *inode, struct file *file) \
 { \
@@ -164,6 +326,13 @@ int npc_cn20k_debugfs_init(struct rvu *rvu)
 
 	npc_dentry = debugfs_create_file("mcam_layout", 0444, rvu->rvu_dbg.npc,
 					 npc_priv, &npc_mcam_layout_fops);
+
+	if (!npc_dentry)
+		return -EFAULT;
+
+	npc_dentry = debugfs_create_file("subbank_srch_order", 0644,
+					 rvu->rvu_dbg.npc,
+					 rvu, &npc_subbank_srch_order_ops);
 
 	if (!npc_dentry)
 		return -EFAULT;

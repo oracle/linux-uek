@@ -32,7 +32,6 @@ static const char cn20k_def_pfl_name[] = "default";
 
 static struct npc_priv_t npc_priv = {
 	.num_banks = MAX_NUM_BANKS,
-	.num_subbanks = MAX_NUM_SUB_BANKS,
 };
 
 const char *npc_kw_name[NPC_MCAM_KEY_MAX] = {
@@ -1578,12 +1577,15 @@ err:
  * bank next. If none slot is available, come back and search in these
  * subbanks.
  */
-static const int npc_subbank_restricted_idxs[] = {31, /* subbank 31 */
-						  0, /* subbank 0 */};
+static int npc_subbank_restricted_idxs[2];
+static bool restrict_valid = true;
 
 static bool npc_subbank_restrict_usage(struct rvu *rvu, int index)
 {
 	int i;
+
+	if (!restrict_valid)
+		return false;
 
 	for (i = 0; i < ARRAY_SIZE(npc_subbank_restricted_idxs); i++) {
 		if (index == npc_subbank_restricted_idxs[i])
@@ -1728,7 +1730,8 @@ static int npc_subbank_noref_alloc(struct rvu *rvu, int key_type, bool contig,
 	}
 
 	/* Allocate from restricted subbanks */
-	for (i = 0; i < ARRAY_SIZE(npc_subbank_restricted_idxs); i++) {
+	for (i = 0; restrict_valid &&
+	     (i < ARRAY_SIZE(npc_subbank_restricted_idxs)); i++) {
 		idx = npc_subbank_restricted_idxs[i];
 		sb = &npc_priv.sb[idx];
 
@@ -1942,27 +1945,104 @@ next:
 	}
 }
 
-static const int
-subbank_srch_order[MAX_NUM_SUB_BANKS] = {
-					/* 30th index subbank 0 */
-					    /*[0]*/ 30,
-					 /*[1]*/15, /*[2]*/17,
-					 /*[3]*/14, /*[4]*/18,
-					 /*[5]*/13, /*[6]*/19,
-					 /*[7]*/12, /*[8]*/20,
-					 /*[9]*/11, /*[10]*/21,
-					 /*[11]*/10, /*[12]*/22,
-					 /*[13]*/9, /*[14]*/23,
-					 /*[15]*/8, /*[16]*/24,
-					 /*[17]*/7, /*[18]*/25,
-					 /*[19]*/6, /*[20]*/26,
-					 /*[21]*/5, /*[22]*/27,
-					 /*[23]*/4, /*[24]*/28,
-					 /*[25]*/3, /*[26]*/29,
-					 /*[27]*/2, /*[28]*/16,
-					 /*[29]*/1, /*[30]*/0,
-					     /*[31]*/31,
-					/* 31th index subbank 31 */};
+static void npc_lock_all_subbank(void)
+{
+	int i;
+
+	for (i = 0; i < npc_priv.num_subbanks; i++)
+		mutex_lock(&npc_priv.sb[i].lock);
+}
+
+static void npc_unlock_all_subbank(void)
+{
+	int i;
+
+	for (i = npc_priv.num_subbanks - 1; i >= 0; i--)
+		mutex_unlock(&npc_priv.sb[i].lock);
+}
+
+static int *subbank_srch_order;
+
+int npc_cn20k_search_order_set(struct rvu *rvu, int (*arr)[2], int cnt)
+{
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	u8 (*fslots)[2], (*uslots)[2];
+	int fcnt = 0, ucnt = 0;
+	struct npc_subbank *sb;
+	unsigned long index;
+	int idx, val;
+	void *v;
+
+	if (cnt != npc_priv.num_subbanks)
+		return -EINVAL;
+
+	fslots = kcalloc(cnt, sizeof(*fslots), GFP_KERNEL);
+	if (!fslots)
+		return -ENOMEM;
+
+	uslots = kcalloc(cnt, sizeof(*uslots), GFP_KERNEL);
+	if (!uslots)
+		return -ENOMEM;
+
+	for (int i = 0; i < cnt; i++, arr++) {
+		idx = (*arr)[0];
+		val = (*arr)[1];
+
+		subbank_srch_order[idx] = val;
+	}
+
+	/* Lock mcam */
+	mutex_lock(&mcam->lock);
+	npc_lock_all_subbank();
+
+	restrict_valid = false;
+
+	xa_for_each(&npc_priv.xa_sb_used, index, v) {
+		val = xa_to_value(v);
+		(*(uslots + ucnt))[0] = index;
+		(*(uslots + ucnt))[1] = val;
+		xa_erase(&npc_priv.xa_sb_used, index);
+		ucnt++;
+	}
+
+	xa_for_each(&npc_priv.xa_sb_free, index, v) {
+		val = xa_to_value(v);
+		(*(fslots + fcnt))[0] = index;
+		(*(fslots + fcnt))[1] = val;
+		xa_erase(&npc_priv.xa_sb_free, index);
+		fcnt++;
+	}
+
+	for (int i = 0; i < ucnt; i++) {
+		idx  = (*(uslots + i))[1];
+		sb = &npc_priv.sb[idx];
+		sb->arr_idx = subbank_srch_order[sb->idx];
+		xa_store(&npc_priv.xa_sb_used, sb->arr_idx,
+			 xa_mk_value(sb->idx), GFP_KERNEL);
+	}
+
+	for (int i = 0; i < fcnt; i++) {
+		idx  = (*(fslots + i))[1];
+		sb = &npc_priv.sb[idx];
+		sb->arr_idx = subbank_srch_order[sb->idx];
+		xa_store(&npc_priv.xa_sb_free, sb->arr_idx,
+			 xa_mk_value(sb->idx), GFP_KERNEL);
+	}
+
+	npc_unlock_all_subbank();
+	mutex_unlock(&mcam->lock);
+
+	kfree(fslots);
+	kfree(uslots);
+
+	return 0;
+}
+
+const int *npc_cn20k_search_order_get(bool *restricted_order)
+{
+	*restricted_order = restrict_valid;
+	return subbank_srch_order;
+}
 
 static void npc_subbank_init(struct rvu *rvu, struct npc_subbank *sb, int idx)
 {
@@ -1978,8 +2058,8 @@ static void npc_subbank_init(struct rvu *rvu, struct npc_subbank *sb, int idx)
 	sb->idx = idx;
 	sb->arr_idx = subbank_srch_order[idx];
 
-	 dev_dbg(rvu->dev, "%s:%d sb->idx=%u sb->arr_idx=%u\n",
-		 __func__, __LINE__, sb->idx, sb->arr_idx);
+	dev_dbg(rvu->dev, "%s:%d sb->idx=%u sb->arr_idx=%u\n",
+		__func__, __LINE__, sb->idx, sb->arr_idx);
 
 	/* Keep first and last subbank at end of free array; so that
 	 * it will be used at last
@@ -2027,22 +2107,6 @@ chk_vfs:
 	return cnt;
 }
 
-static void npc_lock_all_subbank(void)
-{
-	int i;
-
-	for (i = 0; i < npc_priv.num_subbanks; i++)
-		mutex_lock(&npc_priv.sb[i].lock);
-}
-
-static void npc_unlock_all_subbank(void)
-{
-	int i;
-
-	for (i = npc_priv.num_subbanks - 1; i >= 0; i--)
-		mutex_unlock(&npc_priv.sb[i].lock);
-}
-
 struct npc_defrag_node {
 	u8 idx;
 	u8 key_type;
@@ -2057,6 +2121,9 @@ struct npc_defrag_node {
 static bool npc_defrag_skip_restricted_sb(int sb_id)
 {
 	int i;
+
+	if (!restrict_valid)
+		return false;
 
 	for (i = 0; i < ARRAY_SIZE(npc_subbank_restricted_idxs); i++)
 		if (sb_id == npc_subbank_restricted_idxs[i])
@@ -2535,6 +2602,28 @@ int rvu_mbox_handler_npc_defrag(struct rvu *rvu, struct msg_req *req,
 	return npc_cn20k_defrag(rvu);
 }
 
+static void npc_populate_restricted_idxs(int num_subbanks)
+{
+	npc_subbank_restricted_idxs[0] = num_subbanks - 1;
+	npc_subbank_restricted_idxs[1] = 0;
+}
+
+static void npc_create_srch_order(int cnt)
+{
+	int val = 0;
+
+	subbank_srch_order = kcalloc(cnt, sizeof(int),
+				     GFP_KERNEL);
+
+	for (int i = 0; i < cnt; i += 2) {
+		subbank_srch_order[i] = cnt / 2 - val - 1;
+		subbank_srch_order[i + 1] = cnt / 2 + 1 + val;
+		val++;
+	}
+
+	subbank_srch_order[cnt - 1] = cnt / 2;
+}
+
 static int npc_priv_init(struct rvu *rvu)
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
@@ -2560,18 +2649,10 @@ static int npc_priv_init(struct rvu *rvu)
 	bank_depth = mcam->banksize;
 
 	num_subbanks = FIELD_GET(GENMASK_ULL(39, 32), npc_const2);
-	if (npc_priv.num_subbanks != num_subbanks) {
-		dev_err(rvu->dev, "%s:%d number of subbanks(%d) should be %u\n",
-			__func__, __LINE__, num_subbanks, MAX_NUM_SUB_BANKS);
-		return -EINVAL;
-	}
+
+	npc_priv.num_subbanks = num_subbanks;
 
 	subbank_depth =	bank_depth / num_subbanks;
-	if (subbank_depth != MAX_SUBBANK_DEPTH) {
-		dev_err(rvu->dev,
-			"%s:%d subbank depth(%d) is not equal to %u\n",
-			__func__, __LINE__, subbank_depth, MAX_SUBBANK_DEPTH);
-	}
 
 	npc_priv.bank_depth = bank_depth;
 	npc_priv.subbank_depth = subbank_depth;
@@ -2596,6 +2677,9 @@ static int npc_priv_init(struct rvu *rvu)
 	xa_init_flags(&npc_priv.xa_pf2dfl_rmap, XA_FLAGS_ALLOC);
 	xa_init_flags(&npc_priv.xa_idx2vidx_map, XA_FLAGS_ALLOC);
 	xa_init_flags(&npc_priv.xa_vidx2idx_map, XA_FLAGS_ALLOC);
+
+	npc_create_srch_order(num_subbanks);
+	npc_populate_restricted_idxs(num_subbanks);
 
 	/* Initialize subbanks */
 	for (i = 0, sb = npc_priv.sb; i < num_subbanks; i++, sb++)
@@ -4186,6 +4270,8 @@ int npc_cn20k_deinit(struct rvu *rvu)
 
 	kfree(npc_priv.xa_pf2idx_map);
 	kfree(npc_priv.sb);
+	kfree(subbank_srch_order);
+
 	return 0;
 }
 

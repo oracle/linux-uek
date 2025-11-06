@@ -111,7 +111,7 @@ struct npc_defrag_show_node {
 struct npc_priv_t {
 	int bank_depth;
 	const int num_banks;
-	const int num_subbanks;
+	int num_subbanks;
 	int subbank_depth;
 	u8 kw;				// Kex configure Keywidth.
 	struct npc_subbank *sb;		// Array of subbanks
@@ -244,4 +244,6 @@ int npc_cn20k_load_kpu_prfl_img(struct rvu *rvu, void __iomem *prfl_addr,
 				u64 prfl_sz, const char *kpu_profile);
 void npc_cn20k_clear_mcam_entry(struct rvu *rvu, int blkaddr, int bank, int index);
 
+int npc_cn20k_search_order_set(struct rvu *rvu, int (*arr)[2], int cnt);
+const int *npc_cn20k_search_order_get(bool *restricted_order);
 #endif /* NPC_CN20K_H */
