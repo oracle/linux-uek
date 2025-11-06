@@ -13,6 +13,15 @@
 
 #include <asm/irqflags.h>
 
+#ifdef FIPS_MODULE
+/*
+ * We want the FIPS module to use its own, non-experted version of
+ * these functions.
+ */
+#undef EXPORT_SYMBOL
+#define EXPORT_SYMBOL(x)
+#endif
+
 static void aesgcm_encrypt_block(const struct crypto_aes_ctx *ctx, void *dst,
 				 const void *src)
 {
