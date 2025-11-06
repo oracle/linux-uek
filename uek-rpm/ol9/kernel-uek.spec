@@ -131,6 +131,9 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define with_embedded3 %{?_without_embedded: 0} %{?!_without_embedded: 1}
 %define with_embedded4 %{?_without_embedded: 0} %{?!_without_embedded: 1}
 
+# build the ONOS kernel
+%define with_onos %{?_without_onos: 0} %{?!_without_onos: 1}
+
 # verbose build, i.e. no silent rules and V=1
 %define with_verbose %{?_with_verbose:        1} %{?!_with_verbose:      0}
 
@@ -171,6 +174,9 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 
 # Only build the embedded kernel (--with embeddedonly)
 %define with_embeddedonly %{?_with_embeddedonly: 1} %{?!_with_embeddedonly: 0}
+
+# Only build the ONOS kernel (--with onosonly)
+%define with_onosonly %{?_with_onosonly: 1} %{?!_with_onosonly: 0}
 
 # should we do C=1 builds with sparse
 %define with_sparse     %{?_with_sparse:       1} %{?!_with_sparse:       0}
@@ -250,6 +256,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define with_embedded 0
 %define with_embedded3 0
 %define with_embedded4 0
+%define with_onos 0
 %endif
 
 %define all_x86 i386 i686
@@ -273,6 +280,10 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define with_embedded 0
 %define with_embedded3 0
 %define with_embedded4 0
+%endif
+
+%ifnarch x86_64
+%define with_onos 0
 %endif
 
 # only package docs noarch
@@ -318,6 +329,14 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 # by the bootloader.
 #
 %define container_cflags       EXTRA_CFLAGS="-Wa,-mx86-used-note=no"
+%elif %{with_onosonly}
+%define with_up 0
+%define with_container 0
+%define with_debug 0
+%define with_headers 0
+%define with_bpftool 0
+%define with_tools 0
+%define with_onos 1
 %endif
 %endif
 
@@ -552,6 +571,8 @@ Source49: modules.yaml.S.emb
 Source50: denylist.txt.S.emb
 Source51: modules.yaml.S.emb3
 Source52: denylist.txt.S.emb3
+Source53: modules.yaml.S.onos
+Source54: denylist.txt.S.onos
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
@@ -562,6 +583,7 @@ Source1009: config-aarch64-container
 Source1011: config-aarch64-embedded4
 Source1012: config-aarch64-embedded
 Source1013: config-aarch64-embedded3
+Source1014: config-x86_64-onos
 
 Source25: Module.kabi_x86_64
 Source26: Module.kabi_aarch64
@@ -972,6 +994,11 @@ This package includes an embedded kernel.
 %description -n kernel%{?variant}emb-core
 This package includes an embedded kernel.
 
+%define variant_summary A kernel for an ONOS platform
+%kernel_variant_package -eo onos
+%description -n kernel%{?variant}onos-core
+This package includes an ONOS  kernel
+
 %define variant_summary The Linux kernel compiled with extra debugging enabled
 %kernel_variant_package debug
 %description debug-core
@@ -1033,6 +1060,7 @@ mkdir -p configs
     cp %{SOURCE1002} configs/config-container
     cp %{SOURCE1001} configs/config-debug
     cp %{SOURCE1000} configs/config
+    cp %{SOURCE1014} configs/config-onos
 %endif
 
 %ifarch aarch64
@@ -1214,6 +1242,11 @@ BuildKernel() {
         modlistVariant="$PWD/../kernel%{?variant}emb"
         modlistSrc=modules.yaml.S.emb
         denylistSrc=denylist.txt.S.emb
+    elif [ "$Flavour" == "onos" ]; then
+        cp configs/config-onos .config
+        modlistVariant="$PWD/../kernel%{?variant}onos"
+        modlistSrc=modules.yaml.S.onos
+        denylistSrc=denylist.txt.S.onos
     else
         cp configs/config .config
         modlistVariant="$PWD/../kernel%{?variant}${Flavour:+-${Flavour}}"
@@ -1271,7 +1304,7 @@ BuildKernel() {
     openssl dgst -sha256 -hmac "%{FIPS140_HMAC_KEY}" < $fips_golden_module_path/fips140.ko -out $RPM_BUILD_ROOT/lib/modules/$KernelVer/.vmlinuz-$KernelVer-fips.hmac
 %endif
 
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb3" ] && [ "$Flavour" != "emb4" ]; then
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb3" ] && [ "$Flavour" != "emb4" ] && [ "$Flavour" != "onos" ]; then
        %{make} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
     else
        %{make} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
@@ -1416,8 +1449,8 @@ BuildKernel() {
     rm -f $RPM_BUILD_ROOT/kernel-$KernelVer-kabideps
     %_sourcedir/kabitool -s Module.symvers -o $RPM_BUILD_ROOT/kernel-$KernelVer-kabideps
 
-%if %{with kabichk}
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "debug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb3" ] && [ "$Flavour" != "emb4" ]; then
+%if %{with_kabichk}
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "debug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb3" ] && [ "$Flavour" != "emb4" ] && [ "$Flavour" != "onos" ]; then
        # Create symbol type data which can be used to introspect kABI breakages
        python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
 
@@ -1803,6 +1836,10 @@ BuildKernel %make_target %kernel_image emb3
 BuildKernel %make_target %kernel_image emb
 %endif
 
+%if %{with_onos}
+BuildKernel %make_target %kernel_image onos
+%endif
+
 %global bpftool_make \
   %{make} EXTRA_CFLAGS="${RPM_OPT_FLAGS}" EXTRA_LDFLAGS="%{__global_ldflags}" DESTDIR=$RPM_BUILD_ROOT VMLINUX_H=$RPM_BUILD_ROOT/$BpfDevelDir/vmlinux.h
 %if %{with_bpftool}
@@ -1900,6 +1937,11 @@ BuildKernel %make_target %kernel_image emb
        mv certs/signing_key.pem.sign.emb certs/signing_key.pem \
        mv certs/signing_key.x509.sign.emb certs/signing_key.x509 \
        %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb/ %{dgst} \
+    fi \
+    if [ "%{with_onos}" -ne "0" ]; then \
+       mv certs/signing_key.pem.sign.onos certs/signing_key.pem \
+       mv certs/signing_key.x509.sign.onos certs/signing_key.x509 \
+       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.onos/ %{dgst} \
     fi \
   fi \
 %{nil}
@@ -2291,6 +2333,11 @@ fi\
 %kernel_variant_postun -o -v emb
 %kernel_variant_post -o -v emb
 
+%kernel_variant_pre -o onos
+%kernel_variant_preun -o onos
+%kernel_variant_postun -o -v onos
+%kernel_variant_post -o -v onos
+
 if [ -x /sbin/ldconfig ]
 then
     /sbin/ldconfig -X || exit $?
@@ -2467,5 +2514,7 @@ fi
 %kernel_variant_files -o %{with_embedded3} emb3
 
 %kernel_variant_files -o %{with_embedded} emb
+
+%kernel_variant_files -o %{with_onos} onos
 
 %changelog
