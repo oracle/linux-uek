@@ -871,7 +871,7 @@ static inline void __cn10k_aura_freeptr(struct otx2_nic *pfvf, u64 aura,
 	 */
 	if (num_ptrs > 2) {
 		size = (sizeof(u64) * num_ptrs) / 16;
-		if (!count_eot)
+		if (!(count_eot & 1u))
 			size++;
 		tar_addr |=  ((size - 1) & 0x7) << 4;
 	}
