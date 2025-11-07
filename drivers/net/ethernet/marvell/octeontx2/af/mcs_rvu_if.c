@@ -925,6 +925,9 @@ int rvu_mcs_init(struct rvu *rvu)
 	if (mcs->hw->mcs_devtype == CNF20KA_MCS)
 		rvu_cnf20ka_mcs_set_lmac_cnt(rvu);
 
+	if (mcs->hw->mcs_devtype == CN20KA_MCS || mcs->hw->mcs_devtype == CNF20KA_MCS)
+		cn20k_mcs_assign_ids(mcs);
+
 	/* Install default tcam bypass entry and set port to operational mode */
 	for (mcs_id = 0; mcs_id < rvu->mcs_blk_cnt; mcs_id++) {
 		mcs = mcs_get_pdata(mcs_id);

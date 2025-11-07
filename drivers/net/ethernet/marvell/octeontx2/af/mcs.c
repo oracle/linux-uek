@@ -26,6 +26,26 @@ static const struct pci_device_id mcs_id_table[] = {
 
 static LIST_HEAD(mcs_list);
 
+void cn20k_mcs_assign_ids(struct mcs *mcs)
+{
+	struct pci_dev *pdev = NULL;
+	struct mcs *tmp_mcs;
+	u8 count = 0;
+
+	while ((pdev = pci_get_device(PCI_VENDOR_ID_CAVIUM,
+				      PCI_DEVID_CN10K_MCS, pdev))) {
+		list_for_each_entry(tmp_mcs, &mcs_list, mcs_list) {
+			if (pci_dev_id(tmp_mcs->pdev) ==
+			    pci_dev_id(pdev)) {
+				tmp_mcs->mcs_id = count;
+				break;
+			}
+		}
+		count++;
+		pci_dev_put(pdev);
+	}
+}
+
 void mcs_get_tx_secy_stats(struct mcs *mcs, struct mcs_secy_stats *stats, int id)
 {
 	u64 reg;
@@ -1187,10 +1207,9 @@ int mcs_get_blkcnt(void)
 	if (!pci_dev_present(mcs_id_table))
 		return 0;
 
-	list_for_each_entry(mcs, &mcs_list, mcs_list) {
-		mcs->mcs_id = mcs_cnt;
+	list_for_each_entry(mcs, &mcs_list, mcs_list)
 		mcs_cnt++;
-	}
+
 	return mcs_cnt;
 }
 
@@ -1615,7 +1634,7 @@ static int mcs_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto exit;
 
-	list_add(&mcs->mcs_list, &mcs_list);
+	list_add_tail(&mcs->mcs_list, &mcs_list);
 	mutex_init(&mcs->stats_lock);
 
 	mcs_register_dl(mcs);
