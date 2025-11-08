@@ -755,7 +755,6 @@ static void delayedwork_callback(struct work_struct *work)
 	struct dj_workitem workitem;
 	unsigned long flags;
 	int count;
-	int retval;
 
 	dbg_hid("%s\n", __func__);
 
@@ -792,11 +791,7 @@ static void delayedwork_callback(struct work_struct *work)
 		logi_dj_recv_destroy_djhid_device(djrcv_dev, &workitem);
 		break;
 	case WORKITEM_TYPE_UNKNOWN:
-		retval = logi_dj_recv_query_paired_devices(djrcv_dev);
-		if (retval) {
-			hid_err(djrcv_dev->hidpp, "%s: logi_dj_recv_query_paired_devices error: %d\n",
-				__func__, retval);
-		}
+		logi_dj_recv_query_paired_devices(djrcv_dev);
 		break;
 	case WORKITEM_TYPE_EMPTY:
 		dbg_hid("%s: device list is empty\n", __func__);
@@ -1168,8 +1163,10 @@ static int logi_dj_recv_query_paired_devices(struct dj_receiver_dev *djrcv_dev)
 
 	djrcv_dev->last_query = jiffies;
 
-	if (djrcv_dev->type != recvr_type_dj)
-		return logi_dj_recv_query_hidpp_devices(djrcv_dev);
+	if (djrcv_dev->type != recvr_type_dj) {
+		retval = logi_dj_recv_query_hidpp_devices(djrcv_dev);
+		goto out;
+	}
 
 	dj_report = kzalloc(sizeof(struct dj_report), GFP_KERNEL);
 	if (!dj_report)
@@ -1179,6 +1176,10 @@ static int logi_dj_recv_query_paired_devices(struct dj_receiver_dev *djrcv_dev)
 	dj_report->report_type = REPORT_TYPE_CMD_GET_PAIRED_DEVICES;
 	retval = logi_dj_recv_send_report(djrcv_dev, dj_report);
 	kfree(dj_report);
+out:
+	if (retval < 0)
+		hid_err(djrcv_dev->hidpp, "%s error:%d\n", __func__, retval);
+
 	return retval;
 }
 
@@ -1204,6 +1205,8 @@ static int logi_dj_recv_switch_to_dj_mode(struct dj_receiver_dev *djrcv_dev,
 								(u8)timeout;
 
 		retval = logi_dj_recv_send_report(djrcv_dev, dj_report);
+		if (retval)
+			goto out;
 
 		/*
 		 * Ugly sleep to work around a USB 3.0 bug when the receiver is
@@ -1212,11 +1215,6 @@ static int logi_dj_recv_switch_to_dj_mode(struct dj_receiver_dev *djrcv_dev,
 		 * 50 msec should gives enough time to the receiver to be ready.
 		 */
 		msleep(50);
-
-		if (retval) {
-			kfree(dj_report);
-			return retval;
-		}
 	}
 
 	/*
@@ -1242,7 +1240,12 @@ static int logi_dj_recv_switch_to_dj_mode(struct dj_receiver_dev *djrcv_dev,
 			HIDPP_REPORT_SHORT_LENGTH, HID_OUTPUT_REPORT,
 			HID_REQ_SET_REPORT);
 
+out:
 	kfree(dj_report);
+
+	if (retval < 0)
+		hid_err(hdev, "%s error:%d\n", __func__, retval);
+
 	return retval;
 }
 
@@ -1746,11 +1749,8 @@ static int logi_dj_probe(struct hid_device *hdev,
 
 	if (has_hidpp) {
 		retval = logi_dj_recv_switch_to_dj_mode(djrcv_dev, 0);
-		if (retval < 0) {
-			hid_err(hdev, "%s: logi_dj_recv_switch_to_dj_mode returned error:%d\n",
-				__func__, retval);
+		if (retval < 0)
 			goto switch_to_dj_mode_fail;
-		}
 	}
 
 	/* This is enabling the polling urb on the IN endpoint */
@@ -1768,15 +1768,11 @@ static int logi_dj_probe(struct hid_device *hdev,
 		spin_lock_irqsave(&djrcv_dev->lock, flags);
 		djrcv_dev->ready = true;
 		spin_unlock_irqrestore(&djrcv_dev->lock, flags);
-		retval = logi_dj_recv_query_paired_devices(djrcv_dev);
-		if (retval < 0) {
-			hid_err(hdev, "%s: logi_dj_recv_query_paired_devices error:%d\n",
-				__func__, retval);
-			/*
-			 * This can happen with a KVM, let the probe succeed,
-			 * logi_dj_recv_queue_unknown_work will retry later.
-			 */
-		}
+		/*
+		 * This can fail with a KVM. Ignore errors to let the probe
+		 * succeed, logi_dj_recv_queue_unknown_work will retry later.
+		 */
+		logi_dj_recv_query_paired_devices(djrcv_dev);
 	}
 
 	return 0;
@@ -1793,18 +1789,12 @@ hid_hw_start_fail:
 #ifdef CONFIG_PM
 static int logi_dj_reset_resume(struct hid_device *hdev)
 {
-	int retval;
 	struct dj_receiver_dev *djrcv_dev = hid_get_drvdata(hdev);
 
 	if (!djrcv_dev || djrcv_dev->hidpp != hdev)
 		return 0;
 
-	retval = logi_dj_recv_switch_to_dj_mode(djrcv_dev, 0);
-	if (retval < 0) {
-		hid_err(hdev, "%s: logi_dj_recv_switch_to_dj_mode returned error:%d\n",
-			__func__, retval);
-	}
-
+	logi_dj_recv_switch_to_dj_mode(djrcv_dev, 0);
 	return 0;
 }
 #endif
