@@ -423,6 +423,10 @@ struct pci_dev {
 #endif
 	unsigned int	pasid_no_tlp:1;		/* PASID works without TLP Prefix */
 	unsigned int	eetlp_prefix_path:1;	/* End-to-End TLP Prefix */
+#ifdef CONFIG_PCIEASPM
+	UEK_KABI_FILL_HOLE(unsigned int	aspm_l0s_support:1) /* ASPM L0s support */
+	UEK_KABI_FILL_HOLE(unsigned int	aspm_l1_support:1) /* ASPM L1 support */
+#endif
 
 	pci_channel_state_t error_state;	/* Current connectivity state */
 	struct device	dev;			/* Generic device interface */
