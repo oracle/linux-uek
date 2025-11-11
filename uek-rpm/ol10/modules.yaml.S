@@ -150,6 +150,7 @@ modules-core:
 - gre
 - gve
 - hid-hyperv
+- hkdf
 - hv_balloon
 - hv_netvsc
 - hv_sock
