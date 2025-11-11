@@ -63,7 +63,7 @@
 
 	rstcause {
 		compatible = "pensando,rstcause";
-		pensando,causeregs = <&syscon 0x2084>;
+		pensando,causeregs = <&mssoc 0x2084>;
 	};
 
 	capmem {
@@ -71,6 +71,19 @@
 		pensando,capmem-fixed-ranges =
 			<0x0 0x200000 0x0 0x6fe00000 DSC_MEM_ATTR_DEVICE>,
 			<0x4 0x0 0x0 0x400000 DSC_MEM_ATTR_DEVICE>;
+	};
+
+	/*
+	 * Reserve 32 bytes of memory for our fake efi.mem_reserve.
+	 * This is only accessed by the of_scan_flat_dt() function in
+	 * early boot. Putting this up here avoids an unneeded
+	 * additional scan of the whole FDT. This is carved out of
+	 * memory allocated for the pciemgr component. The reserved
+	 * address must be the last 32 bytes in their 32Mb region
+	 * denoted by HWMEM.
+	 */
+	oracle {
+		linux,mem-reserve = <0x0 0xc5ffffe0>;
 	};
 
 	soc: soc {
@@ -174,9 +187,9 @@
 		};
 
 		spi0: spi@2800 {
-			compatible = "amd,pensando-elba-spi";
+			compatible = "pensando,elba-spi";
 			reg = <0x0 0x2800 0x0 0x100>;
-			amd,pensando-elba-syscon = <&syscon>;
+			pensando,spics = <&mssoc 0x2468 0>;
 			clocks = <&ahb_clk>;
 			interrupts = <GIC_SPI 9 IRQ_TYPE_LEVEL_HIGH>;
 			#address-cells = <1>;
@@ -186,9 +199,9 @@
 		};
 
 		spi1: spi@2c00 {
-			compatible = "amd,pensando-elba-spi";
+			compatible = "pensando,elba-spi";
 			reg = <0x0 0x2c00 0x0 0x100>;
-			amd,pensando-elba-syscon = <&syscon>;
+			pensando,spics = <&mssoc 0x2fd8 0>;
 			clocks = <&ahb_clk>;
 			interrupts = <GIC_SPI 8 IRQ_TYPE_LEVEL_HIGH>;
 			#address-cells = <1>;
@@ -392,7 +405,7 @@
 		};
 
 		emmc: mmc@30440000 {
-			compatible = "amd,pensando-elba-sd4hc", "cdns,sd4hc";
+			compatible = "pensando,elba-emmc", "cdns,sd4hc";
 			clocks = <&emmc_clk>;
 			interrupts = <GIC_SPI 16 IRQ_TYPE_LEVEL_HIGH>;
 			reg = <0x0 0x30440000 0x0 0x10000
@@ -407,8 +420,8 @@
 			status = "disabled";
 		};
 
-		syscon: syscon@307c0000 {
-			compatible = "amd,pensando-elba-syscon", "syscon";
+		mssoc: mssoc@307c0000 {
+			compatible = "pensando,mssoc", "syscon";
 			reg = <0x0 0x307c0000 0x0 0x3000>;
 		};
 
@@ -427,12 +440,16 @@
 		kpcimgr@20000000 {
 			compatible = "pensando,kpcimgr";
 			msi-parent = <&its 0xf>;
+			kstate-index = <4>;
 			shmem-index = <3>;
 			hwmem-index = <2>;
 			reg =  <0x0 0x20000000 0x0 0x00380000   /* PXB Base */
 				0x0 0x61800000 0x0 0x00101000   /* Interrupts */
 				0x0 0xc4000000 0x0 0x01000000   /* HWMEM */
-				0x0 0x0        0x0 0x02000000>; /* SHMEM */
+				0x0 0xc4d00000 0x0 0x0128d000	/* SHMEM */
+				0x0 0xc5f8d000 0x0 0x00072fe0	/* kpcimgr state */
+			/* the last 32 bytes are reserved for oracle { linux,mem-reserve } */
+				0x0 0xee72a000 0x0 0x2000000>;	/* virtio */
 		};
 
 		/*
