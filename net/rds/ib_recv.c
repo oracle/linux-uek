@@ -46,10 +46,12 @@
 static bool rds_ib_srq_enabled;
 static bool rds_ib_per_llc_srq = true;
 static unsigned int rds_ib_srq_max_wr = RDS_IB_DEFAULT_SRQ_RECV_WR;
+static unsigned int rds_ib_srq_max_cached_factor = 10;
 
 module_param(rds_ib_srq_enabled, bool, 0444);
 module_param(rds_ib_per_llc_srq, bool, 0444);
 module_param(rds_ib_srq_max_wr, uint, 0444);
+module_param(rds_ib_srq_max_cached_factor, uint, 0444);
 
 unsigned int rds_ib_cache_max_percpu = 1024;
 
@@ -353,7 +355,7 @@ static bool rds_ib_recv_cache_put(int cpu,
 				  struct lfstack_el *new_item_first,
 				  struct lfstack_el *new_item_last,
 				  struct rds_ib_refill_cache *cache,
-				  int count);
+				  int count, int max_ready_count);
 static struct lfstack_el *rds_ib_recv_cache_get(int preferred_cpu,
 						struct rds_ib_refill_cache *cache);
 
@@ -362,14 +364,16 @@ static void rds_ib_frag_free(struct rds_ib_connection *ic,
 			     struct rds_page_frag *frag)
 {
 	struct rds_ib_refill_cache *frag_cache;
-	int frag_size, frag_pages, preferred_cpu;
+	int max_ready_count, frag_size, frag_pages, preferred_cpu;
 
 	if (rds_ib_prq_mode(ic)) {
+		max_ready_count = -1;
 		frag_cache = frag->rds_ibdev->i_cache_frags + ic->i_frag_cache_inx;
 		frag_size = ic->i_frag_sz;
 		frag_pages = ic->i_frag_pages;
 		preferred_cpu = ic->i_preferred_recv_cpu;
 	} else {
+		max_ready_count = rds_ib_srq_max_wr * rds_ib_srq_max_cached_factor;
 		frag_cache = &frag->rds_srq->cache_frags;
 		frag_size = RDS_MAX_FRAG_SIZE;
 		frag_pages = DIV_ROUND_UP(RDS_MAX_FRAG_SIZE, PAGE_SIZE);
@@ -380,7 +384,7 @@ static void rds_ib_frag_free(struct rds_ib_connection *ic,
 				  &frag->f_cache_entry,
 				  &frag->f_cache_entry,
 				  frag_cache,
-				  1)) {
+				  1, max_ready_count)) {
 		if (rds_ib_prq_mode(ic))
 			atomic_sub(ic->i_frag_sz / 1024, &ic->i_cache_allocs);
 		rds_ib_stats_add(s_ib_recv_added_to_cache, rds_ib_frag_sg_size(ic, frag));
@@ -409,17 +413,19 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 	struct rds_page_frag *pos;
 	struct rds_ib_connection *ic = inc->i_conn ? inc->i_conn->c_transport_data : NULL;
 	int frag_size, frag_sg_size, frag_pages, frag_cache_inx, preferred_cpu;
-	int count = 0;
+	int max_ready_count, count = 0;
 
 	struct rds_page_frag *first_frag  = NULL;
 	struct rds_page_frag *p_frag = NULL;
 
 	if (rds_ib_prq_mode(ic)) {
+		max_ready_count = -1;
 		frag_size = ic->i_frag_sz;
 		frag_pages = ic->i_frag_pages;
 		frag_cache_inx = ic->i_frag_cache_inx;
 		preferred_cpu = ic->i_preferred_recv_cpu;
 	} else {
+		max_ready_count = rds_ib_srq_max_wr * rds_ib_srq_max_cached_factor;
 		frag_size = RDS_MAX_FRAG_SIZE;
 		frag_pages = DIV_ROUND_UP(RDS_MAX_FRAG_SIZE, PAGE_SIZE);
 		frag_cache_inx = ilog2(frag_pages);
@@ -461,7 +467,7 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 					   &p_frag->f_cache_entry,
 					   first_frag->rds_srq ? &first_frag->rds_srq->cache_frags :
 					   first_frag->rds_ibdev->i_cache_frags + frag_cache_inx,
-					   count)) {
+					   count, max_ready_count)) {
 			struct lfstack_el *el = &first_frag->f_cache_entry;
 
 			while (el) {
@@ -480,7 +486,7 @@ void rds_ib_inc_free(struct rds_incoming *inc)
 				   &ibinc->ii_cache_entry,
 				   ibinc->rds_srq ? &ibinc->rds_srq->cache_incs :
 				   &ibinc->rds_ibdev->i_cache_incs,
-				   1))
+				   1, max_ready_count))
 		rds_ib_free_one_inc(ibinc);
 }
 
@@ -904,7 +910,7 @@ static bool rds_ib_recv_cache_put(int cpu,
 				  struct lfstack_el *new_item_first,
 				  struct lfstack_el *new_item_last,
 				  struct rds_ib_refill_cache *cache,
-				  int count)
+				  int count, int max_ready_count)
 {
 	struct rds_ib_cache_head *head;
 	if (!test_bit(RDS_IB_CACHE_INITIALIZED, &cache->initialized)) {
@@ -922,8 +928,13 @@ static bool rds_ib_recv_cache_put(int cpu,
 		}
 	}
 
+	if (max_ready_count >= 0 &&
+	    atomic_read(&cache->count) + count > max_ready_count)
+		return false;
+
 	atomic_add(count, &cache->count);
 	lfstack_push_many(&cache->ready, new_item_first, new_item_last);
+
 	return true;
 }
 
