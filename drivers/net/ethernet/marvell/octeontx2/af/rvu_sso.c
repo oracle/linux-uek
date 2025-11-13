@@ -2118,8 +2118,10 @@ int rvu_sso_init(struct rvu *rvu)
 	 * using SSOW_LF_GWS_GRPMSK_CHG based on the LF allocations.
 	 */
 	for (grpmsk = 0; grpmsk < (sso->sso_hwgrps / 64); grpmsk++) {
-		for (hws = 0; hws < sso->sso_hws; hws++)
+		for (hws = 0; hws < sso->sso_hws; hws++) {
 			rvu_sso_grp_mask_set(rvu, blkaddr, hws, 0, grpmsk, 0);
+			rvu_sso_grp_mask_set(rvu, blkaddr, hws, 1, grpmsk, 0);
+		}
 	}
 
 	/* Allocate SSO_AF_CONST::HWS + 1. As the total number of pf/vf are
