@@ -1287,11 +1287,14 @@ static int otx2_get_module_eeprom(struct net_device *netdev,
 	struct otx2_nic *pfvf = netdev_priv(netdev);
 	struct cgx_fw_data *rsp;
 
+	if (!ee->len || ((ee->len + ee->offset) > SFP_EEPROM_SIZE))
+		return -EINVAL;
+
 	rsp = otx2_get_fwdata(pfvf);
 	if (IS_ERR(rsp))
 		return PTR_ERR(rsp);
 
-	memcpy(data, &rsp->fwdata.sfp_eeprom.buf, ee->len);
+	memcpy(data, &rsp->fwdata.sfp_eeprom.buf + ee->offset, ee->len);
 
 	return 0;
 }
