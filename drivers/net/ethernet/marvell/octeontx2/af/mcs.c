@@ -1495,8 +1495,22 @@ static void mcs_set_external_bypass(struct mcs *mcs, bool bypass)
 
 static void mcs_global_cfg(struct mcs *mcs)
 {
+	u64 val;
 	/* Disable external bypass */
 	mcs_set_external_bypass(mcs, false);
+
+	/* Read MCS Global register */
+	val = mcs_reg_read(mcs, MCSX_MIL_GLOBAL);
+
+	/* Assert soft reset to datapath */
+	val |= BIT_ULL(7);
+	mcs_reg_write(mcs, MCSX_MIL_GLOBAL, val);
+	usleep_range(8, 10);
+
+	/* Deassert soft reset */
+	val &= ~BIT_ULL(7);
+	mcs_reg_write(mcs, MCSX_MIL_GLOBAL, val);
+	usleep_range(8, 10);
 
 	/* Reset TX/RX stats memory */
 	mcs_reg_write(mcs, MCSX_CSE_RX_SLAVE_STATS_CLEAR, 0x1F);
