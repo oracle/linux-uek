@@ -533,7 +533,6 @@ Source13: mod-sign.sh
 Source14: find-provides
 Source16: perf
 Source17: kabitool
-Source18: check-kabi
 Source20: x86_energy_perf_policy
 Source21: securebootca.cer
 Source22: secureboot.cer
@@ -1380,16 +1379,12 @@ BuildKernel() {
        python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
 
        echo "**** kABI checking is enabled in kernel SPEC file for %{_target_cpu}. ****"
-       chmod 0755 $RPM_SOURCE_DIR/check-kabi
        if [ -e $RPM_SOURCE_DIR/Module.kabi_%{_target_cpu}$Flavour ]; then
           cp $RPM_SOURCE_DIR/Module.kabi_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/Module.kabi
           cp $RPM_SOURCE_DIR/Symtypes.kabi_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/Symtypes.kabi
           cp $RPM_SOURCE_DIR/kabi_lockedlist_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/kabi_lockedlist
-          if ! $RPM_SOURCE_DIR/check-kabi -k $RPM_BUILD_ROOT/Module.kabi -s Module.symvers ; then
-              python3 $RPM_SOURCE_DIR/kabi compare --no-print-symbols \
-                  $RPM_BUILD_ROOT/Symtypes.kabi Symtypes.build
-              exit 1
-          fi
+          python3 $RPM_SOURCE_DIR/kabi check -k $RPM_BUILD_ROOT/Module.kabi -s Module.symvers \
+                                          -K $RPM_BUILD_ROOT/Symtypes.kabi -S Symtypes.build
           # Smoke tests verify that the kABI definitions are internally consistent:
           # they contain the exact same set of symbols and symbol versions.
           python3 $RPM_SOURCE_DIR/kabi smoke -v $RPM_BUILD_ROOT/Module.kabi \
