@@ -494,6 +494,88 @@ def print_diffs(diffs, st1, st2, desc1="kABI", desc2="Build"):
         print()
 
 # Sub-commands:
+def check(args):
+    """
+    Do a kABI check as check-kabi script would have done it.
+    If there is a failure, use the type databases to print diagnostics.
+    """
+    symvers_kabi = read_symvers(args.symvers_kabi)
+    symvers_build = read_symvers(args.symvers_build)
+
+    changed_license = []
+    moved = []
+    changed_abi = []
+    unexported = []
+    for sym, (hash_, dir_, type_) in symvers_kabi.items():
+        if sym not in symvers_build:
+            unexported.append(sym)
+            continue
+        build_hash, build_dir, build_type = symvers_build[sym]
+        if build_hash != hash_:
+            changed_abi.append(sym)
+        if build_dir != dir_:
+            moved.append(sym)
+        if build_type != type_:
+            changed_license.append(sym)
+    if moved:
+        print("*** WARNING - ABI SYMBOLS MOVED ***")
+        print()
+        print("The following symbols moved (typically caused by moving a symbol from being")
+        print("provided by the kernel vmlinux out to a loadable module). This is not an")
+        print("error, but is being reported for completeness:")
+        print()
+        print("\n".join(moved))
+        print()
+    if changed_license:
+        print("*** ERROR - SYMBOL LICENSE HAS CHANGED ***")
+        print()
+        print("The usage license for the following symbols has changed (this will cause an ABI breakage):")
+        print()
+        print("\n".join(changed_license))
+        print()
+    if changed_abi:
+        print("*** ERROR - ABI BREAKAGE WAS DETECTED ***")
+        print()
+        print("The following symbols have been changed (this will cause an ABI breakage):")
+        print("For help diagnosing why, please see the diffs below the listing.")
+        print()
+        print("\n".join(changed_abi))
+        print()
+    if unexported:
+        print("*** ERROR - ABI SYMBOL WAS REMOVED ***")
+        print()
+        print("The following symbols have been removed, or unexported. This will cause")
+        print("an ABI breakage:")
+        print()
+        print("\n".join(unexported))
+        print()
+
+    if not changed_license and not changed_abi and not unexported:
+        # No error conditions? Exit success.
+        sys.exit(0)
+
+    if not changed_abi:
+        # Our diagnostics only apply to changed_abi symbols. If there are none,
+        # exit with failure status because we still have an ABI breakage.
+        sys.exit(1)
+
+    if not args.symtypes_kabi or not args.symtypes_build:
+        print("*** MISSING --symtypes-kabi AND --symtypes-build ***")
+        print()
+        print("Without this information, we cannot provide detailed diagnostics.")
+        sys.exit(1)
+
+    st_kabi = SymTypes.from_file(args.symtypes_kabi)
+    st_build = SymTypes.from_file(args.symtypes_build)
+
+    print("*** DETECTED TYPE DIFFERENCES ***")
+    print()
+    diffs = set()
+    for symbol in changed_abi:
+        diffs |= SymTypes.identify_kabi_difference(st_kabi, st_build, symbol)
+    print_diffs(diffs, st_kabi, st_build)
+
+    sys.exit(1)
 
 
 def report(args):
@@ -658,6 +740,34 @@ def main():
     report_p.add_argument(
         "symtypes", help="symtypes file or collection"
     )
+
+    check_p = subp.add_parser(
+        "check",
+        help=("Compare Module.symvers with Module.kabi. If kABI is broken, "
+              "print a report. If both symtypes files are provided, then "
+              "broken kABI will also trigger a diagnostic that identifies "
+              "the type declarations causing the breakage."),
+    )
+    check_p.set_defaults(func=check)
+    check_p.add_argument(
+        "--symvers-kabi", "-k",
+        help="Module.kabi file (the kABI declaration)",
+        required=True,
+    )
+    check_p.add_argument(
+        "--symvers-build", "-s",
+        help="Module.symvers file (created from a recent build)",
+        required=True,
+    )
+    check_p.add_argument(
+        "--symtypes-kabi", "-K",
+        help="Symtypes.kabi file (symtypes collection from kABI)",
+    )
+    check_p.add_argument(
+        "--symtypes-build", "-S",
+        help="Symtypes.build file (symtypes collection from build)",
+    )
+
 
     collect_p = subp.add_parser(
         "collect",
