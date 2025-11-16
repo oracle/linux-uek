@@ -386,6 +386,8 @@ static void __add_to_kill(struct task_struct *tsk, const struct page *p,
 			  unsigned long addr)
 {
 	struct to_kill *tk;
+	const struct folio *folio;
+	struct address_space *mapping;
 
 	tk = kmalloc_obj(struct to_kill, GFP_ATOMIC);
 	if (!tk) {
@@ -396,8 +398,19 @@ static void __add_to_kill(struct task_struct *tsk, const struct page *p,
 	tk->addr = addr;
 	if (is_zone_device_page(p))
 		tk->size_shift = dev_pagemap_mapping_shift(vma, tk->addr);
-	else
-		tk->size_shift = folio_shift(page_folio(p));
+	else {
+		folio = page_folio(p);
+		mapping = folio_mapping(folio);
+		if (mapping && mapping_mf_keep_ue_mapped(mapping))
+			/*
+			 * Let userspace know the radius of HWPoison is
+			 * the size of raw page; accessing other pages
+			 * inside the folio is still ok.
+			 */
+			tk->size_shift = PAGE_SHIFT;
+		else
+			tk->size_shift = folio_shift(folio);
+	}
 
 	/*
 	 * Send SIGKILL if "tk->addr == -EFAULT". Also, as
@@ -824,6 +837,8 @@ static int kill_accessing_process(struct task_struct *p, unsigned long pfn,
 				  int flags)
 {
 	int ret;
+	struct folio *folio;
+	struct address_space *mapping;
 	struct hwpoison_walk priv = {
 		.pfn = pfn,
 	};
@@ -841,8 +856,20 @@ static int kill_accessing_process(struct task_struct *p, unsigned long pfn,
 	 * ret = 0 when poison page is a clean page and it's dropped, no
 	 * SIGBUS is needed.
 	 */
-	if (ret == 1 && priv.tk.addr)
+	if (ret == 1 && priv.tk.addr) {
+		folio = pfn_folio(pfn);
+		if (folio_test_hugetlb(folio)) {
+			mapping = folio_mapping(folio);
+			if (hugetlb_should_keep_hwpoison_mapped(folio, mapping))
+				/*
+				 * Let userspace know the radius of HWPoison is
+				 * the size of raw page; accessing other pages
+				 * inside the folio is still ok.
+				 */
+				priv.tk.size_shift = PAGE_SHIFT;
+		}
 		kill_proc(&priv.tk, pfn, flags);
+	}
 	mmap_read_unlock(p->mm);
 
 	return ret > 0 ? -EHWPOISON : 0;
@@ -1185,6 +1212,13 @@ static int me_huge_page(struct page_state *ps, struct page *p)
 			res = MF_FAILED;
 		}
 	}
+
+	/*
+	 * MF still needs to hold a refcount for the deferred actions in
+	 * filemap_offline_hwpoison_folio.
+	 */
+	if (hugetlb_should_keep_hwpoison_mapped(folio, mapping))
+		return res;
 
 	if (has_extra_refcount(ps, p, extra_pins))
 		res = MF_FAILED;
@@ -1582,6 +1616,7 @@ static bool hwpoison_user_mappings(struct folio *folio, struct page *p,
 {
 	LIST_HEAD(tokill);
 	bool unmap_success;
+	bool keep_mapped;
 	int forcekill;
 	bool mlocked = folio_test_mlocked(folio);
 
@@ -1609,8 +1644,12 @@ static bool hwpoison_user_mappings(struct folio *folio, struct page *p,
 	 */
 	collect_procs(folio, p, &tokill, flags & MF_ACTION_REQUIRED);
 
-	unmap_success = !unmap_poisoned_folio(folio, pfn, flags & MF_MUST_KILL);
-	if (!unmap_success)
+	keep_mapped = hugetlb_should_keep_hwpoison_mapped(folio, folio_mapping(folio));
+	if (!keep_mapped)
+		unmap_poisoned_folio(folio, pfn, flags & MF_MUST_KILL);
+
+	unmap_success = !folio_mapped(folio);
+	if (!keep_mapped && !unmap_success)
 		pr_err("%#lx: failed to unmap page (folio mapcount=%d)\n",
 		       pfn, folio_mapcount(folio));
 
@@ -1635,7 +1674,7 @@ static bool hwpoison_user_mappings(struct folio *folio, struct page *p,
 		    !unmap_success;
 	kill_procs(&tokill, forcekill, pfn, flags);
 
-	return unmap_success;
+	return unmap_success || keep_mapped;
 }
 
 static int identify_page_state(unsigned long pfn, struct page *p,
@@ -2021,6 +2060,30 @@ out:
 }
 
 /*
+ * We currently drop the poisoned folio without trying to dissolve it,
+ * to avoid a possible race condition: Dissolving currently requires all
+ * pages to return to the buddy allocator but the allocation doesn't test
+ * the poisoned flag anymore, so an allocation may provide a poisoned page,
+ * and crash the system.
+ * Poisoned mapped folios still have an extra reference taken by
+ * try_memory_failure_hugetlb() so such a folio is not going to be freed
+ * and is basically lost until next reboot.
+ */
+void filemap_offline_hwpoison_folio(struct address_space *mapping,
+				    struct folio *folio)
+{
+	WARN_ON_ONCE(!mapping);
+
+	if (!folio_test_hwpoison(folio))
+		return;
+
+	/* Pending MFR currently only exist for hugetlb. */
+	if (hugetlb_should_keep_hwpoison_mapped(folio, mapping))
+		pr_info("%#lx: Dropping poisoned page of size: 0x%lx\n",
+			folio_pfn(folio), folio_size(folio));
+}
+
+/*
  * Taking refcount of hugetlb pages needs extra care about race conditions
  * with basic operations like hugepage allocation/free/demotion.
  * So some of prechecks for hwpoison (pinning, and testing/setting
@@ -2036,9 +2099,10 @@ static int try_memory_failure_hugetlb(unsigned long pfn, int flags, int *hugetlb
 {
 	int res, rv;
 	struct page *p = pfn_to_page(pfn);
-	struct folio *folio;
+	struct folio *folio = page_folio(p);
 	unsigned long page_flags;
 	bool migratable_cleared = false;
+	struct address_space *mapping = folio_mapping(folio);
 
 	*hugetlb = 1;
 retry:
@@ -2060,15 +2124,17 @@ retry:
 			rv = kill_accessing_process(current, pfn, flags);
 		if (res == MF_HUGETLB_PAGE_PRE_POISONED)
 			action_result(pfn, MF_MSG_ALREADY_POISONED, MF_FAILED);
-		else
+		else {
+			if (hugetlb_should_keep_hwpoison_mapped(folio, mapping))
+				return action_result(pfn, MF_MSG_UNMAP_FAILED, MF_DELAYED);
 			action_result(pfn, MF_MSG_HUGE, MF_FAILED);
+		}
 		return rv;
 	default:
 		WARN_ON((res != MF_HUGETLB_FREED) && (res != MF_HUGETLB_IN_USED));
 		break;
 	}
 
-	folio = page_folio(p);
 	folio_lock(folio);
 
 	if (hwpoison_filter(p)) {
