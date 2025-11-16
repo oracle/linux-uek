@@ -845,9 +845,16 @@ int dissolve_free_hugetlb_folios(unsigned long start_pfn,
 
 #ifdef CONFIG_MEMORY_FAILURE
 extern void folio_clear_hugetlb_hwpoison(struct folio *folio);
+extern bool hugetlb_should_keep_hwpoison_mapped(struct folio *folio,
+						struct address_space *mapping);
 #else
 static inline void folio_clear_hugetlb_hwpoison(struct folio *folio)
 {
+}
+static inline bool hugetlb_should_keep_hwpoison_mapped(struct folio *folio,
+						       struct address_space *mapping)
+{
+	return false;
 }
 #endif
 

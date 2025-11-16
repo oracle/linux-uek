@@ -621,6 +621,18 @@ static bool remove_inode_single_folio(struct hstate *h, struct inode *inode,
 	}
 
 	folio_unlock(folio);
+
+	/*
+	 * There may be pending HWPoison-ed folios when a memfd is being
+	 * removed or part of it is being truncated.
+	 *
+	 * HugeTLBFS' error_remove_folio keeps the HWPoison-ed folios in
+	 * page cache until mm wants to drop the folio at the end of the
+	 * filemap. At this point, if memory failure was delayed by
+	 * MFD_MF_KEEP_UE_MAPPED in the past, we can now deal with it.
+	 */
+	filemap_offline_hwpoison_folio(mapping, folio);
+
 	return ret;
 }
 

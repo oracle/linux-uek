@@ -329,7 +329,8 @@ long memfd_fcntl(struct file *file, unsigned int cmd, unsigned int arg)
 #define MFD_NAME_PREFIX_LEN (sizeof(MFD_NAME_PREFIX) - 1)
 #define MFD_NAME_MAX_LEN (NAME_MAX - MFD_NAME_PREFIX_LEN)
 
-#define MFD_ALL_FLAGS (MFD_CLOEXEC | MFD_ALLOW_SEALING | MFD_HUGETLB | MFD_NOEXEC_SEAL | MFD_EXEC)
+#define MFD_ALL_FLAGS (MFD_CLOEXEC | MFD_ALLOW_SEALING | MFD_HUGETLB | \
+		       MFD_NOEXEC_SEAL | MFD_EXEC | MFD_MF_KEEP_UE_MAPPED)
 
 static int check_sysctl_memfd_noexec(unsigned int *flags)
 {
@@ -366,6 +367,8 @@ SYSCALL_DEFINE2(memfd_create,
 
 	if (!(flags & MFD_HUGETLB)) {
 		if (flags & ~(unsigned int)MFD_ALL_FLAGS)
+			return -EINVAL;
+		if (flags & MFD_MF_KEEP_UE_MAPPED)
 			return -EINVAL;
 	} else {
 		/* Allow huge page size encoding in flags. */
@@ -424,6 +427,16 @@ SYSCALL_DEFINE2(memfd_create,
 	}
 	file->f_mode |= FMODE_LSEEK | FMODE_PREAD | FMODE_PWRITE;
 	file->f_flags |= O_LARGEFILE;
+
+	/*
+	 * MFD_MF_KEEP_UE_MAPPED can only be specified in memfd_create; no API
+	 * to update it once memfd is created. MFD_MF_KEEP_UE_MAPPED is not
+	 * seal-able.
+	 *
+	 * For now MFD_MF_KEEP_UE_MAPPED is only supported by HugeTLBFS.
+	 */
+	if (flags & MFD_MF_KEEP_UE_MAPPED)
+		mapping_set_mf_keep_ue_mapped(file->f_mapping);
 
 	if (flags & MFD_NOEXEC_SEAL) {
 		struct inode *inode = file_inode(file);
