@@ -584,11 +584,11 @@ static int nix_bp_disable(struct rvu *rvu,
 {
 	u16 pcifunc = req->hdr.pcifunc;
 	int blkaddr, pf, type, err;
-	u16 chan_base, chan, bpid;
 	struct rvu_pfvf *pfvf;
 	struct nix_hw *nix_hw;
+	u16 chan_base, chan;
 	struct nix_bp *bp;
-	u16 chan_v;
+	u16 chan_v, bpid;
 	u64 cfg;
 
 	pf = rvu_get_pf(rvu->pdev, pcifunc);
@@ -601,6 +601,9 @@ static int nix_bp_disable(struct rvu *rvu,
 
 	if (cpt_link && !rvu->hw->cpt_links)
 		return 0;
+
+	if (cpt_link)
+		type = NIX_INTF_TYPE_CPT;
 
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
 	err = nix_get_struct_ptrs(rvu, pcifunc, &nix_hw, &blkaddr);
@@ -662,7 +665,6 @@ static int rvu_nix_get_bpid(struct rvu *rvu, struct nix_bp_cfg_req *req,
 		return err;
 
 	bp = &nix_hw->bp;
-
 	/* Backpressure IDs range division
 	 * CGX channles are mapped to (0 - 191) BPIDs
 	 * LBK channles are mapped to (192 - 255) BPIDs
@@ -677,6 +679,7 @@ static int rvu_nix_get_bpid(struct rvu *rvu, struct nix_bp_cfg_req *req,
 	case NIX_INTF_TYPE_CGX:
 		if ((req->chan_base + req->chan_cnt) > NIX_BPIDS_PER_LMAC)
 			return NIX_AF_ERR_INVALID_BPID_REQ;
+
 		rvu_get_cgx_lmac_id(pfvf->cgx_lmac, &cgx_id, &lmac_id);
 		/* Assign bpid based on cgx, lmac and chan id */
 		bpid = (cgx_id * hw->lmac_per_cgx * NIX_BPIDS_PER_LMAC) +
@@ -687,7 +690,9 @@ static int rvu_nix_get_bpid(struct rvu *rvu, struct nix_bp_cfg_req *req,
 		if (bpid > bp->cgx_bpid_cnt)
 			return NIX_AF_ERR_INVALID_BPID;
 		break;
-
+	case NIX_INTF_TYPE_CPT:
+		bpid = bp->cgx_bpid_cnt + bp->sdp_bpid_cnt;
+		break;
 	case NIX_INTF_TYPE_LBK:
 		/* Alloc bpid from the free pool */
 		mutex_lock(&rvu->rsrc_lock);
@@ -749,6 +754,9 @@ static int nix_bp_enable(struct rvu *rvu,
 
 	if (cpt_link && !rvu->hw->cpt_links)
 		return 0;
+
+	if (cpt_link)
+		type = NIX_INTF_TYPE_CPT;
 
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, pcifunc);
@@ -5007,6 +5015,10 @@ static int rvu_nix_block_init(struct rvu *rvu, struct nix_hw *nix_hw)
 			return err;
 
 		err = nix_setup_txvlan(rvu, nix_hw);
+		if (err)
+			return err;
+
+		err = nix_setup_bpids(rvu, nix_hw, blkaddr);
 		if (err)
 			return err;
 
