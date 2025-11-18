@@ -4774,7 +4774,7 @@ int rvu_mbox_handler_nix_set_hw_frs(struct rvu *rvu, struct nix_frs_cfg *req,
 	if (!req->sdp_link && req->maxlen > max_mtu)
 		return NIX_AF_ERR_FRS_INVALID;
 
-	if (req->update_minlen && req->minlen < NIC_HW_MIN_FRS)
+	if (req->update_minlen && req->minlen < (req->sdp_link ? SDP_HW_MIN_FRS : NIC_HW_MIN_FRS))
 		return NIX_AF_ERR_FRS_INVALID;
 
 	/* Check if config is for SDP link */
