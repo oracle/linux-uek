@@ -2863,6 +2863,9 @@ static void __rvu_flr_handler(struct rvu *rvu, u16 pcifunc)
 	if (rvu->mcs_blk_cnt)
 		rvu_mcs_flr_handler(rvu, pcifunc);
 
+	/* Free allocated BPIDs */
+	rvu_nix_flr_free_bpids(rvu, pcifunc);
+
 	mutex_unlock(&rvu->flr_lock);
 }
 

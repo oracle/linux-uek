@@ -1065,6 +1065,7 @@ u32 convert_dwrr_mtu_to_bytes(u8 dwrr_mtu);
 u32 convert_bytes_to_dwrr_mtu(u32 bytes);
 void rvu_nix_tx_tl2_cfg(struct rvu *rvu, int blkaddr, u16 pcifunc,
 			struct nix_txsch *txsch, bool enable);
+void rvu_nix_flr_free_bpids(struct rvu *rvu, u16 pcifunc);
 int rvu_mbox_handler_nix_set_vlan_tpid(struct rvu *rvu,
 				       struct nix_set_vlan_tpid *req,
 				       struct msg_rsp *rsp);
