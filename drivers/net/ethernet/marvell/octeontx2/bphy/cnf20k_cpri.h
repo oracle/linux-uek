@@ -57,6 +57,8 @@
 
 #define OTX2_CPRI_IOCTL_BASE 0xCC
 
+#define PCI_SUBSYS_DEVID_CNF20KA	0xC320
+
 /* Implicit Ready notification from User space to Kernel,Kernel
  * in response returns PF_FUNC number corresponding to kernel PF driver
  * This ioctl would be first message sent from User application to

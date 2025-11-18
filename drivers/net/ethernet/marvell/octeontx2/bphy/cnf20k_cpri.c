@@ -1346,7 +1346,8 @@ static const struct file_operations cnf20k_cpri_cdev_fops = {
 };
 
 static const struct pci_device_id cpri_id_table[] = {
-	{ PCI_DEVICE(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_RVU_BPHY_CPRI_PF) },
+	{ PCI_DEVICE_SUB(PCI_VENDOR_ID_CAVIUM, PCI_DEVID_RVU_BPHY_CPRI_PF,
+	  PCI_ANY_ID, PCI_SUBSYS_DEVID_CNF20KA) },
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, cpri_id_table);
