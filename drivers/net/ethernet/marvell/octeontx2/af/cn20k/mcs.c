@@ -25,6 +25,26 @@ static void cn20k_mcs_set_hw_capabilities(struct mcs *mcs)
 	hw->mcs_blks = 1;		/* MCS blocks */
 }
 
+void cn20k_mcs_get_port_cfg(struct mcs *mcs, struct mcs_port_cfg_get_req *req,
+			    struct mcs_port_cfg_get_rsp *rsp)
+{
+	u64 reg = 0;
+
+	reg = MCSX_PEX_TX_SLAVE_PORT_CFGX(req->port_id);
+	rsp->cstm_tag_rel_mode_sel = mcs_reg_read(mcs, reg) >> 2;
+	rsp->port_id = req->port_id;
+	rsp->mcs_id = req->mcs_id;
+}
+
+void cn20k_mcs_set_port_cfg(struct mcs *mcs, struct mcs_port_cfg_set_req *req)
+{
+	u64 val;
+
+	val = (req->cstm_tag_rel_mode_sel & 0x3) << 2;
+	mcs_reg_write(mcs, MCSX_PEX_RX_SLAVE_PORT_CFGX(req->port_id), val);
+	mcs_reg_write(mcs, MCSX_PEX_TX_SLAVE_PORT_CFGX(req->port_id), val);
+}
+
 static void cn20k_mcs_parser_cfg(struct mcs *mcs)
 {
 	/* Default configuration is enough for parsing basic  IEEE 802.1AE-2006

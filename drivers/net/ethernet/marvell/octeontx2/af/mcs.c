@@ -1189,6 +1189,9 @@ void mcs_set_port_cfg(struct mcs *mcs, struct mcs_port_cfg_set_req *req)
 {
 	u64 val = 0;
 
+	if (is_cn20k(mcs->pdev))
+		return cn20k_mcs_set_port_cfg(mcs, req);
+
 	mcs_reg_write(mcs, MCSX_PAB_RX_SLAVE_PORT_CFGX(req->port_id),
 		      req->port_mode & MCS_PORT_MODE_MASK);
 
@@ -1231,6 +1234,9 @@ void mcs_get_port_cfg(struct mcs *mcs, struct mcs_port_cfg_get_req *req,
 		      struct mcs_port_cfg_get_rsp *rsp)
 {
 	u64 reg = 0;
+
+	if (is_cn20k(mcs->pdev))
+		return cn20k_mcs_get_port_cfg(mcs, req, rsp);
 
 	rsp->port_mode = mcs_reg_read(mcs, MCSX_PAB_RX_SLAVE_PORT_CFGX(req->port_id)) &
 			 MCS_PORT_MODE_MASK;
