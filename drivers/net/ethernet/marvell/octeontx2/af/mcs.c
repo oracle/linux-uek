@@ -10,6 +10,8 @@
 #include <linux/module.h>
 #include <linux/pci.h>
 
+#include <linux/soc/marvell/silicons.h>
+
 #include "mcs.h"
 #include "mcs_reg.h"
 
@@ -101,9 +103,12 @@ void mcs_get_rx_secy_stats(struct mcs *mcs, struct mcs_secy_stats *stats, int id
 
 	reg = MCSX_CSE_RX_MEM_SLAVE_INOCTETSSECYVALIDATEX(id);
 	stats->octet_validated_cnt =  mcs_reg_read(mcs, reg);
-
-	reg = MCSX_CSE_RX_MEM_SLAVE_INPKTSCTRLPORTDISABLEDX(id);
-	stats->pkt_port_disabled_cnt =  mcs_reg_read(mcs, reg);
+	if (!is_cn20k(mcs->pdev)) {
+		reg = MCSX_CSE_RX_MEM_SLAVE_INPKTSCTRLPORTDISABLEDX(id);
+		stats->pkt_port_disabled_cnt =  mcs_reg_read(mcs, reg);
+	} else {
+		stats->pkt_port_disabled_cnt =  0x0;
+	}
 
 	reg = MCSX_CSE_RX_MEM_SLAVE_INPKTSSECYBADTAGX(id);
 	stats->pkt_badtag_cnt =  mcs_reg_read(mcs, reg);
@@ -468,7 +473,7 @@ int mcs_install_flowid_bypass_entry(struct mcs *mcs)
 	mcs_secy_plcy_write(mcs, plcy, secy_id, MCS_RX);
 
 	/* Enable control port and set mtu to max */
-	plcy = BIT_ULL(0) | GENMASK_ULL(43, 28);
+	plcy = BIT_ULL(0) | SECY_PLCY_MEM_MTU_MASK;
 	if (mcs->hw->mcs_blks > 1)
 		plcy = BIT_ULL(0) | GENMASK_ULL(63, 48);
 	mcs_secy_plcy_write(mcs, plcy, secy_id, MCS_TX);
@@ -1085,6 +1090,9 @@ static int mcs_register_interrupts(struct mcs *mcs)
 {
 	int ret = 0;
 
+	if (is_cn20k(mcs->pdev))
+		return 0;
+
 	mcs->num_vec = pci_msix_vec_count(mcs->pdev);
 
 	ret = pci_alloc_irq_vectors(mcs->pdev, mcs->num_vec,
@@ -1335,6 +1343,9 @@ static void mcs_lmac_init(struct mcs *mcs, int lmac_id)
 {
 	u64 reg;
 
+	if (is_cn20k(mcs->pdev))
+		return;
+
 	/* Port mode 25GB */
 	reg = MCSX_PAB_RX_SLAVE_PORT_CFGX(lmac_id);
 	mcs_reg_write(mcs, reg, 0);
@@ -1405,7 +1416,7 @@ static int mcs_x2p_calibration(struct mcs *mcs)
 	return err;
 }
 
-static void mcs_set_external_bypass(struct mcs *mcs, bool bypass)
+static void mcs_set_external_bypass_def(struct mcs *mcs, bool bypass)
 {
 	u64 val;
 
@@ -1416,6 +1427,15 @@ static void mcs_set_external_bypass(struct mcs *mcs, bool bypass)
 	else
 		val &= ~BIT_ULL(6);
 	mcs_reg_write(mcs, MCSX_MIL_GLOBAL, val);
+}
+
+static void mcs_set_external_bypass(struct mcs *mcs, bool bypass)
+{
+	if (mcs->mcs_ops->mcs_set_external_bypass)
+		mcs->mcs_ops->mcs_set_external_bypass(mcs, bypass);
+	else
+		mcs_set_external_bypass_def(mcs, bypass);
+
 	mcs->bypass = bypass;
 }
 
@@ -1500,10 +1520,16 @@ static int mcs_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	mcs->pdev = pdev;
 	mcs->dev = &pdev->dev;
 
-	if (pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_B)
+	if (is_cn20k(pdev)) {
+		mcs->mcs_ops = cn20ka_get_mac_ops();
+		mcs->hw->mcs_devtype = CN20KA_MCS;
+	} else if (pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_B) {
 		mcs->mcs_ops = &cn10kb_mcs_ops;
-	else
+		mcs->hw->mcs_devtype = CN10KB_MCS;
+	} else {
 		mcs->mcs_ops = cnf10kb_get_mac_ops();
+		mcs->hw->mcs_devtype = CNF10KB_MCS;
+	}
 
 	/* Set hardware capabilities */
 	mcs->mcs_ops->mcs_set_hw_capabilities(mcs);
@@ -1517,6 +1543,8 @@ static int mcs_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	mcs->mcs_id = (pci_resource_start(pdev, PCI_CFG_REG_BAR_NUM) >> 24)
 			& MCS_ID_MASK;
+	if (is_cn20k(mcs->pdev))
+		mcs->mcs_id = 0;
 
 	/* Set mcs tx side resources */
 	err = mcs_alloc_struct_mem(mcs, &mcs->tx);
