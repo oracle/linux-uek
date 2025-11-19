@@ -40,7 +40,8 @@ static int mcs_dl_mcs_bypass_set(struct devlink *devlink, u32 id,
 }
 
 static int mcs_dl_mcs_bypass_get(struct devlink *devlink, u32 id,
-				 struct devlink_param_gset_ctx *ctx)
+				 struct devlink_param_gset_ctx *ctx,
+				 struct netlink_ext_ack *extack)
 {
 	struct mcs_devlink *mcs_dl = devlink_priv(devlink);
 	struct mcs *mcs = mcs_dl->mcs;

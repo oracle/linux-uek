@@ -114,7 +114,8 @@ static bool is_aux_enabled(struct ionic *ionic)
 }
 
 static int ionic_devlink_enable_rdma_get(struct devlink *dl, u32 id,
-					 struct devlink_param_gset_ctx *ctx)
+					 struct devlink_param_gset_ctx *ctx,
+					 struct netlink_ext_ack *extack)
 {
 	ctx->val.vbool = is_aux_enabled(devlink_priv(dl));
 	return 0;
