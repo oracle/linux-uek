@@ -1006,4 +1006,15 @@ enum mcs_devtype {
 	offset = MCS_CHOOSE_OFFSET(0x3d498ull, 0x54a8ull, 0x3d498ull);	\
 	offset; })
 
+#define MCSX_PEX_RX_SLAVE_TCP_CFG		0x15d0
+#define MCSX_PEX_RX_SLAVE_UDP_CFG		0x15c8
+#define MCSX_PEX_RX_SLAVE_IPV4_CFG		0x15b8
+#define MCSX_PEX_RX_SLAVE_IPV6_CFG		0x15c0
+#define MCSX_PEX_TX_SLAVE_TCP_CFG		0x1ae8
+#define MCSX_PEX_TX_SLAVE_UDP_CFG		0x1ae0
+#define MCSX_PEX_TX_SLAVE_IPV4_CFG		0x1ad0
+#define MCSX_PEX_TX_SLAVE_IPV6_CFG		0x1ad8
+#define MCSX_PEX_RX_SLAVE_PEX_CFG		0x1368
+#define MCSX_PEX_TX_SLAVE_PEX_CFG		0x1880
+#define MCSX_PEX_TX_SLAVE_PORT_CFGX(a)		(0x18c8 + (a) * 0x8)
 #endif
