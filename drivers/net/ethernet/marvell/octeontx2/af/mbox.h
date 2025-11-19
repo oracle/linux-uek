@@ -1705,8 +1705,8 @@ struct nix_bandprof_get_hwinfo_rsp {
 
 struct nix_stats_req {
 	struct mbox_msghdr hdr;
-	u8 reset;
 	u16 pcifunc;
+	u8 reset;
 	u64 rsvd;
 };
 

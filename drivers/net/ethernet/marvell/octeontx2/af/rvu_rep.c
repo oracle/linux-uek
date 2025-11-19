@@ -452,11 +452,28 @@ int rvu_mbox_handler_esw_cfg(struct rvu *rvu, struct esw_cfg_req *req,
 	return 0;
 }
 
+
+int rvu_rep_get_rep_map(struct rvu *rvu, struct msg_req *req,
+			 struct get_rep_cnt_rsp *rsp)
+{
+	int rep;
+
+	rvu->rep_pcifunc = req->hdr.pcifunc;
+	rsp->rep_cnt = rvu->rep_cnt;
+	for (rep = 0; rep < rvu->rep_cnt; rep++)
+		rsp->rep_pf_map[rep] = rvu->rep2pfvf_map[rep];
+
+	return 0;
+}
+
 int rvu_mbox_handler_get_rep_cnt(struct rvu *rvu, struct msg_req *req,
 				 struct get_rep_cnt_rsp *rsp)
 {
 	int pf, vf, numvfs, hwvf, rep = 0;
 	u16 pcifunc;
+
+	if (rvu->rep_cnt)
+		return rvu_rep_get_rep_map(rvu, req, rsp);
 
 	rvu->rep_pcifunc = req->hdr.pcifunc;
 	rsp->rep_cnt = rvu->cgx_mapped_pfs + rvu->cgx_mapped_vfs;

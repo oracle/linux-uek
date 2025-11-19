@@ -1517,7 +1517,8 @@ int otx2_pool_aq_init(struct otx2_nic *pfvf, u16 pool_id,
 	if (type != AURA_NIX_RQ)
 		return 0;
 
-	if (!test_bit(pool_id, pfvf->af_xdp_zc_qidx)) {
+	if (otx2_rep_dev(pfvf->pdev) || (pfvf->af_xdp_zc_qidx &&
+	    !test_bit(pool_id, pfvf->af_xdp_zc_qidx))) {
 		pp_params.order = get_order(buf_size);
 		pp_params.flags = PP_FLAG_DMA_MAP;
 		pp_params.pool_size = min(OTX2_PAGE_POOL_SZ, numptrs);
