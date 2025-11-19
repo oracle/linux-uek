@@ -2373,6 +2373,7 @@ static int rvu_process_mbox_msg(struct otx2_mbox *mbox, int devid,
 		return rsp ? err : -ENOMEM;				\
 	}
 MBOX_MESSAGES
+MBOX_MCS_FIPS_MESSAGES
 #undef M
 
 	default:

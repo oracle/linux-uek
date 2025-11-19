@@ -19,6 +19,7 @@
 #include "npc.h"
 #include "rvu_reg.h"
 #include "ptp.h"
+#include "mcs_fips_mbox.h"
 
 /* PCI device IDs */
 #define	PCI_DEVID_OCTEONTX2_RVU_AF		0xA065
@@ -1089,6 +1090,7 @@ static inline bool is_cgx_vf(struct rvu *rvu, u16 pcifunc)
 #define M(_name, _id, fn_name, req, rsp)				\
 int rvu_mbox_handler_ ## fn_name(struct rvu *, struct req *, struct rsp *);
 MBOX_MESSAGES
+MBOX_MCS_FIPS_MESSAGES
 #undef M
 
 /* Mbox APIs */
