@@ -772,7 +772,6 @@ static void rvu_free_hw_resources(struct rvu *rvu)
 	rvu_npa_freemem(rvu);
 	rvu_npc_freemem(rvu);
 	rvu_nix_freemem(rvu);
-	rvu_ree_freemem(rvu);
 
 	/* Free block LF bitmaps */
 	for (id = 0; id < BLK_COUNT; id++) {
@@ -958,36 +957,6 @@ static int rvu_setup_cpt_hw_resource(struct rvu *rvu, int blkaddr)
 	return rvu_alloc_bitmap(&block->lf);
 }
 
-static int rvu_setup_ree_hw_resource(struct rvu *rvu, int blkaddr, int blkid)
-{
-	struct rvu_hwinfo *hw = rvu->hw;
-	struct rvu_block *block;
-	int err;
-	u64 cfg;
-
-	/* Init REE LF's bitmap */
-	block = &hw->block[blkaddr];
-	if (!block->implemented)
-		return 0;
-	cfg = rvu_read64(rvu, blkaddr, REE_AF_CONSTANTS);
-	block->lf.max = cfg & 0xFF;
-	block->addr = blkaddr;
-	block->type = BLKTYPE_REE;
-	block->multislot = true;
-	block->lfshift = 3;
-	block->lookup_reg = REE_AF_RVU_LF_CFG_DEBUG;
-	block->pf_lfcnt_reg = RVU_PRIV_PFX_REEX_CFG(blkid);
-	block->vf_lfcnt_reg = RVU_PRIV_HWVFX_REEX_CFG(blkid);
-	block->lfcfg_reg = REE_PRIV_LFX_CFG;
-	block->msixcfg_reg = REE_PRIV_LFX_INT_CFG;
-	block->lfreset_reg = REE_AF_LF_RST;
-	block->rvu = rvu;
-	sprintf(block->name, "REE%d", blkid);
-	err = rvu_alloc_bitmap(&block->lf);
-	if (err)
-		return err;
-	return 0;
-}
 
 static void rvu_get_lbk_bufsize(struct rvu *rvu)
 {
@@ -1159,14 +1128,6 @@ cpt:
 		return err;
 	}
 
-	/* REE */
-	err = rvu_setup_ree_hw_resource(rvu, BLKADDR_REE0, 0);
-	if (err)
-		return err;
-	err = rvu_setup_ree_hw_resource(rvu, BLKADDR_REE1, 1);
-	if (err)
-		return err;
-
 	/* Allocate memory for PFVF data */
 	rvu->pf = devm_kcalloc(rvu->dev, hw->total_pfs,
 			       sizeof(struct rvu_pfvf), GFP_KERNEL);
@@ -1259,12 +1220,6 @@ cpt:
 	err = rvu_sdp_init(rvu);
 	if (err) {
 		dev_err(rvu->dev, "%s: Failed to initialize sdp\n", __func__);
-		goto nix_err;
-	}
-
-	err = rvu_ree_init(rvu);
-	if (err) {
-		dev_err(rvu->dev, "%s: Failed to initialize ree\n", __func__);
 		goto nix_err;
 	}
 
@@ -3186,7 +3141,6 @@ static void rvu_unregister_interrupts(struct rvu *rvu)
 	int irq;
 
 	rvu_cpt_unregister_interrupts(rvu);
-	rvu_ree_unregister_interrupts(rvu);
 
 	if (!is_cn20k(rvu->pdev))
 		/* Disable the Mbox interrupt */
@@ -3855,10 +3809,6 @@ static int __init rvu_init_module(void)
 	err =  pci_register_driver(&rvu_driver);
 	if (err < 0)
 		goto rvu_err;
-
-	ret = rvu_ree_register_interrupts(rvu);
-	if (ret)
-		goto fail;
 
 	rvu_eblock_module_init();
 

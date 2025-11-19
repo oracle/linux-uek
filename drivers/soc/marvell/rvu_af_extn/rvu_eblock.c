@@ -351,6 +351,7 @@ void rvu_eblock_module_init(void)
 	 * Module init of all eblock drivers that are part of RVU AF
 	 * module goes here.
 	 */
+	ree_eb_module_init();
 }
 
 void rvu_eblock_module_exit(void)
@@ -359,4 +360,5 @@ void rvu_eblock_module_exit(void)
 	 * Module exit of all eblock drivers that are part of RVU AF
 	 * module goes here.
 	 */
+	ree_eb_module_exit();
 }

@@ -7,6 +7,7 @@
 
 #include "rvu.h"
 #include "rvu_reg.h"
+#include "rvu_eblock.h"
 
 /* Maximum number of REE blocks */
 #define MAX_REE_BLKS		2
@@ -52,6 +53,22 @@ enum ree_rof_types {
 	REE_ROF_TYPE_5	= 5, /* Check CSR checksum only for internal memory */
 	REE_ROF_TYPE_6	= 6, /* Internal memory */
 	REE_ROF_TYPE_7	= 7, /* External memory */
+};
+
+struct ree_rsrc {
+	struct qmem	*graph_ctx;	/* Graph base address - used by HW */
+	struct qmem	*prefix_ctx;	/* Prefix blocks - used by HW */
+	void		**ruledb;	/* ROF file from application */
+	u8		*ruledbi;	/* Incremental checksum instructions */
+	u32		aq_head;	/* AF AQ head address */
+	u32		ruledb_len;	/* Length of ruledb */
+	u32		ruledbi_len;	/* Length of ruledbi */
+	u8		ruledb_blocks;	/* Number of blocks pointed by ruledb */
+};
+
+struct ree_drvdata {
+	int res_idx;
+	struct ree_rsrc	rsrc;
 };
 
 struct ree_rule_db_entry {
@@ -994,15 +1011,13 @@ static irqreturn_t rvu_ree_af_aq_intr_handler(int irq, void *ptr)
 	return IRQ_HANDLED;
 }
 
-static void rvu_ree_unregister_interrupts_block(struct rvu *rvu, int blkaddr)
+static void rvu_ree_unregister_interrupts_block(struct rvu_block *block,
+						void *data)
 {
-	int i, offs;
-	struct rvu_block *block;
-	struct rvu_hwinfo *hw = rvu->hw;
+	int i, offs, blkaddr;
+	struct rvu *rvu = block->rvu;
 
-	if (!is_block_implemented(hw, blkaddr))
-		return;
-	block = &hw->block[blkaddr];
+	blkaddr = block->addr;
 
 	offs = rvu_read64(rvu, blkaddr, REE_PRIV_AF_INT_CFG) & 0x7FF;
 	if (!offs) {
@@ -1022,12 +1037,6 @@ static void rvu_ree_unregister_interrupts_block(struct rvu *rvu, int blkaddr)
 			free_irq(pci_irq_vector(rvu->pdev, offs + i), block);
 			rvu->irq_allocated[offs + i] = false;
 		}
-}
-
-void rvu_ree_unregister_interrupts(struct rvu *rvu)
-{
-	rvu_ree_unregister_interrupts_block(rvu, BLKADDR_REE0);
-	rvu_ree_unregister_interrupts_block(rvu, BLKADDR_REE1);
 }
 
 static int rvu_ree_af_request_irq(struct rvu_block *block,
@@ -1050,17 +1059,15 @@ static int rvu_ree_af_request_irq(struct rvu_block *block,
 	return rvu->irq_allocated[offset];
 }
 
-static int rvu_ree_register_interrupts_block(struct rvu *rvu, int blkaddr,
-					     int blkid)
+static int rvu_ree_register_interrupts_block(struct rvu_block *block,
+					     void *data)
 {
-	struct rvu_hwinfo *hw = rvu->hw;
-	struct rvu_block *block;
-	int offs, ret = 0;
+	struct ree_drvdata *drvdata = data;
+	int offs, blkid, blkaddr, ret = 0;
+	struct rvu *rvu = block->rvu;
 
-	if (!is_block_implemented(rvu->hw, blkaddr))
-		return 0;
-
-	block = &hw->block[blkaddr];
+	blkid = drvdata->res_idx;
+	blkaddr = block->addr;
 
 	/* Read interrupt vector */
 	offs = rvu_read64(rvu, blkaddr, REE_PRIV_AF_INT_CFG) & 0x7FF;
@@ -1101,36 +1108,19 @@ static int rvu_ree_register_interrupts_block(struct rvu *rvu, int blkaddr,
 
 	return 0;
 err:
-	rvu_ree_unregister_interrupts(rvu);
+	rvu_ree_unregister_interrupts_block(block, data);
 	return ret;
 }
 
-int rvu_ree_register_interrupts(struct rvu *rvu)
+static int rvu_ree_init_block(struct rvu_block *block, void *data)
 {
-	int ret;
-
-	ret = rvu_ree_register_interrupts_block(rvu, BLKADDR_REE0, 0);
-	if (ret)
-		return ret;
-
-	return rvu_ree_register_interrupts_block(rvu, BLKADDR_REE1, 1);
-}
-
-static int rvu_ree_init_block(struct rvu *rvu, int blkaddr)
-{
-	struct rvu_hwinfo *hw = rvu->hw;
-	struct rvu_block *block;
-	int ret = 0, blkid = 0;
+	struct ree_drvdata *drvdata = data;
+	struct rvu *rvu = block->rvu;
 	struct ree_rsrc *ree;
+	int ret = 0;
 	u64 val;
 
-	if (!is_block_implemented(rvu->hw, blkaddr))
-		return 0;
-
-	block = &hw->block[blkaddr];
-	if (blkaddr == BLKADDR_REE1)
-		blkid = 1;
-	ree = &rvu->hw->ree[blkid];
+	ree = &drvdata->rsrc;
 
 	/* Administrative instruction queue allocation */
 	ret = ree_aq_inst_alloc(rvu, &block->aq,
@@ -1193,34 +1183,14 @@ err:
 	return ret;
 }
 
-int rvu_ree_init(struct rvu *rvu)
+static void rvu_ree_freemem_block(struct rvu_block *block, void *data)
 {
-	struct rvu_hwinfo *hw = rvu->hw;
-	int err;
-
-	hw->ree = devm_kcalloc(rvu->dev, MAX_REE_BLKS, sizeof(struct ree_rsrc),
-			       GFP_KERNEL);
-	if (!hw->ree)
-		return -ENOMEM;
-
-	err = rvu_ree_init_block(rvu, BLKADDR_REE0);
-	if (err)
-		return err;
-	return rvu_ree_init_block(rvu, BLKADDR_REE1);
-}
-
-static void rvu_ree_freemem_block(struct rvu *rvu, int blkaddr, int blkid)
-{
-	struct rvu_hwinfo *hw = rvu->hw;
-	struct rvu_block *block;
+	struct ree_drvdata *drvdata = data;
+	struct rvu *rvu = block->rvu;
 	struct ree_rsrc *ree;
 	int i = 0;
 
-	if (!is_block_implemented(rvu->hw, blkaddr))
-		return;
-
-	block = &hw->block[blkaddr];
-	ree  = &hw->ree[blkid];
+	ree  = &drvdata->rsrc;
 
 	rvu_aq_free(rvu, block->aq);
 	if (ree->graph_ctx)
@@ -1235,8 +1205,76 @@ static void rvu_ree_freemem_block(struct rvu *rvu, int blkaddr, int blkid)
 	kfree(ree->ruledbi);
 }
 
-void rvu_ree_freemem(struct rvu *rvu)
+static int rvu_setup_ree_hw_resource(struct rvu_block *block, void *data)
 {
-	rvu_ree_freemem_block(rvu, BLKADDR_REE0, 0);
-	rvu_ree_freemem_block(rvu, BLKADDR_REE1, 1);
+	struct ree_drvdata *drvdata = data;
+	struct rvu *rvu = block->rvu;
+	int err, res_idx;
+	u64 cfg;
+
+	res_idx = drvdata->res_idx;
+
+	/* Init REE LF's bitmap */
+	cfg = rvu_read64(rvu, block->addr, REE_AF_CONSTANTS);
+	block->lf.max = cfg & 0xFF;
+	block->type = BLKTYPE_REE;
+	block->multislot = true;
+	block->lfshift = 3;
+	block->lookup_reg = REE_AF_RVU_LF_CFG_DEBUG;
+	block->pf_lfcnt_reg = RVU_PRIV_PFX_REEX_CFG(res_idx);
+	block->vf_lfcnt_reg = RVU_PRIV_HWVFX_REEX_CFG(res_idx);
+	block->lfcfg_reg = REE_PRIV_LFX_CFG;
+	block->msixcfg_reg = REE_PRIV_LFX_INT_CFG;
+	block->lfreset_reg = REE_AF_LF_RST;
+	sprintf(block->name, "REE%d", res_idx);
+	err = rvu_alloc_bitmap(&block->lf);
+	if (err)
+		return err;
+	return 0;
+}
+
+static void *rvu_ree_probe(struct rvu *rvu, int blkaddr)
+{
+	struct ree_drvdata *data;
+	static int res_idx;
+
+	switch (blkaddr) {
+	case BLKADDR_REE0:
+	case BLKADDR_REE1:
+		data = devm_kzalloc(rvu->dev, sizeof(struct ree_drvdata),
+				    GFP_KERNEL);
+		if (!data)
+			return ERR_PTR(-ENOMEM);
+		data->res_idx = res_idx++;
+		break;
+	default:
+		data = NULL;
+	}
+
+	return data;
+}
+
+static void rvu_ree_remove(struct rvu_block *hwblock, void *data)
+{
+	devm_kfree(hwblock->rvu->dev, data);
+}
+
+static struct rvu_eblock_driver_ops ree_ops = {
+	.probe	= rvu_ree_probe,
+	.remove	= rvu_ree_remove,
+	.init	= rvu_ree_init_block,
+	.setup	= rvu_setup_ree_hw_resource,
+	.free	= rvu_ree_freemem_block,
+	.register_interrupt = rvu_ree_register_interrupts_block,
+	.unregister_interrupt = rvu_ree_unregister_interrupts_block,
+};
+
+void ree_eb_module_init(void)
+{
+	rvu_eblock_register_driver(&ree_ops);
+}
+
+void ree_eb_module_exit(void)
+{
+	rvu_eblock_unregister_driver(&ree_ops);
 }

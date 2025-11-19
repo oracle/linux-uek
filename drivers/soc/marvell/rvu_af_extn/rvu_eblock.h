@@ -42,3 +42,5 @@ int rvu_eblock_register_driver(const struct rvu_eblock_driver_ops *ops);
 void rvu_eblock_unregister_driver(struct rvu_eblock_driver_ops *ops);
 
 /* Eblock drivers part of RVU AF driver module */
+void ree_eb_module_init(void);
+void ree_eb_module_exit(void);
