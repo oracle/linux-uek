@@ -1585,6 +1585,7 @@ BuildKernel %make_target %kernel_image 64kdebug
     -C tools/perf -f Makefile.perf \
     VF=1 \
     NO_PERF_READ_VDSO32=1 NO_PERF_READ_VDSOX32=1 \
+    LIBPERL=1 \
     WERROR=0 \
     NO_LIBUNWIND=1 NO_STRLCPY=1 \
     HAVE_CPLUS_DEMANGLE=1 NO_GTK2=1 \
