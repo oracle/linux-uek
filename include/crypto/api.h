@@ -39,6 +39,15 @@ struct crypto_api_key {
 	void *func;
 };
 
+#ifdef __GENKSYMS__
+#define DECLARE_STATIC_CALL_PROTO(name, ret_type, args_decl, func) \
+	extern ret_type STATIC_CALL_KEY(name) args_decl; \
+	extern ret_type STATIC_CALL_TRAMP(name) args_decl;
+#else
+#define DECLARE_STATIC_CALL_PROTO(name, ret_type, args_decl, func) \
+		DECLARE_STATIC_CALL(name, func);
+#endif
+
 #ifndef FIPS_MODULE
 
 /*
@@ -55,7 +64,7 @@ struct crypto_api_key {
 /* Consolidated version of different DECLARE_CRYPTO_API versions */
 #define DECLARE_CRYPTO_API(name, ret_type, args_decl, args_call)	\
 	ret_type nonfips_##name args_decl;				\
-	DECLARE_STATIC_CALL(crypto_##name##_key, nonfips_##name);	\
+	DECLARE_STATIC_CALL_PROTO(crypto_##name##_key, ret_type, args_decl, nonfips_##name); \
 	static inline ret_type name args_decl				\
 	{								\
 		return static_call(crypto_##name##_key) args_call;	\
@@ -95,7 +104,7 @@ struct crypto_api_key {
 /* Consolidated version of different DECLARE_CRYPTO_API versions */
 #define DECLARE_CRYPTO_API(name, ret_type, args_decl, args_call)	\
 	ret_type fips_##name args_decl;					\
-	DECLARE_STATIC_CALL(crypto_##name##_key, fips_##name);		\
+	DECLARE_STATIC_CALL_PROTO(crypto_##name##_key, ret_type, args_decl, fips_##name); \
 	static inline ret_type name args_decl				\
 	{								\
 		return fips_##name args_call;				\
