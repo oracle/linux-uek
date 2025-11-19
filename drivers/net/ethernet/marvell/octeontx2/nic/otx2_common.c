@@ -2098,6 +2098,9 @@ int otx2_set_hw_capabilities(struct otx2_nic *pfvf)
 	if (rsp->hw_caps & HW_CAP_MACSEC)
 		__set_bit(CN10K_HW_MACSEC, &hw->cap_flag);
 
+	if (rsp->hw_caps & HW_CAP_MACSEC_SCI_MATCH)
+		__set_bit(HW_MACSEC_SCI_MATCH, &hw->cap_flag);
+
 	mutex_unlock(&mbox->lock);
 
 	return 0;

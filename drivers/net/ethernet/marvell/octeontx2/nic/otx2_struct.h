@@ -141,7 +141,8 @@ struct nix_rx_parse_s {
 	u64 flow_key_alg : 5;
 	u64 rsvd_359_341 : 19;
 	u64 color	 : 2;
-	u64 rsvd_383_362 : 22;
+	u64 mcs_mdata	 : 14;
+	u64 rsvd_383_376 : 8;
 	u64 rsvd_447_384;     /* W6 */
 };
 
@@ -218,7 +219,9 @@ struct nix_sqe_ext_s {
 	u64 vlan0_ins_ena : 1;
 	u64 vlan1_ins_ena : 1;
 	u64 init_color    : 2;
-	u64 rsvd_127_116  : 12;
+	u64 flow_id       : 7;
+	u64 flow_override : 1;
+	u64 rsvd_127_124  : 4;
 };
 
 struct nix_sqe_sg_s {

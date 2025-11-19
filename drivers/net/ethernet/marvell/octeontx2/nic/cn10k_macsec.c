@@ -13,6 +13,7 @@
 #define MCS_TCAM0_MAC_SA_MASK		GENMASK_ULL(63, 48)
 #define MCS_TCAM1_MAC_SA_MASK		GENMASK_ULL(31, 0)
 #define MCS_TCAM1_ETYPE_MASK		GENMASK_ULL(47, 32)
+#define MCS_TCAM3_LABEL_MASK		GENMASK_ULL(26, 20)
 
 #define MCS_SA_MAP_MEM_SA_USE		BIT_ULL(9)
 
@@ -45,6 +46,47 @@
 
 #define CN10K_MAX_HASH_LEN		16
 #define CN10K_MAX_SAK_LEN		32
+
+static const struct rhashtable_params sci_hash_params = {
+	.key_len = sizeof_field(struct cn10k_mcs_txsc, sci),
+	.key_offset = offsetof(struct cn10k_mcs_txsc, sci),
+	.head_offset = offsetof(struct cn10k_mcs_txsc, hash),
+	.automatic_shrinking = true,
+};
+
+int otx2_macsec_handle_tx_skb(struct otx2_nic *pfvf, struct sk_buff *skb,
+			      u8 *flow_id)
+{
+	struct metadata_dst *md_dst = skb_metadata_dst(skb);
+	struct cn10k_mcs_cfg *cfg = pfvf->macsec_cfg;
+	struct cn10k_mcs_txsc *txsc;
+
+	rcu_read_lock();
+	txsc = rhashtable_lookup(&cfg->sci_hash_tbl, &md_dst->u.macsec_info.sci,
+				 sci_hash_params);
+	rcu_read_unlock();
+
+	if (!txsc)
+		return -EINVAL;
+
+	if (flow_id)
+		*flow_id = txsc->hw_flow_id;
+
+	return 0;
+}
+
+void otx2_macsec_handle_rx_skb(struct otx2_nic *pfvf, struct sk_buff *skb,
+			       u8 hw_sc_id)
+{
+	struct cn10k_mcs_cfg *cfg = pfvf->macsec_cfg;
+	struct cn10k_mcs_rxsc *rxsc;
+
+	rxsc = cfg->rxsc_tbl[hw_sc_id];
+	if (rxsc && rxsc->md_dst) {
+		dst_hold(&rxsc->md_dst->dst);
+		skb_dst_set(skb, &rxsc->md_dst->dst);
+	}
+}
 
 static int cn10k_ecb_aes_encrypt(struct otx2_nic *pfvf, u8 *sak,
 				 u16 sak_len, u8 *hash)
@@ -311,6 +353,7 @@ static int cn10k_mcs_write_rx_flowid(struct otx2_nic *pfvf,
 				     struct cn10k_mcs_rxsc *rxsc, u8 hw_secy_id)
 {
 	struct macsec_rx_sc *sw_rx_sc = rxsc->sw_rxsc;
+	struct cn10k_mcs_cfg *cfg = pfvf->macsec_cfg;
 	struct macsec_secy *secy = rxsc->sw_secy;
 	struct mcs_flowid_entry_write_req *req;
 	struct mbox *mbox = &pfvf->mbox;
@@ -337,6 +380,12 @@ static int cn10k_mcs_write_rx_flowid(struct otx2_nic *pfvf,
 
 	req->mask[2] = ~0ULL;
 	req->mask[3] = ~0ULL;
+
+	/* The index of SCI CAM table is also used as CAM match criteria */
+	if (cfg->hw_sci_match) {
+		req->data[3] = FIELD_PREP(MCS_TCAM3_LABEL_MASK, rxsc->hw_sc_id);
+		req->mask[3] &= ~MCS_TCAM3_LABEL_MASK;
+	}
 
 	req->flow_id = rxsc->hw_flow_id;
 	req->secy_id = hw_secy_id;
@@ -961,6 +1010,7 @@ fail:
 static void cn10k_mcs_delete_rxsc(struct otx2_nic *pfvf,
 				  struct cn10k_mcs_rxsc *rxsc)
 {
+	struct cn10k_mcs_cfg *cfg = pfvf->macsec_cfg;
 	u8 sa_bmap = rxsc->sa_bmap;
 	u8 sa_num = 0;
 
@@ -978,6 +1028,8 @@ static void cn10k_mcs_delete_rxsc(struct otx2_nic *pfvf,
 			    rxsc->hw_sc_id, false);
 	cn10k_mcs_free_rsrc(pfvf, MCS_RX, MCS_RSRC_TYPE_FLOWID,
 			    rxsc->hw_flow_id, false);
+	if (cfg->hw_sci_match)
+		cfg->rxsc_tbl[rxsc->hw_sc_id] = NULL;
 }
 
 static int cn10k_mcs_secy_tx_cfg(struct otx2_nic *pfvf, struct macsec_secy *secy,
@@ -1175,9 +1227,13 @@ static int cn10k_mdo_add_secy(struct macsec_context *ctx)
 	txsc->last_validate_frames = secy->validate_frames;
 	txsc->last_replay_protect = secy->replay_protect;
 	txsc->vlan_dev = is_vlan_dev(ctx->netdev);
+	txsc->sci = secy->sci;
 
 	list_add(&txsc->entry, &cfg->txsc_list);
 
+	if (cfg->hw_sci_match)
+		WARN_ON(rhashtable_insert_fast(&cfg->sci_hash_tbl, &txsc->hash,
+					       sci_hash_params));
 	if (netif_running(secy->netdev))
 		return cn10k_mcs_secy_tx_cfg(pfvf, secy, txsc, NULL, 0);
 
@@ -1355,6 +1411,17 @@ static int cn10k_mdo_add_rxsc(struct macsec_context *ctx)
 	if (IS_ERR(rxsc))
 		return -ENOSPC;
 
+	if (cfg->hw_sci_match) {
+		rxsc->md_dst = metadata_dst_alloc(0, METADATA_MACSEC, GFP_KERNEL);
+		if (!rxsc->md_dst) {
+			cn10k_mcs_delete_rxsc(pfvf, rxsc);
+			return -ENOMEM;
+		}
+
+		rxsc->md_dst->u.macsec_info.sci = ctx->rx_sc->sci;
+		cfg->rxsc_tbl[rxsc->hw_sc_id] = rxsc;
+	}
+
 	rxsc->sw_secy = ctx->secy;
 	rxsc->sw_rxsc = ctx->rx_sc;
 	list_add(&rxsc->entry, &cfg->rxsc_list);
@@ -1403,6 +1470,10 @@ static int cn10k_mdo_del_rxsc(struct macsec_context *ctx)
 
 	cn10k_mcs_ena_dis_flowid(pfvf, rxsc->hw_flow_id, false, MCS_RX);
 	cn10k_mcs_delete_rxsc(pfvf, rxsc);
+	if (rxsc->md_dst) {
+		metadata_dst_free(rxsc->md_dst);
+		rxsc->md_dst = NULL;
+	}
 	list_del(&rxsc->entry);
 	kfree(rxsc);
 
@@ -1663,6 +1734,7 @@ int cn10k_mcs_init(struct otx2_nic *pfvf)
 	struct mbox *mbox = &pfvf->mbox;
 	struct cn10k_mcs_cfg *cfg;
 	struct mcs_intr_cfg *req;
+	int err;
 
 	if (!test_bit(CN10K_HW_MACSEC, &pfvf->hw.cap_flag))
 		return 0;
@@ -1677,6 +1749,17 @@ int cn10k_mcs_init(struct otx2_nic *pfvf)
 
 	pfvf->netdev->features |= NETIF_F_HW_MACSEC;
 	pfvf->netdev->macsec_ops = &cn10k_mcs_ops;
+
+	if (test_bit(HW_MACSEC_SCI_MATCH, &pfvf->hw.cap_flag))
+		cfg->hw_sci_match = true;
+
+	err = rhashtable_init(&cfg->sci_hash_tbl, &sci_hash_params);
+	if (err) {
+		dev_err(pfvf->dev, "MACSEC SCI hash table init failed %d\n",
+			err);
+		mutex_unlock(&mbox->lock);
+		return err;
+	}
 
 	mutex_lock(&mbox->lock);
 
@@ -1707,6 +1790,8 @@ void cn10k_mcs_free(struct otx2_nic *pfvf)
 
 	if (list_empty(&cfg->txsc_list))
 		return;
+
+	rhashtable_destroy(&cfg->sci_hash_tbl);
 
 	cn10k_mcs_free_rsrc(pfvf, MCS_TX, MCS_RSRC_TYPE_SECY, 0, true);
 	cn10k_mcs_free_rsrc(pfvf, MCS_RX, MCS_RSRC_TYPE_SECY, 0, true);

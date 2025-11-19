@@ -19,6 +19,7 @@
 #include <net/macsec.h>
 #include <net/pkt_cls.h>
 #include <net/devlink.h>
+#include <net/dst_metadata.h>
 #include <linux/time64.h>
 #include <linux/dim.h>
 #include <uapi/linux/if_macsec.h>
@@ -274,6 +275,7 @@ struct otx2_hw {
 #define CN10K_PTP_ONESTEP	4
 #define CN10K_HW_MACSEC		5
 #define QOS_CIR_PIR_SUPPORT	6
+#define HW_MACSEC_SCI_MATCH	7
 	unsigned long		cap_flag;
 
 #define LMT_LINE_SIZE		128
@@ -431,6 +433,9 @@ struct cn10k_mcs_txsc {
 	u8 salt[CN10K_MCS_SA_PER_SC][MACSEC_SALT_LEN];
 	ssci_t ssci[CN10K_MCS_SA_PER_SC];
 	bool vlan_dev; /* macsec running on VLAN ? */
+	/* mapping for sci to hw_flow_id */
+	struct rhash_head hash;
+	sci_t sci;
 };
 
 struct cn10k_mcs_rxsc {
@@ -445,11 +450,17 @@ struct cn10k_mcs_rxsc {
 	u8 sa_key[CN10K_MCS_SA_PER_SC][MACSEC_MAX_KEY_LEN];
 	u8 salt[CN10K_MCS_SA_PER_SC][MACSEC_SALT_LEN];
 	ssci_t ssci[CN10K_MCS_SA_PER_SC];
+	struct metadata_dst *md_dst;
 };
+
+#define HW_MAX_RXSC	128
 
 struct cn10k_mcs_cfg {
 	struct list_head txsc_list;
 	struct list_head rxsc_list;
+	struct rhashtable sci_hash_tbl;
+	struct cn10k_mcs_rxsc *rxsc_tbl[HW_MAX_RXSC];
+	bool hw_sci_match;
 };
 
 struct pf_irq_data {
@@ -1177,11 +1188,21 @@ int otx2_pfc_txschq_stop(struct otx2_nic *pfvf);
 int cn10k_mcs_init(struct otx2_nic *pfvf);
 void cn10k_mcs_free(struct otx2_nic *pfvf);
 void cn10k_handle_mcs_event(struct otx2_nic *pfvf, struct mcs_intr_info *event);
+int otx2_macsec_handle_tx_skb(struct otx2_nic *pfvf, struct sk_buff *skb,
+			      u8 *flow_id);
+void otx2_macsec_handle_rx_skb(struct otx2_nic *pfvf, struct sk_buff *skb,
+			       u8 hw_sc_id);
 #else
 static inline int cn10k_mcs_init(struct otx2_nic *pfvf) { return 0; }
 static inline void cn10k_mcs_free(struct otx2_nic *pfvf) {}
 static inline void cn10k_handle_mcs_event(struct otx2_nic *pfvf,
 					  struct mcs_intr_info *event)
+{}
+static inline int otx2_macsec_handle_tx_skb(struct otx2_nic *pfvf,
+					    struct sk_buff *skb, u8 *flow_id)
+{ return 0; }
+static inline void otx2_macsec_handle_rx_skb(struct otx2_nic *pfvf,
+					     struct sk_buff *skb, u8 hw_sc_id)
 {}
 #endif /* CONFIG_MACSEC */
 

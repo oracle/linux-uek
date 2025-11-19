@@ -383,6 +383,10 @@ static void otx2_rcv_pkt_handler(struct otx2_nic *pfvf,
 	if (pfvf->flags & OTX2_FLAG_TC_MARK_ENABLED)
 		skb->mark = parse->match_id;
 
+	if (test_bit(HW_MACSEC_SCI_MATCH, &pfvf->hw.cap_flag) &&
+	    (parse->mcs_mdata & 0x7F))
+		otx2_macsec_handle_rx_skb(pfvf, skb, parse->mcs_mdata & 0x7F);
+
 	skb_mark_for_recycle(skb);
 	if (metasize)
 		skb_metadata_set(skb, metasize);
@@ -703,8 +707,36 @@ static bool otx2_sqe_add_sg(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
 	return true;
 }
 
+static bool otx2_macsec_skb_is_offload(struct sk_buff *skb)
+{
+	struct metadata_dst *md_dst = skb_metadata_dst(skb);
+
+	return md_dst && (md_dst->type == METADATA_MACSEC);
+}
+
+static bool otx2_update_macsec_flowid(struct otx2_nic *pfvf, struct sk_buff *skb,
+				      struct nix_sqe_ext_s *ext)
+{
+	u8 flow_id;
+	int err;
+
+	if (!test_bit(HW_MACSEC_SCI_MATCH, &pfvf->hw.cap_flag))
+		return true;
+
+	if (!otx2_macsec_skb_is_offload(skb))
+		return true;
+
+	err = otx2_macsec_handle_tx_skb(pfvf, skb, &flow_id);
+	if (!err) {
+		ext->flow_id = flow_id;
+		ext->flow_override = 1;
+	}
+
+	return err == 0 ? true : false;
+}
+
 /* Add SQE extended header subdescriptor */
-static void otx2_sqe_add_ext(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
+static bool otx2_sqe_add_ext(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
 			     struct sk_buff *skb, int *offset)
 {
 	struct nix_sqe_ext_s *ext;
@@ -770,6 +802,7 @@ static void otx2_sqe_add_ext(struct otx2_nic *pfvf, struct otx2_snd_queue *sq,
 	}
 
 	*offset += sizeof(*ext);
+	return otx2_update_macsec_flowid(pfvf, skb, ext);
 }
 
 static void otx2_sqe_add_mem(struct otx2_snd_queue *sq, int *offset,
@@ -1242,7 +1275,8 @@ bool otx2_sq_append_skb(void *dev, struct netdev_queue *txq,
 	offset = sizeof(*sqe_hdr);
 
 	/* Add extended header if needed */
-	otx2_sqe_add_ext(pfvf, sq, skb, &offset);
+	if (!otx2_sqe_add_ext(pfvf, sq, skb, &offset))
+		return false;
 
 	/* Add SG subdesc with data frags */
 	if (static_branch_unlikely(&cn10k_ipsec_sa_enabled) &&
