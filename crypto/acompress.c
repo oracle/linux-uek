@@ -108,22 +108,22 @@ static const struct crypto_type crypto_acomp_type = {
 	.tfmsize = offsetof(struct crypto_acomp, base),
 };
 
-struct crypto_acomp *crypto_alloc_acomp(const char *alg_name, u32 type,
+struct crypto_acomp *CRYPTO_API(crypto_alloc_acomp)(const char *alg_name, u32 type,
 					u32 mask)
 {
 	return crypto_alloc_tfm(alg_name, &crypto_acomp_type, type, mask);
 }
-EXPORT_SYMBOL_GPL(crypto_alloc_acomp);
+DEFINE_CRYPTO_API(crypto_alloc_acomp);
 
-struct crypto_acomp *crypto_alloc_acomp_node(const char *alg_name, u32 type,
+struct crypto_acomp *CRYPTO_API(crypto_alloc_acomp_node)(const char *alg_name, u32 type,
 					u32 mask, int node)
 {
 	return crypto_alloc_tfm_node(alg_name, &crypto_acomp_type, type, mask,
 				node);
 }
-EXPORT_SYMBOL_GPL(crypto_alloc_acomp_node);
+DEFINE_CRYPTO_API(crypto_alloc_acomp_node);
 
-struct acomp_req *acomp_request_alloc(struct crypto_acomp *acomp)
+struct acomp_req *CRYPTO_API(acomp_request_alloc)(struct crypto_acomp *acomp)
 {
 	struct crypto_tfm *tfm = crypto_acomp_tfm(acomp);
 	struct acomp_req *req;
@@ -134,9 +134,9 @@ struct acomp_req *acomp_request_alloc(struct crypto_acomp *acomp)
 
 	return req;
 }
-EXPORT_SYMBOL_GPL(acomp_request_alloc);
+DEFINE_CRYPTO_API(acomp_request_alloc);
 
-void acomp_request_free(struct acomp_req *req)
+void CRYPTO_API(acomp_request_free)(struct acomp_req *req)
 {
 	struct crypto_acomp *acomp = crypto_acomp_reqtfm(req);
 	struct crypto_tfm *tfm = crypto_acomp_tfm(acomp);
@@ -151,7 +151,7 @@ void acomp_request_free(struct acomp_req *req)
 
 	__acomp_request_free(req);
 }
-EXPORT_SYMBOL_GPL(acomp_request_free);
+DEFINE_CRYPTO_API(acomp_request_free);
 
 void comp_prepare_alg(struct comp_alg_common *alg)
 {
@@ -160,7 +160,7 @@ void comp_prepare_alg(struct comp_alg_common *alg)
 	base->cra_flags &= ~CRYPTO_ALG_TYPE_MASK;
 }
 
-int crypto_register_acomp(struct acomp_alg *alg)
+int CRYPTO_API(crypto_register_acomp)(struct acomp_alg *alg)
 {
 	struct crypto_alg *base = &alg->calg.base;
 
@@ -171,15 +171,15 @@ int crypto_register_acomp(struct acomp_alg *alg)
 
 	return crypto_register_alg(base);
 }
-EXPORT_SYMBOL_GPL(crypto_register_acomp);
+DEFINE_CRYPTO_API(crypto_register_acomp);
 
-void crypto_unregister_acomp(struct acomp_alg *alg)
+void CRYPTO_API(crypto_unregister_acomp)(struct acomp_alg *alg)
 {
 	crypto_unregister_alg(&alg->base);
 }
-EXPORT_SYMBOL_GPL(crypto_unregister_acomp);
+DEFINE_CRYPTO_API(crypto_unregister_acomp);
 
-int crypto_register_acomps(struct acomp_alg *algs, int count)
+int CRYPTO_API(crypto_register_acomps)(struct acomp_alg *algs, int count)
 {
 	int i, ret;
 
@@ -197,16 +197,16 @@ err:
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(crypto_register_acomps);
+DEFINE_CRYPTO_API(crypto_register_acomps);
 
-void crypto_unregister_acomps(struct acomp_alg *algs, int count)
+void CRYPTO_API(crypto_unregister_acomps)(struct acomp_alg *algs, int count)
 {
 	int i;
 
 	for (i = count - 1; i >= 0; --i)
 		crypto_unregister_acomp(&algs[i]);
 }
-EXPORT_SYMBOL_GPL(crypto_unregister_acomps);
+DEFINE_CRYPTO_API(crypto_unregister_acomps);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Asynchronous compression type");

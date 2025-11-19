@@ -154,6 +154,8 @@ fips140-y += crypto/asymmetric_keys/x509.asn1.o
 fips140-y += crypto/asymmetric_keys/x509_public_key.o
 
 # non-cryptographic algorithms
+fips140-y += crypto/acompress.o
+fips140-y += crypto/scompress.o
 fips140-y += crypto/deflate.o
 
 #
