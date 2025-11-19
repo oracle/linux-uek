@@ -593,3 +593,13 @@ void rvu_apr_block_cn10k_init(struct rvu *rvu)
 	reg |=	FIELD_PREP(LMTST_THROTTLE_MASK, LMTST_WR_PEND_MAX);
 	rvu_write64(rvu, BLKADDR_APR, APR_AF_LMT_CFG, reg);
 }
+
+void rvu_sso_block_cn10k_init(struct rvu *rvu, int blkaddr)
+{
+	u64 reg;
+
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_WS_CFG);
+	/* Enable GET_WORK prefetching to the GWCs. */
+	reg &= ~BIT_ULL(4);
+	rvu_write64(rvu, blkaddr, SSO_AF_WS_CFG, reg);
+}

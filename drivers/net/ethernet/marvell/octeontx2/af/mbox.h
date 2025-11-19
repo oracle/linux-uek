@@ -208,7 +208,40 @@ M(NPA_HWCTX_DISABLE,	0x403, npa_hwctx_disable, hwctx_disable_req, msg_rsp)\
 M(NPA_CN20K_AQ_ENQ,	0x404, npa_cn20k_aq_enq, npa_cn20k_aq_enq_req,	\
 				npa_cn20k_aq_enq_rsp)			\
 /* SSO/SSOW mbox IDs (range 0x600 - 0x7FF) */				\
+M(SSO_LF_ALLOC,		0x600, sso_lf_alloc,				\
+				sso_lf_alloc_req, sso_lf_alloc_rsp)	\
+M(SSO_LF_FREE,		0x601, sso_lf_free,				\
+				sso_lf_free_req, msg_rsp)		\
+M(SSOW_LF_ALLOC,	0x602, ssow_lf_alloc,				\
+				ssow_lf_alloc_req, msg_rsp)		\
+M(SSOW_LF_FREE,		0x603, ssow_lf_free,				\
+				ssow_lf_free_req, msg_rsp)		\
+M(SSO_HW_SETCONFIG,	0x604, sso_hw_setconfig,			\
+				sso_hw_setconfig, msg_rsp)		\
+M(SSO_GRP_SET_PRIORITY,	0x605, sso_grp_set_priority,			\
+				sso_grp_priority, msg_rsp)		\
+M(SSO_GRP_GET_PRIORITY,	0x606, sso_grp_get_priority,			\
+				sso_info_req, sso_grp_priority)	\
+M(SSO_WS_CACHE_INV,	0x607, sso_ws_cache_inv, ssow_lf_inv_req, msg_rsp)\
+M(SSO_GRP_QOS_CONFIG,	0x608, sso_grp_qos_config, sso_grp_qos_cfg, msg_rsp)\
+M(SSO_GRP_GET_STATS,	0x609, sso_grp_get_stats, sso_info_req, sso_grp_stats)\
+M(SSO_HWS_GET_STATS,	0x610, sso_hws_get_stats, sso_info_req, sso_hws_stats)\
+M(SSO_HW_RELEASE_XAQ,	0x611, sso_hw_release_xaq_aura,			\
+				sso_release_xaq, msg_rsp)	\
+M(SSO_CONFIG_LSW,	0x612, ssow_config_lsw,			\
+				ssow_config_lsw, msg_rsp)	\
+M(SSO_HWS_CHNG_MSHIP,   0x613, ssow_chng_mship, ssow_chng_mship, msg_rsp)\
+M(SSO_GRP_STASH_CONFIG, 0x614, sso_grp_stash_config, sso_grp_stash_cfg, \
+				msg_rsp)				\
 /* TIM mbox IDs (range 0x800 - 0x9FF) */				\
+M(TIM_LF_ALLOC,		0x800, tim_lf_alloc,				\
+				tim_lf_alloc_req, tim_lf_alloc_rsp)	\
+M(TIM_LF_FREE,		0x801, tim_lf_free, tim_ring_req, msg_rsp)	\
+M(TIM_CONFIG_RING,	0x802, tim_config_ring, tim_config_req, msg_rsp)\
+M(TIM_ENABLE_RING,	0x803, tim_enable_ring, tim_ring_req, tim_enable_rsp)\
+M(TIM_DISABLE_RING,	0x804, tim_disable_ring, tim_ring_req, msg_rsp)	\
+M(TIM_GET_MIN_INTVL,	0x805, tim_get_min_intvl, tim_intvl_req,	\
+			       tim_intvl_rsp)				\
 /* CPT mbox IDs (range 0xA00 - 0xBFF) */				\
 M(CPT_LF_ALLOC,		0xA00, cpt_lf_alloc, cpt_lf_alloc_req_msg,	\
 			       msg_rsp)					\
@@ -1603,6 +1636,149 @@ struct nix_tl1_rr_prio_req {
 	u8 tl1_rr_prio;
 };
 
+/* SSO mailbox error codes
+ * Range 501 - 600.
+ */
+enum sso_af_status {
+	SSO_AF_ERR_PARAM	= -501,
+	SSO_AF_ERR_LF_INVALID	= -502,
+	SSO_AF_ERR_AF_LF_ALLOC	= -503,
+	SSO_AF_ERR_GRP_EBUSY	= -504,
+	SSO_AF_INVAL_NPA_PF_FUNC = -505,
+	SSO_AF_ERR_INVALID_CFG	= -506,
+};
+
+struct sso_lf_alloc_req {
+	struct mbox_msghdr hdr;
+	int node;
+	u16 hwgrps;
+};
+
+struct sso_lf_alloc_rsp {
+	struct mbox_msghdr hdr;
+	u32	xaq_buf_size;
+	u32	xaq_wq_entries;
+	u32	in_unit_entries;
+	u16	hwgrps;
+};
+
+struct sso_lf_free_req {
+	struct mbox_msghdr hdr;
+	int node;
+	u16 hwgrps;
+};
+
+struct sso_hw_setconfig {
+	struct mbox_msghdr hdr;
+	u32	npa_aura_id;
+	u16	npa_pf_func;
+	u16	hwgrps;
+};
+
+struct sso_release_xaq {
+	struct mbox_msghdr hdr;
+	u16	hwgrps;
+};
+
+struct sso_info_req {
+	struct mbox_msghdr hdr;
+	union {
+		u16 grp;
+		u16 hws;
+	};
+};
+
+struct sso_grp_priority {
+	struct mbox_msghdr hdr;
+	u16 grp;
+	u8 priority;
+	u8 affinity;
+	u8 weight;
+};
+
+/* SSOW mailbox error codes
+ * Range 601 - 700.
+ */
+enum ssow_af_status {
+	SSOW_AF_ERR_PARAM	= -601,
+	SSOW_AF_ERR_LF_INVALID	= -602,
+	SSOW_AF_ERR_AF_LF_ALLOC	= -603,
+	SSOW_AF_ERR_INVALID_CFG	= -604,
+};
+
+struct ssow_lf_alloc_req {
+	struct mbox_msghdr hdr;
+	int node;
+	u16 hws;
+};
+
+struct ssow_lf_free_req {
+	struct mbox_msghdr hdr;
+	int node;
+	u16 hws;
+};
+
+struct ssow_lf_inv_req {
+	struct mbox_msghdr hdr;
+	u16 nb_hws;
+	u16 hws[MAX_RVU_BLKLF_CNT];
+};
+
+struct ssow_config_lsw {
+	struct mbox_msghdr hdr;
+#define SSOW_LSW_DIS		0
+#define SSOW_LSW_GW_WAIT	1
+#define SSOW_LSW_GW_IMM		2
+	u8 lsw_mode;
+#define SSOW_WQE_REL_LSW_WAIT	0
+#define SSOW_WQE_REL_IMM	1
+	u8 wqe_release;
+};
+
+struct ssow_chng_mship {
+	struct mbox_msghdr hdr;
+	u8 set;
+	u8 enable;
+	u8 hws;
+	u16 nb_hwgrps;
+	u16 hwgrps[MAX_RVU_BLKLF_CNT];
+};
+
+struct sso_grp_qos_cfg {
+	struct mbox_msghdr hdr;
+	u16 grp;
+	u32 rsvd;
+	u16 taq_thr;
+	u16 iaq_thr;
+};
+
+struct sso_grp_stash_cfg {
+	struct mbox_msghdr hdr;
+	u16 grp;
+	u8 ena;
+	u8 offset:4;
+	u8 num_linesm1:4;
+};
+
+struct sso_grp_stats {
+	struct mbox_msghdr hdr;
+	u16 grp;
+	u64 ws_pc;
+	u64 ext_pc;
+	u64 wa_pc;
+	u64 ts_pc;
+	u64 ds_pc;
+	u64 dq_pc;
+	u64 aw_status;
+	u64 page_cnt;
+};
+
+struct sso_hws_stats {
+	struct mbox_msghdr hdr;
+	u16 hws;
+	u64 arbitration;
+};
+
 /* NPC mbox message structs */
 
 #define NPC_MCAM_ENTRY_INVALID	0xFFFF
@@ -1932,6 +2108,99 @@ struct npc_get_field_hash_info_rsp {
 	u64 hash_mask[NPC_MAX_INTF][NPC_MAX_HASH][NPC_MAX_HASH_MASK];
 	/* NPC_AF_INTF(0..1)_HASH(0..1)_RESULT_CTRL */
 	u64 hash_ctrl[NPC_MAX_INTF][NPC_MAX_HASH];
+};
+
+/* TIM mailbox error codes
+ * Range 801 - 900.
+ */
+enum tim_af_status {
+	TIM_AF_NO_RINGS_LEFT			= -801,
+	TIM_AF_INVAL_NPA_PF_FUNC		= -802,
+	TIM_AF_INVAL_SSO_PF_FUNC		= -803,
+	TIM_AF_RING_STILL_RUNNING		= -804,
+	TIM_AF_LF_INVALID			= -805,
+	TIM_AF_CSIZE_NOT_ALIGNED		= -806,
+	TIM_AF_CSIZE_TOO_SMALL			= -807,
+	TIM_AF_CSIZE_TOO_BIG			= -808,
+	TIM_AF_INTERVAL_TOO_SMALL		= -809,
+	TIM_AF_INVALID_BIG_ENDIAN_VALUE		= -810,
+	TIM_AF_INVALID_CLOCK_SOURCE		= -811,
+	TIM_AF_GPIO_CLK_SRC_NOT_ENABLED		= -812,
+	TIM_AF_INVALID_BSIZE			= -813,
+	TIM_AF_INVALID_ENABLE_PERIODIC		= -814,
+	TIM_AF_INVALID_ENABLE_DONTFREE		= -815,
+	TIM_AF_ENA_DONTFRE_NSET_PERIODIC	= -816,
+	TIM_AF_RING_ALREADY_DISABLED		= -817,
+	TIM_AF_LF_START_SYNC_FAIL		= -818,
+};
+
+enum tim_clk_srcs {
+	TIM_CLK_SRCS_TENNS	= 0,
+	TIM_CLK_SRCS_GPIO	= 1,
+	TIM_CLK_SRCS_GTI	= 2,
+	TIM_CLK_SRCS_PTP	= 3,
+	TIM_CLK_SRCS_SYNCE	= 4,
+	TIM_CLK_SRCS_BTS	= 5,
+	TIM_CLK_SRSC_INVALID,
+};
+
+enum tim_gpio_edge {
+	TIM_GPIO_NO_EDGE		= 0,
+	TIM_GPIO_LTOH_TRANS		= 1,
+	TIM_GPIO_HTOL_TRANS		= 2,
+	TIM_GPIO_BOTH_TRANS		= 3,
+	TIM_GPIO_INVALID,
+};
+
+struct tim_lf_alloc_req {
+	struct mbox_msghdr hdr;
+	u16	ring;
+	u16	npa_pf_func;
+	u16	sso_pf_func;
+};
+
+struct tim_ring_req {
+	struct mbox_msghdr hdr;
+	u16	ring;
+};
+
+struct tim_config_req {
+	struct mbox_msghdr hdr;
+	u16	ring;
+	u8	bigendian;
+	u8	clocksource;
+	u8	enableperiodic;
+	u8	enabledontfreebuffer;
+	u32	bucketsize;
+	u32	chunksize;
+	u32	interval;   /* Cycles between traversal */
+	u8	gpioedge;
+	u8	rsvd[7];
+	u64	intervalns; /* Nanoseconds between traversal */
+	u64	clockfreq;
+};
+
+struct tim_lf_alloc_rsp {
+	struct mbox_msghdr hdr;
+	u64 tenns_clk;
+};
+
+struct tim_enable_rsp {
+	struct mbox_msghdr hdr;
+	u64	timestarted;
+	u32	currentbucket;
+};
+
+struct tim_intvl_req {
+	struct mbox_msghdr hdr;
+	u8	clocksource;
+	u64	clockfreq;
+};
+
+struct tim_intvl_rsp {
+	struct mbox_msghdr hdr;
+	u64	intvl_cyc;
+	u64	intvl_ns;
 };
 
 enum ptp_op {

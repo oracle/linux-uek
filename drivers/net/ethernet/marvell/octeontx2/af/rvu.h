@@ -96,6 +96,9 @@ struct rvu_debugfs {
 	struct dentry *npa;
 	struct dentry *nix;
 	struct dentry *npc;
+	struct dentry *sso;
+	struct dentry *sso_hwgrp;
+	struct dentry *sso_hws;
 	struct dentry *cpt;
 	struct dentry *mcs_root;
 	struct dentry *mcs;
@@ -240,6 +243,35 @@ struct npc_mcam {
 	struct list_head mcam_rules;
 };
 
+struct sso_aq_thr {
+	u64 iaq_rsvd;
+	u64 iaq_max;
+	u64 taq_rsvd;
+	u64 taq_max;
+};
+
+struct sso_rsrc {
+	u8      sso_hws;
+	u16     sso_hwgrps;
+	u16     sso_xaq_num_works;
+	u16     sso_xaq_buf_size;
+	u16     sso_iue;
+	struct sso_aq_thr aq_thr;
+	struct rsrc_bmap pfvf_ident;
+};
+
+enum tim_ring_interval {
+	TIM_INTERVAL_1US = 0,
+	TIM_INTERVAL_10US,
+	TIM_INTERVAL_1MS,
+	TIM_INTERVAL_INVAL,
+};
+
+struct tim_rsrc {
+	u16 rings_per_intvl[TIM_INTERVAL_INVAL];
+	enum tim_ring_interval *ring_intvls;
+};
+
 /* Structure for per RVU func info ie PF/VF */
 struct rvu_pfvf {
 	bool		npalf; /* Only one NPALF per RVU_FUNC */
@@ -252,6 +284,7 @@ struct rvu_pfvf {
 	u16		ree0_lfs;
 	u16		ree1_lfs;
 	u8		cgx_lmac;
+	u8		sso_uniq_ident;
 
 	/* Block LF's MSIX vector info */
 	struct rsrc_bmap msix;      /* Bitmap for MSIX vector alloc */
@@ -473,6 +506,8 @@ struct rvu_hwinfo {
 	struct npc_pkind pkind;
 	struct npc_mcam  mcam;
 	struct npc_exact_table *table;
+	struct sso_rsrc  sso;
+	struct tim_rsrc  tim;
 	struct ree_rsrc *ree;
 };
 
@@ -835,6 +870,16 @@ static inline bool is_cn10kb(struct rvu *rvu)
 	return false;
 }
 
+static inline bool is_cnf10kb_a0(struct rvu *rvu)
+{
+	struct pci_dev *pdev = rvu->pdev;
+
+	if (pdev->subsystem_device == PCI_SUBSYS_DEVID_CNF10K_B &&
+	    (pdev->revision & 0x0F) == 0x0)
+		return true;
+	return false;
+}
+
 static inline bool is_cnf10ka_a1(struct rvu *rvu)
 {
 	struct pci_dev *pdev = rvu->pdev;
@@ -880,7 +925,6 @@ static inline bool is_rvu_nix_spi_to_sa_en(struct rvu *rvu)
 
 	return false;
 }
-
 
 static inline u16 rvu_nix_chan_cgx(struct rvu *rvu, u8 cgxid,
 				   u8 lmacid, u8 chan)
@@ -1059,6 +1103,23 @@ int rvu_cgx_nix_cuml_stats(struct rvu *rvu, void *cgxd, int lmac_id, int index,
 			   int rxtxflag, u64 *stat);
 void rvu_cgx_disable_dmac_entries(struct rvu *rvu, u16 pcifunc);
 
+/* SSO APIs */
+int rvu_sso_init(struct rvu *rvu);
+void rvu_sso_freemem(struct rvu *rvu);
+int rvu_sso_register_interrupts(struct rvu *rvu);
+void rvu_sso_unregister_interrupts(struct rvu *rvu);
+int rvu_sso_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot_id);
+int rvu_ssow_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot_id);
+void rvu_sso_hwgrp_config_thresh(struct rvu *rvu, int blkaddr, int lf,
+				 struct sso_aq_thr *aq_thr);
+void rvu_sso_block_cn10k_init(struct rvu *rvu, int blkaddr);
+int rvu_sso_lf_drain_queues(struct rvu *rvu, u16 pcifunc, int lf, int slot);
+int rvu_sso_cleanup_xaq_aura(struct rvu *rvu, u16 pcifunc, int hwgrp);
+int rvu_sso_poll_aura_cnt(struct rvu *rvu, int npa_blkaddr, int aura);
+void rvu_sso_deinit_xaq_aura(struct rvu *rvu, int blkaddr, int npa_blkaddr,
+			     int aura, int lf);
+void rvu_sso_xaq_aura_write(struct rvu *rvu, int lf, u64 val);
+
 /* NPA APIs */
 int rvu_npa_init(struct rvu *rvu);
 void rvu_npa_freemem(struct rvu *rvu);
@@ -1222,6 +1283,12 @@ void rvu_nix_block_cn10k_init(struct rvu *rvu, struct nix_hw *nix_hw);
 /* CN10K RVU - LMT*/
 void rvu_reset_lmt_map_tbl(struct rvu *rvu, u16 pcifunc);
 void rvu_apr_block_cn10k_init(struct rvu *rvu);
+
+/* TIM APIs */
+int rvu_tim_init(struct rvu *rvu);
+int rvu_tim_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot);
+int rvu_lf_lookup_tim_errata(struct rvu *rvu, struct rvu_block *block,
+		u16 pcifunc, int slot);
 
 #ifdef CONFIG_DEBUG_FS
 void rvu_dbg_init(struct rvu *rvu);

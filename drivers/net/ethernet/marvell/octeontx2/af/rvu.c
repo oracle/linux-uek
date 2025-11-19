@@ -11,6 +11,7 @@
 #include <linux/irq.h>
 #include <linux/pci.h>
 #include <linux/sysfs.h>
+#include <linux/jiffies.h>
 
 #include "cgx.h"
 #include "rvu.h"
@@ -772,6 +773,7 @@ static void rvu_free_hw_resources(struct rvu *rvu)
 	rvu_npa_freemem(rvu);
 	rvu_npc_freemem(rvu);
 	rvu_nix_freemem(rvu);
+	rvu_sso_freemem(rvu);
 
 	/* Free block LF bitmaps */
 	for (id = 0; id < BLK_COUNT; id++) {
@@ -801,6 +803,7 @@ static void rvu_free_hw_resources(struct rvu *rvu)
 
 	rvu_reset_msix(rvu);
 	mutex_destroy(&rvu->rsrc_lock);
+	mutex_destroy(&rvu->alias_lock);
 
 	/* Free the QINT/CINT memory */
 	pfvf = &rvu->pf[RVU_AFPF];
@@ -1146,6 +1149,7 @@ cpt:
 	}
 
 	mutex_init(&rvu->rsrc_lock);
+	mutex_init(&rvu->alias_lock);
 
 	rvu_fwdata_init(rvu);
 
@@ -1217,10 +1221,22 @@ cpt:
 		goto nix_err;
 	}
 
+	err = rvu_sso_init(rvu);
+	if (err) {
+		dev_err(rvu->dev, "%s: Failed to initialize sso\n", __func__);
+		goto sso_err;
+	}
+
+	err = rvu_tim_init(rvu);
+	if (err) {
+		dev_err(rvu->dev, "%s: Failed to initialize tim\n", __func__);
+		goto sso_err;
+	}
+
 	err = rvu_sdp_init(rvu);
 	if (err) {
 		dev_err(rvu->dev, "%s: Failed to initialize sdp\n", __func__);
-		goto nix_err;
+		goto sso_err;
 	}
 
 	rvu_program_channels(rvu);
@@ -1232,7 +1248,7 @@ cpt:
 	err = rvu_mcs_init(rvu);
 	if (err) {
 		dev_err(rvu->dev, "%s: Failed to initialize mcs\n", __func__);
-		goto nix_err;
+		goto sso_err;
 	}
 
 	err = rvu_cpt_init(rvu);
@@ -1245,6 +1261,8 @@ cpt:
 
 mcs_err:
 	rvu_mcs_exit(rvu);
+sso_err:
+	rvu_sso_freemem(rvu);
 nix_err:
 	rvu_nix_freemem(rvu);
 npa_err:
@@ -1371,7 +1389,7 @@ bool is_pffunc_map_valid(struct rvu *rvu, u16 pcifunc, int blktype)
 	pfvf = rvu_get_pfvf(rvu, pcifunc);
 
 	/* Check if this PFFUNC has a LF of type blktype attached */
-	if (!is_blktype_attached(pfvf, blktype))
+	if (blktype != BLKTYPE_SSO && !is_blktype_attached(pfvf, blktype))
 		return false;
 
 	return true;
@@ -1381,6 +1399,9 @@ static int rvu_lookup_rsrc(struct rvu *rvu, struct rvu_block *block,
 			   int pcifunc, int slot)
 {
 	u64 val;
+
+	if (block->type == BLKTYPE_TIM && is_rvu_96xx_A0(rvu))
+		return rvu_lf_lookup_tim_errata(rvu, block, pcifunc, slot);
 
 	val = ((u64)pcifunc << 24) | (slot << 16) | (1ULL << 13);
 	rvu_write64(rvu, block->addr, block->lookup_reg, val);
@@ -2895,17 +2916,216 @@ static void rvu_enable_mbox_intr(struct rvu *rvu)
 		    INTR_MASK(hw->total_pfs) & ~1ULL);
 }
 
+static void rvu_npa_lf_mapped_nix_lf_teardown(struct rvu *rvu, u16 pcifunc)
+{
+	struct rvu_hwinfo *hw = rvu->hw;
+	struct rvu_block *nix_block;
+	struct rsrc_detach detach;
+	u16 nix_pcifunc;
+	int blkaddr, lf;
+	u64 regval;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NIX, 0);
+	if (blkaddr < 0)
+		return;
+
+	nix_block = &hw->block[blkaddr];
+	for (lf = 0; lf < nix_block->lf.max; lf++) {
+		/* Loop through all the NIX LFs and check if the NPA lf is
+		 * being used based on pcifunc.
+		 */
+		regval = rvu_read64(rvu, blkaddr, NIX_AF_LFX_CFG(lf));
+		if ((regval & 0xFFFF) != pcifunc)
+			continue;
+
+		nix_pcifunc = nix_block->fn_map[lf];
+
+		/* Skip NIX LF attached to the pcifunc as it is already
+		 * quiesced.
+		 */
+		if (nix_pcifunc == pcifunc)
+			continue;
+
+		detach.partial = true;
+		detach.nixlf   = true;
+		/* Teardown the NIX LF. */
+		rvu_nix_lf_teardown(rvu, nix_pcifunc, blkaddr, lf);
+		rvu_lf_reset(rvu, nix_block, lf);
+		/* Detach the NIX LF. */
+		rvu_detach_rsrcs(rvu, &detach, nix_pcifunc);
+	}
+}
+
+static void rvu_npa_lf_mapped_sso_lf_teardown(struct rvu *rvu, u16 pcifunc)
+{
+	int npa_blkaddr, blkaddr, lf, retry;
+	u16 sso_pcifunc, match_cnt = 0;
+	struct rvu_block *sso_block;
+	struct rsrc_detach detach;
+	unsigned long drain_tmo;
+	u16 *pcifunc_arr;
+	u64 regval;
+
+	pcifunc_arr = kcalloc(rvu->hw->total_pfs + rvu->hw->total_vfs,
+			      sizeof(*pcifunc_arr), GFP_KERNEL);
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
+	if (blkaddr < 0)
+		return;
+
+	npa_blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPA, 0);
+	if (blkaddr < 0)
+		return;
+
+	regval = BIT_ULL(16) | pcifunc;
+	rvu_bar2_sel_write64(rvu, npa_blkaddr, NPA_AF_BAR2_SEL, regval);
+
+	sso_block = &rvu->hw->block[blkaddr];
+	retry = 0;
+	drain_tmo = jiffies + msecs_to_jiffies(SSO_FLUSH_TMO_MAX);
+	for (lf = 0; lf < sso_block->lf.max || retry; lf++) {
+		if (lf == sso_block->lf.max) {
+			if (time_after(jiffies, drain_tmo)) {
+				dev_err(rvu->dev, "Failed to drain SSO queues\n");
+				break;
+			}
+
+			lf = 0;
+			retry = 0;
+		}
+		regval = rvu_read64(rvu, blkaddr, SSO_AF_XAQX_GMCTL(lf));
+		if ((regval & 0xFFFF) != pcifunc)
+			continue;
+
+		sso_pcifunc = sso_block->fn_map[lf];
+		regval = rvu_read64(rvu, blkaddr, sso_block->lfcfg_reg |
+				    (lf << sso_block->lfshift));
+		if (rvu_sso_lf_drain_queues(rvu, sso_pcifunc, lf,
+					    regval & 0xF) == -EAGAIN) {
+			retry = 1;
+			continue;
+		}
+
+		regval = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf));
+		rvu_sso_deinit_xaq_aura(rvu, sso_pcifunc, pcifunc, regval, lf);
+	}
+
+	for (lf = 0; lf < sso_block->lf.max; lf++) {
+		regval = rvu_read64(rvu, blkaddr, SSO_AF_XAQX_GMCTL(lf));
+		if ((regval & 0xFFFF) != pcifunc)
+			continue;
+
+		regval = rvu_read64(rvu, blkaddr, SSO_AF_HWGRPX_XAQ_AURA(lf));
+		if (rvu_sso_poll_aura_cnt(rvu, npa_blkaddr, regval))
+			dev_err(rvu->dev,
+				"[%d]Failed to free XAQs to aura[%lld]\n",
+				__LINE__, regval);
+
+		rvu_sso_xaq_aura_write(rvu, lf, 0);
+		rvu_write64(rvu, blkaddr, SSO_AF_XAQX_GMCTL(lf), 0);
+	}
+
+	for (lf = 0; lf < sso_block->lf.max; lf++) {
+		regval = rvu_read64(rvu, blkaddr, SSO_AF_XAQX_GMCTL(lf));
+		if ((regval & 0xFFFF) != pcifunc)
+			continue;
+
+		sso_pcifunc = sso_block->fn_map[lf];
+		regval = rvu_read64(rvu, blkaddr, sso_block->lfcfg_reg |
+				    (lf << sso_block->lfshift));
+		/* Save SSO PF_FUNC info to detach all LFs of that PF_FUNC at
+		 * once later.
+		 */
+		rvu_sso_lf_teardown(rvu, sso_pcifunc, lf, regval & 0xF);
+		rvu_lf_reset(rvu, sso_block, lf);
+		pcifunc_arr[match_cnt] = sso_pcifunc;
+		match_cnt++;
+	}
+	rvu_bar2_sel_write64(rvu, npa_blkaddr, NPA_AF_BAR2_SEL, 0);
+
+	detach.partial = true;
+	detach.sso   = true;
+
+	for (sso_pcifunc = 0; sso_pcifunc < match_cnt; sso_pcifunc++)
+		rvu_detach_rsrcs(rvu, &detach, pcifunc_arr[sso_pcifunc]);
+	kfree(pcifunc_arr);
+}
+
+static void rvu_sso_hw_flr(struct rvu *rvu, u16 pcifunc)
+{
+	int blkaddr, ssow_blkaddr;
+	u64 reg;
+
+	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSO, 0);
+	if (blkaddr < 0)
+		return;
+
+	ssow_blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_SSOW, 0);
+	if (ssow_blkaddr < 0)
+		return;
+
+	/* Check for HW FLR support */
+	reg = rvu_read64(rvu, blkaddr, SSO_AF_CONST1);
+	if (!(reg & SSO_AF_CONST1_HW_FLR))
+		return;
+
+	/* Perform complete HW FLR */
+	rvu_write64(rvu, ssow_blkaddr, SSOW_AF_LF_FLR,
+		    pcifunc | SSOW_AF_LF_FLR_MASK);
+
+	/* Wait for FLR completion */
+	if (rvu_poll_reg(rvu, ssow_blkaddr, SSOW_AF_LF_FLR, SSOW_AF_LF_FLR_MASK,
+			 true)) {
+		if (rvu_read64(rvu, ssow_blkaddr, SSOW_AF_LF_FLR) &
+		    SSOW_AF_LF_FLR_ERROR) {
+			dev_err(rvu->dev, "HW FLR terminated with error\n");
+		} else {
+			rvu_write64(rvu, ssow_blkaddr, SSOW_AF_LF_FLR,
+				    SSOW_AF_LF_FLR_ABORT);
+			dev_err(rvu->dev, "HW FLR aborted after timeout.\n");
+		}
+	}
+}
+
 static void rvu_blklf_teardown(struct rvu *rvu, u16 pcifunc, u8 blkaddr)
 {
 	struct rvu_block *block;
+	unsigned long drain_tmo;
 	int slot, lf, num_lfs;
-	int err;
+	int err, retry;
 
 	block = &rvu->hw->block[blkaddr];
 	num_lfs = rvu_get_rsrc_mapcount(rvu_get_pfvf(rvu, pcifunc),
 					block->addr);
 	if (!num_lfs)
 		return;
+
+	if (block->addr == BLKADDR_SSOW)
+		rvu_sso_hw_flr(rvu, pcifunc);
+
+	if (block->addr == BLKADDR_SSO) {
+		retry = 0;
+		drain_tmo = jiffies + msecs_to_jiffies(SSO_FLUSH_TMO_MAX);
+		for (slot = 0; slot < num_lfs || retry; slot++) {
+			if (slot == num_lfs) {
+				if (time_after(jiffies, drain_tmo)) {
+					dev_err(rvu->dev,
+						"Failed to drain SSO queues\n");
+					break;
+				}
+
+				slot = 0;
+				retry = 0;
+			}
+			lf = rvu_get_lf(rvu, block, pcifunc, slot);
+			if (lf < 0)
+				continue;
+			if (rvu_sso_lf_drain_queues(rvu, pcifunc, lf, slot) ==
+			    -EAGAIN)
+				retry = 1;
+		}
+		rvu_sso_cleanup_xaq_aura(rvu, pcifunc, num_lfs);
+	}
+
 	for (slot = 0; slot < num_lfs; slot++) {
 		lf = rvu_get_lf(rvu, block, pcifunc, slot);
 		if (lf < 0)
@@ -2914,8 +3134,16 @@ static void rvu_blklf_teardown(struct rvu *rvu, u16 pcifunc, u8 blkaddr)
 		/* Cleanup LF and reset it */
 		if (block->addr == BLKADDR_NIX0 || block->addr == BLKADDR_NIX1)
 			rvu_nix_lf_teardown(rvu, pcifunc, block->addr, lf);
-		else if (block->addr == BLKADDR_NPA)
+		else if (block->addr == BLKADDR_NPA) {
+			rvu_npa_lf_mapped_nix_lf_teardown(rvu, pcifunc);
+			rvu_npa_lf_mapped_sso_lf_teardown(rvu, pcifunc);
 			rvu_npa_lf_teardown(rvu, pcifunc, lf);
+		} else if (block->addr == BLKADDR_SSO)
+			rvu_sso_lf_teardown(rvu, pcifunc, lf, slot);
+		else if (block->addr == BLKADDR_SSOW)
+			rvu_ssow_lf_teardown(rvu, pcifunc, lf, slot);
+		else if (block->addr == BLKADDR_TIM)
+			rvu_tim_lf_teardown(rvu, pcifunc, lf, slot);
 		else if ((block->addr == BLKADDR_CPT0) ||
 			 (block->addr == BLKADDR_CPT1))
 			rvu_cpt_lf_teardown(rvu, pcifunc, block->addr, lf,
@@ -2926,6 +3154,20 @@ static void rvu_blklf_teardown(struct rvu *rvu, u16 pcifunc, u8 blkaddr)
 			dev_err(rvu->dev, "Failed to reset blkaddr %d LF%d\n",
 				block->addr, lf);
 		}
+
+		if (block->addr == BLKADDR_SSO)
+			rvu_sso_hwgrp_config_thresh(rvu, block->addr, lf, NULL);
+	}
+}
+
+static void rvu_sso_pfvf_rst(struct rvu *rvu, u16 pcifunc)
+{
+	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
+	struct rvu_hwinfo *hw = rvu->hw;
+
+	if (pfvf->sso_uniq_ident) {
+		rvu_free_rsrc(&hw->sso.pfvf_ident, pfvf->sso_uniq_ident);
+		pfvf->sso_uniq_ident = 0;
 	}
 }
 
@@ -2959,6 +3201,7 @@ static void __rvu_flr_handler(struct rvu *rvu, u16 pcifunc)
 	rvu_blklf_teardown(rvu, pcifunc, BLKADDR_NPA);
 	rvu_reset_lmt_map_tbl(rvu, pcifunc);
 	rvu_detach_rsrcs(rvu, NULL, pcifunc);
+	rvu_sso_pfvf_rst(rvu, pcifunc);
 	/* In scenarios where PF/VF drivers detach NIXLF without freeing MCAM
 	 * entries, check and free the MCAM entries explicitly to avoid leak.
 	 * Since LF is detached use LF number as -1.
@@ -3142,6 +3385,7 @@ static void rvu_unregister_interrupts(struct rvu *rvu)
 {
 	int irq;
 
+	rvu_sso_unregister_interrupts(rvu);
 	rvu_cpt_unregister_interrupts(rvu);
 
 	if (!is_cn20k(rvu->pdev))
@@ -3378,6 +3622,10 @@ static int rvu_register_interrupts(struct rvu *rvu)
 		goto fail;
 	}
 	rvu->irq_allocated[offset] = true;
+
+	ret = rvu_sso_register_interrupts(rvu);
+	if (ret)
+		goto fail;
 
 	ret = rvu_cpt_register_interrupts(rvu);
 	if (ret)
