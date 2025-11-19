@@ -108,7 +108,8 @@ static inline int crypto_scomp_decompress(struct crypto_scomp *tfm,
  *
  * Return: zero on success; error code in case of error
  */
-int crypto_register_scomp(struct scomp_alg *alg);
+DECLARE_CRYPTO_API(crypto_register_scomp, int,
+	(struct scomp_alg *alg), (alg));
 
 /**
  * crypto_unregister_scomp() -- Unregister synchronous compression algorithm
@@ -118,9 +119,12 @@ int crypto_register_scomp(struct scomp_alg *alg);
  *
  * @alg:	algorithm definition
  */
-void crypto_unregister_scomp(struct scomp_alg *alg);
+DECLARE_CRYPTO_API(crypto_unregister_scomp, void,
+	(struct scomp_alg *alg), (alg));
 
-int crypto_register_scomps(struct scomp_alg *algs, int count);
-void crypto_unregister_scomps(struct scomp_alg *algs, int count);
+DECLARE_CRYPTO_API(crypto_register_scomps, int,
+	(struct scomp_alg *algs, int count), (algs, count));
+DECLARE_CRYPTO_API(crypto_unregister_scomps, void,
+	(struct scomp_alg *algs, int count), (algs, count));
 
 #endif

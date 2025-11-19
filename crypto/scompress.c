@@ -277,7 +277,7 @@ static const struct crypto_type crypto_scomp_type = {
 	.tfmsize = offsetof(struct crypto_scomp, base),
 };
 
-int crypto_register_scomp(struct scomp_alg *alg)
+int CRYPTO_API(crypto_register_scomp)(struct scomp_alg *alg)
 {
 	struct crypto_alg *base = &alg->calg.base;
 
@@ -288,15 +288,15 @@ int crypto_register_scomp(struct scomp_alg *alg)
 
 	return crypto_register_alg(base);
 }
-EXPORT_SYMBOL_GPL(crypto_register_scomp);
+DEFINE_CRYPTO_API(crypto_register_scomp);
 
-void crypto_unregister_scomp(struct scomp_alg *alg)
+void CRYPTO_API(crypto_unregister_scomp)(struct scomp_alg *alg)
 {
 	crypto_unregister_alg(&alg->base);
 }
-EXPORT_SYMBOL_GPL(crypto_unregister_scomp);
+DEFINE_CRYPTO_API(crypto_unregister_scomp);
 
-int crypto_register_scomps(struct scomp_alg *algs, int count)
+int CRYPTO_API(crypto_register_scomps)(struct scomp_alg *algs, int count)
 {
 	int i, ret;
 
@@ -314,16 +314,16 @@ err:
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(crypto_register_scomps);
+DEFINE_CRYPTO_API(crypto_register_scomps);
 
-void crypto_unregister_scomps(struct scomp_alg *algs, int count)
+void CRYPTO_API(crypto_unregister_scomps)(struct scomp_alg *algs, int count)
 {
 	int i;
 
 	for (i = count - 1; i >= 0; --i)
 		crypto_unregister_scomp(&algs[i]);
 }
-EXPORT_SYMBOL_GPL(crypto_unregister_scomps);
+DEFINE_CRYPTO_API(crypto_unregister_scomps);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Synchronous compression type");
