@@ -1288,6 +1288,8 @@ void rvu_apr_block_cn10k_init(struct rvu *rvu);
 /* TIM APIs */
 int rvu_tim_init(struct rvu *rvu);
 int rvu_tim_lf_teardown(struct rvu *rvu, u16 pcifunc, int lf, int slot);
+int rvu_tim_register_interrupts(struct rvu *rvu);
+void rvu_tim_unregister_interrupts(struct rvu *rvu);
 
 #ifdef CONFIG_DEBUG_FS
 void rvu_dbg_init(struct rvu *rvu);
