@@ -16,6 +16,6 @@ rvu_af-y := cgx.o rvu.o rvu_cgx.o rvu_npa.o rvu_nix.o rvu_nix_spi.o \
 		  rvu_sdp.o rvu_npc_hash.o mcs.o mcs_rvu_if.o mcs_cnf10kb.o \
 		  rvu_rep.o cn20k/mbox_init.o cn20k/nix.o cn20k/debugfs.o \
 		  cn20k/npa.o rvu_sso.o rvu_tim.o rvu_fixes.o mcs_fips.o \
-		  cn20k/mcs.o \
+		  cn20k/mcs.o mcs_devlink.o \
 		  $(EB_DIR)/rvu_eblock.o \
 		  $(EB_DIR)/rvu_eb_ree.o

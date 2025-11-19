@@ -10,7 +10,6 @@
 #define SECY_MASK	0x7F
 #define SC_MASK		0x7F
 #define SA_MASK		0xFF
-#define MCSX_EXTERNAL_BYPASS	0x800e8UL
 
 static void cn20k_mcs_set_hw_capabilities(struct mcs *mcs)
 {

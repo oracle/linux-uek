@@ -132,6 +132,11 @@ struct hwinfo {
 	u16 ip_vec;
 };
 
+struct mcs_devlink {
+	struct devlink *dl;
+	struct mcs *mcs;
+};
+
 struct mcs {
 	void __iomem		*reg_base;
 	struct pci_dev		*pdev;
@@ -150,7 +155,8 @@ struct mcs {
 	u16			num_vec;
 	void			*rvu;
 	u16			*tx_sa_active;
-	bool                      bypass;
+	bool			bypass;
+	struct mcs_devlink	*dl;
 };
 
 struct mcs_ops {
@@ -251,4 +257,7 @@ int mcs_set_force_clk_en(struct mcs *mcs, bool set);
 
 int mcs_add_intr_wq_entry(struct mcs *mcs, struct mcs_intr_event *event);
 
+/* Devlink APIs */
+int mcs_register_dl(struct mcs *mcs);
+void mcs_unregister_dl(struct mcs *mcs);
 #endif /* MCS_H */

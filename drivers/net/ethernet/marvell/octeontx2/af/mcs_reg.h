@@ -986,6 +986,7 @@ enum mcs_devtype {
 #define MCSX_CSE_TX_MEM_SLAVE_OUTPKTSEARLYPREEMPTERRX(a) (0x10eb8ull + (a) * 0x8ull)
 
 /* Only available in cn20k */
+#define MCSX_EXTERNAL_BYPASS	0x800e8UL
 #define MCSX_CSE_TX_IFCTLBCPKTS_PORTMAPPED_X(a)			(0x11d18ull + (a) * 0x8ull)
 #define MCSX_CSE_TX_IFCTLMCPKTS_PORTMAPPED_X(a)			(0x11c78ull + (a) * 0x8ull)
 #define MCSX_CSE_TX_IFCTLUCPKTS_PORTMAPPED_X(a)			(0x11bd8ull + (a) * 0x8ull)

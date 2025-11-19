@@ -1593,6 +1593,8 @@ static int mcs_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	list_add(&mcs->mcs_list, &mcs_list);
 	mutex_init(&mcs->stats_lock);
 
+	mcs_register_dl(mcs);
+
 	return 0;
 
 err_x2p:
@@ -1611,6 +1613,7 @@ static void mcs_remove(struct pci_dev *pdev)
 
 	/* Set MCS to external bypass */
 	mcs_set_external_bypass(mcs, true);
+	mcs_unregister_dl(mcs);
 	free_irq(pci_irq_vector(pdev, mcs->hw->ip_vec), mcs);
 	pci_free_irq_vectors(pdev);
 	pci_release_regions(pdev);
