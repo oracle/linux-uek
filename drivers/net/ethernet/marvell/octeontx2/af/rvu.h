@@ -11,6 +11,7 @@
 #include <linux/pci.h>
 #include <net/devlink.h>
 #include <linux/soc/marvell/silicons.h>
+#include <linux/workqueue.h>
 
 #include "rvu_struct.h"
 #include "rvu_devlink.h"
@@ -24,6 +25,7 @@
 /* PCI device IDs */
 #define	PCI_DEVID_OCTEONTX2_RVU_AF		0xA065
 #define	PCI_DEVID_OCTEONTX2_LBK			0xA061
+#define	PCI_DEVID_OCTEONTX2_GEN_PF		0xA0FD
 
 /* Subsystem Device ID */
 #define PCI_SUBSYS_DEVID_98XX                  0xB100
@@ -274,6 +276,30 @@ struct tim_rsrc {
 	enum tim_ring_interval *ring_intvls;
 };
 
+#define MAX_RINGS_PER_PFVF	128
+
+struct sdp_config {
+	u16 hw_ring_map[MAX_RINGS_PER_PFVF]; /* Virtual<->Physical ring map */
+	u16 nr_rings; /* Number of rings assigned to this PF/VF */
+	u16 mcam_rx_entries[MAX_RINGS_PER_PFVF];
+	u16 channels[MAX_RINGS_PER_PFVF]; /* Channel number for each ring */
+	struct list_head msg_list; /* List of messages to send to GEN PF */
+	struct delayed_work dwork;
+	struct rvu *rvu; /* Unused for VFs pfvf struct */
+	u8 rvu_pf_num; /* Unused for VFs pfvf struct */
+};
+
+#define MAX_EPFS		32
+
+struct sdp_rsrc {
+	struct rsrc_bmap	rings;
+	struct rsrc_bmap	vf_rids;
+	u16  *fn_map; /* Ring to Host PF/VF mapping */
+	u16 *vf_rsrc_map; /* VF_RES_IDs to host VFs mapping */
+	struct mutex		cfg_lock;
+	u8 host2rvupf[MAX_EPFS];
+};
+
 /* Structure for per RVU func info ie PF/VF */
 struct rvu_pfvf {
 	bool		npalf; /* Only one NPALF per RVU_FUNC */
@@ -348,6 +374,7 @@ struct rvu_pfvf {
 	struct  sdp_node_info *sdp_info;
 	u8	tl1_rr_prio; /* RR PRIORITY set by PF */
 	u8	hw_prio;   /* Hw priority of default rules */
+	struct sdp_config	sdp_cfg;
 };
 
 enum rvu_pfvf_flags {
@@ -481,6 +508,13 @@ struct hw_cap {
 	bool    cpt_rxc;   /* Is CPT-RXC supported */
 };
 
+struct sdp_vf_msg {
+	u16 id; /* SDP UP messages */
+	struct list_head list;
+	u64 flags;
+	u16 target_pcifunc; /* Destination pcifunc where VF is VF + 1*/
+};
+
 struct rvu_hwinfo {
 	u8	total_pfs;   /* MAX RVU PFs HW supports */
 	u16	total_vfs;   /* Max RVU VFs HW supports */
@@ -516,6 +550,7 @@ struct rvu_hwinfo {
 	struct sso_rsrc  sso;
 	struct tim_rsrc  tim;
 	struct ree_rsrc *ree;
+	struct sdp_rsrc sdp;
 };
 
 struct mbox_wq_info {

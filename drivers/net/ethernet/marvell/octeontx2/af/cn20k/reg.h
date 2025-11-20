@@ -162,5 +162,19 @@
 /* SDP Regsiters */
 #define SDP_AF_BLK_RST				0xc000030
 #define SDP_AF_AP_EPFX_MBOX_SEND_INT		0x40c0000
+#define SDP_AF_RX_EPF_VF_MAP(a)			(0x4091000 | (a) << 3)
+#define SDP_AF_MAC_CHANX_RING_MAP(a)		(0x4098000 | (a) << 3)
+#define SDP_AF_CONST				(0x4090038)
+#define SDP_AF_RX_IN_PKT_CNT(a)			(0x8000460 | (a) << 16)
+#define SDP_AF_RX_IN_BYTE_CNT(a)		(0x8000470 | (a) << 16)
+#define SDP_AF_RX_IN_DROP_PKT_CNT(a)		(0x8000480 | (a) << 16)
+#define SDP_AF_RX_IN_DROP_BYTE_CNT(a)		(0x8000490 | (a) << 16)
+#define SDP_AF_RX_IN_PTP_STATS(a)		(0x8000708 | (a) << 16)
+
+#define SDP_AF_RX_OUT_PKT_CNT(a)		(0x8000560 | (a) << 16)
+#define SDP_AF_RX_OUT_BYTE_CNT(a)		(0x8000570 | (a) << 16)
+#define SDP_AF_RX_OUT_DROP_PKT_CNT(a)		(0x8000580 | (a) << 16)
+#define SDP_AF_RX_OUT_DROP_BYTE_CNT(a)		(0x8000590 | (a) << 16)
+#define SDP_AF_RX_OUT_PTP_STATS(a)		(0x8000710 | (a) << 16)
 
 #endif /* RVU_MBOX_REG_H */
