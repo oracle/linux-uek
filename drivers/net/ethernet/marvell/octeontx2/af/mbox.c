@@ -64,6 +64,7 @@ int cn20k_mbox_setup(struct otx2_mbox *mbox, struct pci_dev *pdev,
 	switch (direction) {
 	case MBOX_DIR_AFPF:
 	case MBOX_DIR_PFVF:
+	case MBOX_DIR_AFEPF:
 		mbox->tx_start = MBOX_DOWN_TX_START;
 		mbox->rx_start = MBOX_DOWN_RX_START;
 		mbox->tx_size  = MBOX_DOWN_TX_SIZE;
@@ -78,6 +79,7 @@ int cn20k_mbox_setup(struct otx2_mbox *mbox, struct pci_dev *pdev,
 		break;
 	case MBOX_DIR_AFPF_UP:
 	case MBOX_DIR_PFVF_UP:
+	case MBOX_DIR_AFEPF_UP:
 		mbox->tx_start = MBOX_UP_TX_START;
 		mbox->rx_start = MBOX_UP_RX_START;
 		mbox->tx_size  = MBOX_UP_TX_SIZE;
@@ -126,6 +128,11 @@ int cn20k_mbox_setup(struct otx2_mbox *mbox, struct pci_dev *pdev,
 	case MBOX_DIR_VFPF_UP:
 		mbox->trigger = RVU_MBOX_VF_VFPF_TRIGX(1);
 		mbox->tr_shift = 0;
+		break;
+	case MBOX_DIR_AFEPF:
+	case MBOX_DIR_AFEPF_UP:
+		mbox->trigger = (((u64)BLKADDR_SDP << 28) | SDP_AF_AP_EPFX_MBOX_SEND_INT);
+		mbox->tr_shift = 22;
 		break;
 	default:
 		return -ENODEV;

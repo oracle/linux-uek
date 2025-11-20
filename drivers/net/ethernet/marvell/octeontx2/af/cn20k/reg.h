@@ -161,5 +161,6 @@
 
 /* SDP Regsiters */
 #define SDP_AF_BLK_RST				0xc000030
+#define SDP_AF_AP_EPFX_MBOX_SEND_INT		0x40c0000
 
 #endif /* RVU_MBOX_REG_H */
