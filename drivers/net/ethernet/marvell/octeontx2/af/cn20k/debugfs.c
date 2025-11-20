@@ -5,13 +5,34 @@
  *
  */
 
+#ifdef CONFIG_DEBUG_FS
+
 #include <linux/fs.h>
 #include <linux/debugfs.h>
 #include <linux/module.h>
 #include <linux/pci.h>
-
 #include "struct.h"
 #include "debugfs.h"
+#include "mcs_reg.h"
+
+#define MAX_MCS_PORTS	20
+
+#define rvu_dbg_NULL NULL
+#define rvu_dbg_open_NULL NULL
+
+#define RVU_DEBUG_SEQ_FOPS(name, read_op, write_op)	\
+static int rvu_dbg_open_##name(struct inode *inode, struct file *file) \
+{ \
+	return single_open(file, rvu_dbg_##read_op, inode->i_private); \
+} \
+static const struct file_operations rvu_dbg_##name##_fops = { \
+	.owner		= THIS_MODULE, \
+	.open		= rvu_dbg_open_##name, \
+	.read		= seq_read, \
+	.write		= rvu_dbg_##write_op, \
+	.llseek		= seq_lseek, \
+	.release	= single_release, \
+}
 
 void print_nix_cn20k_sq_ctx(struct seq_file *m,
 			    struct nix_cn20k_sq_ctx_s *sq_ctx)
@@ -216,3 +237,137 @@ void print_npa_cn20k_pool_ctx(struct seq_file *m,
 		   pool->thresh_qint_idx, pool->err_qint_idx);
 	seq_printf(m, "W8: fc_msh_dst\t\t%d\n", pool->fc_msh_dst);
 }
+
+static int rvu_dbg_mcs_rx_port_mapped_display(struct seq_file *filp, void *unused)
+{
+	struct mcs *mcs = filp->private;
+
+	for (int port = 0; port < MAX_MCS_PORTS; port++) {
+		seq_printf(filp, "\n=======Port%d======\n", port);
+
+		seq_puts(filp, "\n=======Secy stats======\n");
+		seq_printf(filp, "Ctrl bcast pkts: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_IFCTLBCPKTS_PORTMAPPED_X(port)));
+		seq_printf(filp, "Ctrl Mcast pkts: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_IFCTLMCPKTS_PORTMAPPED_X(port)));
+		seq_printf(filp, "Ctrl ucast pkts: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_IFCTLUCPKTS_PORTMAPPED_X(port)));
+		seq_printf(filp, "Ctrl octets: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_IFCTLOCTETS_PORTMAPPED_X(port)));
+		seq_printf(filp, "Unctrl bcast cnt: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_IFUNCTLBCPKTS_PORTMAPPED_X(port)));
+		seq_printf(filp, "Unctrl mcast pkts: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_IFUNCTLMCPKTS_PORTMAPPED_X(port)));
+		seq_printf(filp, "Unctrl ucast pkts: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_IFUNCTLUCPKTS_PORTMAPPED_X(port)));
+		seq_printf(filp, "Unctrl octets: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_IFUNCTLOCTETS_PORTMAPPED_X(port)));
+		seq_printf(filp, "Octet decrypted: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_OCTETSSECYDECRYPTED_PORTMAPPED_X(port)));
+		seq_printf(filp, "octet validated: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_OCTETSSECYVALIDATE_PORTMAPPED_X(port)));
+		seq_printf(filp, "Pkts on disable port: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_PKTSCTRLPORTDISABLED_PORTMAPPED_X(port)));
+		seq_printf(filp, "Pkts with badtag: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_PKTSSECYBADTAG_PORTMAPPED_X(port)));
+		seq_printf(filp, "Pkts with no SA(sectag.tci.c=0): %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_PKTSSECYNOSA_PORTMAPPED_X(port)));
+		seq_printf(filp, "Pkts with nosaerror: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_PKTSSECYNOSAERROR_PORTMAPPED_X(port)));
+		seq_printf(filp, "Tagged ctrl pkts: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_PKTSSECYTAGGEDCTL_PORTMAPPED_X(port)));
+		seq_printf(filp, "Untagged pkts: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_PKTSSECYUNTAGGED_PORTMAPPED_X(port)));
+		seq_printf(filp, "Ctrl pkts: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_PKTSSECYCTL_PORTMAPPED_X(port)));
+
+		seq_puts(filp, "\n=======SC stats======\n");
+		seq_printf(filp, "CAM hits: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_PKTSSCCAMHIT_PORTMAPPED_X(port)));
+		seq_printf(filp, "Invalid packets: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_PKTSSCINVALID_PORTMAPPED_X(port)));
+		seq_printf(filp, "Late or Delayed packets: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_PKTSSCLATEORDELAYED_PORTMAPPED_X(port)));
+		seq_printf(filp, "Not valid packets: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_PKTSSCNOTVALID_PORTMAPPED_X(port)));
+		seq_printf(filp, "Unchecked packets: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_PKTSSCUNCHECKEDOROK_PORTMAPPED_X(port)));
+
+		seq_puts(filp, "\n=======SA stats======\n");
+		seq_printf(filp, "Not using SA errors: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_PKTSSANOTUSINGSAERROR_PORTMAPPED(port)));
+		seq_printf(filp, "SA Ok: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_PKTSSAOK_PORTMAPPED_X(port)));
+		seq_printf(filp, "SA unused packets: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_PKTSSAUNUSEDSA_PORTMAPPED_X(port)));
+	}
+
+	return 0;
+}
+
+RVU_DEBUG_SEQ_FOPS(mcs_rx_port_mapped, mcs_rx_port_mapped_display, NULL);
+
+static int rvu_dbg_mcs_tx_port_mapped_display(struct seq_file *filp, void *unused)
+{
+	struct mcs *mcs = filp->private;
+
+	for (int port = 0; port < MAX_MCS_PORTS; port++) {
+		seq_printf(filp, "\n=======Port%d======\n", port);
+
+		seq_puts(filp, "\n=======Secy stats======\n");
+		seq_printf(filp, "Ctrl bcast pkts: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_TX_IFCTLBCPKTS_PORTMAPPED_X(port)));
+		seq_printf(filp, "Ctrl Mcast pkts: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_TX_IFCTLMCPKTS_PORTMAPPED_X(port)));
+		seq_printf(filp, "Ctrl ucast pkts: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_TX_IFCTLUCPKTS_PORTMAPPED_X(port)));
+		seq_printf(filp, "Ctrl octets: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_TX_IFCTLOCTETS_PORTMAPPED_X(port)));
+		seq_printf(filp, "Unctrl bcast cnt: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_TX_IFUNCTLBCPKTS_PORTMAPPED_X(port)));
+		seq_printf(filp, "Unctrl mcast pkts: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_TX_IFUNCTLMCPKTS_PORTMAPPED_X(port)));
+		seq_printf(filp, "Unctrl ucast pkts: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_TX_IFUNCTLUCPKTS_PORTMAPPED_X(port)));
+		seq_printf(filp, "Unctrl octets: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_TX_IFUNCTLOCTETS_PORTMAPPED_X(port)));
+		seq_printf(filp, "Octets encrypted: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_TX_OCTETSSECYENCRYPTED_PORTMAPPED_X(port)));
+		seq_printf(filp, "octets protected: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_TX_OCTETSSECYPROTECTED_PORTMAPPED_X(port)));
+		seq_printf(filp, "No active SA pkts: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_TX_PKTSSECYNOACTIVESA_PORTMAPPED_X(port)));
+		seq_printf(filp, "Packets sent on disabled port: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_TX_PKTSCTRLPORTDISABLED_PORTMAPPED_X(port)));
+		seq_printf(filp, "Packets too long: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_TX_PKTSSECYTOOLONG_PORTMAPPED_X(port)));
+		seq_printf(filp, "Packets untagged: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_TX_PKTSSECYUNTAGGED_PORTMAPPED_X(port)));
+
+		seq_puts(filp, "\n=======SC stats======\n");
+		seq_printf(filp, "Encrypted pkts: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_PKTSSCENCRYPTED_PORTMAPPED_X(port)));
+		seq_printf(filp, "Protected pkts: %lld\n",
+			   mcs_reg_read(mcs, MCSX_CSE_RX_PKTSSCPROTECTED_PORTMAPPED_X(port)));
+	}
+
+	return 0;
+}
+
+RVU_DEBUG_SEQ_FOPS(mcs_tx_port_mapped, mcs_tx_port_mapped_display, NULL);
+
+void rvu_cn20ka_handle_port_mapped_stats(struct rvu *rvu, struct mcs *mcs, int dir)
+{
+	struct dentry *parent;
+
+	parent = dir == MCS_RX ? rvu->rvu_dbg.mcs_rx : rvu->rvu_dbg.mcs_tx;
+
+	if (dir == MCS_RX)
+		debugfs_create_file("port_mapped", 0600, parent,
+				    mcs, &rvu_dbg_mcs_rx_port_mapped_fops);
+	else if (dir == MCS_TX)
+		debugfs_create_file("port_mapped", 0600, parent,
+				    mcs, &rvu_dbg_mcs_tx_port_mapped_fops);
+}
+
+#endif /* CONFIG_DEBUG_FS */

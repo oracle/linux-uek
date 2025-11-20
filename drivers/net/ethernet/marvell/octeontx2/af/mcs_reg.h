@@ -792,6 +792,33 @@ enum mcs_devtype {
 	offset += (a) * 0x8ull;					\
 	offset; })
 
+/* Only available in cn20k */
+#define MCSX_CSE_RX_IFCTLBCPKTS_PORTMAPPED_X(a)			(0xab98ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_IFCTLMCPKTS_PORTMAPPED_X(a)			(0xaaf8ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_IFCTLUCPKTS_PORTMAPPED_X(a)			(0xaa58ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_IFCTLOCTETS_PORTMAPPED_X(a)			(0xa7d8ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_IFUNCTLBCPKTS_PORTMAPPED_X(a)		(0xa9b8ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_IFUNCTLMCPKTS_PORTMAPPED_X(a)		(0xa918ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_IFUNCTLUCPKTS_PORTMAPPED_X(a)		(0xa878ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_IFUNCTLOCTETS_PORTMAPPED_X(a)		(0xa738ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_OCTETSSECYDECRYPTED_PORTMAPPED_X(a)		(0xa698ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_OCTETSSECYVALIDATE_PORTMAPPED_X(a)		(0xa5f8ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_PKTSCTRLPORTDISABLED_PORTMAPPED_X(a)	(0xaff8ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_PKTSSECYBADTAG_PORTMAPPED_X(a)		(0xacd8ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_PKTSSECYNOSA_PORTMAPPED_X(a)		(0xaeb8ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_PKTSSECYNOSAERROR_PORTMAPPED_X(a)		(0xaf58ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_PKTSSECYTAGGEDCTL_PORTMAPPED_X(a)		(0xae18ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_PKTSSECYUNTAGGED_PORTMAPPED_X(a)		(0xac38ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_PKTSSECYCTL_PORTMAPPED_X(a)			(0xad78ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_PKTSSCCAMHIT_PORTMAPPED_X(a)		(0xb1d8ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_PKTSSCINVALID_PORTMAPPED_X(a)		(0xb278ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_PKTSSCLATEORDELAYED_PORTMAPPED_X(a)		(0xb138ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_PKTSSCNOTVALID_PORTMAPPED_X(a)		(0xb318ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_PKTSSCUNCHECKEDOROK_PORTMAPPED_X(a)		(0xb098ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_PKTSSANOTUSINGSAERROR_PORTMAPPED(a)		(0xb638ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_PKTSSAOK_PORTMAPPED_X(a)			(0xb4f8ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_PKTSSAUNUSEDSA_PORTMAPPED_X(a)		(0xb598ull + (a) * 0x8ull)
+
 /* Not available in cn20k */
 #define MCSX_CSE_RX_MEM_SLAVE_INPKTSEARLYPREEMPTERRX(a) (0xec58ull + (a) * 0x8ull)
 #define MCSX_CSE_RX_MEM_SLAVE_INPKTSSCOKX(a)		(0xea18ull + (a) * 0x8ull)
@@ -957,6 +984,24 @@ enum mcs_devtype {
 	offset; })
 
 #define MCSX_CSE_TX_MEM_SLAVE_OUTPKTSEARLYPREEMPTERRX(a) (0x10eb8ull + (a) * 0x8ull)
+
+/* Only available in cn20k */
+#define MCSX_CSE_TX_IFCTLBCPKTS_PORTMAPPED_X(a)			(0x11d18ull + (a) * 0x8ull)
+#define MCSX_CSE_TX_IFCTLMCPKTS_PORTMAPPED_X(a)			(0x11c78ull + (a) * 0x8ull)
+#define MCSX_CSE_TX_IFCTLUCPKTS_PORTMAPPED_X(a)			(0x11bd8ull + (a) * 0x8ull)
+#define MCSX_CSE_TX_IFCTLOCTETS_PORTMAPPED_X(a)			(0x11958ull + (a) * 0x8ull)
+#define MCSX_CSE_TX_IFUNCTLBCPKTS_PORTMAPPED_X(a)		(0x11b38ull + (a) * 0x8ull)
+#define MCSX_CSE_TX_IFUNCTLMCPKTS_PORTMAPPED_X(a)		(0x11a98ull + (a) * 0x8ull)
+#define MCSX_CSE_TX_IFUNCTLUCPKTS_PORTMAPPED_X(a)		(0x119f8ull + (a) * 0x8ull)
+#define MCSX_CSE_TX_IFUNCTLOCTETS_PORTMAPPED_X(a)		(0x118b8ull + (a) * 0x8ull)
+#define MCSX_CSE_TX_OCTETSSECYENCRYPTED_PORTMAPPED_X(a)		(0x11778ull + (a) * 0x8ull)
+#define MCSX_CSE_TX_OCTETSSECYPROTECTED_PORTMAPPED_X(a)		(0x116d8ull + (a) * 0x8ull)
+#define MCSX_CSE_TX_PKTSSECYNOACTIVESA_PORTMAPPED_X(a)		(0x11ef8ull + (a) * 0x8ull)
+#define MCSX_CSE_TX_PKTSCTRLPORTDISABLED_PORTMAPPED_X(a)	(0x11f98ull + (a) * 0x8ull)
+#define MCSX_CSE_TX_PKTSSECYTOOLONG_PORTMAPPED_X(a)		(0x11e58ull + (a) * 0x8ull)
+#define MCSX_CSE_TX_PKTSSECYUNTAGGED_PORTMAPPED_X(a)		(0x11db8ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_PKTSSCENCRYPTED_PORTMAPPED_X(a)		(0x120d8ull + (a) * 0x8ull)
+#define MCSX_CSE_RX_PKTSSCPROTECTED_PORTMAPPED_X(a)		(0x12038ull + (a) * 0x8ull)
 
 #define MCSX_IP_INT ({			\
 	u64 offset;			\

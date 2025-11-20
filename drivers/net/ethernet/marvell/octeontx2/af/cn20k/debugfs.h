@@ -15,6 +15,7 @@
 
 #include "struct.h"
 #include "../mbox.h"
+#include "../mcs.h"
 
 void print_nix_cn20k_sq_ctx(struct seq_file *m,
 			    struct nix_cn20k_sq_ctx_s *sq_ctx);
@@ -24,5 +25,7 @@ void print_npa_cn20k_aura_ctx(struct seq_file *m,
 			      struct npa_cn20k_aq_enq_rsp *rsp);
 void print_npa_cn20k_pool_ctx(struct seq_file *m,
 			      struct npa_cn20k_aq_enq_rsp *rsp);
+
+void rvu_cn20ka_handle_port_mapped_stats(struct rvu *rvu, struct mcs *mcs, int dir);
 
 #endif
