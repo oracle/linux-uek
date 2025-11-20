@@ -28,4 +28,6 @@ void print_npa_cn20k_pool_ctx(struct seq_file *m,
 
 void rvu_cn20ka_handle_port_mapped_stats(struct rvu *rvu, struct mcs *mcs, int dir);
 
+int npc_cn20k_debugfs_init(struct rvu *rvu);
+void npc_cn20k_debugfs_deinit(struct rvu *rvu);
 #endif
