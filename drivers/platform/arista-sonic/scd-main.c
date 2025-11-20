@@ -233,6 +233,7 @@ static ssize_t parse_new_object_led(struct scd_context *ctx,
                                     char *buf, size_t count)
 {
    u32 addr;
+   u32 kind;
    const char *name;
 
    const char *tmp;
@@ -243,9 +244,34 @@ static ssize_t parse_new_object_led(struct scd_context *ctx,
 
    PARSE_ADDR_OR_RETURN(&buf, tmp, u32, &addr, ctx->res_size);
    PARSE_STR_OR_RETURN(&buf, tmp, name);
+   PARSE_INT_OR_RETURN(&buf, tmp, u32, &kind);
    PARSE_END_OR_RETURN(&buf, tmp);
 
-   res = scd_led_add(ctx, name, addr);
+   res = scd_led_add(ctx, name, addr, kind);
+   if (res)
+      return res;
+
+   return count;
+}
+
+// new_led_ctrl <flashaddr> <paletteaddr>
+static ssize_t parse_new_object_led_ctrl(struct scd_context *ctx,
+                                               char *buf, size_t count)
+{
+   u32 flash_addr;
+   u32 palette_addr;
+
+   const char *tmp;
+   int res;
+
+   if (!buf)
+      return -EINVAL;
+
+   PARSE_ADDR_OR_RETURN(&buf, tmp, u32, &flash_addr, ctx->res_size);
+   PARSE_ADDR_OR_RETURN(&buf, tmp, u32, &palette_addr, ctx->res_size);
+   PARSE_END_OR_RETURN(&buf, tmp);
+
+   res = scd_led_ctrl_add(ctx, flash_addr, palette_addr);
    if (res)
       return res;
 
@@ -477,6 +503,7 @@ static struct {
    { "fan_group",       parse_new_object_fan_group},
    { "gpio",            parse_new_object_gpio },
    { "led",             parse_new_object_led },
+   { "led_ctrl",        parse_new_object_led_ctrl },
    { "mdio_device",     parse_new_object_mdio_device },
    { "mdio_master",     parse_new_object_mdio_master },
    { "osfp",            parse_new_object_osfp },
