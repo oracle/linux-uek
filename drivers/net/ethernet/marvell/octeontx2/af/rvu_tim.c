@@ -420,6 +420,8 @@ int rvu_mbox_handler_tim_config_hwwqe(struct rvu *rvu,
 
 	reg = rvu_read64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf));
 	reg &= ~BIT_ULL(48);
+	reg &= ~BIT_ULL(45);
+	reg &= ~BIT_ULL(43);
 	rvu_write64(rvu, blkaddr, TIM_AF_RINGX_CTL1(lf), reg);
 
 	reg = req->result_offset;
