@@ -21,6 +21,7 @@
 #include <linux/printk.h>
 #include <linux/pci.h>
 
+#include "scd-led.h"
 #include "scd-uart.h"
 
 // sizeof_field was introduced in v4.15 and FIELD_SIZEOF removed in 4.20
@@ -47,6 +48,7 @@ struct scd_context {
    struct list_head fan_group_list;
 
    struct scd_uart uart;
+   struct scd_led_ctrl led_ctrl;
 };
 
 static inline struct device *get_scd_dev(struct scd_context *ctx)
