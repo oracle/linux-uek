@@ -19,20 +19,60 @@
 #define _LINUX_DRIVER_SCD_LED_H_
 
 #include <linux/leds.h>
+#include <linux/led-class-multicolor.h>
 
 struct scd_context;
 
+/* Sync with led.py! */
+enum led_kind {
+   /* Legacy LED behavior. */
+   LED_KIND_LEGACY = 0,
+
+   /* Single color LEDs. */
+   LED_KIND_BLUE = 1,
+
+   /* Legacy multi-colour LEDs. */
+   LED_KIND_RA = 2,        /* Red+Amber */
+   LED_KIND_RG = 3,        /* Red+Green */
+   LED_KIND_RG_F = 4,      /* Red+Green, hw flash */
+   LED_KIND_GY = 5,        /* Green+Yellow */
+   LED_KIND_GY_F = 6,      /* Green+Yellow, hw flash */
+   LED_KIND_GY_1F = 7,     /* Green+Yellow, only one lit, hw flash */
+
+   /* Paletted multi-color LEDs. */
+   LED_KIND_RGB_P3F = 8,   /* RGB, with 3-bit (8 entry) palette, hw flash */
+
+   /* Fully-controllable multi-color LEDs. */
+   LED_KIND_RGB_8_F = 9,   /* RGB, 8 bits per channel, hw flash */
+};
+
 #define LED_NAME_MAX_SZ 40
+#define LED_MAX_SUBLEDS 3
 struct scd_led {
    struct scd_context *ctx;
    struct list_head list;
 
    u32 addr;
    char name[LED_NAME_MAX_SZ];
-   struct led_classdev cdev;
+   enum led_kind kind;
+
+   union {
+      /* struct led_classdev is the first member of led_classdev_mc. */
+      struct led_classdev cdev;
+      struct led_classdev_mc cdev_mc;
+   };
+
+   struct mc_subled subleds[LED_MAX_SUBLEDS];
 };
 
-extern int scd_led_add(struct scd_context *ctx, const char *name, u32 addr);
+extern int scd_led_add(struct scd_context *ctx, const char *name, u32 addr, enum led_kind kind);
 extern void scd_led_remove_all(struct scd_context *ctx);
+
+struct scd_led_ctrl {
+   u32 flash_addr;
+   u32 palette_addr;
+};
+
+extern int scd_led_ctrl_add(struct scd_context *ctx, u32 flash_addr, u32 palette_addr);
 
 #endif /* !_LINUX_DRIVER_SCD_LED_H_ */
