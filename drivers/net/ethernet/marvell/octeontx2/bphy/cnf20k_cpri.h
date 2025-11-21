@@ -73,6 +73,8 @@
 #define OTX2_CPRI_IOCTL_LINK_EVENT  _IOW(OTX2_CPRI_IOCTL_BASE, 0x03, \
 					 struct bphy_netdev_cpri_link_event)
 
+#define CPRDX_AF_ETH_UL_INT	0x280
+
 struct cnf20k_cpri_pkt_dl_wqe_hdr {
 	u64 lane_id	: 1;
 	u64 reserved1	: 2;

@@ -98,6 +98,8 @@ static struct class *cnf20k_cpri_class;
 
 void __iomem *cnf20k_cpri_reg_base;
 
+int cpri_mask;
+
 static inline u64 cnf20k_get_cpri_regaddr(u64 offset, u8 cpri_num)
 {
 	u64 mab_addr_did;
@@ -186,19 +188,26 @@ static void cnf20k_cpri_rx_napi_schedule(int cpri_num, u32 status, int node_id)
 
 static int cpri_polling_thread(void *data)
 {
+	int max_cpri = (cpri_mask == 1) ? 5 :
+		(cpri_mask == 3) ? 3 : 0;
+
+	/* If mask is invalid, don't do anything */
+	if (max_cpri == 0)
+		return -EINVAL;
+
 	while (!kthread_should_stop()) {
-		for (int cpri_num = 0; cpri_num < 5; cpri_num++) {
-			u64 offset =
-			cnf20k_get_cpri_regaddr(0x280, cpri_num);
+		for (int cpri_num = 0; cpri_num < max_cpri; cpri_num++) {
+			u64 offset = cnf20k_get_cpri_regaddr(CPRDX_AF_ETH_UL_INT, cpri_num);
 			u64 status = readq(cnf20k_cpri_reg_base + offset);
 
-			if (status & BIT(0)) {
-				cnf20k_cpri_rx_napi_schedule(cpri_num,
-							     status, 0);
-				writeq(BIT(0),
-				       cnf20k_cpri_reg_base + offset);
+			if (status & BIT_ULL(0)) {
+				cnf20k_cpri_rx_napi_schedule(cpri_num, status, 0);
+
+				/* Clear interrupt */
+				writeq(BIT_ULL(0), cnf20k_cpri_reg_base + offset);
 			}
 		}
+
 		cpu_relax();
 	}
 
@@ -914,7 +923,7 @@ static int cnf20k_cpri_parse_and_init_intf(struct cnf20k_cdev_priv *cdev,
 		int max_mhab = (cfg->bphy_chiplet_mask == 3) ?
 			CNF20K_BPHY_CPRI_MAX_MHAB :
 			CNF20K_HALF_BPHY_CPRI_MAX_MHAB;
-
+		cpri_mask = cfg->bphy_chiplet_mask;
 		for (i = 0; i < max_chiplet; i++) {
 			for (j = 0; j < max_mhab; j++) {
 				priv2 = NULL;
