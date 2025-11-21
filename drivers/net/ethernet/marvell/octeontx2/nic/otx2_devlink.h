@@ -17,4 +17,6 @@ struct otx2_devlink {
 int otx2_register_dl(struct otx2_nic *pfvf);
 void otx2_unregister_dl(struct otx2_nic *pfvf);
 
+int rvu_rep_register_dl(struct otx2_nic *pfvf);
+void rvu_rep_unregister_dl(struct otx2_nic *pfvf);
 #endif /* RVU_DEVLINK_H */

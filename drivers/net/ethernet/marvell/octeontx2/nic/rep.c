@@ -820,7 +820,7 @@ static int rvu_rep_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto err_detach_rsrc;
 
-	err = otx2_register_dl(priv);
+	err = rvu_rep_register_dl(priv);
 	if (err)
 		goto err_detach_rsrc;
 
@@ -846,7 +846,7 @@ static void rvu_rep_remove(struct pci_dev *pdev)
 
 	if (!(priv->flags & OTX2_FLAG_INTF_DOWN))
 		rvu_rep_destroy(priv);
-	otx2_unregister_dl(priv);
+	rvu_rep_unregister_dl(priv);
 	otx2_detach_resources(&priv->mbox);
 	if (priv->hw.lmt_info)
 		free_percpu(priv->hw.lmt_info);
