@@ -22,6 +22,7 @@
 #include "lmac_common.h"
 
 #define DRV_NAME	"Marvell-CGX-RPM"
+#define DRV_STRING      "Marvell CGX/RPM Driver"
 
 #define CGX_RX_STAT_GLOBAL_INDEX	9
 
@@ -1302,7 +1303,7 @@ static void set_mod_args(struct cgx_set_link_mode_args *args,
 				  CGX_MODE_MAX);
 	args->mode = mode;
 	mode_baseidx = cgx_mode - 41;
-	if (mode_baseidx > 0) {
+	if (mode_baseidx >= 0) {
 		args->mode_baseidx = 1;
 		args->mode = BIT_ULL(mode_baseidx);
 	}
@@ -1345,8 +1346,17 @@ static void otx2_map_ethtool_link_modes(u64 bitmask,
 	case  ETHTOOL_LINK_MODE_10000baseKR_Full_BIT:
 		set_mod_args(args, 10000, 0, 1, BIT_ULL(CGX_MODE_10G_KR));
 		break;
+	case  ETHTOOL_LINK_MODE_20000baseMLD2_Full_BIT:
+		set_mod_args(args, 20000, 0, 0, BIT_ULL(CGX_MODE_20G_C2C));
+		break;
 	case  ETHTOOL_LINK_MODE_25000baseSR_Full_BIT:
 		set_mod_args(args, 25000, 0, 0, BIT_ULL(CGX_MODE_25G_C2C));
+		break;
+	case  ETHTOOL_LINK_MODE_10000baseR_FEC_BIT:
+		set_mod_args(args, 25000, 0, 0, BIT_ULL(CGX_MODE_25G_C2M));
+		break;
+	case  ETHTOOL_LINK_MODE_20000baseKR2_Full_BIT:
+		set_mod_args(args, 25000, 0, 0, BIT_ULL(CGX_MODE_25G_2_C2C));
 		break;
 	case  ETHTOOL_LINK_MODE_25000baseCR_Full_BIT:
 		set_mod_args(args, 25000, 0, 1, BIT_ULL(CGX_MODE_25G_CR));
@@ -1366,17 +1376,26 @@ static void otx2_map_ethtool_link_modes(u64 bitmask,
 	case  ETHTOOL_LINK_MODE_40000baseKR4_Full_BIT:
 		set_mod_args(args, 40000, 0, 1, BIT_ULL(CGX_MODE_40G_KR4));
 		break;
-	case  ETHTOOL_LINK_MODE_50000baseSR_Full_BIT:
+	case  ETHTOOL_LINK_MODE_10000baseKX4_Full_BIT:
+		set_mod_args(args, 40000, 0, 0, BIT_ULL(CGX_MODE_40GAUI_C2C));
+		break;
+	case  ETHTOOL_LINK_MODE_50000baseSR2_Full_BIT:
 		set_mod_args(args, 50000, 0, 0, BIT_ULL(CGX_MODE_50G_C2C));
 		break;
-	case  ETHTOOL_LINK_MODE_50000baseLR_ER_FR_Full_BIT:
+	case  ETHTOOL_LINK_MODE_56000baseKR4_Full_BIT:
+		set_mod_args(args, 50000, 0, 0, BIT_ULL(CGX_MODE_50G_4_C2C));
+		break;
+	case  ETHTOOL_LINK_MODE_50000baseDR_Full_BIT:
 		set_mod_args(args, 50000, 0, 0, BIT_ULL(CGX_MODE_50G_C2M));
 		break;
-	case  ETHTOOL_LINK_MODE_50000baseCR_Full_BIT:
+	case  ETHTOOL_LINK_MODE_50000baseCR2_Full_BIT:
 		set_mod_args(args, 50000, 0, 1, BIT_ULL(CGX_MODE_50G_CR));
 		break;
-	case  ETHTOOL_LINK_MODE_50000baseKR_Full_BIT:
+	case  ETHTOOL_LINK_MODE_50000baseKR2_Full_BIT:
 		set_mod_args(args, 50000, 0, 1, BIT_ULL(CGX_MODE_50G_KR));
+		break;
+	case  ETHTOOL_LINK_MODE_10000baseLRM_Full_BIT:
+		set_mod_args(args, 80000, 0, 0, BIT_ULL(CGX_MODE_80GAUI_C2C));
 		break;
 	case  ETHTOOL_LINK_MODE_100000baseSR4_Full_BIT:
 		set_mod_args(args, 100000, 0, 0, BIT_ULL(CGX_MODE_100G_C2C));
@@ -1389,6 +1408,104 @@ static void otx2_map_ethtool_link_modes(u64 bitmask,
 		break;
 	case  ETHTOOL_LINK_MODE_100000baseKR4_Full_BIT:
 		set_mod_args(args, 100000, 0, 1, BIT_ULL(CGX_MODE_100G_KR4));
+		break;
+	case  ETHTOOL_LINK_MODE_50000baseSR_Full_BIT:
+		set_mod_args(args, 50000, 0, 0,
+			     BIT_ULL(CGX_MODE_LAUI_2_C2C_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_50000baseLR_ER_FR_Full_BIT:
+		set_mod_args(args, 50000, 0, 0,
+			     BIT_ULL(CGX_MODE_LAUI_2_C2M_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_50000baseCR_Full_BIT:
+		set_mod_args(args, 50000, 0, 1,
+			     BIT_ULL(CGX_MODE_50GBASE_CR2_C_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_50000baseKR_Full_BIT:
+		set_mod_args(args, 50000, 0, 1,
+			     BIT_ULL(CGX_MODE_50GBASE_KR2_C_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_100000baseSR2_Full_BIT:
+		set_mod_args(args, 100000, 0, 0,
+			     BIT_ULL(CGX_MODE_100GAUI_2_C2C_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_100000baseLR2_ER2_FR2_Full_BIT:
+		set_mod_args(args, 100000, 0, 0,
+			     BIT_ULL(CGX_MODE_100GAUI_2_C2M_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_100000baseCR2_Full_BIT:
+		set_mod_args(args, 100000, 0, 1,
+			     BIT_ULL(CGX_MODE_100GBASE_CR2_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_100000baseKR2_Full_BIT:
+		set_mod_args(args, 100000, 0, 1,
+			     BIT_ULL(CGX_MODE_100GBASE_KR2_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_1000baseKX_Full_BIT:
+		set_mod_args(args, 1000, 0, 0,
+			     BIT_ULL(CGX_MODE_SFI_1G_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_56000baseCR4_Full_BIT:
+		set_mod_args(args, 25000, 0, 1,
+			     BIT_ULL(CGX_MODE_25GBASE_CR_C_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_56000baseSR4_Full_BIT:
+		set_mod_args(args, 25000, 0, 1,
+			     BIT_ULL(CGX_MODE_25GBASE_KR_C_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_2500baseX_Full_BIT:
+		set_mod_args(args, 2500, 0, 1,
+			     BIT_ULL(ETH_MODE_2500_BASEX_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_5000baseT_Full_BIT:
+		set_mod_args(args, 5000, 0, 1,
+			     BIT_ULL(ETH_MODE_5000_BASEX_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_100baseT1_Full_BIT:
+		set_mod_args(args, 1000, 0, 1,
+			     BIT_ULL(ETH_MODE_O_USGMII_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_1000baseT1_Full_BIT:
+		set_mod_args(args, 1000, 0, 1,
+			     BIT_ULL(ETH_MODE_Q_USGMII_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_2500baseT_Full_BIT:
+		set_mod_args(args, 2500, 0, 1,
+			     BIT_ULL(ETH_MODE_2_5G_USXGMII_BIT));
+		break;
+	case ETHTOOL_LINK_MODE_200000baseCR4_Full_BIT:
+		set_mod_args(args, 5000, 0, 1,
+			     BIT_ULL(ETH_MODE_5G_USXGMII_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_10000baseCR_Full_BIT:
+		set_mod_args(args, 10000, 0, 1,
+			     BIT_ULL(ETH_MODE_10G_SXGMII_BIT));
+		break;
+	case  ETHTOOL_LINK_MODE_10000baseER_Full_BIT:
+		set_mod_args(args, 5000, 0, 1,
+			     BIT_ULL(ETH_MODE_10G_DXGMII_BIT));
+		break;
+	case ETHTOOL_LINK_MODE_200000baseDR4_Full_BIT:
+		set_mod_args(args, 2500, 0, 1,
+			     BIT_ULL(ETH_MODE_10G_QXGMII_BIT));
+		break;
+	case ETHTOOL_LINK_MODE_100000baseSR_Full_BIT:
+		set_mod_args(args, 100, 1, 1, BIT_ULL(ETH_MODE_100GAUI_1_C2C_BIT));
+		break;
+	case ETHTOOL_LINK_MODE_100000baseLR_ER_FR_Full_BIT:
+		set_mod_args(args, 100, 1, 1, BIT_ULL(ETH_MODE_100GAUI_1_C2M_BIT));
+		break;
+	case ETHTOOL_LINK_MODE_200000baseSR2_Full_BIT:
+		set_mod_args(args, 200, 1, 1, BIT_ULL(ETH_MODE_200GAUI_2_C2C_BIT));
+		break;
+	case ETHTOOL_LINK_MODE_200000baseLR2_ER2_FR2_Full_BIT:
+		set_mod_args(args, 200, 1, 1, BIT_ULL(ETH_MODE_200GAUI_2_C2M_BIT));
+		break;
+	case ETHTOOL_LINK_MODE_200000baseSR4_Full_BIT:
+		set_mod_args(args, 200, 1, 1, BIT_ULL(ETH_MODE_200GAUI_4_C2C_BIT));
+		break;
+	case ETHTOOL_LINK_MODE_200000baseLR4_ER4_FR4_Full_BIT:
+		set_mod_args(args, 200, 1, 1, BIT_ULL(ETH_MODE_200GAUI_4_C2M_BIT));
 		break;
 	default:
 		set_mod_args(args, 0, 1, 0, BIT_ULL(CGX_MODE_MAX));
