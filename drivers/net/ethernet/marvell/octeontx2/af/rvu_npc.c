@@ -3950,12 +3950,9 @@ int rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
 		rxpkind = NPC_RX_EDSA_PKIND;
 	} else if (mode & OTX2_PRIV_FLAGS_HIGIG) {
 		/* Silicon does not support enabling higig in time stamp mode */
-		/* TODO : uncomment once rvu_nix_is_ptp_tx_enabled is added */
-		/*
-		 * if (pfvf->hw_rx_tstamp_en ||
-		 *   rvu_nix_is_ptp_tx_enabled(rvu, pcifunc))
-		 *	return NPC_AF_ERR_HIGIG_CONFIG_FAIL;
-		 */
+		  if (pfvf->hw_rx_tstamp_en ||
+		      rvu_nix_is_ptp_tx_enabled(rvu, pcifunc))
+			return NPC_AF_ERR_HIGIG_CONFIG_FAIL;
 
 		if (!is_mac_feature_supported(rvu, pf, RVU_LMAC_FEAT_HIGIG2))
 			return NPC_AF_ERR_HIGIG_NOT_SUPPORTED;
@@ -3998,10 +3995,9 @@ int rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
 			    txpkind);
 	}
 
-	/* TODO: uncomment later */
-	/* if (enable_higig2 ^ rvu_cgx_is_higig2_enabled(rvu, pf))
+	 if (enable_higig2 ^ rvu_cgx_is_higig2_enabled(rvu, pf))
 		rvu_cgx_enadis_higig2(rvu, pf, enable_higig2);
-	*/
+
 
 	return 0;
 }
