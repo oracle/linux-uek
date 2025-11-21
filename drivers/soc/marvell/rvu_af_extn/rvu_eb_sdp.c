@@ -49,6 +49,9 @@ static struct _req_type __maybe_unused					\
 MBOX_EBLOCK_UP_SDP_MESSAGES
 #undef M
 
+//todo adjust according to 020
+#define RVU_PFVF_PF_SHIFT	10
+#define RVU_PFVF_PF_MASK	0x3F
 /* Given a host pcifunc returns host VF number + 1 */
 static u16 get_sdp_evf(u16 epcifunc)
 {
@@ -192,7 +195,7 @@ static int cn20k_sdp_send_ring_msg(struct rvu *rvu, u16 target,
 	/* Get the PF's pfvf of target to send message since
 	 * AF can only send to PFs but not to a PF's VF.
 	 */
-	pfid = rvu_get_pf(target);
+	pfid = rvu_get_pf(rvu->pdev, target);
 	if (!test_bit(pfid, sdp->ready_pfs)) {
 		dev_err(rvu->dev, "PF%d is not ready to receive message\n",
 			pfid);
@@ -612,7 +615,7 @@ int rvu_mbox_handler_start_up_msgs(struct rvu *rvu,
 				   struct msg_rsp *rsp)
 {
 
-	int pf = rvu_get_pf(req->hdr.pcifunc);
+	int pf = rvu_get_pf(rvu->pdev, req->hdr.pcifunc);
 	struct sdp_rsrc *sdp = &rvu->hw->sdp;
 
 	if (!is_block_implemented(rvu->hw, BLKADDR_SDP))
@@ -629,7 +632,7 @@ int rvu_mbox_handler_stop_up_msgs(struct rvu *rvu,
 				  struct msg_rsp *rsp)
 {
 
-	int pf = rvu_get_pf(req->hdr.pcifunc);
+	int pf = rvu_get_pf(rvu->pdev, req->hdr.pcifunc);
 	struct sdp_rsrc *sdp = &rvu->hw->sdp;
 
 	if (!is_block_implemented(rvu->hw, BLKADDR_SDP))
@@ -798,7 +801,7 @@ static void __sdp_mbox_handler(struct rvu_work *mwork, int type, bool poll)
 		if (msg->pcifunc & RVU_PFVF_FUNC_MASK)
 			dev_warn(rvu->dev, "Error %d when processing message %s (0x%x) from EPF%d:VF%d\n",
 				 err, otx2_mbox_id2name(msg->id),
-				 msg->id, rvu_get_pf(msg->pcifunc),
+				 msg->id, rvu_get_pf(rvu->pdev, msg->pcifunc),
 				 (msg->pcifunc & RVU_PFVF_FUNC_MASK) - 1);
 		else
 			dev_warn(rvu->dev, "Error %d when processing message %s (0x%x) from EPF%d\n",

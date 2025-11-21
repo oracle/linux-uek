@@ -956,7 +956,7 @@ static int rvu_cgx_ptp_rx_cfg(struct rvu *rvu, u16 pcifunc, bool enable)
 int rvu_mbox_handler_cgx_ptp_rx_enable(struct rvu *rvu, struct msg_req *req,
 				       struct msg_rsp *rsp)
 {
-	int pf = rvu_get_pf(req->hdr.pcifunc);
+	int pf = rvu_get_pf(rvu->pdev, req->hdr.pcifunc);
 
 	if (!is_pf_cgxmapped(rvu, pf))
 		return -EPERM;
@@ -1507,7 +1507,7 @@ int rvu_mbox_handler_cgx_set_phy_mod_type(struct rvu *rvu,
 					  struct cgx_phy_mod_type *req,
 					  struct msg_rsp *rsp)
 {
-	int pf = rvu_get_pf(req->hdr.pcifunc);
+	int pf = rvu_get_pf(rvu->pdev, req->hdr.pcifunc);
 	u8 cgx_id, lmac_id;
 
 	if (!is_pf_cgxmapped(rvu, pf))
@@ -1521,7 +1521,7 @@ int rvu_mbox_handler_cgx_set_phy_mod_type(struct rvu *rvu,
 int rvu_mbox_handler_cgx_get_phy_mod_type(struct rvu *rvu, struct msg_req *req,
 					  struct cgx_phy_mod_type *rsp)
 {
-	int pf = rvu_get_pf(req->hdr.pcifunc);
+	int pf = rvu_get_pf(rvu->pdev, req->hdr.pcifunc);
 	u8 cgx_id, lmac_id;
 
 	if (!is_pf_cgxmapped(rvu, pf))
@@ -1542,7 +1542,7 @@ bool rvu_cgx_is_pkind_config_permitted(struct rvu *rvu, u16 pcifunc)
 	int rc, pf, rxpkind;
 	u8 cgx_id, lmac_id;
 
-	pf = rvu_get_pf(pcifunc);
+	pf = rvu_get_pf(rvu->pdev, pcifunc);
 
 	/* Ret here for PFs or non cgx interfaces */
 	if (!(pcifunc & RVU_PFVF_FUNC_MASK))

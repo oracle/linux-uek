@@ -5743,7 +5743,7 @@ int rvu_mbox_handler_nix_lf_ptp_tx_enable(struct rvu *rvu, struct msg_req *req,
 					  struct msg_rsp *rsp)
 {
 	/* Silicon does not support enabling time stamp in higig mode */
-	if (rvu_cgx_is_higig2_enabled(rvu, rvu_get_pf(req->hdr.pcifunc)))
+	if (rvu_cgx_is_higig2_enabled(rvu, rvu_get_pf(rvu->pdev, req->hdr.pcifunc)))
 		return NIX_AF_ERR_PTP_CONFIG_FAIL;
 
 	return rvu_nix_lf_ptp_tx_cfg(rvu, req->hdr.pcifunc, true);
