@@ -38,6 +38,7 @@ enum rvu_block_addr_e {
 	BLKADDR_REE1		= 0x15ULL,
 	BLKADDR_APR		= 0x16ULL,
 	BLKADDR_MBOX		= 0x1bULL,
+	BLKADDR_SDP		= 0x1dULL,
 	BLK_COUNT		= 0x1cULL,
 };
 
@@ -55,6 +56,7 @@ enum rvu_block_type_e {
 	BLKTYPE_CPT  = 0x9,
 	BLKTYPE_NDC  = 0xa,
 	BLKTYPE_REE  = 0xe,
+	BLKTYPE_SDP  = 0x10,
 	BLKTYPE_MBOX = 0x13,
 	BLKTYPE_MAX  = 0x13,
 };

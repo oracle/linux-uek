@@ -63,3 +63,5 @@ int rvu_eblock_mbox_handler(struct otx2_mbox *mbox, int devid,
 /* Eblock drivers part of RVU AF driver module */
 void ree_eb_module_init(void);
 void ree_eb_module_exit(void);
+void sdp_eb_module_init(void);
+void sdp_eb_module_exit(void);

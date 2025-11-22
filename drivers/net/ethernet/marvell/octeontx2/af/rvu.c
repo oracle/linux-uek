@@ -302,6 +302,9 @@ int rvu_get_blkaddr(struct rvu *rvu, int blktype, u16 pcifunc)
 			goto exit;
 		}
 		break;
+	case BLKTYPE_SDP:
+		blkaddr = BLKADDR_SDP;
+		goto exit;
 	}
 
 	/* Check if this is a RVU PF or VF */
@@ -591,6 +594,7 @@ static void rvu_reset_all_blocks(struct rvu *rvu)
 	rvu_block_reset(rvu, BLKADDR_NDC_NPA0, NDC_AF_BLK_RST);
 	rvu_block_reset(rvu, BLKADDR_REE0, REE_AF_BLK_RST);
 	rvu_block_reset(rvu, BLKADDR_REE1, REE_AF_BLK_RST);
+	rvu_block_reset(rvu, BLKADDR_SDP, SDP_AF_BLK_RST);
 }
 
 static void rvu_scan_block(struct rvu *rvu, struct rvu_block *block)

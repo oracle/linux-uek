@@ -159,4 +159,7 @@
 #define NIX_AF_LSO_ALT_FLAGS_CFG(a)	(0x4B00 | (a) << 3)
 #define NIX_AF_LSO_ALT_FLAGS_CFG1(a)	(0x4B20 | (a) << 3)
 
+/* SDP Regsiters */
+#define SDP_AF_BLK_RST				0xc000030
+
 #endif /* RVU_MBOX_REG_H */
