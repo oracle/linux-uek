@@ -61,4 +61,35 @@ config OCTEONTX_INFO
 	  mac addresses, board serial number and more. These are boards housing Marvell
 	  OcteonTX family chipsets.
 
+config OCTEONTX2_GHES_BERT
+	bool "OcteonTX2 GHES Boot Error Record support"
+	depends on ARM64 && ACPI_APEI
+	default n
+	help
+	  Select this option to enable reporting of fatal Marvell GHES
+	  errors on subsequent Linux boot.  Normally, fatal errors will
+	  reset the system.  Enabling support here will allow such errors
+	  to be reported when Linux is started again.
+
+config OCTEONTX2_EINJ
+	tristate "OcteonTX2 ECC Injection"
+	help
+	  Provides support for error injection to OcteonTX2
+	  memory controllers (LMC) and cache blocks.
+	  This facilitates testing of the memory controller RAS features and
+	  is intended to be used by test personnel when conducting system tests.
+	  To compile this as a module, choose M here. The module will be
+	  called otx2-einj.
+	  Unless testing, say N here.
+
+config OCTEONTX2_GHES
+	bool "OcteonTX2 GHES support"
+	depends on ARM64 && ACPI_APEI
+	default n
+	help
+	  Select this option to enable Marvell GHES support. This will
+	  init and enable the MSI-X interrupts for LMC, MDC and MCC.
+	  This config will also make sure that this is enabled only
+	  for ARM64 platforms.
+
 endmenu
