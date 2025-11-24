@@ -271,11 +271,12 @@ free_ents:
 
 void rvu_switch_update_rules(struct rvu *rvu, u16 pcifunc, bool ena)
 {
+	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
 	struct rvu_switch *rswitch = &rvu->rswitch;
 	u32 max = rswitch->used_entries;
 	u16 entry;
 
-	if (rvu->rep_mode)
+	if (rvu->rep_mode || pfvf->esw_rules)
 		return rvu_rep_update_rules(rvu, pcifunc, ena);
 
 	if (!rswitch->used_entries)

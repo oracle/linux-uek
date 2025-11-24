@@ -2361,6 +2361,7 @@ struct npc_delete_flow_req {
 	u16 start;/*Disable range of entries */
 	u16 end;
 	u8 all; /* PF + VFs */
+	u16 vf;
 };
 
 struct npc_delete_flow_rsp {

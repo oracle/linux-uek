@@ -1684,6 +1684,14 @@ update_rule:
 	    req->vtag0_type == NIX_AF_LFX_RX_VTAG_TYPE7)
 		rule->vfvlan_cfg = true;
 
+	/* Scenario where representor installing rule for PFVF and respective
+	* PFVF NIX LF is started, updating switch rules only once.
+	*/
+	if (is_rep_dev(rvu, req->hdr.pcifunc) &&
+	    test_bit(NIXLF_INITIALIZED, &pfvf->flags) &&
+	    pfvf->esw_rules == 1)
+		rvu_switch_update_rules(rvu, req->vf, true);
+
 	if (is_npc_intf_rx(req->intf) && req->match_id &&
 	    (req->op == NIX_RX_ACTIONOP_UCAST || req->op == NIX_RX_ACTIONOP_RSS))
 		return rvu_nix_setup_ratelimit_aggr(rvu, req->hdr.pcifunc,
@@ -1889,6 +1897,10 @@ process_flow:
 	if (req->hdr.pcifunc && !from_vf && req->vf && !from_rep_dev)
 		set_bit(PF_SET_VF_CFG, &pfvf->flags);
 
+	/* Representor installing for PFVF */
+	if (from_rep_dev)
+		pfvf->esw_rules++;
+
 	/* update req destination mac addr */
 	if ((req->features & BIT_ULL(NPC_DMAC)) && is_npc_intf_rx(req->intf) &&
 	    is_zero_ether_addr(req->packet.dmac)) {
@@ -1976,6 +1988,7 @@ int rvu_mbox_handler_npc_delete_flow(struct rvu *rvu,
 	struct rvu_npc_mcam_rule *iter, *tmp;
 	u16 pcifunc = req->hdr.pcifunc;
 	struct list_head del_list;
+	struct rvu_pfvf *pfvf;
 	int blkaddr;
 
 	req->entry = npc_cn20k_vidx2idx(req->entry);
@@ -2017,6 +2030,10 @@ int rvu_mbox_handler_npc_delete_flow(struct rvu *rvu,
 				entry);
 	}
 
+	/* In case of representor installing for PF/VF clear esw rule count */
+	pfvf = rvu_get_pfvf(rvu, req->vf);
+	if (is_rep_dev(rvu, req->hdr.pcifunc) && pfvf->esw_rules)
+		pfvf->esw_rules--;
 	return 0;
 }
 

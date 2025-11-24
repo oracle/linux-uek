@@ -386,13 +386,15 @@ int rvu_rep_install_mcam_rules(struct rvu *rvu)
 
 void rvu_rep_update_rules(struct rvu *rvu, u16 pcifunc, bool ena)
 {
+	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
 	struct rvu_switch *rswitch = &rvu->rswitch;
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	u32 max = rswitch->used_entries;
+	int nixlf, err;
 	int blkaddr;
 	u16 entry;
 
-	if (!rswitch->used_entries)
+	if (!rswitch->used_entries && !pfvf->esw_rules)
 		return;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
@@ -400,7 +402,22 @@ void rvu_rep_update_rules(struct rvu *rvu, u16 pcifunc, bool ena)
 	if (blkaddr < 0)
 		return;
 
+	/* Rules set by rep device, disabling the default rules only for VFs */
+	if (is_vf(pcifunc) && pfvf->esw_rules) {
+		err = nix_get_nixlf(rvu, pcifunc, &nixlf, NULL);
+		if (err) {
+			dev_err(rvu->dev, "Failed to get lf for pcifunc %x",
+				pcifunc);
+			return;
+		}
+
+		if (ena)
+			rvu_npc_disable_default_entries(rvu, pcifunc, nixlf);
+		else
+			rvu_npc_enable_default_entries(rvu, pcifunc, nixlf);
+	}
 	rvu_switch_enable_lbk_link(rvu, pcifunc, ena);
+
 	mutex_lock(&mcam->lock);
 	for (entry = 0; entry < max; entry++) {
 		if (rswitch->entry2pcifunc[entry] == pcifunc)
