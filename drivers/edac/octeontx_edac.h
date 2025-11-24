@@ -25,7 +25,10 @@
 
 #define SIZE	CPER_REC_LEN
 #define NAME_SZ	8
+#define OCTEONTX_GHES_REC_OLD_VER 0
+#define OCTEONTX_GHES_REC_NEW_VER 1
 
+extern u32 octeontx_ghes_record_ver;
 struct cper_sec_plat_gic {
 	uint8_t validation_bits;
 	uint8_t error_type;
@@ -61,6 +64,11 @@ struct vendor_info {
 };
 
 struct processor_error {
+	struct cper_sec_proc_arm desc;
+	struct cper_arm_err_info info;
+};
+
+struct processor_error_new {
 	struct cper_sec_proc_arm desc;
 	struct cper_arm_err_info info;
 	struct cper_arm_ctx_info ctx;
@@ -123,6 +131,7 @@ struct octeontx_ghes_record {
 	u32 error_severity;
 	char msg[32];
 	u64 syndrome;
+	struct processor_error_new  core_new;
 };
 
 struct octeontx_ghes_ring {

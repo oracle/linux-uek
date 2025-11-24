@@ -146,6 +146,7 @@ static ssize_t dev_##reg##_store(struct edac_device_ctl_info *dev,\
 
 
 static const u64 einj_val = 0x5555555555555555;
+u32 octeontx_ghes_record_ver = OCTEONTX_GHES_REC_OLD_VER;
 static u64 einj_fn(void)
 {
 	return einj_val;
@@ -447,8 +448,13 @@ static void octeontx_edac_cpu_msg(struct octeontx_ghes_record *rec, char msg[SIZ
 	u32 len = SIZE;
 	u32 n = 0;
 
-	desc = &rec->core.desc;
-	info = &rec->core.info;
+	if (octeontx_ghes_record_ver == OCTEONTX_GHES_REC_OLD_VER) {
+		desc = &rec->core.desc;
+		info = &rec->core.info;
+	} else {
+		desc = &rec->core_new.desc;
+		info = &rec->core_new.info;
+	}
 
 	n += scnprintf(msg + n, len - n, "%s ", rec->msg);
 	n += scnprintf(msg + n, len - n, "midr=0x%llx ", desc->midr);
@@ -480,8 +486,13 @@ static void octeontx_edac_ea_msg(struct octeontx_ghes_record *rec, char msg[SIZE
 
 	pr_err("%s fru_text: %.20s\n", pfx, rec->msg);
 
-	desc = &rec->core.desc;
-	info = &rec->core.info;
+	if (octeontx_ghes_record_ver == OCTEONTX_GHES_REC_OLD_VER) {
+		desc = &rec->core.desc;
+		info = &rec->core.info;
+	} else {
+		desc = &rec->core_new.desc;
+		info = &rec->core_new.info;
+	}
 
 	cper_print_proc_arm(pfx, desc);
 
@@ -510,6 +521,8 @@ static void octeontx_edac_mc_wq(struct work_struct *work)
 	u32 head = 0;
 	u32 tail = 0;
 	char msg[SIZE];
+	u64 start_addr_ghes_record;
+	u32 size_rec_in_old_firmware;
 
 	mutex_lock(&ghes->lock);
 
@@ -523,7 +536,16 @@ loop:
 	if (head == tail)
 		goto exit;
 
-	memcpy_fromio(&rec, ring->records + tail, sizeof(rec));
+	if (octeontx_ghes_record_ver == OCTEONTX_GHES_REC_OLD_VER) {
+		start_addr_ghes_record = (u64)ring->records;
+		size_rec_in_old_firmware = sizeof(struct octeontx_ghes_record)
+			- sizeof(struct processor_error_new);
+		memcpy_fromio(&rec, (void *)(start_addr_ghes_record +
+			(size_rec_in_old_firmware * tail)),
+				size_rec_in_old_firmware);
+	} else {
+		memcpy_fromio(&rec, ring->records + tail, sizeof(rec));
+	}
 
 	type = octeontx_edac_severity(rec.error_severity);
 
@@ -683,6 +705,12 @@ static int octeontx_ghes_of_match_resource(struct octeontx_ghes_list *list)
 	root = of_find_matching_node(NULL, octeontx_edac_ghes_of_match);
 	if (!root)
 		return -ENODEV;
+
+	if (of_property_read_u32(root, "version", &octeontx_ghes_record_ver)) {
+		otx_printk(KERN_ALERT, "old firmware detected will use ghes record old format\n");
+		octeontx_ghes_record_ver = OCTEONTX_GHES_REC_OLD_VER;
+	}
+	otx_printk(KERN_ALERT, "rec version:%d\n", octeontx_ghes_record_ver);
 
 	for_each_available_child_of_node(root, node)
 		count++;
