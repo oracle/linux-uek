@@ -568,9 +568,15 @@ Source26: Module.kabi_aarch64
 Source27: Symtypes.kabi_x86_64
 Source28: Symtypes.kabi_aarch64
 Source29: kabi
+Source30: Module.kabi_x86_64.fips
+Source31: Module.kabi_aarch64.fips
+Source32: Symtypes.kabi_x86_64.fips
+Source33: Symtypes.kabi_aarch64.fips
 
 Source201: kabi_lockedlist_x86_64
 Source202: kabi_lockedlist_aarch64
+Source203: kabi_lockedlist_x86_64.fips
+Source204: kabi_lockedlist_aarch64.fips
 
 %if "kernel%{?variant}" != "%{installonly_variant_name}"
 Provides: %{installonly_variant_name}
@@ -1391,9 +1397,8 @@ BuildKernel() {
     fi
 %if %{with_fips_build}
     cp fips/Module.symvers $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/fips
-    # include fips symvers for kABI checking
-    cat fips/Module.symvers >> Module.symvers
 %endif
+
     cp Module.symvers $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
     cp System.map $RPM_BUILD_ROOT/lib/modules/$KernelVer/build
     if [ -s Module.markers ]; then
@@ -1415,6 +1420,27 @@ BuildKernel() {
     if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "debug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb3" ] && [ "$Flavour" != "emb4" ]; then
        # Create symbol type data which can be used to introspect kABI breakages
        python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
+
+       echo "**** FIPS kABI checking is enabled in kernel SPEC file for %{_target_cpu}. ****"
+       if [ -e $RPM_SOURCE_DIR/Module.kabi_%{_target_cpu}$Flavour.fips ]; then
+          cp $RPM_SOURCE_DIR/Module.kabi_%{_target_cpu}$Flavour.fips $RPM_BUILD_ROOT/Module.kabi.fips
+          cp $RPM_SOURCE_DIR/Symtypes.kabi_%{_target_cpu}$Flavour.fips $RPM_BUILD_ROOT/Symtypes.kabi.fips
+          cp $RPM_SOURCE_DIR/kabi_lockedlist_%{_target_cpu}$Flavour.fips $RPM_BUILD_ROOT/kabi_lockedlist.fips
+          $RPM_SOURCE_DIR/kabi check -k $RPM_BUILD_ROOT/Module.kabi.fips -s Module.symvers \
+                                          -K $RPM_BUILD_ROOT/Symtypes.kabi.fips -S Symtypes.build
+          # Smoke tests verify that the kABI definitions are internally consistent:
+          # they contain the exact same set of symbols and symbol versions.
+          python3 $RPM_SOURCE_DIR/kabi smoke -v $RPM_BUILD_ROOT/Module.kabi.fips \
+                                             -t $RPM_BUILD_ROOT/Symtypes.kabi.fips \
+                                             -l $RPM_BUILD_ROOT/kabi_lockedlist.fips || exit 1
+          # For now, don't keep these around
+          rm $RPM_BUILD_ROOT/Module.kabi.fips
+          rm $RPM_BUILD_ROOT/Symtypes.kabi.fips
+          rm $RPM_BUILD_ROOT/kabi_lockedlist.fips
+       else
+          echo "**** NOTE: Cannot find reference Module.kabi.fips file. ****"
+          exit 1
+       fi
 
        echo "**** kABI checking is enabled in kernel SPEC file for %{_target_cpu}. ****"
        if [ -e $RPM_SOURCE_DIR/Module.kabi_%{_target_cpu}$Flavour ]; then
