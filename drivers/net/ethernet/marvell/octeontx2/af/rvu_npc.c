@@ -1662,7 +1662,8 @@ static void npc_program_kpu_profile(struct rvu *rvu, int blkaddr, int kpu,
 
 }
 
-static int npc_prepare_default_kpu(struct rvu *rvu, struct npc_kpu_profile_adapter *profile)
+static void npc_prepare_default_kpu(struct rvu *rvu,
+				    struct npc_kpu_profile_adapter *profile)
 {
 	profile->custom = 0;
 	profile->name = def_pfl_name;
@@ -1672,60 +1673,22 @@ static int npc_prepare_default_kpu(struct rvu *rvu, struct npc_kpu_profile_adapt
 	profile->kpu = npc_kpu_profiles;
 	profile->kpus = ARRAY_SIZE(npc_kpu_profiles);
 	profile->lt_def = &npc_lt_defaults;
-	if (is_cn20k(rvu->pdev)) {
-		profile->mcam_kex_prfl.mkex_extr = npc_mkex_extr_default_get();
-		ikpu_action_entries[NPC_RX_CPT_HDR_PKIND].offset = 6;
-		ikpu_action_entries[NPC_RX_CPT_HDR_PKIND].mask = 0xe0;
-		ikpu_action_entries[NPC_RX_CPT_HDR_PKIND].shift = 0x5;
-		ikpu_action_entries[NPC_RX_CPT_HDR_PKIND].right = 0x1;
-		for (int i = 0; i < profile->kpus; i++) {
-			struct npc_kpu_profile_action *action =
-				profile->kpu[i].action;
-			for (int j = 0; j < profile->kpu[i].action_entries;
-			     j++) {
-				if (action[j].lid == NPC_LID_LC &&
-				    (action[j].ltype == NPC_LT_LC_IP ||
-				     action[j].ltype == NPC_LT_LC_IP6 ||
-				     action[j].ltype == NPC_LT_LC_IP_OPT ||
-				     action[j].ltype == NPC_LT_LC_IP6_EXT)) {
-					switch (action[j].flags) {
-					case NPC_F_LC_U_IP_FRAG:
-						action[j].flags =
-							NPC_CN20K_F_LC_L_IP_FRAG;
-						break;
-					case NPC_F_LC_U_IP6_FRAG:
-						action[j].flags =
-							NPC_CN20K_F_LC_L_IP6_FRAG;
-						break;
-					case NPC_F_LC_L_6TO4:
-						action[j].flags =
-							NPC_CN20K_F_LC_L_6TO4;
-						break;
-					case NPC_F_LC_L_MPLS_IN_IP:
-						action[j].flags =
-							NPC_CN20K_F_LC_U_MPLS_IN_IP;
-						break;
-					case NPC_F_LC_L_IP6_TUN_IP6:
-						action[j].flags =
-							NPC_CN20K_F_LC_U_IP6_TUN_IP6;
-						break;
-					case NPC_F_LC_L_IP6_MPLS_IN_IP:
-						action[j].flags =
-							NPC_CN20K_F_LC_U_IP6_MPLS_IN_IP;
-						break;
-					default:
-						break;
-					}
-				}
-			}
-		}
 
-	} else {
-		profile->mcam_kex_prfl.mkex = &npc_mkex_default;
-	}
 	profile->mkex_hash = &npc_mkex_hash_default;
 
-	return 0;
+	if (!is_cn20k(rvu->pdev)) {
+		profile->mcam_kex_prfl.mkex = &npc_mkex_default;
+		return;
+	}
+
+	profile->mcam_kex_prfl.mkex_extr = npc_mkex_extr_default_get();
+
+	ikpu_action_entries[NPC_RX_CPT_HDR_PKIND].offset = 6;
+	ikpu_action_entries[NPC_RX_CPT_HDR_PKIND].mask = 0xe0;
+	ikpu_action_entries[NPC_RX_CPT_HDR_PKIND].shift = 0x5;
+	ikpu_action_entries[NPC_RX_CPT_HDR_PKIND].right = 0x1;
+
+	npc_cn20k_update_action_entries_n_flags(rvu, profile);
 }
 
 static int npc_alloc_kpu_cam2_n_action(struct rvu *rvu, int kpu_num,

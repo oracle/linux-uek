@@ -243,6 +243,8 @@ int npc_cn20k_apply_custom_kpu(struct rvu *rvu, struct npc_kpu_profile_adapter *
 int npc_cn20k_load_kpu_prfl_img(struct rvu *rvu, void __iomem *prfl_addr,
 				u64 prfl_sz, const char *kpu_profile);
 void npc_cn20k_clear_mcam_entry(struct rvu *rvu, int blkaddr, int bank, int index);
+void npc_cn20k_update_action_entries_n_flags(struct rvu *rvu,
+					     struct npc_kpu_profile_adapter *profile);
 
 int npc_cn20k_search_order_set(struct rvu *rvu, int (*arr)[2], int cnt);
 const int *npc_cn20k_search_order_get(bool *restricted_order);

@@ -3887,6 +3887,76 @@ err:
 	return ret;
 }
 
+static u8 npc_map2cn20k_flag(u8 flag)
+{
+	switch (flag) {
+	case NPC_F_LC_U_IP_FRAG:
+		return NPC_CN20K_F_LC_L_IP_FRAG;
+
+	case NPC_F_LC_U_IP6_FRAG:
+		return NPC_CN20K_F_LC_L_IP6_FRAG;
+
+	case NPC_F_LC_L_6TO4:
+		return NPC_CN20K_F_LC_L_6TO4;
+
+	case NPC_F_LC_L_MPLS_IN_IP:
+		return NPC_CN20K_F_LC_U_MPLS_IN_IP;
+
+	case NPC_F_LC_L_IP6_TUN_IP6:
+		return NPC_CN20K_F_LC_U_IP6_TUN_IP6;
+
+	case NPC_F_LC_L_IP6_MPLS_IN_IP:
+		return NPC_CN20K_F_LC_U_IP6_MPLS_IN_IP;
+
+	default:
+		break;
+	}
+
+	return -1;
+}
+
+void
+npc_cn20k_update_action_entries_n_flags(struct rvu *rvu,
+					struct npc_kpu_profile_adapter *profile)
+{
+	struct npc_kpu_profile_action *action;
+	int entries, ltype;
+	u8 flags;
+
+	for (int i = 0; i < profile->kpus; i++) {
+		action = profile->kpu[i].action;
+		entries = profile->kpu[i].action_entries;
+
+		for (int j = 0; j < entries; j++) {
+			if (action[j].lid != NPC_LID_LC)
+				continue;
+
+			ltype = action[j].ltype;
+
+			if (ltype != NPC_LT_LC_IP &&
+			    ltype != NPC_LT_LC_IP6 &&
+			    ltype != NPC_LT_LC_IP_OPT &&
+			    ltype != NPC_LT_LC_IP6_EXT)
+				continue;
+
+			flags = action[j].flags;
+
+			switch (flags) {
+			case NPC_F_LC_U_IP_FRAG:
+			case NPC_F_LC_U_IP6_FRAG:
+			case NPC_F_LC_L_6TO4:
+			case NPC_F_LC_L_MPLS_IN_IP:
+			case NPC_F_LC_L_IP6_TUN_IP6:
+			case NPC_F_LC_L_IP6_MPLS_IN_IP:
+				action[j].flags = npc_map2cn20k_flag(flags);
+				break;
+			default:
+				break;
+			}
+		}
+	}
+}
+
 int npc_cn20k_apply_custom_kpu(struct rvu *rvu, struct npc_kpu_profile_adapter *profile)
 {
 	size_t hdr_sz = sizeof(struct npc_cn20k_kpu_profile_fwdata), offset = 0;
@@ -3968,42 +4038,8 @@ int npc_cn20k_apply_custom_kpu(struct rvu *rvu, struct npc_kpu_profile_adapter *
 			return -EINVAL;
 		}
 
-		for (int j = 0; j < entries; j++) {
-			if (action[j].lid == NPC_LID_LC &&
-			    (action[j].ltype == NPC_LT_LC_IP ||
-			     action[j].ltype == NPC_LT_LC_IP6 ||
-			     action[j].ltype == NPC_LT_LC_IP_OPT ||
-			     action[j].ltype == NPC_LT_LC_IP6_EXT)) {
-				switch (action[j].flags) {
-				case NPC_F_LC_U_IP_FRAG:
-					action[j].flags =
-						NPC_CN20K_F_LC_L_IP_FRAG;
-					break;
-				case NPC_F_LC_U_IP6_FRAG:
-					action[j].flags =
-						NPC_CN20K_F_LC_L_IP6_FRAG;
-					break;
-				case NPC_F_LC_L_6TO4:
-					action[j].flags =
-						NPC_CN20K_F_LC_L_6TO4;
-					break;
-				case NPC_F_LC_L_MPLS_IN_IP:
-					action[j].flags =
-						NPC_CN20K_F_LC_U_MPLS_IN_IP;
-					break;
-				case NPC_F_LC_L_IP6_TUN_IP6:
-					action[j].flags =
-						NPC_CN20K_F_LC_U_IP6_TUN_IP6;
-					break;
-				case NPC_F_LC_L_IP6_MPLS_IN_IP:
-					action[j].flags =
-						NPC_CN20K_F_LC_U_IP6_MPLS_IN_IP;
-					break;
-				default:
-					break;
-				}
-			}
-		}
+		npc_cn20k_update_action_entries_n_flags(rvu, profile);
+
 		for (entry = 0; entry < entries; entry++) {
 			profile->kpu[kpu].cam[entry] = cam[entry];
 			profile->kpu[kpu].action[entry] = action[entry];
