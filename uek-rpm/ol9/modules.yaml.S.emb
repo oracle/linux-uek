@@ -24,6 +24,7 @@ modules:
 - gpio-regulator
 - gpio_keys
 - gpio_wdt
+- hw_access
 - i2c-dev
 - i2c-mux
 - i2c-mux-gpio
