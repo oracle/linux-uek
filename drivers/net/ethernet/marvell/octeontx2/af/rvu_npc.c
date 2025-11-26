@@ -1880,12 +1880,8 @@ static int npc_fwdb_detect_load_prfl_img(struct rvu *rvu, uint64_t prfl_sz,
 	if (le64_to_cpu(img_data->signature) == KPU_SIGN &&
 	    !strncmp(img_data->name, kpu_profile, KPU_NAME_LEN)) {
 		/* Loaded profile is a single KPU profile. */
-		if (is_cn20k(rvu->pdev))
-			rc = npc_cn20k_load_kpu_prfl_img(rvu, rvu->kpu_prfl_addr,
-							 prfl_sz, kpu_profile);
-		else
-			rc = npc_load_kpu_prfl_img(rvu, rvu->kpu_prfl_addr,
-						   prfl_sz, kpu_profile);
+		rc = npc_load_kpu_prfl_img(rvu, rvu->kpu_prfl_addr,
+					   prfl_sz, kpu_profile);
 		goto done;
 	}
 
@@ -1898,12 +1894,8 @@ static int npc_fwdb_detect_load_prfl_img(struct rvu *rvu, uint64_t prfl_sz,
 		offset = ALIGN_8B_CEIL(offset);
 		kpu_prfl_addr = (void __iomem *)((uintptr_t)rvu->kpu_prfl_addr +
 					 offset);
-		if (is_cn20k(rvu->pdev))
-			rc = npc_cn20k_load_kpu_prfl_img(rvu, kpu_prfl_addr,
-							 img_data->prfl_sz[i], kpu_profile);
-		else
-			rc = npc_load_kpu_prfl_img(rvu, kpu_prfl_addr,
-						   img_data->prfl_sz[i], kpu_profile);
+		rc = npc_load_kpu_prfl_img(rvu, kpu_prfl_addr,
+					   img_data->prfl_sz[i], kpu_profile);
 		if (!rc)
 			break;
 		/* Calculating offset of profile image based on profile size.*/

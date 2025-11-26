@@ -4049,26 +4049,6 @@ int npc_cn20k_apply_custom_kpu(struct rvu *rvu, struct npc_kpu_profile_adapter *
 	return 0;
 }
 
-int npc_cn20k_load_kpu_prfl_img(struct rvu *rvu, void __iomem *prfl_addr,
-				u64 prfl_sz, const char *kpu_profile)
-{
-	struct npc_cn20k_kpu_profile_fwdata *kpu_data = NULL;
-	int rc = -EINVAL;
-
-	kpu_data = (struct npc_cn20k_kpu_profile_fwdata __force *)prfl_addr;
-	if (le64_to_cpu(kpu_data->signature) == KPU_SIGN &&
-	    !strncmp(kpu_data->name, kpu_profile, KPU_NAME_LEN)) {
-		dev_info(rvu->dev, "Loading KPU profile from firmware db: %s\n",
-			 kpu_profile);
-		rvu->kpu_fwdata = kpu_data;
-		rvu->kpu_fwdata_sz = prfl_sz;
-		rvu->kpu_prfl_addr = prfl_addr;
-		rc = 0;
-	}
-
-	return rc;
-}
-
 int rvu_mbox_handler_npc_cn20k_get_free_count(struct rvu *rvu,
 					      struct msg_req *req,
 					      struct npc_cn20k_get_free_count_rsp *rsp)

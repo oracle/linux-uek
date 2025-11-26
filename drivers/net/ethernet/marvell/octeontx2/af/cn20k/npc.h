@@ -240,8 +240,6 @@ int npc_cn20k_defrag(struct rvu *rvu);
 
 int npc_mcam_idx_2_key_type(struct rvu *rvu, u16 mcam_idx, u8 *key_type);
 int npc_cn20k_apply_custom_kpu(struct rvu *rvu, struct npc_kpu_profile_adapter *profile);
-int npc_cn20k_load_kpu_prfl_img(struct rvu *rvu, void __iomem *prfl_addr,
-				u64 prfl_sz, const char *kpu_profile);
 void npc_cn20k_clear_mcam_entry(struct rvu *rvu, int blkaddr, int bank, int index);
 void npc_cn20k_update_action_entries_n_flags(struct rvu *rvu,
 					     struct npc_kpu_profile_adapter *profile);
