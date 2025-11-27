@@ -515,20 +515,14 @@ Source1007: config-aarch64
 Source1008: config-aarch64-debug
 Source1009: config-aarch64-container
 
-Source25: Module.kabi_x86_64debug
-Source26: Module.kabi_x86_64
-Source27: Module.kabi_aarch64debug
-Source28: Module.kabi_aarch64
-Source29: Symtypes.kabi_x86_64debug
-Source30: Symtypes.kabi_x86_64
-Source31: Symtypes.kabi_aarch64debug
-Source32: Symtypes.kabi_aarch64
-Source33: kabi
+Source25: Module.kabi_x86_64
+Source26: Module.kabi_aarch64
+Source27: Symtypes.kabi_x86_64
+Source28: Symtypes.kabi_aarch64
+Source29: kabi
 
-Source200: kabi_lockedlist_x86_64debug
 Source201: kabi_lockedlist_x86_64
-Source202: kabi_lockedlist_aarch64debug
-Source203: kabi_lockedlist_aarch64
+Source202: kabi_lockedlist_aarch64
 
 %if "kernel%{?variant}" != "%{installonly_variant_name}"
 Provides: %{installonly_variant_name}
