@@ -205,6 +205,8 @@ void rds_message_put(struct rds_message *rm)
 		BUG_ON(!list_empty(&rm->m_sock_item));
 		BUG_ON(!list_empty(&rm->m_conn_item));
 		rds_message_purge(rm);
+		if (rm->m_inc.i_conn)
+			rds_conn_put(rm->m_inc.i_conn); /* for gets in rds_send_* */
 
 		kfree(rm);
 	}
