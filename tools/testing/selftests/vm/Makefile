@@ -50,6 +50,7 @@ TEST_GEN_FILES += transhuge-stress
 TEST_GEN_FILES += userfaultfd
 TEST_GEN_FILES += split_huge_page_test
 TEST_GEN_FILES += ksm_tests
+TEST_GEN_FILES += hugetlb_mfr
 
 ifeq ($(MACHINE),x86_64)
 CAN_BUILD_I386 := $(shell ./../x86/check_cc.sh "$(CC)" ../x86/trivial_32bit_program.c -m32)
@@ -148,6 +149,8 @@ $(OUTPUT)/mlock-random-test $(OUTPUT)/memfd_secret: LDLIBS += -lcap
 $(OUTPUT)/hmm-tests: LDLIBS += $(HMM_EXTRA_LIBS)
 
 $(OUTPUT)/ksm_tests: LDLIBS += -lnuma
+
+$(OUTPUT)/hugetlb_mfr: LDLIBS += -lnuma
 
 local_config.mk local_config.h: check_config.sh
 	/bin/sh ./check_config.sh $(CC)
