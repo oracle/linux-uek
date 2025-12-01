@@ -25,6 +25,8 @@
 #include "target_core_ua.h"
 #include "target_core_xcopy.h"
 
+#define PD_TEXT_ID_INFO_HDR_LEN	4
+
 static void spc_fill_alua_data(struct se_lun *lun, unsigned char *buf)
 {
 	struct t10_alua_tg_pt_gp *tg_pt_gp;
@@ -1308,6 +1310,72 @@ spc_emulate_testunitready(struct se_cmd *cmd)
 	return 0;
 }
 
+static sense_reason_t
+spc_fill_pd_text_id_info(struct se_cmd *cmd, u8 *cdb)
+{
+	struct se_device *dev = cmd->se_dev;
+	unsigned char *buf;
+	unsigned char *rbuf;
+	u32 buf_len;
+	u16 data_len;
+
+	buf_len = get_unaligned_be32(&cdb[6]);
+	if (buf_len < PD_TEXT_ID_INFO_HDR_LEN)
+		return TCM_LOGICAL_UNIT_COMMUNICATION_FAILURE;
+
+	data_len = strlen(dev->t10_wwn.pd_text_id_info);
+	if (data_len > 0)
+		/* trailing null */
+		data_len += 1;
+
+	data_len = data_len + PD_TEXT_ID_INFO_HDR_LEN;
+
+	if (data_len < buf_len)
+		buf_len = data_len;
+
+	buf = kzalloc(buf_len, GFP_KERNEL);
+	if (!buf) {
+		pr_err("Unable to allocate response buffer for IDENTITY INFO\n");
+		return TCM_LOGICAL_UNIT_COMMUNICATION_FAILURE;
+	}
+
+	scnprintf(&buf[PD_TEXT_ID_INFO_HDR_LEN], buf_len - PD_TEXT_ID_INFO_HDR_LEN, "%s",
+		 dev->t10_wwn.pd_text_id_info);
+
+	put_unaligned_be16(data_len, &buf[2]);
+
+	rbuf = transport_kmap_data_sg(cmd);
+	if (!rbuf) {
+		pr_err("transport_kmap_data_sg() failed in %s\n", __func__);
+		kfree(buf);
+		return TCM_OUT_OF_RESOURCES;
+	}
+
+	memcpy(rbuf, buf, buf_len);
+	transport_kunmap_data_sg(cmd);
+	kfree(buf);
+
+	target_complete_cmd_with_length(cmd, SAM_STAT_GOOD, buf_len);
+	return TCM_NO_SENSE;
+}
+
+static sense_reason_t
+spc_emulate_report_id_info(struct se_cmd *cmd)
+{
+	u8 *cdb = cmd->t_task_cdb;
+	sense_reason_t rc;
+
+	switch ((cdb[10] >> 1)) {
+	case 2:
+		rc = spc_fill_pd_text_id_info(cmd, cdb);
+		break;
+	default:
+		return TCM_UNSUPPORTED_SCSI_OPCODE;
+	}
+
+	return rc;
+}
+
 sense_reason_t
 spc_parse_cdb(struct se_cmd *cmd, unsigned int *size)
 {
@@ -1432,6 +1500,11 @@ spc_parse_cdb(struct se_cmd *cmd, unsigned int *size)
 			if ((cdb[1] & 0x1f) == MI_REPORT_TARGET_PGS) {
 				cmd->execute_cmd =
 					target_emulate_report_target_port_groups;
+			}
+			if ((cdb[1] & 0x1f) ==
+			    MI_REPORT_IDENTIFYING_INFORMATION) {
+				cmd->execute_cmd =
+					spc_emulate_report_id_info;
 			}
 			*size = get_unaligned_be32(&cdb[6]);
 		} else {
