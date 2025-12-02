@@ -174,6 +174,7 @@ modules-core:
 - ifb
 - igb
 - ionic
+- ionic_rdma
 - ip6_gre
 - ip6_tables
 - ip6_tunnel
