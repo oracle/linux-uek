@@ -748,6 +748,7 @@ modules:
 - aquantia
 - arc_ps2
 - arc_uart
+- as21xxx
 - asc7621
 - asix
 - at24
@@ -1487,6 +1488,7 @@ modules:
 - tsl2550
 - typec
 - typec_displayport
+- typec_thunderbolt
 - typec_ucsi
 - uPD60620
 - ubi
@@ -2083,10 +2085,13 @@ modules:
 - intel-ishtp_eclite
 - intel-oaktrail
 - intel-qep
+- intel-quicki2c
+- intel-quickspi
 - intel-rng
 - intel-rst
 - intel-sdsi
 - intel-smartconnect
+- intel-thc
 - intel-tpmi_power_domains
 - intel-uncore-frequency
 - intel-uncore-frequency-common
@@ -2303,6 +2308,7 @@ modules:
 - snd-emu10k1x
 - snd-emux-synth
 - snd-es1938
+- snd-hda-acpi
 - snd-hda-codec-cs8409
 - snd-hda-ext-core
 - snd-hdmi-lpe-audio
@@ -2522,6 +2528,7 @@ modules-extra:
 - 3w-9xxx
 - 3w-sas
 - acer-wireless
+- ae4dma
 - aic79xx
 - aic7xxx
 - bfa
@@ -2553,6 +2560,8 @@ modules-extra:
 - snd-soc-es8316
 - snd-soc-max98090
 - snd-soc-max98357a
+- snd-soc-pcm3168a
+- snd-soc-pcm3168a-i2c
 - snd-soc-pcm512x
 - snd-soc-rt1308-sdw
 - snd-soc-rt286
@@ -3650,6 +3659,7 @@ modules-desktop:
 - snd-acp-pdm
 - snd-acp-rembrandt
 - snd-acp-renoir
+- snd-acp-sdw-legacy-mach
 - snd-acp-sdw-mach
 - snd-acp-sdw-sof-mach
 - snd-acp-sof-mach
@@ -3691,6 +3701,7 @@ modules-desktop:
 - snd-soc-avs-max98373
 - snd-soc-avs-max98927
 - snd-soc-avs-nau8825
+- snd-soc-avs-pcm3168a
 - snd-soc-avs-probe
 - snd-soc-avs-rt274
 - snd-soc-avs-rt286
@@ -4176,5 +4187,6 @@ modules-wireless:
 - libertas_tf
 - libertas_tf_usb
 - libipw
+- iwlmld
 #endif /* Arch_x86_64 */
 
