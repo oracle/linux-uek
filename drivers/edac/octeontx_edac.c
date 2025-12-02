@@ -418,8 +418,11 @@ static void octeontx_edac_mem_msg(struct octeontx_ghes_record *rec, char msg[SIZ
 	cper_mem_err_pack(err, &cmem);
 	n += cper_mem_err_location(&cmem, msg);
 
-	if (err->validation_bits & CPER_MEM_VALID_ERROR_TYPE)
-		n += snprintf(msg + n, len - n, "%s ", cper_mem_err_type_str(err->error_type));
+        if (err->validation_bits & CPER_MEM_VALID_ERROR_STATUS)
+		n += snprintf(msg + n, len - n, "status:0x%08llx ", err->error_status);
+        if (err->validation_bits & CPER_MEM_VALID_PA)
+		n += snprintf(msg + n, len - n, "addr: 0x%016llx ", err->physical_addr);
+
 	msg[n] = '\0';
 }
 
