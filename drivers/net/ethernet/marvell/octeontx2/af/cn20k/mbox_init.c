@@ -269,8 +269,8 @@ static int rvu_alloc_mbox_memory(struct rvu *rvu, int type,
 				 int ndevs, int mbox_size)
 {
 	struct qmem *mbox_addr;
-	dma_addr_t iova;
 	int pf, err;
+	u64 pa;
 
 	/* Allocate contiguous memory for mailbox communication.
 	 * eg: AF <=> PFx mbox memory
@@ -292,11 +292,11 @@ static int rvu_alloc_mbox_memory(struct rvu *rvu, int type,
 	switch (type) {
 	case TYPE_AFPF:
 		rvu->ng_rvu->pf_mbox_addr = mbox_addr;
-		iova = (u64)mbox_addr->iova;
+		pa = (u64)mbox_addr->base;
 		for (pf = 0; pf < ndevs; pf++) {
 			rvu_write64(rvu, BLKADDR_RVUM, RVU_MBOX_AF_PFX_ADDR(pf),
-				    (u64)iova);
-			iova += mbox_size;
+				    pa);
+			pa += mbox_size;
 		}
 		break;
 	case TYPE_AFVF:
