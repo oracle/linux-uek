@@ -836,11 +836,11 @@ static void edac_ce_error(struct edac_raw_error_desc *e)
 
 	if (edac_mc_get_log_ce()) {
 		edac_mc_printk(mci, KERN_WARNING,
-			"%d CE %s%son %s (%s page:0x%lx offset:0x%lx grain:%ld syndrome:0x%lx%s%s)\n",
+			"%d CE %s%s(%s page:0x%lx offset:0x%lx syndrome:0x%016lx%s%s)\n",
 			e->error_count, e->msg,
 			*e->msg ? " " : "",
-			e->label, e->location, e->page_frame_number, e->offset_in_page,
-			e->grain, e->syndrome,
+			e->location, e->page_frame_number, e->offset_in_page,
+			e->syndrome,
 			*e->other_detail ? " - " : "",
 			e->other_detail);
 	}
@@ -873,11 +873,11 @@ static void edac_ue_error(struct edac_raw_error_desc *e)
 
 	if (edac_mc_get_log_ue()) {
 		edac_mc_printk(mci, KERN_WARNING,
-			"%d UE %s%son %s (%s page:0x%lx offset:0x%lx grain:%ld%s%s)\n",
+			"%d UE %s%s(%s page:0x%lx offset:0x%lx syndrome:0x%016lx%s%s)\n",
 			e->error_count, e->msg,
 			*e->msg ? " " : "",
-			e->label, e->location, e->page_frame_number, e->offset_in_page,
-			e->grain,
+			e->location, e->page_frame_number, e->offset_in_page,
+			e->syndrome,
 			*e->other_detail ? " - " : "",
 			e->other_detail);
 	}
@@ -885,11 +885,11 @@ static void edac_ue_error(struct edac_raw_error_desc *e)
 	edac_inc_ue_error(e);
 
 	if (edac_mc_get_panic_on_ue()) {
-		panic("UE %s%son %s (%s page:0x%lx offset:0x%lx grain:%ld%s%s)\n",
+		panic("UE %s%s(%s page:0x%lx offset:0x%lx syndrome:0x%016lx%s%s)\n",
 			e->msg,
 			*e->msg ? " " : "",
-			e->label, e->location, e->page_frame_number, e->offset_in_page,
-			e->grain,
+			e->location, e->page_frame_number, e->offset_in_page,
+			e->syndrome,
 			*e->other_detail ? " - " : "",
 			e->other_detail);
 	}
