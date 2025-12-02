@@ -546,8 +546,8 @@ void rds_conn_reap_worker(struct work_struct *work)
 	trace_rds_queue_worker(cp->cp_conn, cp, cp->cp_wq, work, 0,
 			       "reap worker");
 
-	pr_info("RDS/%s: Reaping connection <%pI6c,%pI6c,%d>\n",
-		(is_tcp ? "TCP" : "IB"),
+	pr_info("RDS/%s: Reaping conn %p <%pI6c,%pI6c,%d>\n",
+		(is_tcp ? "TCP" : "IB"), conn,
 		&conn->c_laddr, &conn->c_faddr, conn->c_tos);
 
 	rds_conn_destroy_init(conn, 0);

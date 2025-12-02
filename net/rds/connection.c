@@ -814,15 +814,15 @@ static void rds_conn_destroy_fini(struct kref *ref)
 		 * quiesced by destroy_init().
 		 */
 		WARN_ON(!conn->c_destroy_in_prog);
-		printk(KERN_INFO "RDS/%s: connection <%pI6c,%pI6c,%d> not destroyed\n",
+		printk(KERN_INFO "RDS/%s: conn %p <%pI6c,%pI6c,%d> not destroyed\n",
 		       conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" : "IB",
-		       &conn->c_laddr, &conn->c_faddr, conn->c_tos);
+		       conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 		return;
 	}
 
-	printk(KERN_INFO "RDS/%s: connection <%pI6c,%pI6c,%d> destroyed\n",
+	printk(KERN_INFO "RDS/%s: conn %p <%pI6c,%pI6c,%d> destroyed\n",
 	       conn->c_trans->t_type == RDS_TRANS_TCP ? "TCP" : "IB",
-	       &conn->c_laddr, &conn->c_faddr, conn->c_tos);
+	       conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 
 	/* free the conn_paths */
 	for (i = 0; i < npaths; i++) {
