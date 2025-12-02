@@ -60,7 +60,6 @@ modules-core:
 - chacha20poly1305
 - chacha
 - cifs
-- cifs_arc4
 - cifs_md4
 - cls_bpf
 - cls_flow
@@ -123,6 +122,7 @@ modules-core:
 - dummy
 - ebtable_broute
 - ebtables
+- ecdh_generic
 - einj
 - ena
 - enclosure
@@ -137,8 +137,6 @@ modules-core:
 - fat
 - fcoe
 - fcrypt
-- ffa-core
-- ffa-module
 - fou
 - fou6
 - ftdi_sio
@@ -156,9 +154,7 @@ modules-core:
 - hv_sock
 - hv_storvsc
 - hv_utils
-- hv_vmbus
 - hwpoison-inject
-- hyperv-keyboard
 - hyperv_drm
 - hyperv_fb
 - i2c-algo-bit
@@ -231,7 +227,6 @@ modules-core:
 - libchacha
 - libchacha20poly1305
 - libcurve25519
-- libcurve25519-generic
 - libcxgb
 - libcxgbi
 - libdes
@@ -377,7 +372,6 @@ modules-core:
 - nhpoly1305
 - nls_ucs2_utils
 - nls_utf8
-- libpoly1305-generic
 - nsh
 - nvme
 - nvme-auth
@@ -557,14 +551,13 @@ modules-core:
 - asn1_encoder
 - backlight
 - button
-- chacha-neon
 - cppc_cpufreq
-- ecdh_generic
+- ffa-core
+- ffa-module
 - gf128mul
 - ghash-ce
 - i2c-designware-core
 - i2c-designware-platform
-- poly1305-neon
 - sbsa_gwdt
 - scsi_dh_alua
 - scsi_dh_emc
@@ -598,11 +591,9 @@ modules-core:
 - cast5-avx-x86_64
 - cast6-avx-x86_64
 - cdrom
-- chacha-x86_64
 - coretemp
 - crc16
 - crc8
-- curve25519-x86_64
 - dax_hmem
 - dax_pmem
 - dca
@@ -661,7 +652,6 @@ modules-core:
 - pcc-cpufreq
 - pcspkr
 - pds_fwctl
-- poly1305-x86_64
 - power
 - ptp_kvm
 - ptp_vmclock
@@ -815,7 +805,6 @@ modules:
 - cortina
 - cramfs
 - csiostor
-- curve25519-generic
 - cx82310_eth
 - cxgb
 - cxgb4vf
@@ -1017,6 +1006,7 @@ modules:
 - lg-vl600
 - libahci_platform
 - libeth
+- libeth_xdp
 - lineage-pem
 - lis3lv02d
 - lis3lv02d_i2c
@@ -1203,7 +1193,6 @@ modules:
 - physmap
 - pi3usb30532
 - platform_lcd
-- platform_profile
 - plusb
 - pmbus
 - pmbus_core
@@ -1609,6 +1598,14 @@ modules:
 - ci_hdrc_usb2
 - clk-cs2000-cp
 - clk-max77686
+- clk-mt8196-disp0
+- clk-mt8196-disp1
+- clk-mt8196-mfg
+- clk-mt8196-ovl0
+- clk-mt8196-ovl1
+- clk-mt8196-vdec
+- clk-mt8196-vdisp_ao
+- clk-mt8196-venc
 - clk-pwm
 - clk-qcom
 - clk-scpi
@@ -1630,6 +1627,7 @@ modules:
 - dwmac-qcom-ethqos
 - dwmac-renesas-gbeth
 - dwmac-rk
+- dwmac-sun55i
 - dwmac-sun8i
 - dwmac-sunxi
 - eeprom_93cx6
@@ -1778,11 +1776,11 @@ modules:
 - ofpart
 - optee
 - optee-rng
-- pci-pwrctrl-core
 - pci-pwrctrl-pwrseq
 - pcie-brcmstb
 - pcs-lynx
 - pcs-mtk-lynxi
+- pcs-rzn1-miic
 - phy-hi6220-usb
 - phy-tegra-usb
 - phy-tegra-xusb
@@ -1877,6 +1875,7 @@ modules:
 - thunderx2_pmu
 - thunderx_edac
 - tmp108
+- tpm_crb_ffa
 - tpm_tis_spi
 - tps53679
 - ubwc_config
@@ -1902,7 +1901,6 @@ modules:
 - w1_ds2805
 - wd719x
 - wire
-- wl1273-core
 - xgene-enet
 - xgene-enet-v2
 - xgene-rng
@@ -2217,6 +2215,7 @@ modules:
 - pinctrl-lewisburg
 - pinctrl-sunrisepoint
 - pinctrl-tigerlake
+- platform_profile
 - platform_temperature_control
 - pmc551
 - pmt_class
@@ -2234,6 +2233,7 @@ modules:
 - processor_thermal_power_floor
 - processor_thermal_rapl
 - processor_thermal_rfim
+- processor_thermal_soc_slider
 - processor_thermal_wt_hint
 - processor_thermal_wt_req
 - qat_4xxx
@@ -2472,7 +2472,6 @@ modules-extra:
 - softing
 - spi-amd
 - spi-amd-pci
-- spi_ks8995
 - sym53c8xx
 - tcp_bic
 - tcp_highspeed
@@ -3461,7 +3460,6 @@ modules-desktop:
 - radio-si470x-i2c
 - radio-si470x-usb
 - radio-tea5764
-- radio-wl1273
 - raydium_i2c_ts
 - rcar-du-drm
 - rcar-fcp
@@ -3793,7 +3791,6 @@ modules-desktop:
 - snd-sof-xtensa-dsp
 - soundwire-amd
 - spi-cs42l43
-- tca6416-keypad
 - toshiba_acpi
 - toshiba_bluetooth
 - usdhi6rol0
@@ -4010,6 +4007,7 @@ modules-usb:
 - dwc2_pci
 - dwc3
 - dwc3-exynos
+- dwc3-generic-plat
 - dwc3-haps
 - dwc3-meson-g12a
 - dwc3-of-simple
