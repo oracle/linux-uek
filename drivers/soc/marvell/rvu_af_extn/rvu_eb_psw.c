@@ -162,6 +162,7 @@ MBOX_EBLOCK_UP_PSW_MESSAGES
 #define ANQ_DESC_EPFFUNC  GENMASK_ULL(31, 16)
 #define ANQ_DESC_ADDR     GENMASK_ULL(63, 32)
 
+
 struct gid_key {
 	u16 epffunc;
 	u16 rid;
@@ -825,6 +826,83 @@ err:
 	mutex_unlock(&rvu->rsrc_lock);
 
 	return ret;
+}
+
+int rvu_mbox_handler_psw_epfvf_msix_write(struct rvu *rvu, struct psw_epfvf_msix_write_req *req,
+					  struct msg_rsp *rsp)
+{
+	struct psw_rsrc *psw = rvu->hw->psw;
+	u64 result, result1, result0;
+	u8 iqvalid, oqvalid, mvalid;
+	int blkaddr = BLKADDR_PSW;
+	u16 rid = req->rid, mid;
+	struct gid_key key;
+	u8 pf, epf, port;
+	u64 match_entry;
+	u16 match_link;
+	u32 data;
+	u64 reg;
+
+	pf = rvu_get_pf(rvu->pdev, req->hdr.pcifunc);
+	epf = psw->pf2epf_map[pf];
+
+	port = PSW_PEM_ID(epf);
+	epf = PSW_PEM_EPF(epf);
+
+	key.epffunc = PSW_EPFFUNC(port, epf, req->evf_id);
+	key.rid = rid;
+
+	if (!lookup_gid_entry(rvu, &key, &result, &result1, &result0))
+		return PSW_AF_ERR_GID_NOENT;
+
+	iqvalid = FIELD_GET(GID_ENT_IQVALID, result0);
+	oqvalid = FIELD_GET(GID_ENT_OQVALID, result0);
+	mvalid = FIELD_GET(GID_ENT_MVALID, result0);
+
+	if (!iqvalid && !oqvalid && !mvalid)
+		return PSW_AF_ERR_GID_NOENT;
+
+	match_link = FIELD_GET(GID_ENT_RSLT1_MATCH_LINK, result1);
+
+	match_entry = rvu_read64(rvu, BLKADDR_PSW, PSW_AF_GID_ENTRY1(match_link));
+	if (FIELD_GET(GID_ENT_RID, match_entry) != key.rid ||
+	    FIELD_GET(GID_ENT_EPFFUNC, match_entry) != key.epffunc)
+		return PSW_AF_ERR_GID_NOENT;
+
+	mid = FIELD_GET(GID_ENT_MID, result0);
+	data = req->data;
+
+	switch (req->offset) {
+	case 0x0:
+		reg = rvu_read64(rvu, blkaddr, PSW_AF_MSIX_VECX_ADDR(mid));
+		reg &= ~GENMASK_ULL(31, 0);
+		reg |= FIELD_PREP(GENMASK_ULL(31, 0), data);
+		rvu_write64(rvu, blkaddr, PSW_AF_MSIX_VECX_ADDR(mid), reg);
+		reg = rvu_read64(rvu, blkaddr, PSW_AF_MSIX_VECX_ADDR(mid));
+		break;
+	case 0x4:
+		reg = rvu_read64(rvu, blkaddr, PSW_AF_MSIX_VECX_ADDR(mid));
+		reg &= ~GENMASK_ULL(63, 32);
+		reg |= FIELD_PREP(GENMASK_ULL(63, 32), data);
+		rvu_write64(rvu, blkaddr, PSW_AF_MSIX_VECX_ADDR(mid), reg);
+		break;
+	case 0x8:
+		reg = rvu_read64(rvu, blkaddr, PSW_AF_MSIX_VECX_CTL(mid));
+		reg &= ~GENMASK_ULL(31, 0);
+		reg |= FIELD_PREP(GENMASK_ULL(31, 0), data);
+		rvu_write64(rvu, blkaddr, PSW_AF_MSIX_VECX_CTL(mid), reg);
+		break;
+	case 0xc:
+		reg = rvu_read64(rvu, blkaddr, PSW_AF_MSIX_VECX_CTL(mid));
+		reg &= ~GENMASK_ULL(63, 32);
+		reg |= FIELD_PREP(GENMASK_ULL(63, 32), data);
+		rvu_write64(rvu, blkaddr, PSW_AF_MSIX_VECX_CTL(mid), reg);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
 }
 
 int rvu_mbox_handler_psw_mbox_msix_cfg(struct rvu *rvu, struct psw_mbox_msix_cfg_req *req,

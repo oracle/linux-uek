@@ -159,6 +159,8 @@
 #define PSW_AF_AQE_CAPTURE                  0x6200020ull
 #define PSW_AF_ACKQ_WM                      0x6200030ull
 #define PSW_AF_ACKQ_WRR                     0x6200040ull
+#define PSW_AF_MSIX_VECX_ADDR(a)            (0x7000000ull | ((a) << 4))
+#define PSW_AF_MSIX_VECX_CTL(a)             (0x7000008ull | ((a) << 4))
 #define PSW_AF_EPFX_PCIE_CFG(a)             (0x70C0000ull | ((a) << 3))
 #define PSW_AF_EPFX_EVFX_PCIE_CFG(a, b)     (0x70D0000ull | ((a) << 10) | \
 					     ((b) << 3))
