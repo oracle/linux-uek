@@ -105,7 +105,7 @@ int rvu_cn20k_set_channels_base(struct rvu *rvu)
 	return 0;
 }
 
-static void rvu_cn20k_x2p_p2x_link_cfg(struct rvu *rvu)
+static inline void rvu_cn20k_x2p_p2x_link_cfg(struct rvu *rvu)
 {
  /* TODO */
 }
