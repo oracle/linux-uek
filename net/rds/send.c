@@ -1677,8 +1677,13 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	}
 
 	/* rds_conn_create has a spinlock that runs with IRQ off.
-	 * Caching the conn in the socket helps a lot. */
-	if (rs->rs_conn && ipv6_addr_equal(&rs->rs_conn->c_faddr, &daddr) &&
+	 * Caching the conn in the socket helps a lot.
+	 * But with connection-reaping and no locks, these checks
+	 * are subject to race conditions to be addressed later.
+	 */
+	smp_rmb(); /* for rs_conn->c_destroy_in_prog */
+	if (rs->rs_conn && !rs->rs_conn->c_destroy_in_prog &&
+	    ipv6_addr_equal(&rs->rs_conn->c_faddr, &daddr) &&
 	    tos == rs->rs_conn->c_tos) {
 		conn = rs->rs_conn;
 		cpath = rs->rs_conn_path;
@@ -1708,6 +1713,13 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 		rs->rs_conn_path = cpath;
 	}
 
+	smp_rmb(); /* Pairs with smp_mb() in rds_conn_destroy() */
+	if (conn->c_destroy_in_prog) {
+		ret = -EAGAIN;
+		reason = "destroy pending";
+		goto out;
+	}
+
 	/* c_npaths == 0 if we have not talked to this peer
 	 * before.  Initiate a connection request to the
 	 * peer right away.
@@ -1733,13 +1745,6 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 		/* Trigger connection so that its ready for the next retry */
 		if (ret == -EAGAIN)
 			rds_conn_connect_if_down(conn);
-		goto out;
-	}
-
-	smp_rmb(); /* Pairs with smp_mb() in rds_conn_destroy() */
-	if (conn->c_destroy_in_prog) {
-		ret = -EAGAIN;
-		reason = "destroy pending";
 		goto out;
 	}
 
