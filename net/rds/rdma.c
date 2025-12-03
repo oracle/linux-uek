@@ -519,8 +519,16 @@ void rds_rdma_free_op(struct rm_rdma_op *ro)
 		unpin_user_page(page);
 	}
 
-	kfree(ro->op_notifier);
-	ro->op_notifier = NULL;
+	/* op_notifier could've been freed before in
+	 * rds_q_or_free_notifier/rds_send_remove_from_sock().
+	 */
+	if (ro->op_notifier) {
+		if (ro->op_notifier->n_conn)
+			/* get in rds_send_path_reset */
+			rds_conn_put(ro->op_notifier->n_conn);
+		kfree(ro->op_notifier);
+		ro->op_notifier = NULL;
+	}
 	ro->op_active = 0;
 }
 
@@ -534,8 +542,16 @@ void rds_atomic_free_op(struct rm_atomic_op *ao)
 	set_page_dirty(page);
 	unpin_user_page(page);
 
-	kfree(ao->op_notifier);
-	ao->op_notifier = NULL;
+	/* op_notifier could've been freed before in
+	 * rds_q_or_free_notifier/rds_send_remove_from_sock().
+	 */
+	if (ao->op_notifier) {
+		if (ao->op_notifier->n_conn)
+			/* get in rds_send_path_reset */
+			rds_conn_put(ao->op_notifier->n_conn);
+		kfree(ao->op_notifier);
+		ao->op_notifier = NULL;
+	}
 	ao->op_active = 0;
 }
 
@@ -891,6 +907,9 @@ err:
 	if (page)
 		unpin_user_page(page);
 	rm->atomic.op_active = 0;
+	if (rm->atomic.op_notifier->n_conn)
+		/* get in rds_send_path_reset */
+		rds_conn_put(rm->atomic.op_notifier->n_conn);
 	kfree(rm->atomic.op_notifier);
 
 	return ret;

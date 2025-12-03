@@ -119,6 +119,9 @@ void rds_send_path_reset(struct rds_conn_path *cp)
 					struct rds_notifier *notifier;
 
 					notifier = rm->rdma.op_notifier;
+					if (notifier->n_conn) /* overwritten */
+						rds_conn_put(notifier->n_conn);
+					rds_conn_get(cp->cp_conn);
 					notifier->n_conn = cp->cp_conn;
 					if (test_bit(RDS_MSG_RETRANSMITTED,
 						&rm->m_flags) &&
@@ -136,6 +139,9 @@ void rds_send_path_reset(struct rds_conn_path *cp)
 			}
 			if (rm->data.op_active && rm->data.op_async) {
 				if (rm->data.op_notifier) {
+					if (rm->data.op_notifier->n_conn) /* overwritten */
+						rds_conn_put(rm->data.op_notifier->n_conn);
+					rds_conn_get(cp->cp_conn);
 					rm->data.op_notifier->n_conn =
 						cp->cp_conn;
 					if (!test_bit(RDS_MSG_FLUSH,
@@ -880,6 +886,9 @@ static inline void rds_q_or_free_notifier(struct rds_sock *rs,
 		list_add_tail(&notifier->n_list, &rs->rs_notify_queue);
 		spin_unlock(&rs->rs_lock);
 	} else {
+		if (notifier->n_conn)
+			/* get in rds_send_path_reset */
+			rds_conn_put(notifier->n_conn);
 		kfree(notifier);
 	}
 }
