@@ -670,6 +670,9 @@ int rds_notify_queue_get(struct rds_sock *rs, struct msghdr *msghdr)
 			else
 				printk(KERN_ERR "rds_notify_queue_get: OOPS!\n");
 			spin_unlock_irqrestore(&ncp->cp_lock, flags);
+
+			/* for kfree(notifier) below */
+			rds_conn_put(notifier->n_conn); /* get in rds_send_path_reset */
 		}
 
 		list_del_init(&notifier->n_list);
