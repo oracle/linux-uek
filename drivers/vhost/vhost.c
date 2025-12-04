@@ -790,17 +790,32 @@ long vhost_worker_ioctl(struct vhost_dev *dev, unsigned int ioctl,
 	switch (ioctl) {
 	/* dev worker ioctls */
 	case VHOST_NEW_WORKER:
+		/*
+		 * In upstream and newer UEKs we use vhost_tasks which are
+		 * always accounted for under the process that created the
+		 * worker's nproc. For UEK7, we use kthreads which are not
+		 * tracked under the caller, so we limit who can use them.
+		 */
+		if (!capable(CAP_SYS_RESOURCE) && !capable(CAP_SYS_ADMIN))
+			return -EPERM;
+
 		ret = vhost_new_worker(dev, &state);
 		if (!ret && copy_to_user(argp, &state, sizeof(state)))
 			ret = -EFAULT;
 		return ret;
 	case VHOST_FREE_WORKER:
+		if (!capable(CAP_SYS_RESOURCE) && !capable(CAP_SYS_ADMIN))
+			return -EPERM;
+
 		if (copy_from_user(&state, argp, sizeof(state)))
 			return -EFAULT;
 		return vhost_free_worker(dev, &state);
 	/* vring worker ioctls */
 	case VHOST_ATTACH_VRING_WORKER:
 	case VHOST_GET_VRING_WORKER:
+		if (!capable(CAP_SYS_RESOURCE) && !capable(CAP_SYS_ADMIN))
+			return -EPERM;
+
 		break;
 	default:
 		return -ENOIOCTLCMD;
