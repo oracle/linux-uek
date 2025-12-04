@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
+#include <ctype.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <regex.h>
@@ -167,6 +168,93 @@ struct sort_entry sort_comm = {
 	.se_snprintf	= hist_entry__comm_snprintf,
 	.se_filter	= hist_entry__thread_filter,
 	.se_width_idx	= HISTC_COMM,
+};
+
+/* --sort comm_ignore_digit */
+
+static int64_t strcmp_nodigit(const char *left, const char *right)
+{
+	for (;;) {
+		while (*left && isdigit(*left))
+			left++;
+		while (*right && isdigit(*right))
+			right++;
+		if (*left == *right && !*left) {
+			return 0;
+		} else if (*left == *right) {
+			left++;
+			right++;
+		} else {
+			return (int64_t)*left - (int64_t)*right;
+		}
+	}
+}
+
+static int64_t
+sort__comm_ignore_digit_cmp(struct hist_entry *left, struct hist_entry *right)
+{
+	return strcmp_nodigit(comm__str(right->comm), comm__str(left->comm));
+}
+
+static int64_t
+sort__comm_ignore_digit_collapse(struct hist_entry *left, struct hist_entry *right)
+{
+	return strcmp_nodigit(comm__str(right->comm), comm__str(left->comm));
+}
+
+static int64_t
+sort__comm_ignore_digit_sort(struct hist_entry *left, struct hist_entry *right)
+{
+	return strcmp_nodigit(comm__str(right->comm), comm__str(left->comm));
+}
+
+static int hist_entry__comm_ignore_digit_snprintf(struct hist_entry *he, char *bf,
+						size_t size, unsigned int width)
+{
+	int ret = 0;
+	unsigned int print_len, printed = 0, start = 0, end = 0;
+	bool in_digit;
+	const char *comm = comm__str(he->comm), *print;
+
+	while (printed < width && printed < size && comm[start]) {
+		in_digit = !!isdigit(comm[start]);
+		end = start + 1;
+		while (comm[end] && !!isdigit(comm[end]) == in_digit)
+			end++;
+		if (in_digit) {
+			print_len = 3; /* <N> */
+			print = "<N>";
+		} else {
+			print_len = end - start;
+			print = &comm[start];
+		}
+		print_len = min(print_len, width - printed);
+		ret = repsep_snprintf(bf + printed, size - printed, "%-.*s",
+					print_len, print);
+		if (ret < 0)
+			return ret;
+		start = end;
+		printed += ret;
+	}
+	/* Pad to width if necessary */
+	if (printed < width && printed < size) {
+		ret = repsep_snprintf(bf + printed, size - printed, "%-*.*s",
+				       width - printed, width - printed, "");
+		if (ret < 0)
+			return ret;
+		printed += ret;
+	}
+	return printed;
+}
+
+struct sort_entry sort_comm_ignore_digit = {
+	.se_header	= "CommandIgnoreDigit",
+	.se_cmp		= sort__comm_ignore_digit_cmp,
+	.se_collapse	= sort__comm_ignore_digit_collapse,
+	.se_sort	= sort__comm_ignore_digit_sort,
+	.se_snprintf	= hist_entry__comm_ignore_digit_snprintf,
+	.se_filter	= hist_entry__thread_filter,
+	.se_width_idx	= HISTC_COMM_IGNORE_DIGIT,
 };
 
 /* --sort dso */
@@ -1837,6 +1925,7 @@ static void sort_dimension_add_dynamic_header(struct sort_dimension *sd)
 static struct sort_dimension common_sort_dimensions[] = {
 	DIM(SORT_PID, "pid", sort_thread),
 	DIM(SORT_COMM, "comm", sort_comm),
+	DIM(SORT_COMM_IGNORE_DIGIT, "comm_ignore_digit", sort_comm_ignore_digit),
 	DIM(SORT_DSO, "dso", sort_dso),
 	DIM(SORT_SYM, "symbol", sort_sym),
 	DIM(SORT_PARENT, "parent", sort_parent),
@@ -2809,7 +2898,7 @@ int sort_dimension__add(struct perf_hpp_list *list, const char *tok,
 			list->socket = 1;
 		} else if (sd->entry == &sort_thread) {
 			list->thread = 1;
-		} else if (sd->entry == &sort_comm) {
+		} else if (sd->entry == &sort_comm || sd->entry == &sort_comm_ignore_digit) {
 			list->comm = 1;
 		}
 
@@ -3090,6 +3179,7 @@ static bool get_elide(int idx, FILE *output)
 	case HISTC_DSO:
 		return __get_elide(symbol_conf.dso_list, "dso", output);
 	case HISTC_COMM:
+	case HISTC_COMM_IGNORE_DIGIT:
 		return __get_elide(symbol_conf.comm_list, "comm", output);
 	default:
 		break;
