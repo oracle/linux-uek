@@ -49,6 +49,7 @@ TEST_GEN_FILES += gup_longterm
 TEST_GEN_FILES += gup_test
 TEST_GEN_FILES += hmm-tests
 TEST_GEN_FILES += hugetlb-madvise
+TEST_GEN_FILES += hugetlb-mfr
 TEST_GEN_FILES += hugetlb-read-hwpoison
 TEST_GEN_FILES += hugetlb-soft-offline
 TEST_GEN_FILES += hugepage-mmap
@@ -204,6 +205,8 @@ $(OUTPUT)/mlock-random-test $(OUTPUT)/memfd_secret: LDLIBS += -lcap
 $(OUTPUT)/ksm_tests: LDLIBS += -lnuma
 
 $(OUTPUT)/migration: LDLIBS += -lnuma
+
+$(OUTPUT)/hugetlb-mfr: LDLIBS += -lnuma
 
 local_config.mk local_config.h: check_config.sh
 	/bin/sh ./check_config.sh $(CC)
