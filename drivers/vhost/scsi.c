@@ -701,6 +701,9 @@ static void vhost_scsi_complete_cmd_work(struct vhost_work *work)
 	int ret;
 
 	llnode = llist_del_all(&svq->completion_list);
+
+	mutex_lock(&svq->vq.mutex);
+
 	llist_for_each_entry_safe(cmd, t, llnode, tvc_completion_list) {
 		se_cmd = &cmd->tvc_se_cmd;
 
@@ -727,21 +730,17 @@ static void vhost_scsi_complete_cmd_work(struct vhost_work *work)
 		if (likely(ret == sizeof(v_rsp))) {
 			signal = true;
 
-			mutex_lock(&cmd->tvc_vq->mutex);
 			vhost_add_used(cmd->tvc_vq, cmd->tvc_vq_desc, 0);
-			mutex_unlock(&cmd->tvc_vq->mutex);
 		} else
 			pr_err("Faulted on virtio_scsi_cmd_resp\n");
 
-		if (unlikely(cmd->tvc_log_num)) {
-			mutex_lock(&cmd->tvc_vq->mutex);
-			vhost_scsi_log_write(cmd->tvc_vq, cmd->tvc_log,
-					     cmd->tvc_log_num);
-			mutex_unlock(&cmd->tvc_vq->mutex);
-		}
+		vhost_scsi_log_write(cmd->tvc_vq, cmd->tvc_log,
+				     cmd->tvc_log_num);
 
 		vhost_scsi_release_cmd_res(se_cmd);
 	}
+
+	mutex_unlock(&svq->vq.mutex);
 
 	if (signal)
 		vhost_signal(&svq->vs->dev, &svq->vq);
