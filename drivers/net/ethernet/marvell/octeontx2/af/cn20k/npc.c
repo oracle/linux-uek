@@ -3593,7 +3593,7 @@ int rvu_mbox_handler_npc_get_num_kws(struct rvu *rvu,
 	 * MSB to LSB, check if cam0 or cam1 is set
 	 */
 	for (i = NPC_MAX_KWS_IN_KEY - 1; i >= 0; i--) {
-		if (entry.kw[i] || entry.kw_mask[i]) {
+		if (cn20k_entry.kw[i] || cn20k_entry.kw_mask[i]) {
 			cnt = i + 1;
 			break;
 		}
