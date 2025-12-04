@@ -15,6 +15,12 @@ static int otx2_dl_mcam_count_validate(struct devlink *devlink, u32 id,
 	struct otx2_nic *pfvf = otx2_dl->pfvf;
 	struct otx2_flow_config *flow_cfg;
 
+	if (is_otx2_sdpvf(pfvf->pdev)) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "MCAM COUNT setting not allowed on VFs");
+		return -EOPNOTSUPP;
+	}
+
 	if (!pfvf->flow_cfg) {
 		NL_SET_ERR_MSG_MOD(extack,
 				   "pfvf->flow_cfg not initialized");
@@ -100,6 +106,12 @@ static int otx2_dl_ucast_flt_cnt_validate(struct devlink *devlink, u32 id,
 {
 	struct otx2_devlink *otx2_dl = devlink_priv(devlink);
 	struct otx2_nic *pfvf = otx2_dl->pfvf;
+
+	if (is_otx2_vf(pfvf->pcifunc)) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "UCAST  FLT COUNT setting not allowed on VFs");
+		return -EOPNOTSUPP;
+	}
 
 	/* Check for UNICAST filter support*/
 	if (!(pfvf->flags & OTX2_FLAG_UCAST_FLTR_SUPPORT)) {
@@ -343,6 +355,22 @@ static int otx2_dl_serdes_link_get(struct devlink *devlink, u32 id,
 	return 0;
 }
 
+static int otx2_dl_serdes_link_validate(struct devlink *devlink, u32 id,
+					union devlink_param_value val,
+					struct netlink_ext_ack *extack)
+{
+	struct otx2_devlink *otx2_dl = devlink_priv(devlink);
+	struct otx2_nic *pfvf = otx2_dl->pfvf;
+
+	if (is_otx2_lbkvf(pfvf->pdev) || is_otx2_sdpvf(pfvf->pdev)) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "SERDES LINK VALIDATE setting not allowed on VFs");
+		return -EOPNOTSUPP;
+	}
+
+	return 0;
+}
+
 static int otx2_dl_mac_stats_reset_get(struct devlink *devlink, u32 id,
 				       struct devlink_param_gset_ctx *ctx)
 {
@@ -363,6 +391,22 @@ static int otx2_dl_mac_stats_reset_set(struct devlink *devlink, u32 id,
 		err = otx2_reset_mac_stats(pfvf);
 		if (err)
 			return err;
+	}
+
+	return 0;
+}
+
+static int otx2_dl_mac_stats_reset_validate(struct devlink *devlink, u32 id,
+					    union devlink_param_value val,
+					    struct netlink_ext_ack *extack)
+{
+	struct otx2_devlink *otx2_dl = devlink_priv(devlink);
+	struct otx2_nic *pfvf = otx2_dl->pfvf;
+
+	if (is_otx2_vf(pfvf->pcifunc)) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "MAC STATS RESET setting not allowed on VFs");
+		return -EOPNOTSUPP;
 	}
 
 	return 0;
@@ -409,13 +453,13 @@ static const struct devlink_param otx2_dl_params[] = {
 			     "serdes_link", DEVLINK_PARAM_TYPE_BOOL,
 			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
 			     otx2_dl_serdes_link_get, otx2_dl_serdes_link_set,
-			     NULL),
+			     otx2_dl_serdes_link_validate),
 	DEVLINK_PARAM_DRIVER(OTX2_DEVLINK_PARAM_ID_MAC_STATS_RST,
 			     "mac_stats_reset", DEVLINK_PARAM_TYPE_BOOL,
 			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
 			     otx2_dl_mac_stats_reset_get,
 			     otx2_dl_mac_stats_reset_set,
-			     NULL),
+			     otx2_dl_mac_stats_reset_validate),
 };
 
 static const struct devlink_ops otx2_devlink_ops = {
