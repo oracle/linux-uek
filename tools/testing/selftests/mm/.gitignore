@@ -9,6 +9,7 @@ hugetlb-mremap
 hugetlb-shm
 hugetlb-vmemmap
 hugetlb-madvise
+hugetlb-mfr
 hugetlb-read-hwpoison
 hugetlb-soft-offline
 khugepaged
