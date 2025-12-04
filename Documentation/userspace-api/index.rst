@@ -64,6 +64,7 @@ Everything else
    vduse
    futex2
    perf_ring_buffer
+   mfd_mfr_policy
 
 .. only::  subproject and html
 
