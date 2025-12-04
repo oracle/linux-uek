@@ -105,6 +105,7 @@ void hists__calc_col_len(struct hists *hists, struct hist_entry *h)
 	len = thread__comm_len(h->thread);
 	if (hists__new_col_len(hists, HISTC_COMM, len))
 		hists__set_col_len(hists, HISTC_THREAD, len + 8);
+	hists__new_col_len(hists, HISTC_COMM_IGNORE_DIGIT, len);
 
 	if (h->ms.map) {
 		len = dso__name_len(map__dso(h->ms.map));
