@@ -30,6 +30,7 @@ place where this information is gathered.
    netlink/index
    sysfs-platform_profile
    vduse
+   mfd_mfr_policy
 
 .. only::  subproject and html
 
