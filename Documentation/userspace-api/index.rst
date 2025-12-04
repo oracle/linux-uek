@@ -69,3 +69,4 @@ Everything else
    futex2
    perf_ring_buffer
    ntsync
+   mfd_mfr_policy
