@@ -3,7 +3,6 @@
  * Copyright (C) 2007 Oracle.  All rights reserved.
  */
 
-#include <crypto/hash.h>
 #include <linux/kernel.h>
 #include <linux/bio.h>
 #include <linux/blk-cgroup.h>
@@ -3405,15 +3404,12 @@ int btrfs_finish_ordered_io(struct btrfs_ordered_extent *ordered)
 int btrfs_check_sector_csum(struct btrfs_fs_info *fs_info, struct page *page,
 			    u32 pgoff, u8 *csum, const u8 * const csum_expected)
 {
-	SHASH_DESC_ON_STACK(shash, fs_info->csum_shash);
 	char *kaddr;
 
 	ASSERT(pgoff + fs_info->sectorsize <= PAGE_SIZE);
 
-	shash->tfm = fs_info->csum_shash;
-
 	kaddr = kmap_local_page(page) + pgoff;
-	crypto_shash_digest(shash, kaddr, fs_info->sectorsize, csum);
+	btrfs_csum(fs_info->csum_type, kaddr, fs_info->sectorsize, csum);
 	kunmap_local(kaddr);
 
 	if (memcmp(csum, csum_expected, fs_info->csum_size))

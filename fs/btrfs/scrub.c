@@ -6,7 +6,6 @@
 #include <linux/blkdev.h>
 #include <linux/ratelimit.h>
 #include <linux/sched/mm.h>
-#include <crypto/hash.h>
 #include "ctree.h"
 #include "discard.h"
 #include "volumes.h"
@@ -605,7 +604,7 @@ static void scrub_verify_one_metadata(struct scrub_stripe *stripe, int sector_nr
 	const u64 logical = stripe->logical + (sector_nr << fs_info->sectorsize_bits);
 	const struct page *first_page = scrub_stripe_get_page(stripe, sector_nr);
 	const unsigned int first_off = scrub_stripe_get_page_offset(stripe, sector_nr);
-	SHASH_DESC_ON_STACK(shash, fs_info->csum_shash);
+	struct btrfs_csum_ctx csum;
 	u8 on_disk_csum[BTRFS_CSUM_SIZE];
 	u8 calculated_csum[BTRFS_CSUM_SIZE];
 	struct btrfs_header *header;
@@ -649,20 +648,20 @@ static void scrub_verify_one_metadata(struct scrub_stripe *stripe, int sector_nr
 	}
 
 	/* Now check tree block csum. */
-	shash->tfm = fs_info->csum_shash;
-	crypto_shash_init(shash);
-	crypto_shash_update(shash, page_address(first_page) + first_off +
-			    BTRFS_CSUM_SIZE, fs_info->sectorsize - BTRFS_CSUM_SIZE);
+	btrfs_csum_init(&csum, fs_info->csum_type);
+	btrfs_csum_update(&csum, page_address(first_page) + first_off +
+			  BTRFS_CSUM_SIZE,
+			  fs_info->sectorsize - BTRFS_CSUM_SIZE);
 
 	for (int i = sector_nr + 1; i < sector_nr + sectors_per_tree; i++) {
 		struct page *page = scrub_stripe_get_page(stripe, i);
 		unsigned int page_off = scrub_stripe_get_page_offset(stripe, i);
 
-		crypto_shash_update(shash, page_address(page) + page_off,
-				    fs_info->sectorsize);
+		btrfs_csum_update(&csum, page_address(page) + page_off,
+				  fs_info->sectorsize);
 	}
 
-	crypto_shash_final(shash, calculated_csum);
+	btrfs_csum_final(&csum, calculated_csum);
 	if (memcmp(calculated_csum, on_disk_csum, fs_info->csum_size) != 0) {
 		bitmap_set(&stripe->meta_error_bitmap, sector_nr, sectors_per_tree);
 		bitmap_set(&stripe->error_bitmap, sector_nr, sectors_per_tree);

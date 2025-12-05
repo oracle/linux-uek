@@ -38,7 +38,7 @@ modules-core:
 - bch
 - be2iscsi
 - binfmt_misc
-- blake2b_generic
+- libblake2b
 - blocklayoutdriver
 - blowfish_common
 - blowfish_generic

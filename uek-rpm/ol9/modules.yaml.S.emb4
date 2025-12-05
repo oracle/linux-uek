@@ -35,7 +35,7 @@ modules-core:
 - atomic64_test
 - auth_rpcgss
 - binfmt_misc
-- blake2b_generic
+- libblake2b
 - blocklayoutdriver
 - br_netfilter
 - bridge
@@ -184,7 +184,6 @@ modules-core:
 - xfs
 - xor
 - xor-neon
-- xxhash_generic
 - zstd_compress
 modules-deprecated:
 - mpi3mr
