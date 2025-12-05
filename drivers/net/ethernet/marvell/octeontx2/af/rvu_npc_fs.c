@@ -694,11 +694,11 @@ static void npc_set_features(struct rvu *rvu, int blkaddr, u8 intf)
 	}
 
 	proto_flags = BIT_ULL(NPC_SPORT_TCP) | BIT_ULL(NPC_SPORT_UDP) |
-		       BIT_ULL(NPC_DPORT_TCP) | BIT_ULL(NPC_DPORT_UDP) |
-		       BIT_ULL(NPC_SPORT_SCTP) | BIT_ULL(NPC_DPORT_SCTP) |
-		       BIT_ULL(NPC_SPORT_SCTP) | BIT_ULL(NPC_DPORT_SCTP) |
-		       BIT_ULL(NPC_TYPE_ICMP) | BIT_ULL(NPC_CODE_ICMP) |
-		       BIT_ULL(NPC_TCP_FLAGS);
+		BIT_ULL(NPC_DPORT_TCP) | BIT_ULL(NPC_DPORT_UDP) |
+		BIT_ULL(NPC_SPORT_SCTP) | BIT_ULL(NPC_DPORT_SCTP) |
+		BIT_ULL(NPC_SPORT_SCTP) | BIT_ULL(NPC_DPORT_SCTP) |
+		BIT_ULL(NPC_TYPE_ICMP) | BIT_ULL(NPC_CODE_ICMP) |
+		BIT_ULL(NPC_TCP_FLAGS);
 
 	/* for tcp/udp/sctp corresponding layer type should be in the key */
 	if (*features & proto_flags) {
@@ -706,9 +706,9 @@ static void npc_set_features(struct rvu *rvu, int blkaddr, u8 intf)
 			*features &= ~proto_flags;
 		else
 			*features |= BIT_ULL(NPC_IPPROTO_TCP) |
-				     BIT_ULL(NPC_IPPROTO_UDP) |
-				     BIT_ULL(NPC_IPPROTO_SCTP) |
-				     BIT_ULL(NPC_IPPROTO_ICMP);
+				BIT_ULL(NPC_IPPROTO_UDP) |
+				BIT_ULL(NPC_IPPROTO_SCTP) |
+				BIT_ULL(NPC_IPPROTO_ICMP);
 	}
 
 	/* for AH/ICMP/ICMPv6/, check if corresponding layer type is present in the key */
@@ -721,7 +721,7 @@ static void npc_set_features(struct rvu *rvu, int blkaddr, u8 intf)
 	/* for ESP/GTP-U/GTP-C check if corresponding layer type is present in the key */
 	if (npc_check_field(rvu, blkaddr, NPC_LE, intf))
 		*features |= BIT_ULL(NPC_IPPROTO_ESP) | BIT_ULL(NPC_GTPU_TEID) |
-			     BIT_ULL(NPC_GTPC_TEID);
+			BIT_ULL(NPC_GTPC_TEID);
 
 	/* for vlan corresponding layer type should be in the key */
 	if (*features & BIT_ULL(NPC_OUTER_VID) ||
@@ -742,7 +742,7 @@ static void npc_set_features(struct rvu *rvu, int blkaddr, u8 intf)
 	/* for vlan ethertypes corresponding layer type should be in the key */
 	if (npc_check_field(rvu, blkaddr, NPC_LB, intf))
 		*features |= BIT_ULL(NPC_VLAN_ETYPE_CTAG) |
-			     BIT_ULL(NPC_VLAN_ETYPE_STAG);
+			BIT_ULL(NPC_VLAN_ETYPE_STAG);
 
 	/* for L2M/L2B/L3M/L3B, check if the type is present in the key */
 	if (npc_check_field(rvu, blkaddr, NPC_LXMB, intf))
@@ -906,14 +906,14 @@ static int npc_check_unsupported_flows(struct rvu *rvu, u64 features, u8 intf)
  * dont care.
  */
 void npc_update_entry(struct rvu *rvu, enum key_fields type,
-		      struct mcam_entry *entry,
-		      struct cn20k_mcam_entry *cn20k_entry,
+		      struct mcam_entry_mdata *mdata,
 		      u64 val_lo, u64 val_hi, u64 mask_lo,
 		      u64 mask_hi, u8 intf)
 {
 	struct cn20k_mcam_entry cn20k_dummy = { {0} };
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct mcam_entry dummy = { {0} };
+	u64 *kw, *kw_mask, *val, *mask;
 	struct npc_key_field *field;
 	u64 kw1, kw2, kw3;
 	int i, max_kw;
@@ -926,10 +926,15 @@ void npc_update_entry(struct rvu *rvu, enum key_fields type,
 	if (!field->nr_kws)
 		return;
 
-	if (is_cn20k(rvu->pdev))
+	if (is_cn20k(rvu->pdev)) {
 		max_kw = NPC_CN20K_MAX_KWS_IN_KEY;
-	else
+		kw = cn20k_dummy.kw;
+		kw_mask = cn20k_dummy.kw_mask;
+	} else {
 		max_kw = NPC_MAX_KWS_IN_KEY;
+		kw = dummy.kw;
+		kw_mask = dummy.kw_mask;
+	}
 
 	for (i = 0; i < max_kw; i++) {
 		if (!field->kw_mask[i])
@@ -938,37 +943,27 @@ void npc_update_entry(struct rvu *rvu, enum key_fields type,
 		shift = __ffs64(field->kw_mask[i]);
 		/* update entry value */
 		kw1 = (val_lo << shift) & field->kw_mask[i];
-		if (is_cn20k(rvu->pdev))
-			cn20k_dummy.kw[i] = kw1;
-		else
-			dummy.kw[i] = kw1;
+		kw[i] = kw1;
 		/* update entry mask */
 		kw1 = (mask_lo << shift) & field->kw_mask[i];
-		if (is_cn20k(rvu->pdev))
-			cn20k_dummy.kw_mask[i] = kw1;
-		else
-			dummy.kw_mask[i] = kw1;
+		kw_mask[i] = kw1;
 
 		if (field->nr_kws == 1)
 			break;
+
 		/* place remaining bits of key value in kw[x + 1] */
 		if (field->nr_kws == 2) {
 			/* update entry value */
 			kw2 = shift ? val_lo >> (64 - shift) : 0;
 			kw2 |= (val_hi << shift);
 			kw2 &= field->kw_mask[i + 1];
-			if (is_cn20k(rvu->pdev))
-				cn20k_dummy.kw[i + 1] = kw2;
-			else
-				dummy.kw[i + 1] = kw2;
+			kw[i + 1] = kw2;
+
 			/* update entry mask */
 			kw2 = shift ? mask_lo >> (64 - shift) : 0;
 			kw2 |= (mask_hi << shift);
 			kw2 &= field->kw_mask[i + 1];
-			if (is_cn20k(rvu->pdev))
-				cn20k_dummy.kw_mask[i + 1] = kw2;
-			else
-				dummy.kw_mask[i + 1] = kw2;
+			kw_mask[i + 1] = kw2;
 			break;
 		}
 		/* place remaining bits of key value in kw[x + 1], kw[x + 2] */
@@ -979,70 +974,47 @@ void npc_update_entry(struct rvu *rvu, enum key_fields type,
 			kw2 &= field->kw_mask[i + 1];
 			kw3 = shift ? val_hi >> (64 - shift) : 0;
 			kw3 &= field->kw_mask[i + 2];
-			if (is_cn20k(rvu->pdev)) {
-				cn20k_dummy.kw[i + 1] = kw2;
-				cn20k_dummy.kw[i + 2] = kw3;
-			} else {
-				dummy.kw[i + 1] = kw2;
-				dummy.kw[i + 2] = kw3;
-			}
+			kw[i + 1] = kw2;
+			kw[i + 2] = kw3;
+
 			/* update entry mask */
 			kw2 = shift ? mask_lo >> (64 - shift) : 0;
 			kw2 |= (mask_hi << shift);
 			kw2 &= field->kw_mask[i + 1];
 			kw3 = shift ? mask_hi >> (64 - shift) : 0;
 			kw3 &= field->kw_mask[i + 2];
-			if (is_cn20k(rvu->pdev)) {
-				cn20k_dummy.kw_mask[i + 1] = kw2;
-				cn20k_dummy.kw_mask[i + 2] = kw3;
-			} else {
-				dummy.kw_mask[i + 1] = kw2;
-				dummy.kw_mask[i + 2] = kw3;
-			}
+			kw_mask[i + 1] = kw2;
+			kw_mask[i + 2] = kw3;
 			break;
 		}
 	}
 	/* dummy is ready with values and masks for given key
 	 * field now clear and update input entry with those
 	 */
-	if (!is_cn20k(rvu->pdev)) {
-		for (i = 0; i < max_kw; i++) {
-			if (!field->kw_mask[i])
-				continue;
-			entry->kw[i] &= ~field->kw_mask[i];
-			entry->kw_mask[i] &= ~field->kw_mask[i];
 
-			entry->kw[i] |= dummy.kw[i];
-			entry->kw_mask[i] |= dummy.kw_mask[i];
-			/* TODO
-			if (type == NPC_SQ_ID) {
-				entry->kw[i] = entry->kw[i] << 8;
-				entry->kw_mask[i] = entry->kw_mask[i] << 8;
-			}
-			*/
-		}
-		return;
-	}
+	val = mdata->kw;
+	mask = mdata->kw_mask;
 
-	for (i = 0; i < max_kw; i++) {
+	for (i = 0; i < max_kw; i++, val++, mask++) {
 		if (!field->kw_mask[i])
 			continue;
-		cn20k_entry->kw[i] &= ~field->kw_mask[i];
-		cn20k_entry->kw_mask[i] &= ~field->kw_mask[i];
 
-		cn20k_entry->kw[i] |= cn20k_dummy.kw[i];
-		cn20k_entry->kw_mask[i] |= cn20k_dummy.kw_mask[i];
-		/* TODO
+		*val &= ~field->kw_mask[i];
+		*mask &= ~field->kw_mask[i];
+
+		*val |= kw[i];
+		*mask |= kw_mask[i];
+		/*
 		if (type == NPC_SQ_ID) {
-			cn20k_entry->kw[i] = cn20k_entry->kw[i] << 8;
-			cn20k_entry->kw_mask[i] = cn20k_entry->kw_mask[i] << 8;
+			*val = *val << 8;
+			*mask = *mask << 8;
 		}
 		*/
 	}
 }
 
-static void npc_update_ipv6_flow(struct rvu *rvu, struct mcam_entry *entry,
-				 struct cn20k_mcam_entry *cn20k_entry, u64 features,
+static void npc_update_ipv6_flow(struct rvu *rvu, struct mcam_entry_mdata *mdata,
+				 u64 features,
 				 struct flow_msg *pkt, struct flow_msg *mask,
 				 struct rvu_npc_mcam_rule *output, u8 intf)
 {
@@ -1067,7 +1039,7 @@ static void npc_update_ipv6_flow(struct rvu *rvu, struct mcam_entry *entry,
 		val_hi = (u64)src_ip[0] << 32 | src_ip[1];
 		val_lo = (u64)src_ip[2] << 32 | src_ip[3];
 
-		npc_update_entry(rvu, NPC_SIP_IPV6, entry, cn20k_entry, val_lo,
+		npc_update_entry(rvu, NPC_SIP_IPV6, mdata, val_lo,
 				 val_hi, mask_lo, mask_hi, intf);
 		memcpy(opkt->ip6src, pkt->ip6src, sizeof(opkt->ip6src));
 		memcpy(omask->ip6src, mask->ip6src, sizeof(omask->ip6src));
@@ -1081,15 +1053,14 @@ static void npc_update_ipv6_flow(struct rvu *rvu, struct mcam_entry *entry,
 		val_hi = (u64)dst_ip[0] << 32 | dst_ip[1];
 		val_lo = (u64)dst_ip[2] << 32 | dst_ip[3];
 
-		npc_update_entry(rvu, NPC_DIP_IPV6, entry, cn20k_entry, val_lo,
+		npc_update_entry(rvu, NPC_DIP_IPV6, mdata, val_lo,
 				 val_hi, mask_lo, mask_hi, intf);
 		memcpy(opkt->ip6dst, pkt->ip6dst, sizeof(opkt->ip6dst));
 		memcpy(omask->ip6dst, mask->ip6dst, sizeof(omask->ip6dst));
 	}
 }
 
-static void npc_update_vlan_features(struct rvu *rvu, struct mcam_entry *entry,
-				     struct cn20k_mcam_entry *cn20k_entry,
+static void npc_update_vlan_features(struct rvu *rvu, struct mcam_entry_mdata *mdata,
 				     u64 features, u8 intf)
 {
 	bool ctag = !!(features & BIT_ULL(NPC_VLAN_ETYPE_CTAG));
@@ -1098,21 +1069,20 @@ static void npc_update_vlan_features(struct rvu *rvu, struct mcam_entry *entry,
 
 	/* If only VLAN id is given then always match outer VLAN id */
 	if (vid && !ctag && !stag) {
-		npc_update_entry(rvu, NPC_LB, entry, cn20k_entry,
+		npc_update_entry(rvu, NPC_LB, mdata,
 				 NPC_LT_LB_STAG_QINQ | NPC_LT_LB_CTAG, 0,
 				 NPC_LT_LB_STAG_QINQ & NPC_LT_LB_CTAG, 0, intf);
 		return;
 	}
 	if (ctag)
-		npc_update_entry(rvu, NPC_LB, entry, cn20k_entry,
+		npc_update_entry(rvu, NPC_LB, mdata,
 				 NPC_LT_LB_CTAG, 0, ~0ULL, 0, intf);
 	if (stag)
-		npc_update_entry(rvu, NPC_LB, entry, cn20k_entry,
+		npc_update_entry(rvu, NPC_LB, mdata,
 				 NPC_LT_LB_STAG_QINQ, 0, ~0ULL, 0, intf);
 }
 
-void npc_update_flow(struct rvu *rvu, struct mcam_entry *entry,
-		     struct cn20k_mcam_entry *cn20k_entry,
+void npc_update_flow(struct rvu *rvu, struct mcam_entry_mdata *mdata,
 		     u64 features, struct flow_msg *pkt,
 		     struct flow_msg *mask,
 		     struct rvu_npc_mcam_rule *output, u8 intf,
@@ -1130,56 +1100,56 @@ void npc_update_flow(struct rvu *rvu, struct mcam_entry *entry,
 
 	/* For tcp/udp/sctp LTYPE should be present in entry */
 	if (features & BIT_ULL(NPC_IPPROTO_TCP))
-		npc_update_entry(rvu, NPC_LD, entry, cn20k_entry, NPC_LT_LD_TCP,
+		npc_update_entry(rvu, NPC_LD, mdata, NPC_LT_LD_TCP,
 				 0, ~0ULL, 0, intf);
 	if (features & BIT_ULL(NPC_IPPROTO_UDP))
-		npc_update_entry(rvu, NPC_LD, entry, cn20k_entry, NPC_LT_LD_UDP,
+		npc_update_entry(rvu, NPC_LD, mdata, NPC_LT_LD_UDP,
 				 0, ~0ULL, 0, intf);
 	if (features & BIT_ULL(NPC_IPPROTO_SCTP))
-		npc_update_entry(rvu, NPC_LD, entry, cn20k_entry, NPC_LT_LD_SCTP,
+		npc_update_entry(rvu, NPC_LD, mdata, NPC_LT_LD_SCTP,
 				 0, ~0ULL, 0, intf);
 	if (features & BIT_ULL(NPC_IPPROTO_ICMP))
-		npc_update_entry(rvu, NPC_LD, entry, cn20k_entry, NPC_LT_LD_ICMP,
+		npc_update_entry(rvu, NPC_LD, mdata, NPC_LT_LD_ICMP,
 				 0, ~0ULL, 0, intf);
 	if (features & BIT_ULL(NPC_IPPROTO_ICMP6))
-		npc_update_entry(rvu, NPC_LD, entry, cn20k_entry, NPC_LT_LD_ICMP6,
+		npc_update_entry(rvu, NPC_LD, mdata, NPC_LT_LD_ICMP6,
 				 0, ~0ULL, 0, intf);
 
 	if (features & BIT_ULL(NPC_FDSA_VAL))
-		npc_update_entry(rvu, NPC_LB, entry, cn20k_entry, NPC_LT_LB_FDSA,
+		npc_update_entry(rvu, NPC_LB, mdata, NPC_LT_LB_FDSA,
 				 0, ~0ULL, 0, intf);
 
 	/* For AH, LTYPE should be present in entry */
 	if (features & BIT_ULL(NPC_IPPROTO_AH))
-		npc_update_entry(rvu, NPC_LD, entry, cn20k_entry, NPC_LT_LD_AH,
+		npc_update_entry(rvu, NPC_LD, mdata, NPC_LT_LD_AH,
 				 0, ~0ULL, 0, intf);
 	/* For ESP, LTYPE should be present in entry */
 	if (features & BIT_ULL(NPC_IPPROTO_ESP))
-		npc_update_entry(rvu, NPC_LE, entry, cn20k_entry, NPC_LT_LE_ESP,
+		npc_update_entry(rvu, NPC_LE, mdata, NPC_LT_LE_ESP,
 				 0, ~0ULL, 0, intf);
 
 	if (features & BIT_ULL(NPC_GTPU_TEID))
-		npc_update_entry(rvu, NPC_LE, entry, cn20k_entry, NPC_LT_LE_GTPU,
+		npc_update_entry(rvu, NPC_LE, mdata, NPC_LT_LE_GTPU,
 				 0, ~0ULL, 0, intf);
 
 	if (features & BIT_ULL(NPC_GTPC_TEID))
-		npc_update_entry(rvu, NPC_LE, entry, cn20k_entry, NPC_LT_LE_GTPC,
+		npc_update_entry(rvu, NPC_LE, mdata, NPC_LT_LE_GTPC,
 				 0, ~0ULL, 0, intf);
 
 	if (features & BIT_ULL(NPC_LXMB)) {
 		output->lxmb = is_broadcast_ether_addr(pkt->dmac) ? 2 : 1;
-		npc_update_entry(rvu, NPC_LXMB, entry, cn20k_entry, output->lxmb, 0,
+		npc_update_entry(rvu, NPC_LXMB, mdata, output->lxmb, 0,
 				 output->lxmb, 0, intf);
 	}
 #define NPC_WRITE_FLOW(field, member, val_lo, val_hi, mask_lo, mask_hi)	      \
-do {									      \
-	if (features & BIT_ULL((field))) {				      \
-		npc_update_entry(rvu, (field), entry, cn20k_entry, (val_lo),  \
-				 (val_hi), (mask_lo), (mask_hi), intf);	      \
-		memcpy(&opkt->member, &pkt->member, sizeof(pkt->member));     \
-		memcpy(&omask->member, &mask->member, sizeof(mask->member));  \
-	}								      \
-} while (0)
+	do {									      \
+		if (features & BIT_ULL((field))) {				      \
+			npc_update_entry(rvu, (field), mdata, (val_lo),  \
+					 (val_hi), (mask_lo), (mask_hi), intf);	      \
+			memcpy(&opkt->member, &pkt->member, sizeof(pkt->member));     \
+			memcpy(&omask->member, &mask->member, sizeof(mask->member));  \
+		}								      \
+	} while (0)
 
 	NPC_WRITE_FLOW(NPC_DMAC, dmac, dmac_val, 0, dmac_mask, 0);
 
@@ -1259,10 +1229,10 @@ do {									      \
 	NPC_WRITE_FLOW(NPC_MPLS4_TTL, mpls_lse,
 		       FIELD_GET(OTX2_FLOWER_MASK_MPLS_TTL, pkt->mpls_lse[3]), 0,
 		       FIELD_GET(OTX2_FLOWER_MASK_MPLS_TTL, mask->mpls_lse[3]), 0);
-	npc_update_ipv6_flow(rvu, entry, cn20k_entry, features, pkt, mask, output, intf);
-	npc_update_vlan_features(rvu, entry, cn20k_entry, features, intf);
+	npc_update_ipv6_flow(rvu, mdata, features, pkt, mask, output, intf);
+	npc_update_vlan_features(rvu, mdata, features, intf);
 
-	npc_update_field_hash(rvu, intf, entry, cn20k_entry, blkaddr, features,
+	npc_update_field_hash(rvu, intf, mdata, blkaddr, features,
 			      pkt, mask, opkt, omask);
 }
 
@@ -1351,8 +1321,7 @@ static int npc_mcast_update_action_index(struct rvu *rvu, struct npc_install_flo
 }
 
 static int npc_update_rx_entry(struct rvu *rvu, struct rvu_pfvf *pfvf,
-			       struct mcam_entry *entry,
-			       struct cn20k_mcam_entry *cn20k_entry,
+			       struct mcam_entry_mdata *mdata,
 			       struct npc_install_flow_req *req,
 			       u16 target, bool pf_set_vfs_mac)
 {
@@ -1363,7 +1332,7 @@ static int npc_update_rx_entry(struct rvu *rvu, struct rvu_pfvf *pfvf,
 	if (rswitch->mode == DEVLINK_ESWITCH_MODE_SWITCHDEV && pf_set_vfs_mac)
 		req->chan_mask = 0x0; /* Do not care channel */
 
-	npc_update_entry(rvu, NPC_CHAN, entry, cn20k_entry, req->channel, 0, req->chan_mask,
+	npc_update_entry(rvu, NPC_CHAN, mdata, req->channel, 0, req->chan_mask,
 			 0, NIX_INTF_RX);
 
 	*(u64 *)&action = 0x00;
@@ -1395,30 +1364,12 @@ static int npc_update_rx_entry(struct rvu *rvu, struct rvu_pfvf *pfvf,
 			action.match_id = req->match_id;
 	}
 
-	if (is_cn20k(rvu->pdev)) {
-		cn20k_entry->action = *(u64 *)&action;
-
-		/* VTAG0 starts at 0th byte of LID_B.
-		 * VTAG1 starts at 4th byte of LID_B.
-		 */
-		cn20k_entry->vtag_action = FIELD_PREP(RX_VTAG0_VALID_BIT, req->vtag0_valid) |
-			FIELD_PREP(RX_VTAG0_TYPE_MASK, req->vtag0_type) |
-			FIELD_PREP(RX_VTAG0_LID_MASK, NPC_LID_LB) |
-			FIELD_PREP(RX_VTAG0_RELPTR_MASK, 0) |
-			FIELD_PREP(RX_VTAG1_VALID_BIT, req->vtag1_valid) |
-			FIELD_PREP(RX_VTAG1_TYPE_MASK, req->vtag1_type) |
-			FIELD_PREP(RX_VTAG1_LID_MASK, NPC_LID_LB) |
-			FIELD_PREP(RX_VTAG1_RELPTR_MASK, 4);
-
-		return 0;
-	}
-
-	entry->action = *(u64 *)&action;
+	*mdata->action = *(u64 *)&action;
 
 	/* VTAG0 starts at 0th byte of LID_B.
 	 * VTAG1 starts at 4th byte of LID_B.
 	 */
-	entry->vtag_action = FIELD_PREP(RX_VTAG0_VALID_BIT, req->vtag0_valid) |
+	*mdata->vtag_action = FIELD_PREP(RX_VTAG0_VALID_BIT, req->vtag0_valid) |
 			     FIELD_PREP(RX_VTAG0_TYPE_MASK, req->vtag0_type) |
 			     FIELD_PREP(RX_VTAG0_LID_MASK, NPC_LID_LB) |
 			     FIELD_PREP(RX_VTAG0_RELPTR_MASK, 0) |
@@ -1431,8 +1382,7 @@ static int npc_update_rx_entry(struct rvu *rvu, struct rvu_pfvf *pfvf,
 }
 
 static int npc_update_tx_entry(struct rvu *rvu, struct rvu_pfvf *pfvf,
-			       struct mcam_entry *entry,
-			       struct cn20k_mcam_entry *cn20k_entry,
+			       struct mcam_entry_mdata *mdata,
 			       struct npc_install_flow_req *req, u16 target)
 {
 	struct nix_tx_action action;
@@ -1445,8 +1395,13 @@ static int npc_update_tx_entry(struct rvu *rvu, struct rvu_pfvf *pfvf,
 	if (is_pffunc_af(req->hdr.pcifunc))
 		mask = 0;
 
-	npc_update_entry(rvu, NPC_PF_FUNC, entry, cn20k_entry, (__force u16)htons(target),
+	npc_update_entry(rvu, NPC_PF_FUNC, mdata, (__force u16)htons(target),
 			 0, mask, 0, NIX_INTF_TX);
+
+	/*
+	npc_update_entry(rvu, NPC_SQ_ID, mdata, (__force u16)htonl(req->packet.sq_id),
+			 0, req->mask.sq_id, 0, NIX_INTF_TX);
+	*/
 
 	*(u64 *)&action = 0x00;
 	action.op = req->op;
@@ -1458,39 +1413,44 @@ static int npc_update_tx_entry(struct rvu *rvu, struct rvu_pfvf *pfvf,
 
 	action.match_id = req->match_id;
 
-	if (is_cn20k(rvu->pdev)) {
-		cn20k_entry->action = *(u64 *)&action;
+	*mdata->action = *(u64 *)&action;
 
 		/* VTAG0 starts at 0th byte of LID_B.
 		 * VTAG1 starts at 4th byte of LID_B.
 		 */
-		cn20k_entry->vtag_action = FIELD_PREP(TX_VTAG0_DEF_MASK, req->vtag0_def) |
-			FIELD_PREP(TX_VTAG0_OP_MASK, req->vtag0_op) |
-			FIELD_PREP(TX_VTAG0_LID_MASK, NPC_LID_LA) |
-			FIELD_PREP(TX_VTAG0_RELPTR_MASK, 20) |
-			FIELD_PREP(TX_VTAG1_DEF_MASK, req->vtag1_def) |
-			FIELD_PREP(TX_VTAG1_OP_MASK, req->vtag1_op) |
-			FIELD_PREP(TX_VTAG1_LID_MASK, NPC_LID_LA) |
-			FIELD_PREP(TX_VTAG1_RELPTR_MASK, 24);
-
-		return 0;
-	}
-
-	entry->action = *(u64 *)&action;
-
-	/* VTAG0 starts at 0th byte of LID_B.
-	 * VTAG1 starts at 4th byte of LID_B.
-	 */
-	entry->vtag_action = FIELD_PREP(TX_VTAG0_DEF_MASK, req->vtag0_def) |
-			     FIELD_PREP(TX_VTAG0_OP_MASK, req->vtag0_op) |
-			     FIELD_PREP(TX_VTAG0_LID_MASK, NPC_LID_LA) |
-			     FIELD_PREP(TX_VTAG0_RELPTR_MASK, 20) |
-			     FIELD_PREP(TX_VTAG1_DEF_MASK, req->vtag1_def) |
-			     FIELD_PREP(TX_VTAG1_OP_MASK, req->vtag1_op) |
-			     FIELD_PREP(TX_VTAG1_LID_MASK, NPC_LID_LA) |
-			     FIELD_PREP(TX_VTAG1_RELPTR_MASK, 24);
+	*mdata->vtag_action = FIELD_PREP(TX_VTAG0_DEF_MASK, req->vtag0_def) |
+		FIELD_PREP(TX_VTAG0_OP_MASK, req->vtag0_op) |
+		FIELD_PREP(TX_VTAG0_LID_MASK, NPC_LID_LA) |
+		FIELD_PREP(TX_VTAG0_RELPTR_MASK, 20) |
+		FIELD_PREP(TX_VTAG1_DEF_MASK, req->vtag1_def) |
+		FIELD_PREP(TX_VTAG1_OP_MASK, req->vtag1_op) |
+		FIELD_PREP(TX_VTAG1_LID_MASK, NPC_LID_LA) |
+		FIELD_PREP(TX_VTAG1_RELPTR_MASK, 24);
 
 	return 0;
+
+}
+
+static void
+npc_populate_mcam_mdata(struct rvu *rvu,
+			struct mcam_entry_mdata *mdata,
+			struct cn20k_mcam_entry *cn20k_entry,
+			struct mcam_entry *entry)
+{
+	if (is_cn20k(rvu->pdev)) {
+		mdata->kw = cn20k_entry->kw;
+		mdata->kw_mask = cn20k_entry->kw_mask;
+		mdata->action = &cn20k_entry->action;
+		mdata->vtag_action = &cn20k_entry->vtag_action;
+		mdata->max_kw = NPC_CN20K_MAX_KWS_IN_KEY;
+		return;
+	}
+
+	mdata->kw = entry->kw;
+	mdata->kw_mask = entry->kw_mask;
+	mdata->action = &entry->action;
+	mdata->vtag_action = &entry->vtag_action;
+	mdata->max_kw = NPC_MAX_KWS_IN_KEY;
 }
 
 int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
@@ -1506,6 +1466,7 @@ int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct rvu_npc_mcam_rule dummy = { 0 };
 	struct cn20k_mcam_entry *cn20k_entry;
+	struct mcam_entry_mdata mdata = { };
 	struct rvu_npc_mcam_rule *rule;
 	u16 owner = req->hdr.pcifunc;
 	struct msg_rsp write_rsp;
@@ -1516,23 +1477,24 @@ int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
 
 	installed_features = req->features;
 	features = req->features;
-	if (is_cn20k(rvu->pdev))
-		cn20k_entry = &cn20k_write_req.entry_data;
-	else
-		entry = &write_req.entry_data;
+
+	cn20k_entry = &cn20k_write_req.entry_data;
+	entry = &write_req.entry_data;
+
+	npc_populate_mcam_mdata(rvu, &mdata, cn20k_entry, entry);
 
 	entry_index = req->entry;
 
-	npc_update_flow(rvu, entry, cn20k_entry, features, &req->packet,
+	npc_update_flow(rvu, &mdata, features, &req->packet,
 			&req->mask, &dummy, req->intf, blkaddr);
 
 	if (is_npc_intf_rx(req->intf)) {
-		err = npc_update_rx_entry(rvu, pfvf, entry, cn20k_entry,
+		err = npc_update_rx_entry(rvu, pfvf, &mdata,
 					  req, target, pf_set_vfs_mac);
 		if (err < 0)
 			return err;
 	} else {
-		err = npc_update_tx_entry(rvu, pfvf, entry, cn20k_entry, req, target);
+		err = npc_update_tx_entry(rvu, pfvf, &mdata, req, target);
 		if (err < 0)
 			return err;
 	}
@@ -1552,7 +1514,7 @@ int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
 		missing_features = (def_ucast_rule->features ^ features) &
 					def_ucast_rule->features;
 		if (missing_features)
-			npc_update_flow(rvu, entry, cn20k_entry, missing_features,
+			npc_update_flow(rvu, &mdata, missing_features,
 					&def_ucast_rule->packet,
 					&def_ucast_rule->mask,
 					&dummy, req->intf,
@@ -2061,6 +2023,7 @@ static int npc_update_dmac_value(struct rvu *rvu, int npcblkaddr,
 	struct npc_mcam_write_entry_req write_req = { 0 };
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct cn20k_mcam_entry *cn20k_entry;
+	struct mcam_entry_mdata mdata = { };
 	struct mcam_entry *entry;
 	u8 intf, enable, hw_prio;
 	struct msg_rsp rsp;
@@ -2068,6 +2031,9 @@ static int npc_update_dmac_value(struct rvu *rvu, int npcblkaddr,
 
 	cn20k_entry = &cn20k_write_req.entry_data;
 	entry = &write_req.entry_data;
+
+	npc_populate_mcam_mdata(rvu, &mdata, cn20k_entry, entry);
+
 	ether_addr_copy(rule->packet.dmac, pfvf->mac_addr);
 
 	if (is_cn20k(rvu->pdev))
@@ -2078,7 +2044,7 @@ static int npc_update_dmac_value(struct rvu *rvu, int npcblkaddr,
 		npc_read_mcam_entry(rvu, mcam, npcblkaddr, rule->entry,
 				    entry, &intf, &enable);
 
-	npc_update_entry(rvu, NPC_DMAC, entry, cn20k_entry,
+	npc_update_entry(rvu, NPC_DMAC, &mdata,
 			 ether_addr_to_u64(pfvf->mac_addr), 0,
 			 0xffffffffffffull, 0, intf);
 
@@ -2191,6 +2157,7 @@ int npc_install_mcam_drop_rule(struct rvu *rvu, int mcam_idx, u16 *counter_idx,
 	struct npc_mcam_alloc_counter_req cntr_req = { 0 };
 	struct npc_mcam_alloc_counter_rsp cntr_rsp = { 0 };
 	struct npc_mcam_write_entry_req req = { 0 };
+	struct mcam_entry_mdata mdata = { };
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct rvu_npc_mcam_rule *rule;
 	struct msg_rsp rsp;
@@ -2249,12 +2216,16 @@ int npc_install_mcam_drop_rule(struct rvu *rvu, int mcam_idx, u16 *counter_idx,
 		*counter_idx = cntr_rsp.cntr;
 	}
 
+	npc_populate_mcam_mdata(rvu, &mdata,
+				&cn20k_req.entry_data,
+				&req.entry_data);
+
 	/* Fill in fields for this mcam entry */
-	npc_update_entry(rvu, NPC_EXACT_RESULT, &req.entry_data, &cn20k_req.entry_data,
+	npc_update_entry(rvu, NPC_EXACT_RESULT, &mdata,
 			 exact_val, 0, exact_mask, 0, NIX_INTF_RX);
-	npc_update_entry(rvu, NPC_CHAN, &req.entry_data, &cn20k_req.entry_data,
+	npc_update_entry(rvu, NPC_CHAN, &mdata,
 			 chan_val, 0, chan_mask, 0, NIX_INTF_RX);
-	npc_update_entry(rvu, NPC_LXMB, &req.entry_data, &cn20k_req.entry_data,
+	npc_update_entry(rvu, NPC_LXMB, &mdata,
 			 bcast_mcast_val, 0, bcast_mcast_mask, 0, NIX_INTF_RX);
 
 	if (is_cn20k(rvu->pdev)) {

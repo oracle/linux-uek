@@ -3571,6 +3571,7 @@ int rvu_mbox_handler_npc_get_num_kws(struct rvu *rvu,
 	struct cn20k_mcam_entry cn20k_entry = { 0 };
 	struct mcam_entry entry = { 0 };
 	struct npc_install_flow_req *fl;
+	struct mcam_entry_mdata mdata = { };
 	int i, cnt = 0, blkaddr;
 
 	if (!is_cn20k(rvu->pdev)) {
@@ -3586,7 +3587,15 @@ int rvu_mbox_handler_npc_get_num_kws(struct rvu *rvu,
 		return NPC_MCAM_INVALID_REQ;
 	}
 
-	npc_update_flow(rvu, &entry, &cn20k_entry, fl->features, &fl->packet,
+	if (is_cn20k(rvu->pdev)) {
+		mdata.kw = cn20k_entry.kw;
+		mdata.kw_mask = cn20k_entry.kw_mask;
+	} else {
+		mdata.kw = entry.kw;
+		mdata.kw_mask = entry.kw_mask;
+	}
+
+	npc_update_flow(rvu, &mdata, fl->features, &fl->packet,
 			&fl->mask, &dummy, fl->intf, blkaddr);
 
 	/* Find the most significant word valid. Traverse from
