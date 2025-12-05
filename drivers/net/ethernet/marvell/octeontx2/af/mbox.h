@@ -1033,7 +1033,7 @@ struct npa_cn20k_aq_enq_rsp {
 
 struct npa_cn20k_dpc_alloc_req {
 	struct mbox_msghdr hdr;
-	u16 dpc_conf;
+	u64 dpc_conf;
 };
 
 struct npa_cn20k_dpc_alloc_rsp {
