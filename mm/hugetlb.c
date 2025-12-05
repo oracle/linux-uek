@@ -6760,6 +6760,14 @@ out:
 	return pte;
 }
 
+static int no_cve_2025_38085;
+static int __init no_cve_2025_38085_setup(char *str)
+{
+	no_cve_2025_38085 = 1;
+	return 0;
+}
+early_param("no-cve-2025-38085", no_cve_2025_38085_setup);
+
 /*
  * unmap huge page backed by shared pte.
  *
@@ -6788,8 +6796,15 @@ int huge_pmd_unshare(struct mm_struct *mm, struct vm_area_struct *vma,
 	 * using this page table as a normal, non-hugetlb page table.
 	 * Wait for pending gup_fast() in other threads to finish before letting
 	 * that happen.
+	 *
+	 * After commit a86d2659d3 ("mm/hugetlb: fix huge_pmd_unshare() vs
+	 * GUP-fast race" for CVE-2025-38085) was applied, the database team
+	 * reported performance degradation. Add an option to allow customers
+	 * to disable this mitigation.
 	 */
-	tlb_remove_table_sync_one();
+	if (!no_cve_2025_38085)
+		tlb_remove_table_sync_one();
+
 	atomic_dec(&virt_to_page(ptep)->pt_share_count);
 	mm_dec_nr_pmds(mm);
 	/*
