@@ -135,8 +135,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define doc_build_fail true
 %endif
 
-# This is used to enable/disable kABI checking.
-%define with_kabichk 1
+# kabichk is enabled by default; you can disable it with: rpmbuild --without kabichk
+%bcond_without kabichk
 
 # gcov can only be enabled on x86_64 and aarch64 for now
 %define with_gcov 0
@@ -1207,7 +1207,7 @@ BuildKernel() {
     rm -f $RPM_BUILD_ROOT/kernel-$KernelVer-kabideps
     %_sourcedir/kabitool -s Module.symvers -o $RPM_BUILD_ROOT/kernel-$KernelVer-kabideps
 
-%if %{with_kabichk}
+%if %{with kabichk}
     if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "debug" ]; then
        # Create symbol type data which can be used to introspect kABI breakages
        python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
