@@ -8,7 +8,6 @@
 #include <linux/pagemap.h>
 #include <linux/highmem.h>
 #include <linux/sched/mm.h>
-#include <crypto/hash.h>
 #include "messages.h"
 #include "ctree.h"
 #include "disk-io.h"
@@ -745,7 +744,6 @@ blk_status_t btrfs_csum_one_bio(struct btrfs_bio *bbio)
 	struct btrfs_ordered_extent *ordered = bbio->ordered;
 	struct btrfs_inode *inode = bbio->inode;
 	struct btrfs_fs_info *fs_info = inode->root->fs_info;
-	SHASH_DESC_ON_STACK(shash, fs_info->csum_shash);
 	struct bio *bio = &bbio->bio;
 	struct btrfs_ordered_sum *sums;
 	char *data;
@@ -770,8 +768,6 @@ blk_status_t btrfs_csum_one_bio(struct btrfs_bio *bbio)
 	sums->logical = bio->bi_iter.bi_sector << SECTOR_SHIFT;
 	index = 0;
 
-	shash->tfm = fs_info->csum_shash;
-
 	bio_for_each_segment(bvec, bio, iter) {
 		blockcount = BTRFS_BYTES_TO_BLKS(fs_info,
 						 bvec.bv_len + fs_info->sectorsize
@@ -779,10 +775,10 @@ blk_status_t btrfs_csum_one_bio(struct btrfs_bio *bbio)
 
 		for (i = 0; i < blockcount; i++) {
 			data = bvec_kmap_local(&bvec);
-			crypto_shash_digest(shash,
-					    data + (i * fs_info->sectorsize),
-					    fs_info->sectorsize,
-					    sums->sums + index);
+			btrfs_csum(fs_info->csum_type,
+				   data + (i * fs_info->sectorsize),
+				   fs_info->sectorsize,
+				   sums->sums + index);
 			kunmap_local(data);
 			index += fs_info->csum_size;
 		}
