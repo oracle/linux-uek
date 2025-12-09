@@ -1328,7 +1328,7 @@ static int otx2_get_module_eeprom(struct net_device *netdev,
 	if (IS_ERR(rsp))
 		return PTR_ERR(rsp);
 
-	memcpy(data, &rsp->fwdata.sfp_eeprom.buf + ee->offset, ee->len);
+	memcpy(data, (u8 *)&rsp->fwdata.sfp_eeprom.buf + ee->offset, ee->len);
 
 	return 0;
 }
