@@ -174,10 +174,36 @@ static void cnf10k_rfoe_set_msglevel(struct net_device *netdev, u32 level)
 
 	priv->msg_enable = level;
 }
+static int cnf10k_rfoe_get_link_ksettings(struct net_device *netdev,
+					  struct ethtool_link_ksettings *cmd)
+{
+	struct cnf10k_rfoe_ndev_priv *priv = netdev_priv(netdev);
+
+	ethtool_link_ksettings_zero_link_mode(cmd, supported);
+	ethtool_link_ksettings_zero_link_mode(cmd, advertising);
+	ethtool_link_ksettings_zero_link_mode(cmd, lp_advertising);
+
+	cmd->base.speed = SPEED_UNKNOWN;
+	cmd->base.duplex = DUPLEX_UNKNOWN;
+	cmd->base.port = PORT_OTHER;
+	cmd->base.phy_address = 0;
+	cmd->base.autoneg = AUTONEG_DISABLE;
+	cmd->base.eth_tp_mdix = ETH_TP_MDI_INVALID;
+	cmd->base.eth_tp_mdix_ctrl = ETH_TP_MDI_INVALID;
+
+	/* Report link state based on carrier status */
+	if (netif_carrier_ok(netdev)) {
+		cmd->base.speed = SPEED_25000;
+		cmd->base.duplex = DUPLEX_FULL;
+	}
+
+	return 0;
+}
 
 static const struct ethtool_ops cnf10k_rfoe_ethtool_ops = {
 	.get_drvinfo		= cnf10k_rfoe_get_drvinfo,
 	.get_link		= ethtool_op_get_link,
+	.get_link_ksettings	= cnf10k_rfoe_get_link_ksettings,
 	.get_ts_info		= cnf10k_rfoe_get_ts_info,
 	.get_strings		= cnf10k_rfoe_get_strings,
 	.get_sset_count		= cnf10k_rfoe_get_sset_count,
