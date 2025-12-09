@@ -51,6 +51,7 @@ struct netlink_kernel_cfg {
 	int		(*bind)(struct net *net, int group);
 	void		(*unbind)(struct net *net, int group);
 	void            (*release) (struct sock *sk, unsigned long *groups);
+	UEK_KABI_RESERVE(1)
 };
 
 struct sock *__netlink_kernel_create(struct net *net, int unit,
@@ -329,6 +330,7 @@ struct netlink_dump_control {
 	struct module *module;
 	u32 min_dump_alloc;
 	int flags;
+	UEK_KABI_RESERVE(1)
 };
 
 int __netlink_dump_start(struct sock *ssk, struct sk_buff *skb,
