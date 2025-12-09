@@ -45,6 +45,8 @@ struct crypto_ahash;
 	unsigned int digestsize;	\
 	unsigned int statesize;		\
 					\
+	unsigned int uek_reserved_hash_alg_common1;	\
+	unsigned int uek_reserved_hash_alg_common2;     \
 	struct crypto_alg base;		\
 }
 struct hash_alg_common HASH_ALG_COMMON;
@@ -152,6 +154,8 @@ struct ahash_alg {
 
 	unsigned int reqsize;
 
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 	struct hash_alg_common halg;
 };
 
@@ -220,6 +224,8 @@ struct shash_alg {
 
 	unsigned int descsize;
 
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 	union {
 		struct HASH_ALG_COMMON;
 		struct hash_alg_common halg;
@@ -231,6 +237,7 @@ struct crypto_ahash {
 	bool using_shash; /* Underlying algorithm is shash, not ahash */
 	unsigned int statesize;
 	unsigned int reqsize;
+	UEK_KABI_RESERVE(1)
 	struct crypto_tfm base;
 };
 
