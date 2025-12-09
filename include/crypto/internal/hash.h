@@ -26,6 +26,7 @@ struct crypto_hash_walk {
 
 	unsigned int total;
 	struct scatterlist *sg;
+	UEK_KABI_RESERVE(1)
 };
 
 struct ahash_instance {

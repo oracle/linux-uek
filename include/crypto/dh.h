@@ -38,6 +38,8 @@ struct dh {
 	unsigned int key_size;
 	unsigned int p_size;
 	unsigned int g_size;
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 };
 
 /**
