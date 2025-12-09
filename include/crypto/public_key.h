@@ -31,6 +31,7 @@ struct public_key {
 	const char *id_type;
 	const char *pkey_algo;
 	unsigned long key_eflags;	/* key extension flags */
+	UEK_KABI_RESERVE(1)
 #define KEY_EFLAG_CA		0	/* set if the CA basic constraints is set */
 #define KEY_EFLAG_DIGITALSIG	1	/* set if the digitalSignature usage is set */
 #define KEY_EFLAG_KEYCERTSIGN	2	/* set if the keyCertSign usage is set */
@@ -50,6 +51,7 @@ struct public_key_signature {
 	const char *pkey_algo;
 	const char *hash_algo;
 	const char *encoding;
+	UEK_KABI_RESERVE(1)
 };
 
 DECLARE_CRYPTO_API(public_key_signature_free, void, (struct public_key_signature *sig), (sig));

@@ -90,6 +90,7 @@ struct crypto_lskcipher {
 	unsigned int chunksize;		\
 	unsigned int statesize;		\
 					\
+	unsigned int uek_reserved_skcipher_alg_common1;	\
 	struct crypto_alg base;		\
 }
 struct skcipher_alg_common SKCIPHER_ALG_COMMON;
@@ -160,6 +161,8 @@ struct skcipher_alg {
 
 	unsigned int walksize;
 
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 	union {
 		struct SKCIPHER_ALG_COMMON;
 		struct skcipher_alg_common co;
@@ -208,6 +211,8 @@ struct lskcipher_alg {
 		       u8 *dst, unsigned len, u8 *siv, u32 flags);
 	int (*init)(struct crypto_lskcipher *tfm);
 	void (*exit)(struct crypto_lskcipher *tfm);
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 
 	struct skcipher_alg_common co;
 };

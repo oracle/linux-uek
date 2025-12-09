@@ -50,6 +50,7 @@ struct rng_alg {
 
 	unsigned int seedsize;
 
+	UEK_KABI_RESERVE(1)
 	struct crypto_alg base;
 };
 

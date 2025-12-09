@@ -43,6 +43,7 @@ struct acomp_alg {
 
 	unsigned int reqsize;
 
+	UEK_KABI_RESERVE(1)
 	union {
 		struct COMP_ALG_COMMON;
 		struct comp_alg_common calg;
