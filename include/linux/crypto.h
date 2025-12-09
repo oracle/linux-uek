@@ -185,6 +185,7 @@ struct crypto_async_request {
 	struct crypto_tfm *tfm;
 
 	u32 flags;
+	UEK_KABI_RESERVE(1)
 };
 
 /**

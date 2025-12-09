@@ -53,6 +53,7 @@ struct crypto_acomp {
 	int (*decompress)(struct acomp_req *req);
 	void (*dst_free)(struct scatterlist *dst);
 	unsigned int reqsize;
+	UEK_KABI_RESERVE(1)
 	struct crypto_tfm base;
 };
 
