@@ -40,6 +40,8 @@ struct scomp_alg {
 			  unsigned int slen, u8 *dst, unsigned int *dlen,
 			  void *ctx);
 
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 	union {
 		struct COMP_ALG_COMMON;
 		struct comp_alg_common calg;

@@ -38,6 +38,7 @@ struct akcipher_request {
 	struct scatterlist *dst;
 	unsigned int src_len;
 	unsigned int dst_len;
+	UEK_KABI_RESERVE(1)
 	void *__ctx[] CRYPTO_MINALIGN_ATTR;
 };
 
@@ -106,6 +107,8 @@ struct akcipher_alg {
 	int (*init)(struct crypto_akcipher *tfm);
 	void (*exit)(struct crypto_akcipher *tfm);
 
+	UEK_KABI_RESERVE(1)
+	UEK_KABI_RESERVE(2)
 	struct crypto_alg base;
 };
 
