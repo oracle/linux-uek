@@ -149,6 +149,7 @@ struct aead_alg {
 	unsigned int maxauthsize;
 	unsigned int chunksize;
 
+	UEK_KABI_RESERVE(1)
 	struct crypto_alg base;
 };
 
