@@ -131,6 +131,14 @@ int rvu_npa_aq_enq_inst(struct rvu *rvu, struct npa_aq_enq_req *req,
 	case NPA_AQ_INSTOP_WRITE:
 		/* Copy context and write mask */
 		if (req->ctype == NPA_AQ_CTYPE_AURA) {
+			if (req->aura_mask.pool_addr) {
+				if (req->aura.pool_addr >= pfvf->pool_ctx->qsize) {
+					rc = NPA_AF_ERR_AQ_FULL;
+					break;
+				}
+				req->aura.pool_addr = pfvf->pool_ctx->iova +
+				(req->aura.pool_addr * pfvf->pool_ctx->entry_sz);
+			}
 			memcpy(mask, &req->aura_mask,
 			       sizeof(struct npa_aura_s));
 			memcpy(ctx, &req->aura, sizeof(struct npa_aura_s));
