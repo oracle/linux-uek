@@ -663,10 +663,10 @@ static int cn10k_ipsec_inb_add_state(struct xfrm_state *x,
 	return -EOPNOTSUPP;
 }
 
-static int cn10k_ipsec_outb_add_state(struct net_device *dev,
-				      struct xfrm_state *x,
+static int cn10k_ipsec_outb_add_state(struct xfrm_state *x,
 				      struct netlink_ext_ack *extack)
 {
+	struct net_device *dev = x->xso.dev;
 	struct cn10k_tx_sa_s *sa_entry;
 	struct qmem *sa_info;
 	struct otx2_nic *pf;
@@ -700,18 +700,18 @@ static int cn10k_ipsec_outb_add_state(struct net_device *dev,
 	return 0;
 }
 
-static int cn10k_ipsec_add_state(struct net_device *dev,
-				 struct xfrm_state *x,
+static int cn10k_ipsec_add_state(struct xfrm_state *x,
 				 struct netlink_ext_ack *extack)
 {
 	if (x->xso.dir == XFRM_DEV_OFFLOAD_IN)
 		return cn10k_ipsec_inb_add_state(x, extack);
 	else
-		return cn10k_ipsec_outb_add_state(dev, x, extack);
+		return cn10k_ipsec_outb_add_state(x, extack);
 }
 
-static void cn10k_ipsec_del_state(struct net_device *dev, struct xfrm_state *x)
+static void cn10k_ipsec_del_state(struct xfrm_state *x)
 {
+	struct net_device *dev = x->xso.dev;
 	struct cn10k_tx_sa_s *sa_entry;
 	struct qmem *sa_info;
 	struct otx2_nic *pf;
