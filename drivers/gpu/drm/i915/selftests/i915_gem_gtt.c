@@ -715,7 +715,7 @@ static int pot_hole(struct i915_address_space *vm,
 		u64 addr;
 
 		for (addr = round_up(hole_start + I915_GTT_PAGE_SIZE, step) - I915_GTT_PAGE_SIZE;
-		     addr <= round_down(hole_end - 2*I915_GTT_PAGE_SIZE, step) - I915_GTT_PAGE_SIZE;
+		     hole_end > addr && hole_end - addr >= 2 * I915_GTT_PAGE_SIZE;
 		     addr += step) {
 			err = i915_vma_pin(vma, 0, 0, addr | flags);
 			if (err) {
