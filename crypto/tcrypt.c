@@ -1452,7 +1452,8 @@ static inline int tcrypt_test(const char *name)
 		return PTR_ERR(alg);
 	}
 
-	ret = alg_test(alg, name, name, 0, 0);
+	ret = alg_test(alg, alg->cra_driver_name, alg->cra_name,
+				alg->cra_flags, 0);
 	/* non-fips algs return -EINVAL or -ECANCELED in fips mode */
 	if (fips_enabled && (ret == -EINVAL || ret == -ECANCELED))
 		ret = 0;
