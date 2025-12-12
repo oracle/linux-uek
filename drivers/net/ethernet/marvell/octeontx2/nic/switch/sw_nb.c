@@ -547,10 +547,6 @@ int sw_nb_unregister(void)
 {
 	int err;
 
-	sw_fl_deinit();
-	sw_fib_deinit();
-	sw_fdb_deinit();
-
 	err = unregister_switchdev_notifier(&sw_nb_fdb);
 
 	if (err)
@@ -571,6 +567,11 @@ int sw_nb_unregister(void)
 	err = unregister_netdevice_notifier(&sw_nb_netdev);
 	if (err)
 		pr_err("Failed to unregister netdev notifer\n");
+
+	sw_fl_deinit();
+	sw_fib_deinit();
+	sw_fdb_deinit();
+
 	return 0;
 }
 EXPORT_SYMBOL(sw_nb_unregister);
