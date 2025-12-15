@@ -7284,7 +7284,8 @@ int rvu_nix_tl1_xoff_wait_for_link_credits(struct rvu *rvu, u16 pcifunc)
 			break;
 		count--;
 		if (!count) {
-			dev_err(rvu->dev, "TX link(%d) credit poll timeout\n", link);
+			dev_info(rvu->dev, "TX link(%d) credit poll timeout, expected=%lld credits=%lld\n",
+				 link, tx_credits, ((regval >> 12) & 0xFFFFF));
 			return -ETIMEDOUT;
 		}
 		cpu_relax();
