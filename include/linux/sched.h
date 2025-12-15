@@ -34,6 +34,7 @@
 #include <linux/posix-timers.h>
 #include <linux/rseq.h>
 #include <linux/seqlock.h>
+#include <linux/rseq_types.h>
 #include <linux/kcsan.h>
 #include <asm/kmap_size.h>
 
@@ -1487,7 +1488,11 @@ struct task_struct {
 #else
 	UEK_KABI_RESERVE(4)
 #endif
+#ifdef CONFIG_RSEQ
+	UEK_KABI_USE(5, struct rseq_slice rseq_slice)
+#else
 	UEK_KABI_RESERVE(5)
+#endif
 	UEK_KABI_RESERVE(6)
 	UEK_KABI_RESERVE(7)
 	UEK_KABI_RESERVE(8)
@@ -2265,6 +2270,16 @@ static inline void rseq_migrate(struct task_struct *t)
 	rseq_set_notify_resume(t);
 }
 
+static inline void rseq_reset(struct task_struct *t)
+{
+	/* For memset, protect against preemption and membarrier IPI */
+        guard(irqsave)();
+	t->rseq = NULL;
+	t->rseq_sig = 0;
+	t->rseq_event_mask = 0;
+	memset(&t->rseq_slice, 0, sizeof(t->rseq_slice));
+}
+
 /*
  * If parent process has a registered restartable sequences area, the
  * child inherits. Unregister rseq for a clone with CLONE_VM set.
@@ -2272,21 +2287,18 @@ static inline void rseq_migrate(struct task_struct *t)
 static inline void rseq_fork(struct task_struct *t, unsigned long clone_flags)
 {
 	if (clone_flags & CLONE_VM) {
-		t->rseq = NULL;
-		t->rseq_sig = 0;
-		t->rseq_event_mask = 0;
+		rseq_reset(t);
 	} else {
 		t->rseq = current->rseq;
 		t->rseq_sig = current->rseq_sig;
 		t->rseq_event_mask = current->rseq_event_mask;
+		t->rseq_slice = current->rseq_slice;
 	}
 }
 
 static inline void rseq_execve(struct task_struct *t)
 {
-	t->rseq = NULL;
-	t->rseq_sig = 0;
-	t->rseq_event_mask = 0;
+	rseq_reset(t);
 }
 
 #else

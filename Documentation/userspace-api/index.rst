@@ -31,6 +31,7 @@ place where this information is gathered.
    sysfs-platform_profile
    vduse
    mfd_mfr_policy
+   rseq
 
 .. only::  subproject and html
 
