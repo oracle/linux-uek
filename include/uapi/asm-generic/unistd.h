@@ -880,6 +880,9 @@ __SYSCALL(__NR_memfd_secret, sys_memfd_secret)
 #define __NR_process_mrelease 448
 __SYSCALL(__NR_process_mrelease, sys_process_mrelease)
 
+#define __NR_rseq_slice_yield 471
+__SYSCALL(__NR_rseq_slice_yield, sys_rseq_slice_yield)
+
 #define __NR_waitfd 473
 __SYSCALL(__NR_waitfd, sys_waitfd)
 
