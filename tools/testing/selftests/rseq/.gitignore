@@ -5,3 +5,4 @@ basic_rseq_op_test
 param_test
 param_test_benchmark
 param_test_compare_twice
+slice_test
