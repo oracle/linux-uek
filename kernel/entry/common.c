@@ -164,6 +164,9 @@ static void handle_signal_work(struct pt_regs *regs, unsigned long ti_work)
 	arch_do_signal_or_restart(regs, ti_work & _TIF_SIGPENDING);
 }
 
+/* TIF bits, which prevent a time slice extension. */
+#define TIF_SLICE_EXT_DENY	(EXIT_TO_USER_MODE_WORK & ~_TIF_NEED_RESCHED)
+
 static unsigned long exit_to_user_mode_loop(struct pt_regs *regs,
 					    unsigned long ti_work)
 {
@@ -175,8 +178,10 @@ static unsigned long exit_to_user_mode_loop(struct pt_regs *regs,
 
 		local_irq_enable_exit_to_user(ti_work);
 
-		if (ti_work & _TIF_NEED_RESCHED)
-			schedule();
+		if (ti_work & _TIF_NEED_RESCHED) {
+			if (!rseq_grant_slice_extension(ti_work & TIF_SLICE_EXT_DENY))
+				schedule();
+		}
 
 		if (ti_work & _TIF_UPROBE)
 			uprobe_notify_resume(regs);
