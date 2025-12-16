@@ -54,6 +54,8 @@ bool is_mac_feature_supported(struct rvu *rvu, int pf, int feature)
 
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 	cgxd = rvu_cgx_pdata(cgx_id, rvu);
+	if (!cgxd)
+		return 0;
 
 	return  (cgx_features_get(cgxd) & feature);
 }
@@ -1184,9 +1186,7 @@ int rvu_mbox_handler_cgx_cfg_pause_frm(struct rvu *rvu,
 	 * if received from other PF/VF simply ACK, nothing to do.
 	 */
 	if (!is_pf_cgxmapped(rvu, pf))
-		return -ENODEV;
-
-	cgx_notify_up_ptp_info(rvu, pf, true);
+		return LMAC_AF_ERR_PF_NOT_MAPPED;
 
 	rvu_get_cgx_lmac_id(rvu->pf2cgxlmac_map[pf], &cgx_id, &lmac_id);
 	cgxd = rvu_cgx_pdata(cgx_id, rvu);
