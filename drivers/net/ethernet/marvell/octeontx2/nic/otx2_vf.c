@@ -712,6 +712,9 @@ static int otx2_mbox_up_handler_sdp_create_vfs(struct otx2_nic *vf,
 	if (!vf->af_xdp_zc_qidx)
 		goto err_shutdown_tc;
 
+	/* Set interface mode as Default */
+	vf->ethtool_flags |= OTX2_PRIV_FLAG_DEF_MODE;
+
 #ifdef CONFIG_DCB
 	err = otx2_dcbnl_set_ops(netdev);
 	if (err)
