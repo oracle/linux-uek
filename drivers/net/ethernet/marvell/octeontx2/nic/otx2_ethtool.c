@@ -340,6 +340,9 @@ static int otx2_set_channels(struct net_device *dev,
 	bool if_up = netif_running(dev);
 	int err, qos_txqs;
 
+	if (is_otx2_sdp_rep(pfvf->pdev))
+		return -EOPNOTSUPP;
+
 	if (!channel->rx_count || !channel->tx_count)
 		return -EINVAL;
 	if (channel->rx_count > pfvf->hw.max_queues)
