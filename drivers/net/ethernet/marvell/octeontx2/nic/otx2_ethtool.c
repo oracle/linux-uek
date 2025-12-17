@@ -161,6 +161,8 @@ static void otx2_get_strings(struct net_device *netdev, u32 sset, u8 *data)
 	ethtool_puts(&data, "reset_count");
 	ethtool_puts(&data, "Fec Corrected Errors: ");
 	ethtool_puts(&data, "Fec Uncorrected Errors: ");
+
+	page_pool_ethtool_stats_get_strings(data);
 }
 
 static void otx2_get_qset_stats(struct otx2_nic *pfvf,
@@ -208,6 +210,28 @@ static int otx2_get_phy_fec_stats(struct otx2_nic *pfvf)
 end:
 	mutex_unlock(&pfvf->mbox.lock);
 	return rc;
+}
+
+static void otx2_page_pool_stats(struct otx2_nic *vf, u64 *data)
+{
+#ifdef CONFIG_PAGE_POOL_STATS
+	bool up = !!(vf->netdev->flags & IFF_UP);
+	struct page_pool_stats stats = {};
+	struct otx2_hw *hw = &vf->hw;
+	struct otx2_pool *pool;
+	int pool_id;
+
+	if (up) {
+		for (pool_id = 0; pool_id < hw->rqpool_cnt; pool_id++) {
+			pool = &vf->qset.pool[pool_id];
+			if (!pool->page_pool)
+				continue;
+			page_pool_get_stats(pool->page_pool, &stats);
+		}
+	}
+
+	page_pool_ethtool_stats_get(data, &stats);
+#endif
 }
 
 /* Get device and per queue statistics */
@@ -265,6 +289,8 @@ static void otx2_get_ethtool_stats(struct net_device *netdev,
 
 	*(data++) = fec_corr_blks;
 	*(data++) = fec_uncorr_blks;
+
+	otx2_page_pool_stats(pfvf, data);
 }
 
 static int otx2_get_sset_count(struct net_device *netdev, int sset)
@@ -288,7 +314,8 @@ static int otx2_get_sset_count(struct net_device *netdev, int sset)
 	otx2_update_lmac_fec_stats(pfvf);
 
 	return otx2_n_dev_stats + otx2_n_drv_stats + qstats_count +
-	       mac_stats + OTX2_FEC_STATS_CNT + 1;
+	       mac_stats + OTX2_FEC_STATS_CNT + 1 +
+	       page_pool_ethtool_stats_get_count();
 }
 
 /* Get no of queues device supports and current queue count */
@@ -1702,6 +1729,7 @@ static void otx2vf_get_strings(struct net_device *netdev, u32 sset, u8 *data)
 	otx2_get_qset_strings(vf, &data, 0);
 
 	ethtool_puts(&data, "reset_count");
+	page_pool_ethtool_stats_get_strings(data);
 }
 
 static void otx2vf_get_ethtool_stats(struct net_device *netdev,
@@ -1721,6 +1749,8 @@ static void otx2vf_get_ethtool_stats(struct net_device *netdev,
 
 	otx2_get_qset_stats(vf, stats, &data);
 	*(data++) = vf->reset_count;
+
+	otx2_page_pool_stats(vf, data);
 }
 
 static int otx2vf_get_sset_count(struct net_device *netdev, int sset)
@@ -1734,7 +1764,8 @@ static int otx2vf_get_sset_count(struct net_device *netdev, int sset)
 	qstats_count = otx2_n_queue_stats *
 		       (vf->hw.rx_queues + otx2_get_total_tx_queues(vf));
 
-	return otx2_n_dev_stats + otx2_n_drv_stats + qstats_count + 1;
+	return otx2_n_dev_stats + otx2_n_drv_stats + qstats_count + 1 +
+		page_pool_ethtool_stats_get_count();
 }
 
 static int otx2vf_get_link_ksettings(struct net_device *netdev,
