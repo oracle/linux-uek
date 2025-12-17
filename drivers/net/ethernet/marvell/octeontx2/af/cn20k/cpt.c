@@ -308,5 +308,10 @@ void rvu_cn20k_cpt_init(struct rvu *rvu)
 	reg_val |= BIT_ULL(8);
 	rvu_write64(rvu, BLKADDR_CPT0, CPT_AF_RXC_CFG2, reg_val);
 
+	/* Set the default value for metadata result offset to 1 */
+	reg_val = rvu_read64(rvu, BLKADDR_CPT0, CPT_AF_CTL);
+	reg_val |= FIELD_PREP(CPT_AF_CTL_RES_META_OFFSET, 1);
+	rvu_write64(rvu, BLKADDR_CPT0, CPT_AF_CTL, reg_val);
+
 	cpt_rx_qid_init(rvu);
 }

@@ -238,6 +238,8 @@ static inline u64 pf_to_bitoff(u8 pf)
 #define CPT_AF_RXC_QUEX_ZOMBIE_STS(a)	(0x50180ull | (u64)(a) << 3)
 #define CPT_AF_RXC_QUE_X2PX_LINK_CFG(a) (0x51000ull | (u64)(a) << 3)
 
+#define CPT_AF_CTL_RES_META_OFFSET		GENMASK_ULL(36, 32)
+
 /* LBK Registers */
 #define CN20K_LBK_CONST_CHANS			GENMASK_ULL(39, 24)
 #define CN20K_LBKX_LINK_CFG_P2X			0x800
