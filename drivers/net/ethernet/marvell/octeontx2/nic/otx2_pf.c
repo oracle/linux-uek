@@ -926,9 +926,7 @@ static int otx2_mbox_up_handler_rep_event_up_notify(struct otx2_nic *pf,
 		}
 		return 0;
 	}
-#ifdef CONFIG_RVU_ESWITCH
 	rvu_event_up_notify(pf, info);
-#endif
 	return 0;
 }
 
@@ -1598,9 +1596,11 @@ void otx2_disable_napi(struct otx2_nic *pf)
 
 	for (qidx = 0; qidx < pf->hw.cint_cnt; qidx++) {
 		cq_poll = &qset->napi[qidx];
-		work = &cq_poll->dim.work;
-		if (work->func)
-			cancel_work_sync(work);
+		if (!otx2_rep_dev(pf->pdev)) {
+			work = &cq_poll->dim.work;
+			if (work->func)
+				cancel_work_sync(work);
+		}
 		napi_disable(&cq_poll->napi);
 		netif_napi_del(&cq_poll->napi);
 	}

@@ -1100,6 +1100,41 @@ static inline int otx2_tc_flower_rule_cnt(struct otx2_nic *pfvf)
 	return pfvf->flow_cfg->nr_flows;
 }
 
+/* Representor APIs */
+static inline int rvu_rep_get_repid(struct otx2_nic *pf, u16 pcifunc)
+{
+#if IS_ENABLED(CONFIG_RVU_ESWITCH)
+	int rep_id;
+
+	for (rep_id = 0; rep_id < pf->rep_cnt; rep_id++)
+		if (pf->rep_pf_map[rep_id] == pcifunc)
+			return rep_id;
+#endif
+	return -EINVAL;
+}
+
+static inline void rvu_event_up_notify(struct otx2_nic *pf, struct rep_event *info)
+{
+#if IS_ENABLED(CONFIG_RVU_ESWITCH)
+	struct rep_dev *rep;
+	int rep_id;
+
+	if (!(info->event & RVU_EVENT_PFVF_STATE))
+		return;
+
+	if (pf->flags & OTX2_FLAG_INTF_DOWN)
+		return;
+
+	rep_id = rvu_rep_get_repid(pf, info->pcifunc);
+	rep = pf->reps[rep_id];
+
+	if (info->evt_data.vf_state)
+		rep->flags |= RVU_REP_VF_INITIALIZED;
+	else
+		rep->flags &= ~RVU_REP_VF_INITIALIZED;
+#endif
+}
+
 /* MSI-X APIs */
 void otx2_free_cints(struct otx2_nic *pfvf, int n);
 void otx2_set_cints_affinity(struct otx2_nic *pfvf);
@@ -1320,7 +1355,6 @@ int otx2_get_txq_by_classid(struct otx2_nic *pfvf, u16 classid);
 void otx2_qos_config_txschq(struct otx2_nic *pfvf);
 void otx2_clean_qos_queues(struct otx2_nic *pfvf);
 bool otx2_is_qos_configured(struct otx2_nic *pfvf);
-int rvu_event_up_notify(struct otx2_nic *pf, struct rep_event *info);
 int otx2_setup_tc_cls_flower(struct otx2_nic *nic,
 			     struct flow_cls_offload *cls_flower);
 

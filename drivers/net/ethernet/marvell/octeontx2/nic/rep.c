@@ -264,16 +264,6 @@ static int rvu_rep_devlink_port_register(struct rep_dev *rep)
 	return 0;
 }
 
-static int rvu_rep_get_repid(struct otx2_nic *priv, u16 pcifunc)
-{
-	int rep_id;
-
-	for (rep_id = 0; rep_id < priv->rep_cnt; rep_id++)
-		if (priv->rep_pf_map[rep_id] == pcifunc)
-			return rep_id;
-	return -EINVAL;
-}
-
 static int rvu_rep_notify_pfvf(struct otx2_nic *priv, u16 event,
 			       struct rep_event *data)
 {
@@ -291,27 +281,6 @@ static int rvu_rep_notify_pfvf(struct otx2_nic *priv, u16 event,
 	memcpy(&req->evt_data, &data->evt_data, sizeof(struct rep_evt_data));
 	otx2_sync_mbox_msg(&priv->mbox);
 	mutex_unlock(&priv->mbox.lock);
-	return 0;
-}
-
-static void rvu_rep_state_evt_handler(struct otx2_nic *priv,
-				      struct rep_event *info)
-{
-	struct rep_dev *rep;
-	int rep_id;
-
-	rep_id = rvu_rep_get_repid(priv, info->pcifunc);
-	rep = priv->reps[rep_id];
-	if (info->evt_data.vf_state)
-		rep->flags |= RVU_REP_VF_INITIALIZED;
-	else
-		rep->flags &= ~RVU_REP_VF_INITIALIZED;
-}
-
-int rvu_event_up_notify(struct otx2_nic *pf, struct rep_event *info)
-{
-	if (info->event & RVU_EVENT_PFVF_STATE)
-		rvu_rep_state_evt_handler(pf, info);
 	return 0;
 }
 
@@ -642,6 +611,7 @@ void rvu_rep_destroy(struct otx2_nic *priv)
 	priv->flags &= ~OTX2_FLAG_REP_MODE_ENABLED;
 	for (rep_id = 0; rep_id < priv->rep_cnt; rep_id++) {
 		rep = priv->reps[rep_id];
+		cancel_delayed_work_sync(&rep->stats_wrk);
 		unregister_netdev(rep->netdev);
 		rvu_rep_devlink_port_unregister(rep);
 		free_netdev(rep->netdev);
