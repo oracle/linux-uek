@@ -459,6 +459,9 @@ static int rvu_rep_open(struct net_device *dev)
 	netif_carrier_on(dev);
 	netif_tx_start_all_queues(dev);
 
+	if (rep->pcifunc & RVU_PFVF_FUNC_MASK)
+		return 0;
+
 	evt.event = RVU_EVENT_PORT_STATE;
 	evt.evt_data.port_state = 1;
 	evt.pcifunc = rep->pcifunc;
@@ -477,6 +480,9 @@ static int rvu_rep_stop(struct net_device *dev)
 
 	netif_carrier_off(dev);
 	netif_tx_disable(dev);
+
+	if (rep->pcifunc & RVU_PFVF_FUNC_MASK)
+		return 0;
 
 	evt.event = RVU_EVENT_PORT_STATE;
 	evt.pcifunc = rep->pcifunc;
@@ -815,6 +821,9 @@ static int rvu_rep_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_set_drv_data;
 
 	priv->iommu_domain = iommu_get_domain_for_dev(dev);
+	if (priv->iommu_domain)
+		priv->iommu_domain_type =
+			((struct iommu_domain *)priv->iommu_domain)->type;
 
 	err = rvu_get_rep_cnt(priv);
 	if (err)
