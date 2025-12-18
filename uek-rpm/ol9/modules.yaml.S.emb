@@ -113,7 +113,6 @@ modules-core:
 - arm-ccn
 - arm_spe_pmu
 - arp_tables
-- asn1_encoder
 - auth_rpcgss
 - authenc
 - authencesn
@@ -135,7 +134,6 @@ modules-core:
 - crypto_engine
 - crypto_user
 - des_generic
-- dh_generic
 - dm-crypt
 - dm-mod
 - dns_resolver
@@ -340,7 +338,6 @@ modules-core:
 - serdev
 - serial_mctrl_gpio
 - sha1-ce
-- sha1_generic
 - sha2-ce
 - sha256-arm64
 - sha512-arm64
@@ -356,12 +353,10 @@ modules-core:
 - tcm_loop
 - tcp_diag
 - tcrypt
-- tee
 - tpm
 - tpm_crb
 - tpm_tis
 - tpm_tis_core
-- trusted
 - ts_bm
 - ts_fsm
 - ts_kmp
