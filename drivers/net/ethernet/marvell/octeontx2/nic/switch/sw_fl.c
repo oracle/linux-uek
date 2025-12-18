@@ -539,7 +539,7 @@ int sw_fl_init(void)
 
 void sw_fl_deinit(void)
 {
-	flush_workqueue(sw_fl_wq);
+	cancel_work_sync(&sw_fl_work);
 	destroy_workqueue(sw_fl_wq);
 }
 #endif

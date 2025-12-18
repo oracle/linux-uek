@@ -124,7 +124,7 @@ int sw_fdb_init(void)
 
 void sw_fdb_deinit(void)
 {
-	flush_workqueue(sw_fdb_wq);
+	cancel_work_sync(&sw_fdb_work);
 	destroy_workqueue(sw_fdb_wq);
 }
 

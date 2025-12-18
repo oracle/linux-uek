@@ -127,6 +127,6 @@ int sw_fib_init(void)
 
 void sw_fib_deinit(void)
 {
-	flush_workqueue(sw_fib_wq);
+	cancel_delayed_work_sync(&sw_fib_work);
 	destroy_workqueue(sw_fib_wq);
 }
