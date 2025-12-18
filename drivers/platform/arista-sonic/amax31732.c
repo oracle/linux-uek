@@ -38,6 +38,7 @@
 #define MAX31732_REG_CONF2                 0x10
 #define MAX31732_REG_TEMP_OFFSET           0x16
 #define MAX31732_REG_OFFSET_ENABLE         0x17
+#define MAX31732_REG_BETA_COMP_ENABLE      0x19
 #define MAX31732_REG_ALARM1_MASK           0x1B
 #define MAX31732_REG_ALARM2_MASK           0x1C
 #define MAX31732_REG_PRIM_HIGH_TEMP_R      0x1D
@@ -530,6 +531,11 @@ static int max31732_probe(struct i2c_client *client)
         return ret;
 
     ret = regmap_clear_bits(data->regmap, MAX31732_REG_CONF1, MAX3173X_EXTRANGE);
+    if (ret)
+        return ret;
+
+    /* Enable beta compensation for all channels (bits 1-4) */
+    ret = regmap_write(data->regmap, MAX31732_REG_BETA_COMP_ENABLE, 0x1E);
     if (ret)
         return ret;
 
