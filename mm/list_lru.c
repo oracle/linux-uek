@@ -128,16 +128,18 @@ bool list_lru_add(struct list_lru *lru, struct list_head *item)
 	spin_lock(&nlru->lock);
 	if (list_empty(item)) {
 		l = list_lru_from_kmem(lru, nid, item, &memcg);
-		list_add_tail(item, &l->list);
-		/* Set shrinker bit if the first element was added */
-		if (!l->nr_items++)
-			set_shrinker_bit(memcg, nid,
+		if (l) {
+			list_add_tail(item, &l->list);
+			/* Set shrinker bit if the first element was added */
+			if (!l->nr_items++)
+				set_shrinker_bit(memcg, nid,
 					 lru_shrinker_id(lru));
-		nlru->nr_items++;
-		spin_unlock(&nlru->lock);
-		if (list_lru_memcg_aware(lru))
-			rcu_read_unlock();
-		return true;
+			nlru->nr_items++;
+			spin_unlock(&nlru->lock);
+			if (list_lru_memcg_aware(lru))
+				rcu_read_unlock();
+			return true;
+		}
 	}
 	spin_unlock(&nlru->lock);
 	if (list_lru_memcg_aware(lru))
@@ -157,13 +159,15 @@ bool list_lru_del(struct list_lru *lru, struct list_head *item)
 	spin_lock(&nlru->lock);
 	if (!list_empty(item)) {
 		l = list_lru_from_kmem(lru, nid, item, NULL);
-		list_del_init(item);
-		l->nr_items--;
-		nlru->nr_items--;
-		spin_unlock(&nlru->lock);
-		if (list_lru_memcg_aware(lru))
-			rcu_read_unlock();
-		return true;
+		if (l) {
+			list_del_init(item);
+			l->nr_items--;
+			nlru->nr_items--;
+			spin_unlock(&nlru->lock);
+			if (list_lru_memcg_aware(lru))
+				rcu_read_unlock();
+			return true;
+		}
 	}
 	spin_unlock(&nlru->lock);
 	if (list_lru_memcg_aware(lru))
