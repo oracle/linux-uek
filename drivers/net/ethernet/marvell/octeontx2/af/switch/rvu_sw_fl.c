@@ -8,6 +8,7 @@
 #include <linux/bitfield.h>
 #include "rvu.h"
 #include "rvu_sw.h"
+#include "rvu_sw_fl.h"
 
 #define M(_name, _id, _fn_name, _req_type, _rsp_type)			\
 static struct _req_type __maybe_unused					\

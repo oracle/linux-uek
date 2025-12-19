@@ -401,7 +401,7 @@ void mcs_rx_sc_cam_write(struct mcs *mcs, u64 sci, u64 secy, int sc_id)
 void mcs_secy_plcy_write(struct mcs *mcs, u64 plcy, int secy_id, int dir)
 {
 	u8 devtype = mcs->hw->mcs_devtype;
-	u64 reg, val;
+	u64 reg;
 
 	if (dir == MCS_RX)
 		reg = MCSX_CPM_RX_SLAVE_SECY_PLCY_MEM_0X(secy_id);

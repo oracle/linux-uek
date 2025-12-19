@@ -30,7 +30,7 @@ static int
 npc_subbank_srch_order_parse_n_fill(struct rvu *rvu, char *options, int num_subbanks)
 {
 	unsigned long w1 = 0, w2 = 0;
-	char *p, *last, *t1, *t2;
+	char *p, *t1, *t2;
 	int (*arr)[2];
 	int idx, val;
 	int cnt, ret;
@@ -38,7 +38,6 @@ npc_subbank_srch_order_parse_n_fill(struct rvu *rvu, char *options, int num_subb
 	cnt = 0;
 
 	options[strcspn(options, "\r\n")] = 0;
-	last = strrchr(options, ' ');
 
 	arr = kcalloc(num_subbanks, sizeof(*arr), GFP_KERNEL);
 	if (!arr)
@@ -148,12 +147,10 @@ npc_subbank_srch_order_read(struct file *file, char __user *user_buf,
 	struct npc_priv_t *npc_priv;
 	bool restricted_order;
 	const int *srch_order;
-	struct rvu *rvu;
 	char buf[1024];
 	int len = 0;
 
 	npc_priv = npc_priv_get();
-	rvu = file->private_data;
 
 	len += snprintf(buf + len, sizeof(buf) - len, "%s",
 			"Usage: echo \"[0]=0,[1]=1,[2]=2,..[31]=31\" > <debugfs>/subbank_srch_order\n");

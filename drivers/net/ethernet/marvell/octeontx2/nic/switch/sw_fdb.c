@@ -15,6 +15,7 @@
 #include "../otx2_common.h"
 #include "../otx2_struct.h"
 #include "../cn10k.h"
+#include "sw_fdb.h"
 
 #if !IS_ENABLED(CONFIG_OCTEONTX_SWITCH)
 

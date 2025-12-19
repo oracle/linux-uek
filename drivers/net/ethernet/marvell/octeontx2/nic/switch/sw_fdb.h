@@ -11,4 +11,9 @@ int sw_fdb_add_to_list(struct net_device *dev, u8 *mac, bool add_fdb);
 void sw_fdb_deinit(void);
 int sw_fdb_init(void);
 
+int
+otx2_mbox_up_handler_af2pf_fdb_refresh(struct otx2_nic *pf,
+				       struct af2pf_fdb_refresh_req *req,
+				       struct msg_rsp *rsp);
+
 #endif // SW_FDB_H
