@@ -2401,6 +2401,9 @@ struct flow_msg {
 		u8 next_header;
 	};
 	__be16 vlan_itci;
+	u8 icmp_type;
+	u8 icmp_code;
+	__be16 tcp_flags;
 	__be32 gtpu_teid;
 	__be32 gtpc_teid;
 #define OTX2_FLOWER_MASK_MPLS_LB		GENMASK(31, 12)
@@ -2409,9 +2412,6 @@ struct flow_msg {
 #define OTX2_FLOWER_MASK_MPLS_TTL		GENMASK(7, 0)
 #define OTX2_FLOWER_MASK_MPLS_NON_TTL		GENMASK(31, 8)
 	u32 mpls_lse[4];
-	u8 icmp_type;
-	u8 icmp_code;
-	__be16 tcp_flags;
 	u16 sq_id;
 };
 
@@ -2503,7 +2503,6 @@ struct npc_install_flow_req {
 	u16 entry;
 	u16 channel;
 	u16 chan_mask;
-	u8 set_chanmask;
 	u8 intf;
 	u8 set_cntr; /* If counter is available set counter for this entry ? */
 	u8 default_rule;
@@ -2532,6 +2531,7 @@ struct npc_install_flow_req {
 	u8 alloc_entry;	/* only for cn20k */
 	u16 ref_prio;
 	u16 ref_entry;
+	u8 set_chanmask;
 };
 
 struct npc_install_flow_rsp {
