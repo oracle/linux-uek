@@ -184,6 +184,8 @@ M(FL_NOTIFY,		0x014,  fl_notify,				\
 				fl_notify_req, msg_rsp)		\
 M(FL_GET_STATS,		0x015,  fl_get_stats,				\
 				fl_get_stats_req, fl_get_stats_rsp)	\
+M(ATTACH_SLOT_LF,	0x016, attach_slot_lf, slot_attach, msg_rsp)	\
+M(DETACH_SLOT_LF,	0x017, detach_slot_lf, slot_detach, msg_rsp) \
 /* CGX mbox IDs (range 0x200 - 0x3FF) */				\
 M(CGX_START_RXTX,	0x200, cgx_start_rxtx, msg_req, msg_rsp)	\
 M(CGX_STOP_RXTX,	0x201, cgx_stop_rxtx, msg_req, msg_rsp)		\
@@ -3532,6 +3534,28 @@ struct mcs_intr_info {
 	u8 mcs_id;
 	u8 lmac_id;
 	u64 rsvd;
+};
+
+struct slot_attach {
+	struct mbox_msghdr hdr;
+	int blkaddr; /* Block address from which LF is needed */
+	/* Bitmaps of Slot indices(0-255) in which LFs are needed
+	 */
+	u64 bmap1; /* Slots [63:0] */
+	u64 bmap2; /* Slots [127:64] */
+	u64 bmap3; /* Slots [191:128] */
+	u64 bmap4; /* Slots [255:192] */
+};
+
+struct slot_detach {
+	struct mbox_msghdr hdr;
+	int blkaddr; /* Block address from which LF has to be detached */
+	/* Bitmaps of Slot indices(0-255) from which LFs need to be detached
+	 */
+	u64 bmap1; /* Slots [63:0] */
+	u64 bmap2; /* Slots [127:64] */
+	u64 bmap3; /* Slots [191:128] */
+	u64 bmap4; /* Slots [255:192] */
 };
 
 #endif /* MBOX_H */

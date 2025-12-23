@@ -2061,6 +2061,202 @@ fail1:
 	return err;
 }
 
+static int rvu_blk_addr2type(int blkaddr)
+{
+	switch (blkaddr) {
+	case BLKADDR_NPA:
+		return BLKTYPE_NPA;
+	case BLKADDR_NIX0:
+	case BLKADDR_NIX1:
+		return BLKTYPE_NIX;
+	case BLKADDR_CPT0:
+	case BLKADDR_CPT1:
+		return BLKTYPE_CPT;
+	case BLKADDR_SSO:
+		return BLKTYPE_SSO;
+	case BLKADDR_SSOW:
+		return BLKTYPE_SSOW;
+	case BLKADDR_TIM:
+		return BLKTYPE_TIM;
+	default:
+		return -EINVAL;
+	}
+}
+
+static int rvu_check_slot_status(struct rvu *rvu, struct rvu_block *block,
+				 u16 match_pcifunc, int match_slot)
+{
+	int lf, slot;
+	bool enable;
+	u16 pcifunc;
+	u64 reg;
+
+	for (lf = 0; lf < block->lf.max; lf++) {
+		reg = rvu_read64(rvu, block->addr, block->lfcfg_reg |
+				 (lf << block->lfshift));
+		enable = reg & (1ULL << 63);
+		pcifunc = (reg >> 8) & 0xFFFFULL;
+		slot = reg & 0xFFULL;
+
+		if (enable && slot == match_slot && match_pcifunc == pcifunc) {
+			dev_err(&rvu->pdev->dev,
+				"pcifunc 0x%x already has LF %d enabled in slot %d\n",
+				match_pcifunc, lf, match_slot);
+			return -EEXIST;
+		}
+	}
+
+	return 0;
+}
+
+static void rvu_attach_to_slots(struct rvu *rvu, struct rvu_block *block,
+				u16 pcifunc, u64 *bmap)
+{
+	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
+	int lf, slot;
+	u64 cfg;
+
+	for_each_set_bit(slot, (unsigned long *)bmap, BITS_PER_LONG) {
+		if (rvu_check_slot_status(rvu, block, pcifunc, slot))
+			return;
+
+		/* Allocate the resource */
+		lf = rvu_alloc_rsrc(&block->lf);
+		if (lf < 0)
+			return;
+
+		cfg = (1ULL << 63) | (pcifunc << 8) | slot;
+		rvu_write64(rvu, block->addr, block->lfcfg_reg |
+			    (lf << block->lfshift), cfg);
+		rvu_update_rsrc_map(rvu, pfvf, block,
+				    pcifunc, lf, true);
+
+		/* Set start MSIX vector for this LF within this PF/VF */
+		rvu_set_msix_offset(rvu, pfvf, block, lf);
+	}
+}
+
+int rvu_mbox_handler_attach_slot_lf(struct rvu *rvu,
+				    struct slot_attach *attach,
+				    struct msg_rsp *rsp)
+{
+	u16 pcifunc = attach->hdr.pcifunc;
+	struct rvu_hwinfo *hw = rvu->hw;
+	int blkaddr = attach->blkaddr;
+	struct rvu_block *block;
+	int blktype, num_lfs;
+	int err = 0;
+
+	if (!is_block_implemented(rvu->hw, blkaddr))
+		return -ENODEV;
+
+	blktype = rvu_blk_addr2type(blkaddr);
+	if (blktype < 0)
+		return blktype;
+
+	/* Allow only multi slot blocks */
+	if (blktype == BLKTYPE_NIX || blktype == BLKTYPE_NPA)
+		return -EINVAL;
+
+	block = &hw->block[blkaddr];
+	if (!block->lf.bmap)
+		return -EINVAL;
+
+	mutex_lock(&rvu->rsrc_lock);
+
+	num_lfs = bitmap_weight((unsigned long *)&attach->bmap1, BITS_PER_LONG);
+	num_lfs += bitmap_weight((unsigned long *)&attach->bmap2, BITS_PER_LONG);
+	num_lfs += bitmap_weight((unsigned long *)&attach->bmap3, BITS_PER_LONG);
+	num_lfs += bitmap_weight((unsigned long *)&attach->bmap4, BITS_PER_LONG);
+
+	/* Is request within limits ? */
+	if (num_lfs > block->lf.max) {
+		dev_err(&rvu->pdev->dev,
+			"Func 0x%x: Invalid req for %d, %d > max %d\n",
+			pcifunc, blkaddr, num_lfs, block->lf.max);
+		err = -EINVAL;
+		goto exit;
+	}
+
+	if (num_lfs > rvu_rsrc_free_count(&block->lf)) {
+		dev_err(&rvu->pdev->dev, "%d LFs of block %d not available\n",
+			num_lfs, blkaddr);
+		err = -EINVAL;
+		goto exit;
+	}
+
+	rvu_attach_to_slots(rvu, block, pcifunc, &attach->bmap1);
+	rvu_attach_to_slots(rvu, block, pcifunc, &attach->bmap2);
+	rvu_attach_to_slots(rvu, block, pcifunc, &attach->bmap3);
+	rvu_attach_to_slots(rvu, block, pcifunc, &attach->bmap4);
+
+exit:
+	mutex_unlock(&rvu->rsrc_lock);
+	return err;
+}
+
+static void rvu_detach_from_slots(struct rvu *rvu, struct rvu_block *block,
+				  u16 pcifunc, u64 *bmap)
+{
+	struct rvu_pfvf *pfvf = rvu_get_pfvf(rvu, pcifunc);
+	int lf, slot;
+
+	for_each_set_bit(slot, (unsigned long *)bmap, BITS_PER_LONG) {
+		lf = rvu_lookup_rsrc(rvu, block, pcifunc, slot);
+		if (lf < 0) /* This should never happen */
+			continue;
+
+		/* Disable the LF */
+		rvu_write64(rvu, block->addr, block->lfcfg_reg |
+			    (lf << block->lfshift), 0x00ULL);
+
+		/* Update SW maintained mapping info as well */
+		rvu_update_rsrc_map(rvu, pfvf, block,
+				    pcifunc, lf, false);
+
+		/* Free the resource */
+		rvu_free_rsrc(&block->lf, lf);
+
+		/* Clear MSIX vector offset for this LF */
+		rvu_clear_msix_offset(rvu, pfvf, block, lf);
+	}
+}
+
+int rvu_mbox_handler_detach_slot_lf(struct rvu *rvu,
+				    struct slot_detach *detach,
+				    struct msg_rsp *rsp)
+{
+	u16 pcifunc = detach->hdr.pcifunc;
+	struct rvu_hwinfo *hw = rvu->hw;
+	int blkaddr = detach->blkaddr;
+	struct rvu_block *block;
+	int blktype;
+
+	if (!is_block_implemented(rvu->hw, blkaddr))
+		return -ENODEV;
+
+	blktype = rvu_blk_addr2type(blkaddr);
+	if (blktype < 0)
+		return blktype;
+
+	/* Allow only multi slot blocks */
+	if (blktype == BLKTYPE_NIX || blktype == BLKTYPE_NPA)
+		return -EINVAL;
+
+	block = &hw->block[blkaddr];
+	if (!block->lf.bmap)
+		return -EINVAL;
+
+	mutex_lock(&rvu->rsrc_lock);
+	rvu_detach_from_slots(rvu, block, pcifunc, &detach->bmap1);
+	rvu_detach_from_slots(rvu, block, pcifunc, &detach->bmap2);
+	rvu_detach_from_slots(rvu, block, pcifunc, &detach->bmap3);
+	rvu_detach_from_slots(rvu, block, pcifunc, &detach->bmap4);
+	mutex_unlock(&rvu->rsrc_lock);
+
+	return 0;
+}
+
 u16 rvu_get_msix_offset(struct rvu *rvu, struct rvu_pfvf *pfvf, int blkaddr,
 			int lf)
 {
