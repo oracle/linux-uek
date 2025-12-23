@@ -138,13 +138,13 @@ static int max31732_read(struct device *dev, enum hwmon_sensor_types type, u32 a
 
         reg_addr = max31732_get_temp_reg(MAX31732_TEMP, channel);
         break;
-    case hwmon_temp_max:
+    case hwmon_temp_crit:
         reg_addr = max31732_get_temp_reg(MAX31732_PRIM_HIGH, channel);
         break;
-    case hwmon_temp_min:
+    case hwmon_temp_lcrit:
         reg_addr = MAX31732_REG_PRIM_LOW_TEMP;
         break;
-    case hwmon_temp_lcrit:
+    case hwmon_temp_min:
         ret = regmap_read(data->regmap, MAX31732_REG_SECOND_LOW_TEMP, &reg_val);
         if (ret)
             return ret;
@@ -152,7 +152,7 @@ static int max31732_read(struct device *dev, enum hwmon_sensor_types type, u32 a
         sval = (s8)reg_val;
         *val = sval * 1000;
         return 0;
-    case hwmon_temp_crit:
+    case hwmon_temp_max:
         reg_addr = max31732_get_temp_reg(MAX31732_SECOND_HIGH, channel);
         ret = regmap_read(data->regmap, reg_addr, &reg_val);
         if (ret)
@@ -192,28 +192,28 @@ static int max31732_read(struct device *dev, enum hwmon_sensor_types type, u32 a
 
         *val = ret;
         return 0;
-    case hwmon_temp_lcrit_alarm:
+    case hwmon_temp_min_alarm:
         ret = regmap_test_bits(data->regmap, MAX31732_REG_SECOND_LOW_STATUS, BIT(channel));
         if (ret < 0)
             return ret;
 
         *val = ret;
         return 0;
-    case hwmon_temp_min_alarm:
+    case hwmon_temp_lcrit_alarm:
         ret = regmap_test_bits(data->regmap, MAX31732_REG_PRIM_LOW_STATUS, BIT(channel));
         if (ret < 0)
             return ret;
 
         *val = ret;
         return 0;
-    case hwmon_temp_max_alarm:
+    case hwmon_temp_crit_alarm:
         ret = regmap_test_bits(data->regmap, MAX31732_REG_PRIM_HIGH_STATUS, BIT(channel));
         if (ret < 0)
             return ret;
 
         *val = ret;
         return 0;
-    case hwmon_temp_crit_alarm:
+    case hwmon_temp_max_alarm:
         ret = regmap_test_bits(data->regmap, MAX31732_REG_SECOND_HIGH_STATUS, BIT(channel));
         if (ret < 0)
             return ret;
@@ -239,15 +239,16 @@ static int max31732_write(struct device *dev, enum hwmon_sensor_types type, u32 
     struct max31732_data *data = dev_get_drvdata(dev);
     s32 reg_addr, ret;
     u16 temp_reg_val;
+    u8 msb, lsb;
 
     if (type != hwmon_temp)
         return -EINVAL;
 
     switch (attr) {
-    case hwmon_temp_max:
+    case hwmon_temp_crit:
         reg_addr = max31732_get_temp_reg(MAX31732_PRIM_HIGH, channel);
         break;
-    case hwmon_temp_min:
+    case hwmon_temp_lcrit:
         reg_addr = MAX31732_REG_PRIM_LOW_TEMP;
         break;
     case hwmon_temp_enable:
@@ -276,12 +277,12 @@ static int max31732_write(struct device *dev, enum hwmon_sensor_types type, u32 
             return ret;
 
         return regmap_write(data->regmap, MAX31732_REG_TEMP_OFFSET, val);
-    case hwmon_temp_crit:
+    case hwmon_temp_max:
         val = clamp_val(val, MAX31732_SECOND_TEMP_MIN, MAX31732_SECOND_TEMP_MAX);
         val = DIV_ROUND_CLOSEST(val, 1000);
         reg_addr = max31732_get_temp_reg(MAX31732_SECOND_HIGH, channel);
         return regmap_write(data->regmap, reg_addr, val);
-    case hwmon_temp_lcrit:
+    case hwmon_temp_min:
         val = clamp_val(val, MAX31732_SECOND_TEMP_MIN, MAX31732_SECOND_TEMP_MAX);
         val = DIV_ROUND_CLOSEST(val, 1000);
         return regmap_write(data->regmap, MAX31732_REG_SECOND_LOW_TEMP, val);
@@ -293,9 +294,16 @@ static int max31732_write(struct device *dev, enum hwmon_sensor_types type, u32 
     val = DIV_ROUND_CLOSEST(val << 4, 1000) << 4;
 
     temp_reg_val = (u16)val;
-    temp_reg_val = swab16(temp_reg_val);
 
-    return regmap_bulk_write(data->regmap, reg_addr, &temp_reg_val, sizeof(temp_reg_val));
+    /* Write MSB first, then LSB */
+    msb = (temp_reg_val >> 8) & 0xFF;
+    lsb = temp_reg_val & 0xFF;
+
+    ret = regmap_write(data->regmap, reg_addr, msb);
+    if (ret)
+        return ret;
+
+    return regmap_write(data->regmap, reg_addr + 1, lsb);
 }
 
 static umode_t max31732_is_visible(const void *data, enum hwmon_sensor_types type, u32 attr,
