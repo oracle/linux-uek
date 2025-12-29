@@ -2581,10 +2581,8 @@ static int btrfs_search_path_in_tree_user(struct inode *inode,
 			}
 			ret = inode_permission(temp_inode, MAY_READ | MAY_EXEC);
 			iput(temp_inode);
-			if (ret) {
-				ret = -EACCES;
+			if (ret)
 				goto out;
-			}
 
 			if (key.offset == upper_limit.objectid)
 				break;
