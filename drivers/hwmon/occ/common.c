@@ -253,7 +253,7 @@ static ssize_t occ_show_temp_1(struct device *dev,
 		return -EINVAL;
 	}
 
-	return snprintf(buf, PAGE_SIZE - 1, "%u\n", val);
+	return sysfs_emit(buf, "%u\n", val);
 }
 
 static ssize_t occ_show_temp_2(struct device *dev,
@@ -304,7 +304,7 @@ static ssize_t occ_show_temp_2(struct device *dev,
 		return -EINVAL;
 	}
 
-	return snprintf(buf, PAGE_SIZE - 1, "%u\n", val);
+	return sysfs_emit(buf, "%u\n", val);
 }
 
 static ssize_t occ_show_freq_1(struct device *dev,
@@ -334,7 +334,7 @@ static ssize_t occ_show_freq_1(struct device *dev,
 		return -EINVAL;
 	}
 
-	return snprintf(buf, PAGE_SIZE - 1, "%u\n", val);
+	return sysfs_emit(buf, "%u\n", val);
 }
 
 static ssize_t occ_show_freq_2(struct device *dev,
@@ -364,7 +364,7 @@ static ssize_t occ_show_freq_2(struct device *dev,
 		return -EINVAL;
 	}
 
-	return snprintf(buf, PAGE_SIZE - 1, "%u\n", val);
+	return sysfs_emit(buf, "%u\n", val);
 }
 
 static ssize_t occ_show_power_1(struct device *dev,
@@ -403,7 +403,7 @@ static ssize_t occ_show_power_1(struct device *dev,
 		return -EINVAL;
 	}
 
-	return snprintf(buf, PAGE_SIZE - 1, "%llu\n", val);
+	return sysfs_emit(buf, "%llu\n", val);
 }
 
 static u64 occ_get_powr_avg(u64 accum, u32 samples)
@@ -430,9 +430,9 @@ static ssize_t occ_show_power_2(struct device *dev,
 
 	switch (sattr->nr) {
 	case 0:
-		return snprintf(buf, PAGE_SIZE - 1, "%u_%u_%u\n",
-				get_unaligned_be32(&power->sensor_id),
-				power->function_id, power->apss_channel);
+		return sysfs_emit(buf, "%u_%u_%u\n",
+				  get_unaligned_be32(&power->sensor_id),
+				  power->function_id, power->apss_channel);
 	case 1:
 		val = occ_get_powr_avg(get_unaligned_be64(&power->accumulator),
 				       get_unaligned_be32(&power->update_tag));
@@ -448,7 +448,7 @@ static ssize_t occ_show_power_2(struct device *dev,
 		return -EINVAL;
 	}
 
-	return snprintf(buf, PAGE_SIZE - 1, "%llu\n", val);
+	return sysfs_emit(buf, "%llu\n", val);
 }
 
 static ssize_t occ_show_power_a0(struct device *dev,
@@ -469,8 +469,8 @@ static ssize_t occ_show_power_a0(struct device *dev,
 
 	switch (sattr->nr) {
 	case 0:
-		return snprintf(buf, PAGE_SIZE - 1, "%u_system\n",
-				get_unaligned_be32(&power->sensor_id));
+		return sysfs_emit(buf, "%u_system\n",
+				  get_unaligned_be32(&power->sensor_id));
 	case 1:
 		val = occ_get_powr_avg(get_unaligned_be64(&power->system.accumulator),
 				       get_unaligned_be32(&power->system.update_tag));
@@ -483,8 +483,8 @@ static ssize_t occ_show_power_a0(struct device *dev,
 		val = get_unaligned_be16(&power->system.value) * 1000000ULL;
 		break;
 	case 4:
-		return snprintf(buf, PAGE_SIZE - 1, "%u_proc\n",
-				get_unaligned_be32(&power->sensor_id));
+		return sysfs_emit(buf, "%u_proc\n",
+				  get_unaligned_be32(&power->sensor_id));
 	case 5:
 		val = occ_get_powr_avg(get_unaligned_be64(&power->proc.accumulator),
 				       get_unaligned_be32(&power->proc.update_tag));
@@ -497,8 +497,8 @@ static ssize_t occ_show_power_a0(struct device *dev,
 		val = get_unaligned_be16(&power->proc.value) * 1000000ULL;
 		break;
 	case 8:
-		return snprintf(buf, PAGE_SIZE - 1, "%u_vdd\n",
-				get_unaligned_be32(&power->sensor_id));
+		return sysfs_emit(buf, "%u_vdd\n",
+				  get_unaligned_be32(&power->sensor_id));
 	case 9:
 		val = occ_get_powr_avg(get_unaligned_be64(&power->vdd.accumulator),
 				       get_unaligned_be32(&power->vdd.update_tag));
@@ -511,8 +511,8 @@ static ssize_t occ_show_power_a0(struct device *dev,
 		val = get_unaligned_be16(&power->vdd.value) * 1000000ULL;
 		break;
 	case 12:
-		return snprintf(buf, PAGE_SIZE - 1, "%u_vdn\n",
-				get_unaligned_be32(&power->sensor_id));
+		return sysfs_emit(buf, "%u_vdn\n",
+				  get_unaligned_be32(&power->sensor_id));
 	case 13:
 		val = occ_get_powr_avg(get_unaligned_be64(&power->vdn.accumulator),
 				       get_unaligned_be32(&power->vdn.update_tag));
@@ -528,7 +528,7 @@ static ssize_t occ_show_power_a0(struct device *dev,
 		return -EINVAL;
 	}
 
-	return snprintf(buf, PAGE_SIZE - 1, "%llu\n", val);
+	return sysfs_emit(buf, "%llu\n", val);
 }
 
 static ssize_t occ_show_caps_1_2(struct device *dev,
@@ -549,7 +549,7 @@ static ssize_t occ_show_caps_1_2(struct device *dev,
 
 	switch (sattr->nr) {
 	case 0:
-		return snprintf(buf, PAGE_SIZE - 1, "system\n");
+		return sysfs_emit(buf, "system\n");
 	case 1:
 		val = get_unaligned_be16(&caps->cap) * 1000000ULL;
 		break;
@@ -578,7 +578,7 @@ static ssize_t occ_show_caps_1_2(struct device *dev,
 		return -EINVAL;
 	}
 
-	return snprintf(buf, PAGE_SIZE - 1, "%llu\n", val);
+	return sysfs_emit(buf, "%llu\n", val);
 }
 
 static ssize_t occ_show_caps_3(struct device *dev,
@@ -599,7 +599,7 @@ static ssize_t occ_show_caps_3(struct device *dev,
 
 	switch (sattr->nr) {
 	case 0:
-		return snprintf(buf, PAGE_SIZE - 1, "system\n");
+		return sysfs_emit(buf, "system\n");
 	case 1:
 		val = get_unaligned_be16(&caps->cap) * 1000000ULL;
 		break;
@@ -625,7 +625,7 @@ static ssize_t occ_show_caps_3(struct device *dev,
 		return -EINVAL;
 	}
 
-	return snprintf(buf, PAGE_SIZE - 1, "%llu\n", val);
+	return sysfs_emit(buf, "%llu\n", val);
 }
 
 static ssize_t occ_store_caps_user(struct device *dev,
@@ -668,21 +668,22 @@ static ssize_t occ_show_extended(struct device *dev,
 
 	switch (sattr->nr) {
 	case 0:
-		if (extn->flags & EXTN_FLAG_SENSOR_ID)
-			rc = snprintf(buf, PAGE_SIZE - 1, "%u",
-				      get_unaligned_be32(&extn->sensor_id));
-		else
-			rc = snprintf(buf, PAGE_SIZE - 1, "%02x%02x%02x%02x\n",
-				      extn->name[0], extn->name[1],
-				      extn->name[2], extn->name[3]);
+		if (extn->flags & EXTN_FLAG_SENSOR_ID) {
+			rc = sysfs_emit(buf, "%u",
+					get_unaligned_be32(&extn->sensor_id));
+		} else {
+			rc = sysfs_emit(buf, "%02x%02x%02x%02x\n",
+					extn->name[0], extn->name[1],
+					extn->name[2], extn->name[3]);
+		}
 		break;
 	case 1:
-		rc = snprintf(buf, PAGE_SIZE - 1, "%02x\n", extn->flags);
+		rc = sysfs_emit(buf, "%02x\n", extn->flags);
 		break;
 	case 2:
-		rc = snprintf(buf, PAGE_SIZE - 1, "%02x%02x%02x%02x%02x%02x\n",
-			      extn->data[0], extn->data[1], extn->data[2],
-			      extn->data[3], extn->data[4], extn->data[5]);
+		rc = sysfs_emit(buf, "%02x%02x%02x%02x%02x%02x\n",
+				extn->data[0], extn->data[1], extn->data[2],
+				extn->data[3], extn->data[4], extn->data[5]);
 		break;
 	default:
 		return -EINVAL;
