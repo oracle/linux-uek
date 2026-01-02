@@ -103,7 +103,7 @@
 #include <linux/module.h>
 #include <linux/kdebug.h>
 #include <linux/version.h>
-#include <asm/nmi.h>
+#include <linux/nmi.h>
 #include <linux/sched.h>
 #include <linux/regulator/machine.h>
 
@@ -565,6 +565,7 @@ static irqreturn_t scd_crc_error_interrupt(int irq, void *dev_id)
    return IRQ_HANDLED;
 }
 
+#ifndef CONFIG_ARM64
 static void scd_nmi_panic(struct pt_regs *regs, char *msg)
 {
    if (nmi_priv->nmi_port_io_p) {
@@ -627,6 +628,7 @@ static int scd_nmi_notify(unsigned int cmd, struct pt_regs *regs)
     */
    return NMI_DONE;
 }
+#endif /* !CONFIG_ARM64 */
 
 /*
  * Register a notifier to catch the NMI and call panic to generate a kernel
@@ -634,6 +636,7 @@ static int scd_nmi_notify(unsigned int cmd, struct pt_regs *regs)
  */
 static int scd_register_nmi_handler(void)
 {
+#ifndef CONFIG_ARM64
    int err;
    ASSERT(!nmi_priv->nmi_registered);
    ASSERT(nmi_priv->nmi_port_io_p != SCD_UNINITIALIZED);
@@ -693,6 +696,9 @@ out_nmi_status_fail:
    }
 out:
    return err;
+#else
+   return 0;
+#endif /* CONFIG_ARM64 */
 }
 
 static int scd_finish_init(struct device *dev)
@@ -1494,6 +1500,7 @@ static void scd_remove(struct pci_dev *pdev)
 
    scd_lock();
 
+#ifndef CONFIG_ARM64
    if (priv == nmi_priv) {
       if (priv->nmi_registered) {
          unregister_nmi_handler(NMI_LOCAL, "WATCHDOG_NMI");
@@ -1501,6 +1508,7 @@ static void scd_remove(struct pci_dev *pdev)
       }
       nmi_priv = NULL;
    }
+#endif
 
    // call ardma remove() if scd has ardma
    if (priv->initialized && priv->ardma_offset && scd_ardma_ops) {
@@ -1867,9 +1875,7 @@ scd_lpc_mmap_resource(struct file *filp, struct kobject *kobj,
 
    vma->vm_pgoff += lpc_res_addr >> PAGE_SHIFT;
    prot = pgprot_val(vma->vm_page_prot);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 19, 0)
-   prot |= _PAGE_CACHE_UC;
-#else
+#ifdef CONFIG_X86
    prot |= cachemode2protval(_PAGE_CACHE_MODE_UC);
 #endif
    vma->vm_page_prot = __pgprot(prot);
