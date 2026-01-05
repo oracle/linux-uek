@@ -329,7 +329,7 @@ struct socket *rds_tcp_listen_init(struct net *net, bool isv6)
 		addr_len = sizeof(*sin);
 	}
 
-	ret = sock->ops->bind(sock, (struct sockaddr *)&ss, addr_len);
+	ret = sock->ops->bind(sock, (struct sockaddr_unsized *)&ss, addr_len);
 	if (ret < 0) {
 		reason = "could not bind listener socket";
 		goto out;
