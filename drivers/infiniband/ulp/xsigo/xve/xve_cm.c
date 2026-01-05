@@ -665,9 +665,10 @@ static void xve_cm_tx_buf_free(struct xve_dev_priv *priv,
 	int i;
 	int off;
 
-	BUG_ON(tx_req == NULL);
-	BUG_ON(tx_req->skb == NULL);
-	BUG_ON(tx_req->mapping[0] == 0);
+	if (WARN_ON_ONCE(tx_req == NULL)
+	    || WARN_ON_ONCE(tx_req->skb == NULL)
+	    || WARN_ON_ONCE(tx_req->mapping[0] == 0))
+		return;
 
 	skb = tx_req->skb;
 	mapping = tx_req->mapping;
@@ -701,6 +702,9 @@ int xve_cm_send(struct net_device *dev, struct sk_buff *skb,
 	int ret = NETDEV_TX_OK;
 	uint32_t wr_id;
 
+	if (WARN_ON_ONCE(skb == NULL))
+		return -EINVAL;
+
 	if (unlikely(skb->len > tx->mtu + VLAN_ETH_HLEN)) {
 		xve_warn(priv,
 			 "packet len %d (> %d) too long to send, dropping",
@@ -727,9 +731,10 @@ int xve_cm_send(struct net_device *dev, struct sk_buff *skb,
 		xve_warn(priv," wr_id error %d \n",wr_id);
 		return -EIO;
 	}
+
 	tx_req = &tx->tx_ring[wr_id];
 	tx_req->skb = skb;
-	BUG_ON(tx_req == NULL || tx_req->skb == NULL );
+
 	addr = ib_dma_map_single(priv->ca, skb->data, skb->len, DMA_TO_DEVICE);
 	if (unlikely(ib_dma_mapping_error(priv->ca, addr))) {
 		INC_TX_ERROR_STATS(priv, dev);
@@ -1387,7 +1392,8 @@ void xve_cm_tx_reap(struct work_struct *work)
 {
 	struct xve_dev_priv *priv =
 	    xve_get_wqctx(work, XVE_WQ_FINISH_CMTXREAP, 0);
-	BUG_ON(priv == NULL);
+	if (WARN_ON_ONCE(priv == NULL))
+		return;
 	__xve_cm_tx_reap(priv);
 	xve_put_ctx(priv);
 }

@@ -548,7 +548,8 @@ void xve_flush_single_path_by_gid(struct net_device *dev, union ib_gid *gid,
 	list_del(&path->list);
 
 	/* Make sure path is not in use */
-	BUG_ON(path == NULL);
+	if (WARN_ON_ONCE(path == NULL))
+		return;
 	if (atomic_dec_if_positive(&path->users) <= 0)
 		xve_free_path(path);
 	else {
@@ -613,7 +614,8 @@ static void path_rec_completion(int status,
 			av.ah_flags = IB_AH_GRH;
 			av.grh.dgid = path->pathrec.dgid;
 			ah = xve_create_ah(dev, priv->pd, &av);
-			BUG_ON(ah == NULL);
+			if (WARN_ON_ONCE(ah == NULL))
+				return;
 		}
 	}
 

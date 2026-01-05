@@ -65,7 +65,8 @@ void xve_free_ah(struct kref *kref)
 	struct xve_ah *ah = container_of(kref, struct xve_ah, ref);
 	struct xve_dev_priv *priv;
 
-	BUG_ON(ah == NULL);
+	if (WARN_ON_ONCE(ah == NULL))
+		return;
 	priv = netdev_priv(ah->dev);
 
 	list_add_tail(&ah->list, &priv->dead_ahs);
@@ -506,7 +507,9 @@ static void xve_dma_unmap_tx(struct ib_device *ca, struct xve_tx_buf *tx_req)
 static void xve_free_txbuf_memory(struct xve_dev_priv *priv,
 				  struct xve_tx_buf *tx_req)
 {
-	BUG_ON(tx_req == NULL);
+	if (WARN_ON_ONCE(tx_req == NULL))
+		return;
+
 	if ((tx_req->skb == NULL) || (!tx_req->mapping[0]))
 		xve_warn(priv,
 			  "%s [ca %p] tx_req skb %p mapping %lld\n",
@@ -536,7 +539,8 @@ static void xve_ib_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 
 	tx_req = &priv->tx_ring[wr_id];
 
-	BUG_ON(tx_req == NULL || tx_req->ah == NULL);
+	if (WARN_ON_ONCE(tx_req == NULL || tx_req->ah == NULL))
+		return;
 
 	xve_put_ah_refcnt(tx_req->ah);
 	xve_free_txbuf_memory(priv, tx_req);
@@ -774,7 +778,8 @@ static inline int post_send(struct xve_dev_priv *priv,
 	u64 *mapping;
 	int i, off, nr_frags, total_size = 0;
 
-	BUG_ON(tx_req == NULL || tx_req->skb == NULL);
+	if (WARN_ON_ONCE(tx_req == NULL || tx_req->skb == NULL))
+		return -EINVAL;
 
 	skb = tx_req->skb;
 	frags = skb_shinfo(skb)->frags;
@@ -979,7 +984,9 @@ static void __xve_reap_ah(struct net_device *dev)
 	spin_lock_irqsave(&priv->lock, flags);
 
 	list_for_each_entry_safe(ah, tah, &priv->dead_ahs, list) {
-		BUG_ON(ah == NULL);
+		if (WARN_ON_ONCE(ah == NULL))
+			return;
+
 		if (atomic_read(&ah->refcnt) == 0) {
 			list_del(&ah->list);
 			rdma_destroy_ah(ah->ah, RDMA_DESTROY_AH_SLEEPABLE);
