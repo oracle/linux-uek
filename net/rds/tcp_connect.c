@@ -147,7 +147,7 @@ int rds_tcp_conn_path_connect(struct rds_conn_path *cp)
 		addrlen = sizeof(sin);
 	}
 
-	ret = sock->ops->bind(sock, addr, addrlen);
+	ret = sock->ops->bind(sock, (struct sockaddr_unsized *)addr, addrlen);
 	if (ret) {
 		reason = "bind failed";
 		goto out;
@@ -174,7 +174,7 @@ int rds_tcp_conn_path_connect(struct rds_conn_path *cp)
 	 * own the socket
 	 */
 	rds_tcp_set_callbacks(sock, cp);
-	ret = sock->ops->connect(sock, addr, addrlen, O_NONBLOCK);
+	ret = sock->ops->connect(sock, (struct sockaddr_unsized *)addr, addrlen, O_NONBLOCK);
 	if (ret == -EINPROGRESS) {
 		reason = "connect already in progress";
 		ret = 0;

@@ -184,7 +184,7 @@ void rds_remove_bound(struct rds_sock *rs)
 	write_unlock_irqrestore(&bucket->lock, flags);
 }
 
-int rds_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
+int rds_bind(struct socket *sock, struct sockaddr_unsized *uaddr, int addr_len)
 {
 	struct sock *sk = sock->sk;
 	struct rds_sock *rs = rds_sk_to_rs(sk);
