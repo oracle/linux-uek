@@ -897,7 +897,7 @@ struct rs_buf_info *rds_add_buf_info(struct rds_sock *rs, struct in6_addr *addr,
 	return NULL;
 }
 
-static int rds_connect(struct socket *sock, struct sockaddr *uaddr,
+static int rds_connect(struct socket *sock, struct sockaddr_unsized *uaddr,
 		       int addr_len, int flags)
 {
 	struct sock *sk = sock->sk;
