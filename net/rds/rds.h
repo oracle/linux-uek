@@ -1021,7 +1021,7 @@ void debug_sock_hold(struct sock *sock);
 void debug_sock_put(struct sock *sock);
 
 /* bind.c */
-int rds_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len);
+int rds_bind(struct socket *sock, struct sockaddr_unsized *uaddr, int addr_len);
 void rds_remove_bound(struct rds_sock *rs);
 struct rds_sock *rds_find_bound(struct in6_addr *addr, __be16 port,
 				__u32 scope_id);
