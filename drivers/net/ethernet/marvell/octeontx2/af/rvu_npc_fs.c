@@ -1627,16 +1627,14 @@ update_rule:
 	if (is_cn20k(rvu->pdev)) {
 		err = rvu_mbox_handler_npc_cn20k_mcam_write_entry(rvu, &cn20k_write_req,
 								  &write_rsp);
+		if (err)
+			goto error;
 	} else {
 		err = rvu_mbox_handler_npc_mcam_write_entry(rvu, &write_req,
 							    &write_rsp);
 		if (err) {
 			rvu_mcam_remove_counter_from_rule(rvu, owner, rule);
-			if (new) {
-				list_del(&rule->list);
-				kfree(rule);
-			}
-			return err;
+			goto error;
 		}
 	}
 
@@ -1669,6 +1667,14 @@ update_rule:
 						       req->index, entry_index);
 
 	return 0;
+
+error:
+	if (new) {
+		list_del(&rule->list);
+		kfree(rule);
+	}
+
+	return err;
 }
 
 static int
