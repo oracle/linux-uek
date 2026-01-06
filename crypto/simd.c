@@ -136,10 +136,10 @@ static int simd_skcipher_init(struct crypto_skcipher *tfm)
 	return 0;
 }
 
-struct simd_skcipher_alg *simd_skcipher_create_compat(struct skcipher_alg *ialg,
-						      const char *algname,
-						      const char *drvname,
-						      const char *basename)
+struct simd_skcipher_alg *CRYPTO_API(simd_skcipher_create_compat)(struct skcipher_alg *ialg,
+				    const char *algname,
+				    const char *drvname,
+				    const char *basename)
 {
 	struct simd_skcipher_alg *salg;
 	struct skcipher_alg *alg;
@@ -195,17 +195,17 @@ out_free_salg:
 	salg = ERR_PTR(err);
 	goto out;
 }
-EXPORT_SYMBOL_GPL(simd_skcipher_create_compat);
+DEFINE_CRYPTO_API(simd_skcipher_create_compat);
 
-void simd_skcipher_free(struct simd_skcipher_alg *salg)
+void CRYPTO_API(simd_skcipher_free)(struct simd_skcipher_alg *salg)
 {
 	crypto_unregister_skcipher(&salg->alg);
 	kfree(salg);
 }
-EXPORT_SYMBOL_GPL(simd_skcipher_free);
+DEFINE_CRYPTO_API(simd_skcipher_free);
 
-int simd_register_skciphers_compat(struct skcipher_alg *algs, int count,
-				   struct simd_skcipher_alg **simd_algs)
+int CRYPTO_API(simd_register_skciphers_compat)(struct skcipher_alg *algs, int count,
+			     struct simd_skcipher_alg **simd_algs)
 {
 	int err;
 	int i;
@@ -236,10 +236,10 @@ err_unregister:
 	simd_unregister_skciphers(algs, count, simd_algs);
 	return err;
 }
-EXPORT_SYMBOL_GPL(simd_register_skciphers_compat);
+DEFINE_CRYPTO_API(simd_register_skciphers_compat);
 
-void simd_unregister_skciphers(struct skcipher_alg *algs, int count,
-			       struct simd_skcipher_alg **simd_algs)
+void CRYPTO_API(simd_unregister_skciphers)(struct skcipher_alg *algs, int count,
+		     struct simd_skcipher_alg **simd_algs)
 {
 	int i;
 
@@ -252,7 +252,7 @@ void simd_unregister_skciphers(struct skcipher_alg *algs, int count,
 		}
 	}
 }
-EXPORT_SYMBOL_GPL(simd_unregister_skciphers);
+DEFINE_CRYPTO_API(simd_unregister_skciphers);
 
 /* AEAD support */
 
@@ -427,8 +427,8 @@ static void simd_aead_free(struct simd_aead_alg *salg)
 	kfree(salg);
 }
 
-int simd_register_aeads_compat(struct aead_alg *algs, int count,
-			       struct simd_aead_alg **simd_algs)
+int CRYPTO_API(simd_register_aeads_compat)(struct aead_alg *algs, int count,
+		     struct simd_aead_alg **simd_algs)
 {
 	int err;
 	int i;
@@ -459,10 +459,10 @@ err_unregister:
 	simd_unregister_aeads(algs, count, simd_algs);
 	return err;
 }
-EXPORT_SYMBOL_GPL(simd_register_aeads_compat);
+DEFINE_CRYPTO_API(simd_register_aeads_compat);
 
-void simd_unregister_aeads(struct aead_alg *algs, int count,
-			   struct simd_aead_alg **simd_algs)
+void CRYPTO_API(simd_unregister_aeads)(struct aead_alg *algs, int count,
+	    struct simd_aead_alg **simd_algs)
 {
 	int i;
 
@@ -475,7 +475,7 @@ void simd_unregister_aeads(struct aead_alg *algs, int count,
 		}
 	}
 }
-EXPORT_SYMBOL_GPL(simd_unregister_aeads);
+DEFINE_CRYPTO_API(simd_unregister_aeads);
 
 MODULE_DESCRIPTION("Shared crypto SIMD helpers");
 MODULE_LICENSE("GPL");
