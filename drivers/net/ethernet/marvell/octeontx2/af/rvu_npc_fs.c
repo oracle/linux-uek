@@ -365,7 +365,7 @@ static bool npc_check_overlap(struct rvu *rvu, int blkaddr,
 				/* check any input field bits falls in any
 				 * other field bits.
 				 */
-				if (npc_check_overlap_fields(dummy, input, NPC_MAX_KWS_IN_KEY))
+				if (npc_check_overlap_fields(dummy, input, NPC_KWS_IN_KEY_SZ_7))
 					return true;
 			}
 		}
@@ -395,7 +395,7 @@ skip_cn10k_config:
 			npc_set_kw_masks(rvu, mcam, NPC_UNKNOWN, nr_bits,
 					 start_kwi, offset, intf);
 			/* check any input field bits falls in any other field bits */
-			if (npc_check_overlap_fields(dummy, input, NPC_CN20K_MAX_KWS_IN_KEY))
+			if (npc_check_overlap_fields(dummy, input, NPC_KWS_IN_KEY_SZ_8))
 				return true;
 		}
 	}
@@ -564,9 +564,9 @@ static void npc_handle_multi_layer_fields(struct rvu *rvu, int blkaddr, u8 intf)
 	u8 start_lid;
 
 	if (is_cn20k(rvu->pdev))
-		max_kw = NPC_CN20K_MAX_KWS_IN_KEY;
+		max_kw = NPC_KWS_IN_KEY_SZ_8;
 	else
-		max_kw = NPC_MAX_KWS_IN_KEY;
+		max_kw = NPC_KWS_IN_KEY_SZ_7;
 
 	key_fields = mcam->rx_key_fields;
 	features = &mcam->rx_features;
@@ -910,12 +910,12 @@ void npc_update_entry(struct rvu *rvu, enum key_fields type,
 		      u64 val_lo, u64 val_hi, u64 mask_lo,
 		      u64 mask_hi, u8 intf)
 {
-	struct cn20k_mcam_entry cn20k_dummy = { {0} };
+	u64 kw_mask[NPC_KWS_IN_KEY_SZ_MAX] = { 0 };
+	u64 kw[NPC_KWS_IN_KEY_SZ_MAX] = { 0 };
 	struct npc_mcam *mcam = &rvu->hw->mcam;
-	struct mcam_entry dummy = { {0} };
-	u64 *kw, *kw_mask, *val, *mask;
 	struct npc_key_field *field;
 	u64 kw1, kw2, kw3;
+	u64 *val, *mask;
 	int i, max_kw;
 	u8 shift;
 
@@ -927,13 +927,9 @@ void npc_update_entry(struct rvu *rvu, enum key_fields type,
 		return;
 
 	if (is_cn20k(rvu->pdev)) {
-		max_kw = NPC_CN20K_MAX_KWS_IN_KEY;
-		kw = cn20k_dummy.kw;
-		kw_mask = cn20k_dummy.kw_mask;
+		max_kw = NPC_KWS_IN_KEY_SZ_8;
 	} else {
-		max_kw = NPC_MAX_KWS_IN_KEY;
-		kw = dummy.kw;
-		kw_mask = dummy.kw_mask;
+		max_kw = NPC_KWS_IN_KEY_SZ_7;
 	}
 
 	for (i = 0; i < max_kw; i++) {
@@ -1442,7 +1438,7 @@ npc_populate_mcam_mdata(struct rvu *rvu,
 		mdata->kw_mask = cn20k_entry->kw_mask;
 		mdata->action = &cn20k_entry->action;
 		mdata->vtag_action = &cn20k_entry->vtag_action;
-		mdata->max_kw = NPC_CN20K_MAX_KWS_IN_KEY;
+		mdata->max_kw = NPC_KWS_IN_KEY_SZ_8;
 		return;
 	}
 
@@ -1450,7 +1446,7 @@ npc_populate_mcam_mdata(struct rvu *rvu,
 	mdata->kw_mask = entry->kw_mask;
 	mdata->action = &entry->action;
 	mdata->vtag_action = &entry->vtag_action;
-	mdata->max_kw = NPC_MAX_KWS_IN_KEY;
+	mdata->max_kw = NPC_KWS_IN_KEY_SZ_7;
 }
 
 int npc_install_flow(struct rvu *rvu, int blkaddr, u16 target,
