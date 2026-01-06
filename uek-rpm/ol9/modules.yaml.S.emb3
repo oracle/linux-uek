@@ -177,6 +177,7 @@ modules-core:
 - isofs
 - iw_cm
 - khazad
+- lan743x
 - libarc4
 - libchacha
 - libchacha20poly1305
@@ -316,6 +317,8 @@ modules-core:
 - of_mmc_spi
 - pcbc
 - pcrypt
+- phylink
+- pinctrl-mlxbf3
 - pkcs8_key_parser
 - pktgen
 - poly1305-neon
