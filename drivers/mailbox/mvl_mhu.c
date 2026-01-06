@@ -112,8 +112,7 @@ struct int_src_data_s {
 /* Secures static data processed in the irq handler */
 DEFINE_SPINLOCK(mhu_irq_spinlock);
 
-/* bottom half of rx interrupt */
-static irqreturn_t mhu_rx_interrupt_thread(int irq, void *p)
+static irqreturn_t mhu_rx_interrupt(int irq, void *p)
 {
 	struct mhu *mhu = (struct mhu *)p;
 	struct int_src_data_s *data = (struct int_src_data_s *)mhu->payload;
@@ -126,13 +125,17 @@ static irqreturn_t mhu_rx_interrupt_thread(int irq, void *p)
 	 */
 	static u64 event_counter[INDEX_INT_SRC_NONE] = {0};
 
+	/* Read interrupt status register */
+	val = readq_relaxed(mhu->base + SCP_TO_AP0_MBOX_RINT);
+	if (!val)
+		return IRQ_NONE;
+
 	if (!mhu || !mhu->chan) {
 		/* Interrupt has been ACKED, but there's no client for data */
 		pr_debug("No handle to MHU or mailbox\n");
-		return IRQ_HANDLED;
+		goto handled;
 	}
 
-	spin_lock_irq(&mhu_irq_spinlock);
 	/* scmi interrupt */
 	scmi_tx_cnt = readq(&data[INDEX_INT_SRC_SCMI_TX].int_src_cnt);
 	if (event_counter[INDEX_INT_SRC_SCMI_TX] != scmi_tx_cnt) {
@@ -140,26 +143,12 @@ static irqreturn_t mhu_rx_interrupt_thread(int irq, void *p)
 		/* Update the memory to prepare for next */
 		event_counter[INDEX_INT_SRC_SCMI_TX] = scmi_tx_cnt;
 	}
-	spin_unlock_irq(&mhu_irq_spinlock);
+
+handled:
+	/* Clear the interrupt : Write on clear */
+	writeq_relaxed(1ul, mhu->base + SCP_TO_AP0_MBOX_RINT);
 
 	return IRQ_HANDLED;
-}
-
-static irqreturn_t mhu_rx_interrupt(int irq, void *p)
-{
-	struct mhu *mhu = (struct mhu *)p;
-	u64 val;
-
-	/* Read interrupt status register */
-	val = readq_relaxed(mhu->base + SCP_TO_AP0_MBOX_RINT);
-	if (val) {
-		/* Clear the interrupt : Write on clear */
-		writeq_relaxed(1ul, mhu->base + SCP_TO_AP0_MBOX_RINT);
-	} else {
-		return IRQ_NONE;
-	}
-
-	return IRQ_WAKE_THREAD;
 }
 
 static int mhu_send_data(struct mbox_chan *chan, void *data)
@@ -258,9 +247,8 @@ static int mhu_plat_setup_irq(struct platform_device *pdev)
 	if (irq < 0)
 		return irq;
 
-	ret = devm_request_threaded_irq(dev, irq, mhu_rx_interrupt,
-					mhu_rx_interrupt_thread, 0,
-					"mvl-mhu", mhu);
+	ret = devm_request_irq(dev, irq, mhu_rx_interrupt, 0,
+			       "mvl-mhu", mhu);
 	if (ret)
 		return ret;
 
@@ -340,9 +328,8 @@ static int mhu_pci_setup_irq(struct pci_dev *pdev)
 		goto irq_err;
 	}
 
-	ret = devm_request_threaded_irq(dev, irq, mhu_rx_interrupt,
-					mhu_rx_interrupt_thread, 0,
-					"mvl-mhu", mhu);
+	ret = devm_request_irq(dev, irq, mhu_rx_interrupt, 0,
+			       "mvl-mhu", mhu);
 	if (ret)
 		goto irq_err;
 
