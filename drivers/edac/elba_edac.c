@@ -11,6 +11,7 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/panic_notifier.h>
+#include <linux/arm-smccc.h>
 #include "edac_module.h"
 
 #define ELB_MC_CHAN_STRIDE		0x80000
@@ -51,6 +52,11 @@ struct ddr_map_func {
 	u64 conv_mask[2];		// bus addr to ddr addr conversion masks
 };
 
+struct mctl_reg_ops {
+	void (*write)(void __iomem *addr, uint32_t val);
+	uint32_t (*read)(void __iomem *addr);
+};
+
 #define N_BYPASS	2
 struct elba_mcdata {
 	void __iomem *base;		// memory controller registers
@@ -63,6 +69,7 @@ struct elba_mcdata {
 	int map_valid;			// ddr to bus map is valid
 	int nsubchans;			// number of subchannels
 	int is_ddr5;			// is DDR5
+	struct mctl_reg_ops *rops;
 };
 
 static struct elba_mcdata *g_mcp;
@@ -96,10 +103,80 @@ static const struct mc_edac_regs giglio_mc_edac_regs = {
 	.int_ack_ecc = 408,
 };
 
+static void reg_write(void __iomem *addr, uint32_t val)
+{
+	writel(val, addr);
+}
+
+static uint32_t reg_read(void __iomem *addr)
+{
+	return readl(addr);
+}
+
+/*
+ * Register operation structure (non-secure)
+ */
+static struct mctl_reg_ops ns_rops = {
+	.read = reg_read,
+	.write = reg_write,
+};
+
+/* Refer Pensando BL31 Function Registry.docx */
+#define PEN_SECREG_SMC_CALL_FID       0xC200000B
+
+enum pen_secreg_smc_sub_fid {
+    PEN_SECREG_SMC_REG_READ = 0,
+    PEN_SECREG_SMC_REG_WRITE = 1,
+};
+
+enum pen_secreg_smc_err_codes {
+    PEN_SECREG_SMC_ERR_NONE = 0,
+    PEN_SECREG_SMC_ERR_INVALID = -1,
+    PEN_SECREG_SMC_ERR_UNSUPPORTED = -2,
+};
+
+static void secreg_write(void __iomem *addr, uint32_t val)
+{
+	struct arm_smccc_res res = {0};
+
+	arm_smccc_smc(PEN_SECREG_SMC_CALL_FID,
+				PEN_SECREG_SMC_REG_WRITE, (uint64_t)addr,
+				val, 0, 0, 0, 0, &res);
+
+	if (res.a0 != PEN_SECREG_SMC_ERR_NONE) {
+		pr_err("pensando-mctl: failed to write data! ret=%d\n", (int)res.a0);
+	}
+}
+
+static uint32_t secreg_read(void __iomem *addr)
+{
+	struct arm_smccc_res res = {0};
+
+	arm_smccc_smc(PEN_SECREG_SMC_CALL_FID,
+				PEN_SECREG_SMC_REG_READ, (uint64_t)addr,
+				0, 0, 0, 0, 0, &res);
+
+	if (res.a0 != PEN_SECREG_SMC_ERR_NONE) {
+		pr_err("pensando-mctl: read failed! ret=%ld\n", res.a0);
+		return (uint32_t)-1;
+	}
+
+	/* result passed back in a1 reg */
+	return (uint32_t)res.a1;
+}
+
+/*
+ * Register operation structure (secure)
+ */
+static struct mctl_reg_ops sec_rops = {
+	.read = secreg_read,
+	.write = secreg_write,
+};
+
 static inline u32 elba_mc_read(struct elba_mcdata *mcp, int chan, int subchan,
 				int offs)
 {
-	return readl(mcp->base + ELB_MC_CHAN_STRIDE * chan +
+	return mcp->rops->read(mcp->base + ELB_MC_CHAN_STRIDE * chan +
 		ELB_MC_SUBCHAN_STRIDE * subchan + offs);
 }
 
@@ -112,8 +189,8 @@ static inline u32 elba_mctl_read(struct elba_mcdata *mcp, int chan, int subchan,
 static inline void elba_mc_write(struct elba_mcdata *mcp,
 		int chan, int subchan, int offs, u32 data)
 {
-	return writel(data, mcp->base + ELB_MC_CHAN_STRIDE * chan +
-		ELB_MC_SUBCHAN_STRIDE * subchan + offs);
+	return mcp->rops->write(mcp->base + ELB_MC_CHAN_STRIDE * chan +
+		ELB_MC_SUBCHAN_STRIDE * subchan + offs, data);
 }
 
 static inline void elba_mctl_write(struct elba_mcdata *mcp,
@@ -464,15 +541,34 @@ static void elba_init_dimms(struct mem_ctl_info *mci)
 	}
 }
 
+static int of_get_secure_mode(void)
+{
+	struct device_node *of_secure_mode;
+	int enable = 0;
+
+	/* Get secure mode from OF */
+	of_secure_mode = of_find_node_by_path("/secure_mode");
+	if (of_secure_mode) {
+		if (of_property_read_u32(of_secure_mode, "enable", &enable)) {
+			return 0; /* non-secure */
+		} else {
+			return enable;
+		}
+	}
+	return 0; /* non-secure */
+}
+
 static int elba_edac_mc_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct edac_mc_layer layers[2];
 	struct mem_ctl_info *mci;
+	struct mctl_reg_ops *ops;
 	struct elba_mcdata *mcp;
 	struct resource *r;
 	void __iomem *base;
 	static int mc_idx;
+	int is_secure = 0;
 	int nlayers = 1;
 	int is_ddr5;
 
@@ -481,10 +577,17 @@ static int elba_edac_mc_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Unable to get mem resource\n");
 		return -ENODEV;
 	}
-	base = devm_ioremap_resource(&pdev->dev, r);
-	if (IS_ERR(base)) {
-		dev_err(&pdev->dev, "Unable to map regs\n");
-		return PTR_ERR(base);
+	is_secure = of_get_secure_mode();
+	if (is_secure) {
+		base = (void *)r->start;
+		ops = &sec_rops;
+	} else {
+		base = devm_ioremap_resource(&pdev->dev, r);
+		if (IS_ERR(base)) {
+			dev_err(&pdev->dev, "Unable to map regs\n");
+			return PTR_ERR(base);
+		}
+		ops = &ns_rops;
 	}
 
 	layers[0].type = EDAC_MC_LAYER_CHANNEL;
@@ -510,6 +613,7 @@ static int elba_edac_mc_probe(struct platform_device *pdev)
 	mcp->nsubchans = is_ddr5 ? ELB_MC_NSUBCHANS_DDR5 :
 				   ELB_MC_NSUBCHANS_DDR4;
 	mcp->base = base;
+	mcp->rops = ops;
 	mcp->edac_regs = of_device_get_match_data(&pdev->dev);
 
 	elba_init_ddr_map(pdev, mcp);
