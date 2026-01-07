@@ -64,6 +64,7 @@ config PENSANDO_SOC_CRASH
 config PENSANDO_SOC_BSM
 	bool "Pensando SoC Boot State Machine"
 	depends on OF
+	select PENSANDO_SOC_PENFW
 	default y
 	help
 	  Support for the Pensando SoC boot state machine driver

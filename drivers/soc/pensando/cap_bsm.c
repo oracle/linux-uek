@@ -9,6 +9,8 @@
 #include <linux/of_address.h>
 #include <linux/io.h>
 #include "bsm_dev.h"
+#include "penfw.h"
+#include "pen_secure.h"
 
 extern struct kobject *pensando_fw_kobj_get(void);
 
@@ -17,6 +19,7 @@ struct bsm {
 	uint32_t val;
 };
 static struct bsm bsm;
+static int is_secure_mode;
 
 #define BSM_SHOW_INT(n, s) \
 	static ssize_t n##_show(struct device *dev,			\
@@ -49,6 +52,41 @@ static const char *fwnames[4] = {
 BSM_SHOW_FWID(fwid,  FWID);
 BSM_SHOW_FWID(track, TRACK);
 
+static void bsm_set_running(void)
+{
+	struct penfw_call_args args = {0};
+
+	args.a1 = PENFW_OP_BSM_SET_RUNNING;
+	args.a2 = 0x1;
+
+	penfw_smc(&args);
+
+	if (args.a0 < 0) {
+		pr_err("failed to set running ret=%d\n", (int)args.a0);
+	}
+}
+
+static uint32_t bsm_get_state(void)
+{
+	struct penfw_call_args args = {0};
+
+	if (!is_secure_mode) {
+		return readl(bsm.base);
+	}
+
+	/* Secure mode */
+	args.a1 = PENFW_OP_GET_BSM_STATE;
+	args.a2 = 0;
+
+	penfw_smc(&args);
+
+	if (args.a0 < 0) {
+		   pr_err("failed to get state ret=%d\n", (int)args.a0);
+	}
+
+	return args.a1;
+}
+
 static ssize_t success_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
@@ -57,8 +95,12 @@ static ssize_t success_store(struct device *dev,
 	if (kstrtoul(buf, 0, &val) < 0)
 		return -EINVAL;
 	if (val) {
-		bsm.val &= ~(1 << BSM_RUNNING_LSB);
-		writel(bsm.val, bsm.base);
+		if (!is_secure_mode) {
+			bsm.val &= ~(1 << BSM_RUNNING_LSB);
+			writel(bsm.val, bsm.base);
+		} else {
+			bsm_set_running();
+		}
 	}
 
 	return count;
@@ -118,6 +160,25 @@ static struct platform_driver bsm_driver = {
 };
 builtin_platform_driver(bsm_driver);
 
+static void __init cap_bsm_init_set_running(void)
+{
+       if (is_secure_mode) {
+               bsm.val = bsm_get_state();
+       } else {
+               bsm.val = readl(bsm.base);
+       }
+#ifdef CONFIG_PENSANDO_SOC_BSM_ENABLE
+       if (bsm.val & (1 << BSM_AUTOBOOT_LSB)) {
+               if (is_secure_mode) {
+                       bsm_set_running();
+               } else {
+                       bsm.val |= 1 << BSM_RUNNING_LSB;
+                       writel(bsm.val, bsm.base);
+               }
+       }
+#endif
+}
+
 /*
  * Boot State Machine init.
  * If auto-booting, then set the BSM_RUNNING bit in the BSM register
@@ -141,19 +202,16 @@ static int __init cap_bsm_init(void)
 	}
 	of_node_put(np);
 
-	bsm.base = ioremap(res.start, resource_size(&res));
-	if (!bsm.base) {
-		pr_err("failed to map BSM register\n");
-		return -ENXIO;
+	is_secure_mode = pen_secure_mode_enabled();
+	if (!is_secure_mode) {
+		bsm.base = ioremap(res.start, resource_size(&res));
+		if (!bsm.base) {
+			pr_err("failed to map BSM register\n");
+			return -ENXIO;
+		}
 	}
 
-	bsm.val = readl(bsm.base);
-#ifdef CONFIG_PENSANDO_SOC_BSM_ENABLE
-	if (bsm.val & (1 << BSM_AUTOBOOT_LSB)) {
-		bsm.val |= 1 << BSM_RUNNING_LSB;
-		writel(bsm.val, bsm.base);
-	}
-#endif
+	cap_bsm_init_set_running();
 	return 0;
 }
 early_initcall(cap_bsm_init);
