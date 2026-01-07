@@ -51,6 +51,8 @@ static const char *_opcode_to_str(uint8_t opcode)
 		return "PENFW_OP_GET_SERIAL_NUMBER";
 	case PENFW_OP_GET_RANDOM:
 		return "PENFW_OP_GET_RANDOM";
+	case PENFW_OP_BSM_SET_RUNNING:
+		return "PENFW_OP_BSM_SET_RUNNING";
 	case PENFW_OP_GET_CHIP_CERT:
 		return "PENFW_OP_GET_CHIP_CERT";
 	case PENFW_OP_ATTEST_GET_TIME:
@@ -63,6 +65,16 @@ static const char *_opcode_to_str(uint8_t opcode)
 		return "PENFW_OP_ATOMIC_INC_AXI_LIMITER";
 	case PENFW_OP_GET_SECURE_INTERRUPTS:
 		return "PENFW_OP_GET_SECURE_INTERRUPTS";
+	case PENFW_OP_SET_PCIE_PLL_CLK:
+		return "PENFW_OP_SET_PCIE_PLL_CLK";
+	case PENFW_OP_ENABLE_SERDES_IROM:
+		return "PENFW_OP_ENABLE_SERDES_IROM";
+	case PENFW_OP_GET_BSM_STATE:
+		return "PENFW_OP_GET_BSM_STATE";
+	case PENFW_OP_GET_RESET_CAUSE:
+		return "PENFW_OP_GET_RESET_CAUSE";
+	case PENFW_OP_SET_RESET_CAUSE:
+		return "PENFW_OP_SET_RESET_CAUSE";
 	default:
 		return "PENFW_OP_UNKNOWN";
 	}
@@ -252,8 +264,14 @@ void penfw_smc(struct penfw_call_args *args)
 	case PENFW_OP_GET_PENTRUST_VERSION:
 	case PENFW_OP_GET_SERIAL_NUMBER:
 	case PENFW_OP_GET_RANDOM:
+	case PENFW_OP_BSM_SET_RUNNING:
 	case PENFW_OP_GET_MMA_CLK:
 	case PENFW_OP_SET_ETH_PLL_CLK:
+	case PENFW_OP_SET_PCIE_PLL_CLK:
+	case PENFW_OP_ENABLE_SERDES_IROM:
+	case PENFW_OP_GET_BSM_STATE:
+	case PENFW_OP_GET_RESET_CAUSE:
+	case PENFW_OP_SET_RESET_CAUSE:
 		arm_smccc_smc(PENFW_CALL_FID, args->a1, args->a2, args->a3, 0, 0,
 						0, 0, &res);
 		// copy return vals
