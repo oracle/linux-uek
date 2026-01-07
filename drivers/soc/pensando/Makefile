@@ -6,7 +6,7 @@
 #
 CFLAGS_kpcimgr.o := $(call cc-option,-fno-tree-loop-distribute-patterns) 
 
-obj-y += cap_soc.o
+obj-y += cap_soc.o pen_secure.o
 obj-y += kpcimgr.o kpcimgr_sysfs.o
 
 CFLAGS_cap_mem.o := -I$(src)

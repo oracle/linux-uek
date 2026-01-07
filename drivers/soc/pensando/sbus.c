@@ -21,6 +21,7 @@
 #include <linux/delay.h>
 #include <linux/arm-smccc.h>
 #include <asm/ptrace.h>
+#include "pen_secure.h"
 
 #define MAX_DEVICES			4
 #define SBUS_SBUS_RST			0x20
@@ -28,20 +29,6 @@
 #define SBUS_SBUS_RD			0x22
 #define SBUS_INDIR_DATA_ADDR_LSB	8
 #define SBUS_INDIR_DATA_COMMAND_LSB	16
-
-/* Refer Pensando BL31 Function Registry.docx */
-#define PEN_SBUS_SMC_CALL_FID       0xC200000B
-
-enum pen_sbus_smc_sub_fid {
-    PEN_SBUS_SMC_REG_READ = 0,
-    PEN_SBUS_SMC_REG_WRITE = 1,
-};
-
-enum pen_sbus_smc_err_codes {
-    PEN_SBUS_SMC_ERR_NONE = 0,
-    PEN_SBUS_SMC_ERR_INVALID = -1,
-    PEN_SBUS_SMC_ERR_UNSUPPORTED = -2,
-};
 
 static dev_t sbus_dev;
 static struct class *dev_class;
@@ -89,36 +76,6 @@ static void reg_write(void __iomem *addr, uint32_t val)
 static uint32_t reg_read(void __iomem *addr)
 {
 	return ioread32(addr);
-}
-
-static void reg_smc_write(void __iomem *addr, uint32_t val)
-{
-	struct arm_smccc_res res = {0};
-
-	arm_smccc_smc(PEN_SBUS_SMC_CALL_FID,
-		      PEN_SBUS_SMC_REG_WRITE, (uint64_t)addr,
-		      val, 0, 0, 0, 0, &res);
-
-	if (res.a0 != PEN_SBUS_SMC_ERR_NONE) {
-		pr_err("pensando-sbus: failed to write data! ret=%d\n", (int)res.a0);
-	}
-}
-
-static uint32_t reg_smc_read(void __iomem *addr)
-{
-	struct arm_smccc_res res = {0};
-
-	arm_smccc_smc(PEN_SBUS_SMC_CALL_FID,
-		      PEN_SBUS_SMC_REG_READ, (uint64_t)addr,
-		      0, 0, 0, 0, 0, &res);
-
-	if (res.a0 != PEN_SBUS_SMC_ERR_NONE) {
-		pr_err("pensando-sbus: read failed! ret=%ld\n", res.a0);
-		return (uint32_t)-1;
-	}
-
-	/* result passed back in a1 reg */
-	return (uint32_t)res.a1;
 }
 
 static void sbus_write(struct sbus_ioctl_args param,
@@ -250,26 +207,9 @@ static struct sbus_reg_ops ns_rops = {
  * Register operation structure (secure)
  */
 static struct sbus_reg_ops sec_rops = {
-	.read = reg_smc_read,
-	.write = reg_smc_write,
+	.read = pen_secure_regread,
+	.write = pen_secure_regwrite,
 };
-
-static int of_get_secure_mode(void)
-{
-	struct device_node *of_secure_mode;
-	int enable = 0;
-
-	/* Get secure mode from OF */
-	of_secure_mode = of_find_node_by_path("/secure_mode");
-	if (of_secure_mode) {
-		if (of_property_read_u32(of_secure_mode, "enable", &enable)) {
-			return 0; /* non-secure */
-		} else {
-			return enable;
-		}
-	}
-	return 0; /* non-secure */
-}
 
 /*
  * Module Init function
@@ -300,7 +240,7 @@ static int sbus_probe(struct platform_device *pdev)
 	sbus_ring->pdev = pdev;
 	platform_set_drvdata(pdev, sbus_ring);
 
-	is_secure = of_get_secure_mode();
+	is_secure = pen_secure_mode_enabled();
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (is_secure) {
 		sbus_indir = (void __iomem *)res->start;
