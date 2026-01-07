@@ -19,6 +19,8 @@
 #include <linux/mfd/syscon.h>
 #include <linux/regmap.h>
 #include "cap_rstcause.h"
+#include "penfw.h"
+#include "pen_secure.h"
 
 struct kobject *pensando_fw_kobj_get(void);
 
@@ -33,12 +35,55 @@ struct cap_rstdev {
 };
 
 static struct cap_rstdev *g_rdev;
+static bool secure_mode;
+
+static inline u32 read_secure_cause_reg(struct cap_rstdev *rdev, bool next,
+                                        uint32_t *rval)
+{
+	struct penfw_call_args args = {0};
+
+	args.a1 = PENFW_OP_GET_RESET_CAUSE;
+	args.a2 = next;
+
+	penfw_smc(&args);
+
+	if (args.a0 < 0) {
+		pr_err("failed to get reset cause next=%u ret=%d\n",
+				next, (int)args.a0);
+		return -EFAULT;
+	}
+
+	pr_info("get reset cause next=%u val=%u\n", next, (uint32_t)args.a1);
+	*rval = (uint32_t)args.a1;
+	return 0;
+}
+
+static inline void penfw_set_cause_reg(struct cap_rstdev *rdev,
+                                      u32 mask, bool next)
+{
+	struct penfw_call_args args = {0};
+
+	args.a1 = PENFW_OP_SET_RESET_CAUSE;
+	args.a2 = mask;
+	args.a3 = next;
+
+	penfw_smc(&args);
+
+	if (args.a0 < 0) {
+		pr_err("failed to set reset cause val=%u next=%u ret=%d\n",
+				mask, next, (int)args.a0);
+	}
+}
 
 static inline u32 read_cause_reg(struct cap_rstdev *rdev)
 {
 	u32 val;
 
-	regmap_read(rdev->regs, rdev->regs_offset, &val);
+	if (secure_mode) {
+		read_secure_cause_reg(rdev, false, &val);
+	} else {
+		regmap_read(rdev->regs, rdev->regs_offset, &val);
+	}
 	return val;
 }
 
@@ -46,13 +91,21 @@ static inline u32 read_next_cause_reg(struct cap_rstdev *rdev)
 {
 	u32 val;
 
-	regmap_read(rdev->regs, rdev->regs_offset + 4, &val);
+	if (secure_mode) {
+		read_secure_cause_reg(rdev, true, &val);
+	} else {
+		regmap_read(rdev->regs, rdev->regs_offset + 4, &val);
+	}
 	return val;
 }
 
 static inline void set_next_cause_reg(struct cap_rstdev *rdev, u32 mask)
 {
-	regmap_update_bits(rdev->regs, rdev->regs_offset + 4, mask, ~0U);
+	if (secure_mode) {
+		penfw_set_cause_reg(rdev, mask, true);
+	} else {
+		regmap_update_bits(rdev->regs, rdev->regs_offset + 4, mask, ~0U);
+	}
 }
 
 void cap_rstcause_set(u32 mask)
@@ -156,6 +209,7 @@ static int rstcause_probe(struct platform_device *pdev)
 	rdev->panic_nb.notifier_call = rstcause_panic_handler;
 	atomic_notifier_chain_register(&panic_notifier_list, &rdev->panic_nb);
 
+	secure_mode = pen_secure_mode_enabled();
 	rdev->this_cause = read_cause_reg(rdev);
 
 	g_rdev = rdev;
