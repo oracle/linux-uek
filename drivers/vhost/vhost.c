@@ -611,6 +611,14 @@ static void vhost_worker_destroy(struct vhost_dev *dev,
 	WARN_ON(!llist_empty(&worker->work_list));
 	xa_erase(&dev->worker_xa, worker->id);
 	kthread_stop(worker->task);
+
+	if (worker->track_nproc) {
+		rcu_read_lock();
+		dec_rlimit_ucounts(task_ucounts(current), UCOUNT_RLIMIT_NPROC,
+				   1);
+		rcu_read_unlock();
+	}
+
 	kfree(worker);
 }
 
@@ -720,10 +728,34 @@ static int vhost_new_worker(struct vhost_dev *dev,
 {
 	struct vhost_worker *worker;
 
-	worker = vhost_worker_create(dev);
-	if (!worker)
-		return -ENOMEM;
+	/*
+	 * In upstream and newer UEKs we use vhost_tasks which are always
+	 * accounted for under the process that created the worker's nproc.
+	 * For UEK7, we use kthreads which are not tracked under the caller,
+	 * so we account for the threads
+	 */
+	rcu_read_lock();
+	if (is_ucounts_overlimit(task_ucounts(current), UCOUNT_RLIMIT_NPROC,
+				 rlimit(RLIMIT_NPROC))) {
+		if (!capable(CAP_SYS_RESOURCE) && !capable(CAP_SYS_ADMIN)) {
+			rcu_read_unlock();
+			return -EAGAIN;
+		}
+	}
 
+	inc_rlimit_ucounts(task_ucounts(current), UCOUNT_RLIMIT_NPROC, 1);
+	rcu_read_unlock();
+
+	worker = vhost_worker_create(dev);
+	if (!worker) {
+		rcu_read_lock();
+		dec_rlimit_ucounts(task_ucounts(current), UCOUNT_RLIMIT_NPROC,
+				   1);
+		rcu_read_unlock();
+		return -ENOMEM;
+	}
+
+	worker->track_nproc = true;
 	info->worker_id = worker->id;
 	return 0;
 }

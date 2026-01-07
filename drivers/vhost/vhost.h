@@ -32,6 +32,8 @@ struct vhost_worker {
 	u64			kcov_handle;
 	u32			id;
 	int			attachment_cnt;
+	/* UEK7-only field to track workers created via VHOST_NEW_WORKER */
+	bool			track_nproc;
 };
 
 /* Poll a file (eventfd or socket) */

@@ -273,6 +273,7 @@ long inc_rlimit_ucounts(struct ucounts *ucounts, enum ucount_type type, long v)
 	}
 	return ret;
 }
+EXPORT_SYMBOL_GPL(inc_rlimit_ucounts);
 
 bool dec_rlimit_ucounts(struct ucounts *ucounts, enum ucount_type type, long v)
 {
@@ -286,6 +287,7 @@ bool dec_rlimit_ucounts(struct ucounts *ucounts, enum ucount_type type, long v)
 	}
 	return (new == 0);
 }
+EXPORT_SYMBOL_GPL(dec_rlimit_ucounts);
 
 static void do_dec_rlimit_put_ucounts(struct ucounts *ucounts,
 				struct ucounts *last, enum ucount_type type)
@@ -350,6 +352,7 @@ bool is_ucounts_overlimit(struct ucounts *ucounts, enum ucount_type type, unsign
 	}
 	return false;
 }
+EXPORT_SYMBOL_GPL(is_ucounts_overlimit);
 
 static __init int user_namespace_sysctl_init(void)
 {
