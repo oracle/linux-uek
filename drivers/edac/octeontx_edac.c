@@ -476,6 +476,7 @@ static void octeontx_edac_ea_msg(struct octeontx_ghes_record *rec, char msg[SIZE
 {
 	struct cper_sec_proc_arm *desc = NULL;
 	struct cper_arm_err_info *info = NULL;
+	u32 proc_len = 0;
 	u32 len = SIZE;
 	u32 n = 0;
 	char pfx[64];
@@ -492,12 +493,14 @@ static void octeontx_edac_ea_msg(struct octeontx_ghes_record *rec, char msg[SIZE
 	if (octeontx_ghes_record_ver == OCTEONTX_GHES_REC_OLD_VER) {
 		desc = &rec->core.desc;
 		info = &rec->core.info;
+		proc_len = sizeof(rec->core);
 	} else {
 		desc = &rec->core_new.desc;
 		info = &rec->core_new.info;
+		proc_len = sizeof(rec->core_new);
 	}
 
-	cper_print_proc_arm(pfx, desc);
+	cper_print_proc_arm(pfx, desc, proc_len);
 
 	n += scnprintf(msg + n, len - n, "%s ", rec->msg);
 	n += scnprintf(msg + n, len - n, "midr=0x%llx ", desc->midr);
