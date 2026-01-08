@@ -26,6 +26,7 @@ struct scd_context;
 #define SMBUS_REQUEST_OFFSET 0x10
 #define SMBUS_CONTROL_STATUS_OFFSET 0x20
 #define SMBUS_RESPONSE_OFFSET 0x30
+#define SMBUS_SPEED_SELECT_OFFSET 0x40
 
 #define MASTER_DEFAULT_BUS_COUNT 8
 #define MASTER_DEFAULT_MAX_RETRIES 6
@@ -38,6 +39,7 @@ struct scd_smbus_master {
    u32 req;
    u32 cs;
    u32 resp;
+   u32 sp;
    struct mutex mutex;
    struct list_head bus_list;
 
@@ -202,6 +204,44 @@ union smbus_response_reg {
    (_rsp).timeout_error,      \
    (_rsp).bus_conflict_error, \
    (_rsp).d
+
+union smbus_speed_reg {
+   u32 reg;
+   struct {
+      u32 b0:2;
+      u32 b1:2;
+      u32 b2:2;
+      u32 b3:2;
+      u32 b4:2;
+      u32 b5:2;
+      u32 b6:2;
+      u32 b7:2;
+   } __packed;
+};
+
+#define SP_FMT                \
+   "{"                        \
+   " .reg=0x%08x,"            \
+   " .b0=%d,"                 \
+   " .b1=%d,"                 \
+   " .b2=%d,"                 \
+   " .b3=%d,"                 \
+   " .b4=%d,"                 \
+   " .b5=%d,"                 \
+   " .b6=%d,"                 \
+   " .b7=%d"                  \
+   " }"
+
+#define SP_ARGS(_rsp)         \
+   (_rsp).reg,                \
+   (_rsp).b0,                 \
+   (_rsp).b1,                 \
+   (_rsp).b2,                 \
+   (_rsp).b3,                 \
+   (_rsp).b4,                 \
+   (_rsp).b5,                 \
+   (_rsp).b6,                 \
+   (_rsp).b7
 
 extern int scd_smbus_master_add(struct scd_context *ctx, u32 addr, u32 id,
                                 u32 bus_count);

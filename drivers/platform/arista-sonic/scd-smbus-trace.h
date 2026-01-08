@@ -104,6 +104,40 @@ TRACE_EVENT(
                   RSP_ARGS((union smbus_response_reg) {
                                   .reg = __entry->reg })))
 
+DECLARE_EVENT_CLASS(
+        scd_smbus_sp,
+        TP_PROTO(struct scd_smbus_master *master,
+                 union smbus_speed_reg sp),
+        TP_ARGS(master, sp),
+        TP_STRUCT__entry(
+                __field(__u16, pciId)
+                __field(__u16, accId)
+                __field(__u32, reg)),
+        TP_fast_assign(
+                __entry->pciId = PCI_DEVID(
+                        master->ctx->pdev->bus->number,
+                        master->ctx->pdev->devfn),
+                __entry->accId = master->id,
+                __entry->reg = sp.reg),
+        TP_printk("%02x:%02x.%d-%d " SP_FMT,
+                  PCI_BUS_NUM(__entry->pciId),
+                  PCI_SLOT(__entry->pciId),
+                  PCI_FUNC(__entry->pciId),
+                  __entry->accId,
+                  SP_ARGS((union smbus_speed_reg) {
+                                  .reg = __entry->reg })))
+DEFINE_EVENT(
+        scd_smbus_sp, scd_smbus_sp_rd,
+        TP_PROTO(struct scd_smbus_master *master,
+                 union smbus_speed_reg sp),
+        TP_ARGS(master, sp));
+
+DEFINE_EVENT(
+        scd_smbus_sp, scd_smbus_sp_wr,
+        TP_PROTO(struct scd_smbus_master *master,
+                 union smbus_speed_reg sp),
+        TP_ARGS(master, sp));
+
 #endif /* _SCD_SMBUS_TRACE_H */
 
 /* This part must be outside protection */
