@@ -2222,8 +2222,10 @@ bool blk_throtl_bio(struct bio *bio)
 	rcu_read_lock();
 
 	/* see throtl_charge_bio() */
-	if (bio_flagged(bio, BIO_THROTTLED))
-		goto out;
+	if (bio_flagged(bio, BIO_THROTTLED)) {
+		rcu_read_unlock();
+		return false;
+	}
 
 	if (!cgroup_subsys_on_dfl(io_cgrp_subsys)) {
 		blkg_rwstat_add(&tg->stat_bytes, bio->bi_opf,
@@ -2231,8 +2233,10 @@ bool blk_throtl_bio(struct bio *bio)
 		blkg_rwstat_add(&tg->stat_ios, bio->bi_opf, 1);
 	}
 
-	if (!tg->has_rules[rw])
-		goto out;
+	if (!tg->has_rules[rw]) {
+		rcu_read_unlock();
+		return false;
+	}
 
 	spin_lock_irq(&q->queue_lock);
 
@@ -2316,14 +2320,14 @@ again:
 	}
 
 out_unlock:
-	spin_unlock_irq(&q->queue_lock);
-out:
 	bio_set_flag(bio, BIO_THROTTLED);
 
 #ifdef CONFIG_BLK_DEV_THROTTLING_LOW
 	if (throttled || !td->track_bio_latency)
 		bio->bi_issue.value |= BIO_ISSUE_THROTL_SKIP_LATENCY;
 #endif
+	spin_unlock_irq(&q->queue_lock);
+
 	rcu_read_unlock();
 	return throttled;
 }
