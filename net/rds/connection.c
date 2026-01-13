@@ -379,11 +379,13 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 	if (parent) {
 		/* Creating passive conn */
 		if (parent->c_passive) {
-			trans->conn_free(conn->c_path[0].cp_transport_data);
-			kfree(conn->c_path);
-			kmem_cache_free(rds_conn_slab, conn);
+			struct rds_connection *old = conn;
 			conn = parent->c_passive;
-			rds_conn_get(parent->c_passive);
+			rds_conn_get(conn);
+			spin_unlock_irqrestore(&rds_conn_lock, flags);
+			trans->conn_free(old->c_path[0].cp_transport_data);
+			kfree(old->c_path);
+			kmem_cache_free(rds_conn_slab, old);
 		} else {
 			/* Note that for loopback connection, only one
 			 * rds_connection is added to the conn hash table.
@@ -392,6 +394,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 			rds_conn_get(parent->c_passive);
 			rds_cong_add_conn(conn);
 			atomic_inc(&conn->c_trans->t_conn_count);
+			spin_unlock_irqrestore(&rds_conn_lock, flags);
 		}
 	} else {
 		/* Creating normal conn */
@@ -403,6 +406,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 			struct rds_conn_path *cp;
 			int i;
 
+			spin_unlock_irqrestore(&rds_conn_lock, flags);
 			for (i = 0; i < npaths; i++) {
 				cp = &conn->c_path[i];
 				/* The ->conn_alloc invocation may have
@@ -422,9 +426,9 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 			hlist_add_head_rcu(&conn->c_faddr_node, faddr_head);
 			rds_cong_add_conn(conn);
 			atomic_inc(&conn->c_trans->t_conn_count);
+			spin_unlock_irqrestore(&rds_conn_lock, flags);
 		}
 	}
-	spin_unlock_irqrestore(&rds_conn_lock, flags);
 
 out:
 	if (reason)
