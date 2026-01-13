@@ -4,7 +4,12 @@
 # Copyright © 2025, Oracle and/or its affiliates.
 #
 
-include $(srctree)/fips/Makefile.fips140
+# make sure both .c and .S files see this
+subdir-ccflags-y += -DFIPS_MODULE=1
+subdir-asflags-y += -DFIPS_MODULE=1
+
+# none of this code will be live patched
+subdir-ccflags-remove-y += -ffunction-sections -fdata-sections
 
 fips140-y := fips140-glue.o
 
