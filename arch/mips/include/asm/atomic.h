@@ -32,7 +32,7 @@
  *
  * Atomically adds @i to @v.
  */
-static inline void atomic_add(int i, atomic_t *v)
+static inline void arch_atomic_add(int i, atomic_t *v)
 {
        __asm__ __volatile__(
        ".set   push\n\t"
@@ -50,7 +50,7 @@ static inline void atomic_add(int i, atomic_t *v)
  *
  * Atomically subtracts @i from @v.
  */
-static inline void atomic_sub(int i, atomic_t *v)
+static inline void arch_atomic_sub(int i, atomic_t *v)
 {
        __asm__ __volatile__(
        ".set   push\n\t"
@@ -64,7 +64,7 @@ static inline void atomic_sub(int i, atomic_t *v)
 /*
  * Same as above, but return the result value
  */
-static inline int atomic_add_return_relaxed(int i, atomic_t *v)
+static inline int arch_atomic_add_return_relaxed(int i, atomic_t *v)
 {
        int result;
 
@@ -83,7 +83,7 @@ static inline int atomic_add_return_relaxed(int i, atomic_t *v)
        return result + i;
 }
 
-static inline int atomic_fetch_add_relaxed(int i, atomic_t *v)
+static inline int arch_atomic_fetch_add_relaxed(int i, atomic_t *v)
 {
        int result;
 
@@ -101,8 +101,9 @@ static inline int atomic_fetch_add_relaxed(int i, atomic_t *v)
                                : "r" (&v->counter), "r" (i));
        return result;
 }
+#define arch_atomic_fetch_add_relaxed arch_atomic_fetch_add_relaxed
 
-static inline int atomic_add_return(int i, atomic_t *v)
+static inline int arch_atomic_add_return(int i, atomic_t *v)
 {
        int result;
 
@@ -112,11 +113,11 @@ static inline int atomic_add_return(int i, atomic_t *v)
         * For proper barrier semantics, the preceding
         * smp_mb__before_llsc() must expand to syncw.
         */
-       result = atomic_add_return_relaxed(i, v);
+       result = arch_atomic_add_return_relaxed(i, v);
        return result;
 }
-#define atomic_add_return atomic_add_return
-static inline int atomic_sub_return_relaxed(int i, atomic_t *v)
+#define arch_atomic_add_return arch_atomic_add_return
+static inline int arch_atomic_sub_return_relaxed(int i, atomic_t *v)
 {
        int result;
 
@@ -135,7 +136,7 @@ static inline int atomic_sub_return_relaxed(int i, atomic_t *v)
        return result - i;
 }
 
-static inline int atomic_fetch_sub_relaxed(int i, atomic_t *v)
+static inline int arch_atomic_fetch_sub_relaxed(int i, atomic_t *v)
 {
        int result;
 
@@ -153,8 +154,9 @@ static inline int atomic_fetch_sub_relaxed(int i, atomic_t *v)
                                : "r" (&v->counter), "r" (-i));
        return result;
 }
+#define arch_atomic_fetch_sub_relaxed arch_atomic_fetch_sub_relaxed
 
-static inline int atomic_sub_return(int i, atomic_t *v)
+static inline int arch_atomic_sub_return(int i, atomic_t *v)
 {
        int result;
 
@@ -164,12 +166,12 @@ static inline int atomic_sub_return(int i, atomic_t *v)
         * For proper barrier semantics, the preceding
         * smp_mb__before_llsc() must expand to syncw.
         */
-       result = atomic_sub_return_relaxed(i, v);
+       result = arch_atomic_sub_return_relaxed(i, v);
 
        smp_llsc_mb();
        return result;
 }
-#define atomic_sub_return atomic_sub_return
+#define arch_atomic_sub_return arch_atomic_sub_return
 #endif
 
 #define ATOMIC_OPS(pfx, type)						\
@@ -201,6 +203,7 @@ ATOMIC_OPS(atomic, int)
 ATOMIC_OPS(atomic64, s64)
 #endif
 
+/* Define atomic operation macros - used by both OCTEON2 and non-OCTEON2 */
 #define ATOMIC_OP(pfx, op, type, c_op, asm_op, ll, sc)			\
 static __inline__ void arch_##pfx##_##op(type i, pfx##_t * v)		\
 {									\
@@ -266,7 +269,7 @@ arch_##pfx##_##op##_return_relaxed(type i, pfx##_t * v)			\
 static __inline__ type							\
 arch_##pfx##_fetch_##op##_relaxed(type i, pfx##_t * v)			\
 {									\
-	int temp, result;						\
+	type temp, result;						\
 									\
 	if (!kernel_uses_llsc) {					\
 		unsigned long flags;					\
@@ -295,6 +298,8 @@ arch_##pfx##_fetch_##op##_relaxed(type i, pfx##_t * v)			\
 	return result;							\
 }
 
+#if (!IS_ENABLED(CONFIG_CAVIUM_OCTEON2))
+
 #undef ATOMIC_OPS
 #define ATOMIC_OPS(pfx, op, type, c_op, asm_op, ll, sc)			\
 	ATOMIC_OP(pfx, op, type, c_op, asm_op, ll, sc)			\
@@ -303,6 +308,7 @@ arch_##pfx##_fetch_##op##_relaxed(type i, pfx##_t * v)			\
 
 ATOMIC_OPS(atomic, add, int, +=, addu, ll, sc)
 ATOMIC_OPS(atomic, sub, int, -=, subu, ll, sc)
+
 
 #define arch_atomic_add_return_relaxed	arch_atomic_add_return_relaxed
 #define arch_atomic_sub_return_relaxed	arch_atomic_sub_return_relaxed
@@ -318,6 +324,9 @@ ATOMIC_OPS(atomic64, sub, s64, -=, dsubu, lld, scd)
 # define arch_atomic64_fetch_sub_relaxed	arch_atomic64_fetch_sub_relaxed
 #endif /* CONFIG_64BIT */
 
+#endif  /* !IS_ENABLED(CONFIG_CAVIUM_OCTEON2) */
+
+/* AND/OR/XOR operations - used by both OCTEON2 and non-OCTEON2 */
 #undef ATOMIC_OPS
 #define ATOMIC_OPS(pfx, op, type, c_op, asm_op, ll, sc)			\
 	ATOMIC_OP(pfx, op, type, c_op, asm_op, ll, sc)			\
@@ -404,6 +413,7 @@ static __inline__ type arch_##pfx##_sub_if_positive(type i, pfx##_t * v)	\
 									\
 	return result;							\
 }
+#ifdef CONFIG_64BIT
 #if (IS_ENABLED(CONFIG_CAVIUM_OCTEON2))
 /*
  * atomic64_add - add integer to atomic variable
@@ -412,7 +422,7 @@ static __inline__ type arch_##pfx##_sub_if_positive(type i, pfx##_t * v)	\
  *
  * Atomically adds @i to @v.
  */
-static inline void atomic64_add(long i, atomic64_t *v)
+static inline void arch_atomic64_add(long i, atomic64_t *v)
 {
        __asm__ __volatile__(
        ".set   push\n\t"
@@ -430,7 +440,7 @@ static inline void atomic64_add(long i, atomic64_t *v)
  *
  * Atomically subtracts @i from @v.
  */
-static inline void atomic64_sub(long i, atomic64_t *v)
+static inline void arch_atomic64_sub(long i, atomic64_t *v)
 {
        __asm__ __volatile__(
        ".set   push\n\t"
@@ -444,7 +454,7 @@ static inline void atomic64_sub(long i, atomic64_t *v)
 /*
  * Same as above, but return the result value
  */
-static inline long atomic64_add_return_relaxed(long i, atomic64_t *v)
+static inline long arch_atomic64_add_return_relaxed(long i, atomic64_t *v)
 {
        long result;
 
@@ -466,7 +476,7 @@ static inline long atomic64_add_return_relaxed(long i, atomic64_t *v)
 /*
  * Same as above, but return the previous value
  */
-static inline long atomic64_fetch_add_relaxed(long i, atomic64_t *v)
+static inline long arch_atomic64_fetch_add_relaxed(long i, atomic64_t *v)
 {
        long result;
 
@@ -484,8 +494,9 @@ static inline long atomic64_fetch_add_relaxed(long i, atomic64_t *v)
                                : "r" (&v->counter), "r" (i));
        return result;
 }
+#define arch_atomic64_fetch_add_relaxed arch_atomic64_fetch_add_relaxed
 
-static inline long atomic64_add_return(long i, atomic64_t *v)
+static inline long arch_atomic64_add_return(long i, atomic64_t *v)
 {
        long result;
 
@@ -494,12 +505,12 @@ static inline long atomic64_add_return(long i, atomic64_t *v)
         * For proper barrier semantics, the preceding
         * smp_mb__before_llsc() must expand to syncw.
         */
-       result = atomic64_add_return_relaxed(i, v);
+       result = arch_atomic64_add_return_relaxed(i, v);
        smp_llsc_mb();
        return result;
 }
-#define atomic64_add_return atomic64_add_return
-static inline long atomic64_sub_return_relaxed(long i, atomic64_t *v)
+#define arch_atomic64_add_return arch_atomic64_add_return
+static inline long arch_atomic64_sub_return_relaxed(long i, atomic64_t *v)
 {
        long result;
 
@@ -519,7 +530,7 @@ static inline long atomic64_sub_return_relaxed(long i, atomic64_t *v)
        return result - i;
 }
 
-static inline long atomic64_fetch_sub_relaxed(long i, atomic64_t *v)
+static inline long arch_atomic64_fetch_sub_relaxed(long i, atomic64_t *v)
 {
        long result;
 
@@ -538,8 +549,9 @@ static inline long atomic64_fetch_sub_relaxed(long i, atomic64_t *v)
 
        return result;
 }
+#define arch_atomic64_fetch_sub_relaxed arch_atomic64_fetch_sub_relaxed
 
-static inline long atomic64_sub_return(long i, atomic64_t *v)
+static inline long arch_atomic64_sub_return(long i, atomic64_t *v)
 {
        long result;
 
@@ -549,12 +561,13 @@ static inline long atomic64_sub_return(long i, atomic64_t *v)
         * For proper barrier semantics, the preceding
         * smp_mb__before_llsc() must expand to syncw.
         */
-       result = atomic64_sub_return_relaxed(i, v);
+       result = arch_atomic64_sub_return_relaxed(i, v);
        smp_llsc_mb();
        return result;
 }
-#define atomic64_sub_return atomic64_sub_return
-#endif
+#define arch_atomic64_sub_return arch_atomic64_sub_return
+#endif /* IS_ENABLED(CONFIG_CAVIUM_OCTEON2) */
+#endif /* CONFIG_64BIT */
 
 ATOMIC_SIP_OP(atomic, int, subu, ll, sc)
 #define arch_atomic_dec_if_positive(v)	arch_atomic_sub_if_positive(1, v)
