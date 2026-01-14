@@ -252,8 +252,11 @@ config CRYPTO_TEST
 	  Quick & dirty crypto test module.
 
 config CRYPTO_SIMD
-	tristate
+	bool
 	select CRYPTO_CRYPTD
+	help
+	  Force SIMD crypto helpers to be built-in to satisfy FIPS
+	  requirement.
 
 config CRYPTO_ENGINE
 	tristate
