@@ -116,7 +116,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release %{uek_release}
 %define with_64k_ps_debug %{?_with_64k_ps_debug: %{_with_64k_ps_debug}} %{?!_with_64k_ps_debug: 0}
 # build marvell kernel
 %define with_embedded %{?_without_embedded: 0} %{?!_without_embedded: 1}
-# build pensando kernel
+# build pensando kernels
 %define with_embedded2 %{?_without_embedded: 0} %{?!_without_embedded: 1}
 # build bluefield 3 kernel
 %define with_embedded3 %{?_without_embedded: 0} %{?!_without_embedded: 1}
@@ -547,6 +547,7 @@ Source48: core-emb-mips64.list
 Source49: core-kdump-mips64.list
 Source50: core-emb-aarch64.list
 Source51: core-emb3-aarch64.list
+Source52: core-emb2h-aarch64.list
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
@@ -559,6 +560,7 @@ Source1011: config-mips64-emb
 Source1012: config-mips64-kdump
 Source1013: config-aarch64-embedded
 Source1014: config-aarch64-embedded3
+Source1015: config-aarch64-embedded2h
 
 Source25: Module.kabi_x86_64debug
 Source26: Module.kabi_x86_64
@@ -879,6 +881,11 @@ This package include debug kernel for 64k page size.
 %description -n kernel%{?variant}emb2-core
 This package includes an embedded kernel.
 
+%define variant_summary A kernel for another embedded platform
+%kernel_variant_package -o emb2h
+%description -n kernel%{?variant}emb2h-core
+This package includes an embedded kernel.
+
 %define variant_summary The Linux kernel compiled for an embedded platform
 %kernel_variant_package -o emb
 %description -n kernel%{?variant}emb-core
@@ -1076,6 +1083,7 @@ mkdir -p configs
 	cp %{SOURCE1010} configs/config-emb2
 	cp %{SOURCE1013} configs/config-emb
 	cp %{SOURCE1014} configs/config-emb3
+	cp %{SOURCE1015} configs/config-emb2h
 %endif
 
 %ifarch mips64
@@ -1205,6 +1213,9 @@ BuildKernel() {
     elif [ "$Flavour" == "emb2" ]; then
         cp configs/config-emb2 .config
         modlistVariant=../kernel%{?variant}emb2
+    elif [ "$Flavour" == "emb2h" ]; then
+        cp configs/config-emb2h .config
+        modlistVariant=../kernel%{?variant}emb2h
     elif [ "$Flavour" == "emb3" ]; then
         cp configs/config-emb3 .config
         modlistVariant=../kernel%{?variant}emb3
@@ -1219,7 +1230,7 @@ BuildKernel() {
     Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
     echo USING ARCH=$Arch
     make %{?make_opts} ARCH=$Arch %{?_kernel_cc} olddefconfig > /dev/null
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb2" ] && [ "$Flavour" != "emb3" ] && [ "$Flavour" != "kdump" ]; then
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb2" ] && [ "$Flavour" != "emb2h" ] &&[ "$Flavour" != "emb3" ] && [ "$Flavour" != "kdump" ]; then
        make %{?make_opts} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
     else
        make %{?make_opts} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
@@ -1373,8 +1384,8 @@ BuildKernel() {
     rm -f %{_tmppath}/kernel-$KernelVer-kabideps
     %_sourcedir/kabitool -s Module.symvers -o %{_tmppath}/kernel-$KernelVer-kabideps
 
-%if %{with kabichk}
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb2" ] && [ "$Flavour" != "emb3" ] && [ "$Flavour" != "kdump" ] && [ "$Flavour" != "debug" ]; then
+%if %{with_kabichk}
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb2" ] && [ "$Flavour" != "emb2h" ] && [ "$Flavour" != "emb3" ] && [ "$Flavour" != "kdump" ] && [ "$Flavour" != "debug" ]; then
        # Create symbol type data which can be used to introspect kABI breakages
        python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
 
