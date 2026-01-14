@@ -595,7 +595,6 @@ modules-core:
 - crc32-pclmul
 - crc8
 - crct10dif-pclmul
-- crypto_simd
 - curve25519-x86_64
 - dax_hmem
 - dax_pmem
