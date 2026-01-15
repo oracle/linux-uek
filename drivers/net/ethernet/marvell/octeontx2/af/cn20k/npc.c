@@ -3077,7 +3077,7 @@ void npc_cn20k_load_mkex_profile(struct rvu *rvu, int blkaddr,
 		}
 
 		mcam_kex_extr++;
-		prfl_sz -= sizeof(struct npc_mcam_kex);
+		prfl_sz -= sizeof(struct npc_mcam_kex_extr);
 	}
 	dev_warn(dev, "Failed to load requested profile: %s\n", mkex_profile);
 
@@ -4116,13 +4116,12 @@ int npc_cn20k_apply_custom_kpu(struct rvu *rvu, struct npc_kpu_profile_adapter *
 			return -EINVAL;
 		}
 
-		npc_cn20k_update_action_entries_n_flags(rvu, profile);
-
 		for (entry = 0; entry < entries; entry++) {
 			profile->kpu[kpu].cam[entry] = cam[entry];
 			profile->kpu[kpu].action[entry] = action[entry];
 		}
 	}
+	npc_cn20k_update_action_entries_n_flags(rvu, profile);
 
 	return 0;
 }
