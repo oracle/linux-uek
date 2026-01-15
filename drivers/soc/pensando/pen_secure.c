@@ -36,7 +36,8 @@ void pen_secure_regwrite(void __iomem *addr, uint32_t val)
 		      val, 0, 0, 0, 0, &res);
 
 	if (res.a0 != PEN_SECREG_SMC_ERR_NONE) {
-		pr_err("pensando-secreg: failed to write data! ret=%d\n", (int)res.a0);
+		pr_err("pensando-secreg: failed to write 0x%x to 0x%px, ret=%d\n",
+		       val, addr, (int)res.a0);
 	}
 }
 
@@ -49,7 +50,8 @@ uint32_t pen_secure_regread(void __iomem *addr)
 		      0, 0, 0, 0, 0, &res);
 
 	if (res.a0 != PEN_SECREG_SMC_ERR_NONE) {
-		pr_err("pensando-secreg: read failed! ret=%d\n", (int)res.a0);
+		pr_err("pensando-secreg: read from 0x%px failed! ret=%d\n",
+		       addr, (int)res.a0);
 		return (uint32_t)-1;
 	}
 
