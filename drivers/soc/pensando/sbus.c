@@ -17,7 +17,6 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_platform.h>
-#include <linux/platform_device.h>
 #include <linux/delay.h>
 #include <linux/arm-smccc.h>
 #include <asm/ptrace.h>
@@ -30,9 +29,9 @@
 #define SBUS_INDIR_DATA_ADDR_LSB	8
 #define SBUS_INDIR_DATA_COMMAND_LSB	16
 
-static dev_t sbus_dev;
+static dev_t sbus_dev = 0;
 static struct class *dev_class;
-static int dev_inst;
+static int dev_inst = 0;
 
 struct sbus_ioctl_args {
 	u32 sbus_rcvr_addr;
@@ -93,13 +92,13 @@ static void sbus_write(struct sbus_ioctl_args param,
 	spin_lock(&sbus_ring->sbus_lock);
 
 	sbus_ring->rops->write(sbus_ring->sbus_indir, sbus_val);
-	sbus_ring->rops->write(sbus_ring->sbus_dhs, param.sbus_data);
+	reg_write(sbus_ring->sbus_dhs, param.sbus_data);
 
 	spin_unlock(&sbus_ring->sbus_lock);
 }
 
 static uint32_t sbus_read(struct sbus_ioctl_args param,
-			  struct sbusdev_info *sbus_ring)
+				struct sbusdev_info *sbus_ring)
 {
 	uint32_t sbus_val, val;
 
@@ -113,7 +112,7 @@ static uint32_t sbus_read(struct sbus_ioctl_args param,
 	spin_lock(&sbus_ring->sbus_lock);
 
 	sbus_ring->rops->write(sbus_ring->sbus_indir, sbus_val);
-	val = sbus_ring->rops->read(sbus_ring->sbus_dhs);
+	val = reg_read(sbus_ring->sbus_dhs);
 
 	spin_unlock(&sbus_ring->sbus_lock);
 
@@ -121,7 +120,7 @@ static uint32_t sbus_read(struct sbus_ioctl_args param,
 }
 
 static void sbus_reset(struct sbus_ioctl_args param,
-		       struct sbusdev_info *sbus_ring)
+		struct sbusdev_info *sbus_ring)
 {
 	uint32_t sbus_val;
 
@@ -135,7 +134,7 @@ static void sbus_reset(struct sbus_ioctl_args param,
 	spin_lock(&sbus_ring->sbus_lock);
 
 	sbus_ring->rops->write(sbus_ring->sbus_indir, sbus_val);
-	sbus_ring->rops->write(sbus_ring->sbus_dhs, 0);
+	reg_write(sbus_ring->sbus_dhs, 0);
 
 	spin_unlock(&sbus_ring->sbus_lock);
 }
@@ -144,7 +143,7 @@ static void sbus_reset(struct sbus_ioctl_args param,
  * This function will be called when we write IOCTL on the Device file
  */
 static long sbus_drv_ioctl(struct file *file, unsigned int cmd,
-			   unsigned long arg)
+			unsigned long arg)
 {
 	struct sbusdev_info *sbus_ring = file->private_data;
 	struct sbus_ioctl_args param_ioctl;
@@ -181,6 +180,7 @@ static long sbus_drv_ioctl(struct file *file, unsigned int cmd,
 		break;
 	default:
 		return -ENOTTY;
+		break;
 	}
 
 	return 0;
@@ -221,7 +221,7 @@ static int sbus_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct resource *res;
 	struct sbusdev_info *sbus_ring;
-	void __iomem *sbus_indir;
+	void __iomem *base_addr;
 	int is_secure = 0;
 
 	if (dev_inst > MAX_DEVICES-1)
@@ -242,17 +242,17 @@ static int sbus_probe(struct platform_device *pdev)
 
 	is_secure = pen_secure_mode_enabled();
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (is_secure) {
-		sbus_indir = (void __iomem *)res->start;
-	} else {
-		sbus_indir = (void __iomem *)devm_ioremap_resource(dev, res);
-		if (IS_ERR(sbus_indir)) {
-			dev_err(dev, "Cannot remap sbus reg addresses.\n");
-			return PTR_ERR(sbus_indir);
-		}
+	base_addr = (void __iomem *)devm_ioremap_resource(dev, res);
+	if (IS_ERR(base_addr)) {
+		dev_err(dev, "Cannot remap sbus reg addresses.\n");
+		return PTR_ERR(base_addr);
 	}
-	sbus_ring->sbus_indir = sbus_indir;
-	sbus_ring->sbus_dhs = (void __iomem *)(sbus_ring->sbus_indir + 0x4);
+	if (is_secure) {
+		sbus_ring->sbus_indir = (void __iomem *)res->start;
+	} else {
+		sbus_ring->sbus_indir = base_addr;
+	}
+	sbus_ring->sbus_dhs = base_addr + 0x4;
 
 	spin_lock_init(&sbus_ring->sbus_lock);
 
@@ -267,11 +267,11 @@ static int sbus_probe(struct platform_device *pdev)
 			return -1;
 		}
 		pr_debug("Major = %d Minor = %d \n", MAJOR(sbus_dev),
-			MINOR(sbus_dev));
+				MINOR(sbus_dev));
 
 		/* Creating struct class */
-		dev_class = class_create(THIS_MODULE, "sbus_class");
-		if (dev_class == NULL) {
+		if ((dev_class =
+			class_create(THIS_MODULE, "sbus_class")) == NULL) {
 			pr_err("Cannot create the struct class\n");
 			goto r_class;
 		}
