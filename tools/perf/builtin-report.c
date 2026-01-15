@@ -1367,6 +1367,10 @@ int cmd_report(int argc, const char **argv)
 	if (ret < 0)
 		goto exit;
 
+	/* This must be done before perf_config() so that the default_sort_order
+	 * override in report__config() is respected. */
+	exadata_override_default_sort_order();
+
 	ret = perf_config(report__config, &report);
 	if (ret)
 		goto exit;

@@ -1595,6 +1595,8 @@ int cmd_top(int argc, const char **argv)
 	if (top.evlist == NULL)
 		return -ENOMEM;
 
+	exadata_override_default_sort_order();
+
 	status = perf_config(perf_top_config, &top);
 	if (status)
 		return status;
