@@ -1639,6 +1639,9 @@ int cmd_top(int argc, const char **argv)
 		return -ENOMEM;
 
 	perf_env__init(&host_env);
+
+	exadata_override_default_sort_order();
+
 	status = perf_config(perf_top_config, &top);
 	if (status)
 		goto out_delete_evlist;
