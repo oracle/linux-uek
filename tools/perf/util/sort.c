@@ -3655,6 +3655,29 @@ static int setup_sort_list(struct perf_hpp_list *list, char *str,
 	return ret;
 }
 
+void exadata_override_default_sort_order(void)
+{
+	size_t size;
+	char cmdline[4096];
+	FILE *f;
+	static bool checked_exadata = false;
+
+	if (checked_exadata)
+		return;
+	checked_exadata = true;
+
+	f = fopen("/proc/cmdline", "r");
+	if (!f)
+		return;
+	size = fread(&cmdline, 1, sizeof(cmdline), f);
+	if (size < sizeof(cmdline)) {
+		cmdline[size] = '\0';
+		if (strstr(cmdline, "uek=exadata"))
+			default_sort_order = "comm_ignore_digit,dso,symbol";
+	}
+	fclose(f);
+}
+
 static const char *get_default_sort_order(struct evlist *evlist)
 {
 	const char *default_sort_orders[] = {
