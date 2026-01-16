@@ -1571,6 +1571,8 @@ BuildKernel() {
       cp $RPM_SOURCE_DIR/core-emb-%{_target_cpu}.list core.list
     elif [ "$Flavour" == "emb2" ]; then
       cp $RPM_SOURCE_DIR/core-emb2-%{_target_cpu}.list core.list
+    elif [ "$Flavour" == "emb2h" ]; then
+      cp $RPM_SOURCE_DIR/core-emb2h-%{_target_cpu}.list core.list
     elif [ "$Flavour" == "emb3" ]; then
       cp $RPM_SOURCE_DIR/core-emb3-%{_target_cpu}.list core.list
     elif [ "$Flavour" == "kdump" ]; then
@@ -1685,6 +1687,7 @@ BuildKernel %make_target %kernel_image emb
 
 %if %{with_embedded2}
 BuildKernel %make_target %kernel_image emb2
+BuildKernel %make_target %kernel_image emb2h
 %endif
 
 %if %{with_embedded3}
@@ -1741,6 +1744,9 @@ make %{?make_opts} %{?_smp_mflags} htmldocs || %{doc_build_fail}
        mv certs/signing_key.pem.sign.emb2 certs/signing_key.pem \
        mv certs/signing_key.x509.sign.emb2 certs/signing_key.x509 \
        %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb2/ %{dgst} \
+       mv certs/signing_key.pem.sign.emb2h certs/signing_key.pem \
+       mv certs/signing_key.x509.sign.emb2h certs/signing_key.x509 \
+       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb2h/ %{dgst} \
     fi \
     if [ "%{with_embedded3}" -ne "0" ]; then \
        mv certs/signing_key.pem.sign.emb3 certs/signing_key.pem \
@@ -2075,6 +2081,11 @@ fi\
 %kernel_variant_postun -o -v emb2
 %kernel_variant_post -o -v emb2
 
+%kernel_variant_pre -o emb2h
+%kernel_variant_preun -o emb2h
+%kernel_variant_postun -o -v emb2h
+%kernel_variant_post -o -v emb2h
+
 %kernel_variant_pre -o emb
 %kernel_variant_preun -o emb
 %kernel_variant_postun -o -v emb
@@ -2246,6 +2257,8 @@ fi
 %kernel_variant_files -o %{with_embedded} emb
 
 %kernel_variant_files -o %{with_embedded2} emb2
+
+%kernel_variant_files -o %{with_embedded2} emb2h
 
 %kernel_variant_files -o %{with_embedded3} emb3
 
