@@ -1366,17 +1366,20 @@ void rvu_npc_free_mcam_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
 	/* Free all MCAM counters owned by this 'pcifunc' */
 	npc_mcam_free_all_counters(rvu, mcam, pcifunc);
 
+	rvu_npc_disable_default_entries(rvu, pcifunc, nixlf);
+
 	/* Delete MCAM entries owned by this 'pcifunc' */
 	list_for_each_entry_safe(rule, tmp, &mcam->mcam_rules, list) {
-		if (rule->owner == pcifunc && !rule->default_rule) {
-			list_del(&rule->list);
-			kfree(rule);
-		}
+		if (!is_cn20k(rvu->pdev) &&
+		    (rule->owner != pcifunc || rule->default_rule))
+			continue;
+
+		list_del(&rule->list);
+		kfree(rule);
 	}
 
 	mutex_unlock(&mcam->lock);
 
-	rvu_npc_disable_default_entries(rvu, pcifunc, nixlf);
 }
 
 static void npc_program_mkex_rx(struct rvu *rvu, int blkaddr,
@@ -2659,27 +2662,30 @@ static void npc_mcam_free_all_entries(struct rvu *rvu, struct npc_mcam *mcam,
 
 	/* Scan all MCAM entries and free the ones mapped to 'pcifunc' */
 	for (index = 0; index < mcam->bmap_entries; index++) {
-		if (mcam->entry2pfvf_map[index] == pcifunc) {
-			mcam->entry2pfvf_map[index] = NPC_MCAM_INVALID_MAP;
-			/* Free the entry in bitmap */
-			npc_mcam_clear_bit(mcam, index);
-			/* Disable the entry */
-			npc_enable_mcam_entry(rvu, mcam, blkaddr, index, false);
+		if (mcam->entry2pfvf_map[index] != pcifunc)
+			continue;
 
-			/* Update entry2counter mapping */
-			cntr = mcam->entry2cntr_map[index];
-			if (cntr != NPC_MCAM_INVALID_MAP)
-				npc_unmap_mcam_entry_and_cntr(rvu, mcam,
-							      blkaddr, index,
-							      cntr);
-			mcam->entry2target_pffunc[index] = 0x0;
-			if (is_cn20k(rvu->pdev)) {
-				rc = npc_cn20k_idx_free(rvu, &index, 1);
-				if (rc)
-					dev_err(rvu->dev,
-						"Failed to free mcam idx=%u pcifunc=%#x\n",
-						index, pcifunc);
-			}
+		mcam->entry2pfvf_map[index] = NPC_MCAM_INVALID_MAP;
+		/* Free the entry in bitmap */
+		npc_mcam_clear_bit(mcam, index);
+		/* Disable the entry */
+		npc_enable_mcam_entry(rvu, mcam, blkaddr, index, false);
+
+		/* Update entry2counter mapping */
+		cntr = mcam->entry2cntr_map[index];
+		if (cntr != NPC_MCAM_INVALID_MAP)
+			npc_unmap_mcam_entry_and_cntr(rvu, mcam,
+						      blkaddr, index,
+						      cntr);
+		mcam->entry2target_pffunc[index] = 0x0;
+		if (is_cn20k(rvu->pdev)) {
+			rc = npc_cn20k_idx_free(rvu, &index, 1);
+			if (rc)
+				dev_err(rvu->dev,
+					"Failed to free mcam idx=%u pcifunc=%#x\n",
+					index, pcifunc);
+
+			npc_cn20_dft_idx_check_n_free(rvu, pcifunc, index);
 		}
 	}
 }

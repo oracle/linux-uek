@@ -1244,6 +1244,74 @@ static int npc_vidx_maps_add_entry(struct rvu *rvu, u16 mcam_idx, int pcifunc,
 	return 0;
 }
 
+void
+npc_cn20_dft_idx_check_n_free(struct rvu *rvu, u16 pcifunc, u16 mcam_idx)
+{
+	u16 bcast = -1, promisc = -1, mcast = -1, ucast = -1;
+	unsigned long index;
+	void *map;
+	int rc;
+
+	rc = npc_cn20k_dft_rules_idx_get(rvu, pcifunc, &bcast, &mcast,
+					 &promisc, &ucast);
+	if (rc)
+		return;
+
+	if (mcam_idx != bcast && mcam_idx != mcast &&
+	    mcam_idx != promisc && mcam_idx != ucast)
+		return;
+
+	if (bcast != -1 && mcam_idx == bcast) {
+		index = NPC_DFT_RULE_ID_MK(pcifunc, NPC_DFT_RULE_BCAST_ID);
+		map = xa_erase(&npc_priv.xa_pf2dfl_rmap, index);
+		if (!map)
+			dev_err(rvu->dev,
+				"%s: Err BCAST from delete %s mcam idx from xarray (pcifunc=%#x\n",
+				__func__,
+				npc_dft_rule_name[NPC_DFT_RULE_BCAST_ID],
+				pcifunc);
+		return;
+	}
+
+	if (mcast != -1 && mcam_idx == mcast) {
+		index = NPC_DFT_RULE_ID_MK(pcifunc, NPC_DFT_RULE_MCAST_ID);
+		map = xa_erase(&npc_priv.xa_pf2dfl_rmap, index);
+		if (!map)
+			dev_err(rvu->dev,
+				"%s: Err MCAST from delete %s mcam idx from xarray (pcifunc=%#x\n",
+				__func__,
+				npc_dft_rule_name[NPC_DFT_RULE_MCAST_ID],
+				pcifunc);
+
+		return;
+	}
+
+	if (ucast != -1 && mcam_idx == ucast) {
+		index = NPC_DFT_RULE_ID_MK(pcifunc, NPC_DFT_RULE_UCAST_ID);
+		map = xa_erase(&npc_priv.xa_pf2dfl_rmap, index);
+		if (!map)
+			dev_err(rvu->dev,
+				"%s: Err UCAST from delete %s mcam idx from xarray (pcifunc=%#x\n",
+				__func__,
+				npc_dft_rule_name[NPC_DFT_RULE_UCAST_ID],
+				pcifunc);
+
+		return;
+	}
+
+	if (promisc != -1 && mcam_idx == promisc) {
+		index = NPC_DFT_RULE_ID_MK(pcifunc, NPC_DFT_RULE_PROMISC_ID);
+		map = xa_erase(&npc_priv.xa_pf2dfl_rmap, index);
+		if (!map)
+			dev_err(rvu->dev,
+				"%s: Err PROMISC from delete %s mcam idx from xarray (pcifunc=%#x\n",
+				__func__,
+				npc_dft_rule_name[NPC_DFT_RULE_PROMISC_ID],
+				pcifunc);
+		return;
+	}
+}
+
 static int npc_idx_free(struct rvu *rvu, u16 *mcam_idx, int count,
 			bool maps_del)
 {
@@ -1419,10 +1487,11 @@ static int npc_multi_subbank_ref_alloc(struct rvu *rvu, int key_type,
 		if (bitset) {
 			mutex_unlock(&sb->lock);
 			if (contig) {
-				cnt = 0;
 				rc = npc_idx_free(rvu, mcam_idx, cnt, false);
 				if (rc)
 					return rc;
+
+				cnt = 0;
 			}
 			ref--;
 			continue;
