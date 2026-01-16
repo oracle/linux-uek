@@ -1934,7 +1934,7 @@ static int npc_delete_flow(struct rvu *rvu, struct rvu_npc_mcam_rule *rule,
 	struct npc_mcam_ena_dis_entry_req dis_req = { 0 };
 	struct msg_rsp dis_rsp;
 
-	if (rule->default_rule)
+	if (!is_cn20k(rvu->pdev) && rule->default_rule)
 		return 0;
 
 	if (rule->has_cntr)
@@ -2006,8 +2006,9 @@ int rvu_mbox_handler_npc_delete_flow(struct rvu *rvu,
 		/* clear the mcam entry target pcifunc */
 		mcam->entry2target_pffunc[entry] = 0x0;
 		if (npc_delete_flow(rvu, iter, pcifunc))
-			dev_err(rvu->dev, "rule deletion failed for entry:%u",
-				entry);
+			dev_err(rvu->dev,
+				"rule deletion failed for entry:%u (pcifunc=%#x)",
+				entry, pcifunc);
 	}
 
 	/* In case of representor installing for PF/VF clear esw rule count */

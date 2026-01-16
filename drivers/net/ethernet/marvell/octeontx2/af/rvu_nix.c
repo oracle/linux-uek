@@ -1918,6 +1918,12 @@ int rvu_mbox_handler_nix_lf_alloc(struct rvu *rvu,
 	if (is_sdp_pfvf(rvu, pcifunc))
 		intf = NIX_INTF_TYPE_SDP;
 
+	if (is_cn20k(rvu->pdev)) {
+		rc = npc_cn20k_dft_rules_alloc(rvu, pcifunc);
+		if (rc)
+			goto exit;
+	}
+
 	err = nix_interface_init(rvu, pcifunc, intf, nixlf, rsp,
 				 !!(req->flags & NIX_LF_LBK_BLK_SEL));
 	if (err)
@@ -1938,6 +1944,8 @@ int rvu_mbox_handler_nix_lf_alloc(struct rvu *rvu,
 	goto exit;
 
 free_mem:
+	if (is_cn20k(rvu->pdev))
+		npc_cn20k_dft_rules_free(rvu, pcifunc);
 	nix_ctx_free(rvu, pfvf);
 	rc = -ENOMEM;
 
@@ -2017,6 +2025,8 @@ free_lf:
 	}
 
 	nix_ctx_free(rvu, pfvf);
+	if (is_cn20k(rvu->pdev))
+		npc_cn20k_dft_rules_free(rvu, pcifunc);
 
 	return 0;
 }

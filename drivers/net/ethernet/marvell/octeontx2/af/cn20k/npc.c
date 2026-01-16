@@ -257,8 +257,8 @@ int npc_mcam_idx_2_key_type(struct rvu *rvu, u16 mcam_idx, u8 *key_type)
 
 	/* mcam_idx should be less than (2 * bank depth) */
 	if (mcam_idx >= npc_priv.bank_depth * 2) {
-		dev_err(rvu->dev, "%s:%d bad params\n",
-			__func__, __LINE__);
+		dev_err(rvu->dev, "%s:%d bad params mcam_idx=%u max=%u\n",
+			__func__, __LINE__, mcam_idx, npc_priv.bank_depth * 2);
 		return -EINVAL;
 	}
 
@@ -3107,6 +3107,7 @@ void npc_cn20k_enable_mcam_entry(struct rvu *rvu, int blkaddr, int index, bool e
 		rvu_write64(rvu, blkaddr,
 			    NPC_AF_CN20K_MCAMEX_BANKX_CFG_EXT(mcam_idx, bank),
 			    cfg);
+
 		return;
 	}
 
@@ -3558,6 +3559,13 @@ int npc_cn20k_dft_rules_idx_get(struct rvu *rvu, u16 pcifunc, u16 *bcast,
 	if (!npc_priv.init_done)
 		return 0;
 
+	for (int i = 0; i < ARRAY_SIZE(ptr); i++) {
+		if (!ptr[i])
+			continue;
+
+		*ptr[i] = USHRT_MAX;
+	}
+
 	if (is_lbk_vf(rvu, pcifunc)) {
 		if (!ptr[0])
 			return -ENOMEM;
@@ -3569,7 +3577,6 @@ int npc_cn20k_dft_rules_idx_get(struct rvu *rvu, u16 pcifunc, u16 *bcast,
 				 __func__, __LINE__,
 				 npc_dft_rule_name[NPC_DFT_RULE_PROMISC_ID], pcifunc);
 
-			*ptr[0] = USHRT_MAX;
 			return -ESRCH;
 		}
 
@@ -3588,7 +3595,6 @@ int npc_cn20k_dft_rules_idx_get(struct rvu *rvu, u16 pcifunc, u16 *bcast,
 				 __func__, __LINE__,
 				 npc_dft_rule_name[NPC_DFT_RULE_UCAST_ID], pcifunc);
 
-			*ptr[3] = USHRT_MAX;
 			return -ESRCH;
 		}
 
@@ -3608,7 +3614,6 @@ int npc_cn20k_dft_rules_idx_get(struct rvu *rvu, u16 pcifunc, u16 *bcast,
 				 __func__, __LINE__,
 				 npc_dft_rule_name[i], pcifunc);
 
-			*ptr[j] = USHRT_MAX;
 			continue;
 		}
 
@@ -3806,10 +3811,10 @@ int npc_cn20k_dft_rules_alloc(struct rvu *rvu, u16 pcifunc)
 	/* Check if default rules are already alloced for this pcifunc */
 	ret =  npc_cn20k_dft_rules_idx_get(rvu, pcifunc, &b, &m, &p, &u);
 	if (!ret) {
-		dev_err(rvu->dev,
+		dev_dbg(rvu->dev,
 			"%s:%d default rules are already installed (pcifunc=%#x)\n",
 			__func__, __LINE__, pcifunc);
-		dev_err(rvu->dev,
+		dev_dbg(rvu->dev,
 			"%s:%d bcast(%u) mcast(%u) promisc(%u) ucast(%u)\n",
 			__func__, __LINE__, b, m, p, u);
 		return 0;
