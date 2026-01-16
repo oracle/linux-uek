@@ -43,7 +43,7 @@ struct ttm_operation_ctx;
 #define TTM_PAGE_FLAG_SG              (1 << 8)
 #define TTM_PAGE_FLAG_NO_RETRY	      (1 << 9)
 
-#define TTM_PAGE_FLAG_PRIV_POPULATED  (1 << 31)
+#define TTM_PAGE_FLAG_PRIV_POPULATED  (1U << 31)
 
 /**
  * struct ttm_tt
