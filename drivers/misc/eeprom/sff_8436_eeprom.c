@@ -74,7 +74,6 @@
 #include <linux/slab.h>
 #include <linux/delay.h>
 #include <linux/mutex.h>
-#include <linux/sysfs.h>
 #include <linux/mod_devicetable.h>
 #include <linux/log2.h>
 #include <linux/bitops.h>
@@ -85,6 +84,7 @@
 
 #include <linux/types.h>
 #include <linux/memory.h>
+#include <linux/nvmem-provider.h>
 
 #define SFF_8436_EEPROM_SIZE       5*128
 #define SFF_8436_MAX_PAGE_COUNT    5
@@ -107,12 +107,14 @@ struct sff_8436_data {
 	 * but not from changes by other I2C masters.
 	 */
 	struct mutex lock;
-	struct bin_attribute bin;
 
 	u8 *writebuf;
 	unsigned write_max;
 
 	unsigned num_addresses;
+
+	struct nvmem_config nvmem_config;
+	struct nvmem_device *nvmem;
 
 	u8  data[SFF_8436_EEPROM_SIZE];
 
@@ -731,26 +733,28 @@ err:
 	return ret;
 }
 
-static ssize_t sff_8436_bin_read(struct file *filp, struct kobject *kobj,
-		struct bin_attribute *attr,
-		char *buf, loff_t off, size_t count)
+static int sff_8436_read(void *priv, unsigned int off, void *val, size_t count)
 {
-	struct i2c_client *client = to_i2c_client(container_of(kobj, struct device, kobj));
-	struct sff_8436_data *sff_8436 = i2c_get_clientdata(client);
+	struct sff_8436_data *sff_8436 = priv;
+	int err;
 
-	return sff_8436_read_write(sff_8436, buf, off, count, QSFP_READ_OP);
+	err = sff_8436_read_write(sff_8436, val, off, count, QSFP_READ_OP);
+	if (err)
+		return err;
+	return 0;
 }
 
-
-static ssize_t sff_8436_bin_write(struct file *filp, struct kobject *kobj,
-		struct bin_attribute *attr,
-		char *buf, loff_t off, size_t count)
+static int sff_8436_write(void *priv, unsigned int off, void *val, size_t count)
 {
-	struct i2c_client *client = to_i2c_client(container_of(kobj, struct device, kobj));
-	struct sff_8436_data *sff_8436 = i2c_get_clientdata(client);
+	struct sff_8436_data *sff_8436 = priv;
+	int err;
 
-	return sff_8436_read_write(sff_8436, buf, off, count, QSFP_WRITE_OP);
+	err = sff_8436_read_write(sff_8436, val, off, count, QSFP_WRITE_OP);
+	if (err)
+		return err;
+	return 0;
 }
+
 /*-------------------------------------------------------------------------*/
 
 /*
@@ -782,7 +786,7 @@ static void sff_8436_remove(struct i2c_client *client)
 	struct sff_8436_data *sff_8436;
 
 	sff_8436 = i2c_get_clientdata(client);
-	sysfs_remove_bin_file(&client->dev.kobj, &sff_8436->bin);
+	nvmem_unregister(sff_8436->nvmem);
 
 	kfree(sff_8436->writebuf);
 	kfree(sff_8436);
@@ -855,16 +859,6 @@ static int sff_8436_eeprom_probe(struct i2c_client *client)
 	sff_8436->use_smbus = use_smbus;
 	sff_8436->chip = chip;
 
-	/*
-	 * Export the EEPROM bytes through sysfs, since that's convenient.
-	 * By default, only root should see the data (maybe passwords etc)
-	 */
-	sysfs_bin_attr_init(&sff_8436->bin);
-	sff_8436->bin.attr.name = "eeprom";
-	sff_8436->bin.attr.mode = SFF_8436_FLAG_IRUGO;
-	sff_8436->bin.read = sff_8436_bin_read;
-	sff_8436->bin.size = SFF_8436_EEPROM_SIZE;
-
 	sff_8436->macc.read = sff_8436_macc_read;
 
 	if (!use_smbus ||
@@ -885,9 +879,6 @@ static int sff_8436_eeprom_probe(struct i2c_client *client)
 		unsigned write_max = 1;
 
 		sff_8436->macc.write = sff_8436_macc_write;
-
-		sff_8436->bin.write = sff_8436_bin_write;
-		sff_8436->bin.attr.mode |= S_IWUSR;
 
 		if (write_max > io_limit)
 			write_max = io_limit;
@@ -910,15 +901,31 @@ static int sff_8436_eeprom_probe(struct i2c_client *client)
 
 	sff_8436->client[0] = client;
 
-	/* create the sysfs eeprom file */
-	err = sysfs_create_bin_file(&client->dev.kobj, &sff_8436->bin);
-	if (err)
+	sff_8436->nvmem_config.name = dev_name(&client->dev);
+	sff_8436->nvmem_config.dev = &client->dev;
+	sff_8436->nvmem_config.read_only = true;
+	sff_8436->nvmem_config.root_only = true;
+	sff_8436->nvmem_config.owner = THIS_MODULE;
+	sff_8436->nvmem_config.compat = true;
+	sff_8436->nvmem_config.base_dev = &client->dev;
+	sff_8436->nvmem_config.reg_read = sff_8436_read;
+	sff_8436->nvmem_config.reg_write = sff_8436_write;
+	sff_8436->nvmem_config.priv = sff_8436;
+	sff_8436->nvmem_config.stride = 4;
+	sff_8436->nvmem_config.word_size = 1;
+	sff_8436->nvmem_config.size = SFF_8436_EEPROM_SIZE;
+
+	sff_8436->nvmem = nvmem_register(&sff_8436->nvmem_config);
+
+	if (IS_ERR(sff_8436->nvmem)) {
+		err = PTR_ERR(sff_8436->nvmem);
 		goto err_struct;
+	}
 
 	i2c_set_clientdata(client, sff_8436);
 
 	dev_info(&client->dev, "%zu byte %s EEPROM, %s\n",
-		sff_8436->bin.size, client->name,
+		SFF_8436_EEPROM_SIZE, client->name,
 		"read-only");
 
 	if (use_smbus == I2C_SMBUS_WORD_DATA ||
@@ -933,8 +940,6 @@ static int sff_8436_eeprom_probe(struct i2c_client *client)
 
 	return 0;
 
-err_sysfs_cleanup:
-	sysfs_remove_bin_file(&client->dev.kobj, &sff_8436->bin);
 err_struct:
 	kfree(sff_8436->writebuf);
 exit_kfree:
