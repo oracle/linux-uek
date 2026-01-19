@@ -132,4 +132,22 @@ config EEPROM_SFF_8436
 	  This driver can also be built as a module.  If so, the module
 	  will be called sff_8436.
 
+config EEPROM_OPTOE
+	tristate "read/write access to SFP* & QSFP* EEPROMs"
+	depends on I2C && SYSFS
+	help
+	  If you say yes here you get support for read and write access to
+	  the EEPROM of SFP and QSFP type optical and copper transceivers.
+	  Includes all devices which conform to the sff-8436 and sff-8472
+	  spec including SFP, SFP+, SFP28, SFP-DWDM, QSFP, QSFP+, QSFP28
+	  or later.  These devices are usually found in network switches.
+
+	  This driver only manages read/write access to the EEPROM, all
+	  other features should be accessed via i2c-dev.
+
+	  This driver can also be built as a module.  If so, the module
+	  will be called optoe.
+
+	  If unsure, say N.
+
 endmenu
