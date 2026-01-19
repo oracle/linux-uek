@@ -1000,6 +1000,19 @@ tcp_delack_max - INTEGER
 	Maximum time (in milliseconds) to delay before sending an ACK.
 
 	Default: 200
+ 
+tcp_pingpong_thresh - INTEGER
+	The number of estimated data replies sent for estimated incoming data
+	requests that must happen before TCP considers that a connection is a
+	"ping-pong" (request-response) connection for which delayed
+	acknowledgments can provide benefits.
+
+	This threshold is 1 by default, but some applications may need a higher
+	threshold for optimal performance.
+
+	Possible Values: 1 - 255
+
+	Default: 1
 
 tcp_rto_min_us - INTEGER
 	Minimal TCP retransmission timeout (in microseconds). Note that the
