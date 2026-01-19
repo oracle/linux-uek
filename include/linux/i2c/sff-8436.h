@@ -3,7 +3,6 @@
 
 #include <linux/types.h>
 #include <linux/memory.h>
-#include <linux/eeprom_class.h>
 
 /*
  * As seen through Linux I2C, differences between the most common types of I2C
@@ -27,7 +26,6 @@ struct sff_8436_platform_data {
 
 	void		(*setup)(struct memory_accessor *, void *context);
 	void		*context;
-	struct eeprom_platform_data *eeprom_data; /* extra data for the eeprom_class */
 };
 
 #endif /* _LINUX_SFF_8436_H */
