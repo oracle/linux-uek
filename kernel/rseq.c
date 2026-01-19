@@ -506,7 +506,7 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
 		return 0;
 	}
 
-	if (unlikely(flags))
+	if (unlikely(flags & ~(RSEQ_FLAG_SLICE_EXT_DEFAULT_ON)))
 		return -EINVAL;
 
 	if (current->rseq) {
@@ -548,8 +548,12 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
 	current->rseq = rseq;
 	current->rseq_sig = sig;
 
-	if (IS_ENABLED(CONFIG_RSEQ_SLICE_EXTENSION))
+	if (IS_ENABLED(CONFIG_RSEQ_SLICE_EXTENSION)) {
 		rseqfl |= RSEQ_CS_FLAG_SLICE_EXT_AVAILABLE;
+		if (rseq_slice_extension_enabled() &&
+		    (flags & RSEQ_FLAG_SLICE_EXT_DEFAULT_ON))
+			rseqfl |= RSEQ_CS_FLAG_SLICE_EXT_ENABLED;
+	}
 
 	if (!user_write_access_begin(rseq, sizeof(*rseq)))
 		return -EFAULT;
@@ -557,6 +561,10 @@ SYSCALL_DEFINE4(rseq, struct rseq __user *, rseq, u32, rseq_len,
 	unsafe_put_user(rseqfl, &rseq->flags, efault);
 	unsafe_put_user(0U, &rseq->slice_ctrl.all, efault);
 	user_write_access_end();
+
+#ifdef CONFIG_RSEQ_SLICE_EXTENSION
+	current->rseq_slice.state.enabled = !!(rseqfl & RSEQ_CS_FLAG_SLICE_EXT_ENABLED);
+#endif
 
 	/*
 	 * If rseq was previously inactive, and has just been
