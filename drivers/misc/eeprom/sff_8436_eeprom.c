@@ -82,7 +82,6 @@
 #include <linux/of.h>
 #include <linux/i2c.h>
 #include <linux/i2c/sff-8436.h>
-#include <linux/eeprom_class.h>
 
 #include <linux/types.h>
 #include <linux/memory.h>
@@ -116,7 +115,6 @@ struct sff_8436_data {
 	unsigned num_addresses;
 
 	u8  data[SFF_8436_EEPROM_SIZE];
-	struct eeprom_device *eeprom_dev;
 
 	struct i2c_client *client[];
 };
@@ -421,10 +419,9 @@ static ssize_t sff_8436_eeprom_write(struct sff_8436_data *sff_8436, const char 
 {
 	struct i2c_client *client = sff_8436->client[0];
 	struct i2c_msg msg;
-	ssize_t status;
 	unsigned long timeout, write_time;
 	unsigned next_page;
-	int i = 0;
+	int status, i = 0;
 
 	/* write max is at most a page */
 	if (count > sff_8436->write_max)
@@ -528,7 +525,7 @@ static ssize_t sff_8436_eeprom_update_client(struct sff_8436_data *sff_8436,
 	page = sff_8436_translate_offset(sff_8436, &phy_offset);
 
 	dev_dbg(&client->dev,
-					"sff_8436_eeprom_update_client off %lld  page:%d phy_offset:%lld, count:%d, opcode:%d\n",
+					"sff_8436_eeprom_update_client off %lld  page:%d phy_offset:%lld, count:%zu, opcode:%d\n",
 					off, page, phy_offset, count, opcode);
 	if (page > 0) {
 		ret = sff_8436_write_page_reg(sff_8436, page);
@@ -705,18 +702,18 @@ static ssize_t sff_8436_read_write(struct sff_8436_data *sff_8436,
 		pending_len = pending_len - page_len;
 
 		dev_dbg(&client->dev,
-				"sff_read off %lld len %d page_start_offset %lld page_offset %lld page_len %d pending_len %d\n",
+				"sff_read off %lld len %zu page_start_offset %lld page_offset %lld page_len %zu pending_len %zu\n",
 				off, len, page_start_offset, page_offset, page_len, pending_len);
 
 		/* Refresh the data from offset for specified len */
 		ret = sff_8436_eeprom_update_client(sff_8436, page_offset, page_len, opcode);
 		if (ret != page_len) {
 			if (err_timeout) {
-				dev_dbg(&client->dev, "sff_8436_update_client for %s page %d page_offset %lld page_len %d failed %d!\n",
+				dev_dbg(&client->dev, "sff_8436_update_client for %s page %d page_offset %lld page_len %zu failed %d!\n",
 							(page ? "Upper" : "Lower"), (page ? (page-1) : page), page_offset, page_len, ret);
 				goto err;
 			} else {
-				dev_err(&client->dev, "sff_8436_update_client for %s page %d page_offset %lld page_len %d failed %d!\n",
+				dev_err(&client->dev, "sff_8436_update_client for %s page %d page_offset %lld page_len %zu failed %d!\n",
 							(page ? "Upper" : "Lower"), (page ? (page-1) : page), page_offset, page_len, ret);
 			}
 		}
@@ -780,21 +777,17 @@ static ssize_t sff_8436_macc_write(struct memory_accessor *macc, const char *buf
 
 /*-------------------------------------------------------------------------*/
 
-static int __devexit sff_8436_remove(struct i2c_client *client)
+static void sff_8436_remove(struct i2c_client *client)
 {
 	struct sff_8436_data *sff_8436;
 
 	sff_8436 = i2c_get_clientdata(client);
 	sysfs_remove_bin_file(&client->dev.kobj, &sff_8436->bin);
 
-	eeprom_device_unregister(sff_8436->eeprom_dev);
-
 	kfree(sff_8436->writebuf);
 	kfree(sff_8436);
-	return 0;
 }
-static int sff_8436_eeprom_probe(struct i2c_client *client,
-			const struct i2c_device_id *id)
+static int sff_8436_eeprom_probe(struct i2c_client *client)
 {
 	int err;
 	int use_smbus = 0;
@@ -821,7 +814,6 @@ static int sff_8436_eeprom_probe(struct i2c_client *client,
 
 		chip.setup = NULL;
 		chip.context = NULL;
-		chip.eeprom_data = NULL;
 	}
 
 	if (!is_power_of_2(chip.byte_len))
@@ -923,13 +915,6 @@ static int sff_8436_eeprom_probe(struct i2c_client *client,
 	if (err)
 		goto err_struct;
 
-	sff_8436->eeprom_dev = eeprom_device_register(&client->dev, chip.eeprom_data);
-	if (IS_ERR(sff_8436->eeprom_dev)) {
-		dev_err(&client->dev, "error registering eeprom device.\n");
-		err = PTR_ERR(sff_8436->eeprom_dev);
-		goto err_sysfs_cleanup;
-	}
-
 	i2c_set_clientdata(client, sff_8436);
 
 	dev_info(&client->dev, "%zu byte %s EEPROM, %s\n",
@@ -968,7 +953,7 @@ static struct i2c_driver sff_8436_driver = {
 		.owner = THIS_MODULE,
 	},
 	.probe = sff_8436_eeprom_probe,
-	.remove = __devexit_p(sff_8436_remove),
+	.remove = sff_8436_remove,
 	.id_table = sff8436_ids,
 };
 
