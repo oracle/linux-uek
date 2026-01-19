@@ -122,6 +122,7 @@ config EEPROM_EE1004
 config EEPROM_SFF_8436
 	tristate "SFF-8436 QSFP EEPROMs support"
 	depends on I2C && SYSFS
+	select NVMEM
 	help
 	  If you say yes here you get read-only support for the  EEPROM of
 	  the QSFPs which are implemented as per SFF-8436.
