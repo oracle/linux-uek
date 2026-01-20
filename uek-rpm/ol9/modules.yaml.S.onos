@@ -222,6 +222,8 @@ modules-core:
 - altera-stapl
 - alx
 - am53c974
+- amax31732
+- amax31790
 - amc6821
 - amd
 - amd64_edac
@@ -604,6 +606,7 @@ modules-core:
 - cros_peripheral_charger
 - cros_typec_switch
 - cros_usbpd_notify
+- crow-fan-driver
 - crypto_engine
 - crypto_null
 - crypto_user
@@ -1928,6 +1931,7 @@ modules-core:
 - microtek
 - mii
 - minix
+- minke-fan-cpld
 - mISDN_core
 - mISDN_dsp
 - mISDNinfineon
@@ -2566,6 +2570,7 @@ modules-core:
 - rainshadow-cec
 - ramoops
 - rapl
+- raven-fan-driver
 - raw_diag
 - rbd
 - rc-adstech-dvb-t-pci
@@ -2739,6 +2744,8 @@ modules-core:
 - rockchip
 - roles
 - romfs
+- rook-fan-cpld
+- rook-led-driver
 - rose
 - rp2
 - rpcrdma
@@ -2857,6 +2864,8 @@ modules-core:
 - sc1200wdt
 - sc92031
 - sca3000
+- scd
+- scd-hwmon
 - sch311x_wdt
 - sch5627
 - sch5636
@@ -3521,6 +3530,7 @@ modules-core:
 - tmp102
 - tmp401
 - tmp421
+- tmp468
 - topstar-laptop
 - toshiba_acpi
 - toshiba_bluetooth
