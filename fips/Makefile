@@ -44,7 +44,9 @@ fips140-y += crypto/pcrypt.o
 fips140-y += crypto/ghash-generic.o
 
 # crypto_simd.ko
+ifeq ($(CONFIG_X86),y)
 fips140-y += crypto/simd.o
+endif
 
 fips140-y += crypto/sha1_generic.o
 
