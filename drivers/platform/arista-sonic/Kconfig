@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# Kconfig for Arista SONiC SCD driver
+#
+
+config ARISTA_SCD_DRIVER
+	tristate "Arista SONiC SCD driver"
+	depends on NETDEVICES && ETHERNET
+	depends on PCI
+	depends on I2C
+	depends on HWMON
+	depends on LEDS_CLASS
+	help
+	  Enable the Arista SONiC SCD driver imported under
+	  drivers/platform/arista-sonic from:
+
+	    https://github.com/aristanetworks/sonic
+
+	  This option builds the SONiC SCD driver, which relies on
+	  PCI, I2C, HWMON, and LED subsystems.
+
+	  Say Y here to build it into the kernel, or M to build it as a module.
+
