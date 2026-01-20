@@ -833,7 +833,10 @@ static void rds_conn_destroy_fini(struct kref *ref)
 		WARN_ON(!list_empty(&cp->cp_retrans));
 	}
 
-	atomic_dec(&conn->c_trans->t_conn_count);
+	if (!atomic_dec_return(&conn->c_trans->t_conn_count)) {
+		/* For rmmod in rds_{ib,tcp}_exit */
+		wake_up(&conn->c_trans->t_conn_count_zero_waitq);
+	}
 
 	put_net(conn->c_net);
 	kfree(conn->c_path);

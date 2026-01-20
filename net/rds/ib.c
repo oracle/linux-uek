@@ -1493,6 +1493,7 @@ int rds_ib_init(void)
 		goto out_aux_wq;
 	}
 
+	init_waitqueue_head(&rds_ib_transport.t_conn_count_zero_waitq);
 	ret = rds_trans_register(&rds_ib_transport);
 	if (ret)
 		goto out_evt_wq;
@@ -1577,8 +1578,11 @@ void rds_ib_exit(void)
 	/* Now kill all RDS/RDMA connection without an associated device. */
 	rds_ib_destroy_nodev_conns();
 
-	/* There should not be any RDS/RDMA connections. */
-	WARN_ON(atomic_read(&rds_ib_transport.t_conn_count));
+	/* Wait for all RDS/RDMA connections to be destroyed */
+	if (!wait_event_timeout(rds_ib_transport.t_conn_count_zero_waitq,
+				!atomic_read(&rds_ib_transport.t_conn_count),
+				msecs_to_jiffies(RDS_CONN_COUNT_ZERO_TIMEOUT)))
+		WARN_ON(atomic_read(&rds_ib_transport.t_conn_count));
 
 	rds_ib_sysctl_exit();
 	rds_ib_recv_exit();

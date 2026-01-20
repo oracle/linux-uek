@@ -739,8 +739,11 @@ static void __exit rds_tcp_exit(void)
 	unregister_pernet_device(&rds_tcp_net_ops);
 	rds_tcp_destroy_conns();
 
-	/* There should not be any RDS/TCP connections. */
-	WARN_ON(atomic_read(&rds_tcp_transport.t_conn_count));
+	/* Wait for all RDS/TCP connections to be destroyed */
+	if (!wait_event_timeout(rds_tcp_transport.t_conn_count_zero_waitq,
+				!atomic_read(&rds_tcp_transport.t_conn_count),
+				msecs_to_jiffies(RDS_CONN_COUNT_ZERO_TIMEOUT)))
+		WARN_ON(atomic_read(&rds_tcp_transport.t_conn_count));
 
 	rds_tcp_recv_exit();
 	kmem_cache_destroy(rds_tcp_conn_slab);
@@ -769,6 +772,7 @@ static int __init rds_tcp_init(void)
 	if (ret)
 		goto out_recv;
 
+	init_waitqueue_head(&rds_tcp_transport.t_conn_count_zero_waitq);
 	ret = rds_trans_register(&rds_tcp_transport);
 
 	rds_info_register_func(RDS_INFO_TCP_SOCKETS, rds_tcp_tc_info);
