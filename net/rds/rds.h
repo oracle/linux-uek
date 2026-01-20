@@ -847,6 +847,7 @@ struct rds_transport {
 	unsigned int		t_type;
 
 	atomic_t		t_conn_count;
+	wait_queue_head_t	t_conn_count_zero_waitq;
 
 	int (*laddr_check)(struct net *net, const struct in6_addr *addr,
 			   __u32 scope_id);
@@ -901,6 +902,8 @@ struct rds_transport {
 
 	atomic64_t rds_avg_conn_jf;
 };
+
+#define RDS_CONN_COUNT_ZERO_TIMEOUT 10000
 
 /* Used to store per peer socket buffer info. */
 struct rs_buf_info {
