@@ -95,4 +95,11 @@ extern int bpf_set_dentry_xattr(struct dentry *dentry, const char *name__str,
 				const struct bpf_dynptr *value_p, int flags) __ksym __weak;
 extern int bpf_remove_dentry_xattr(struct dentry *dentry, const char *name__str) __ksym __weak;
 
+struct bpf_res_spin_lock;
+
+extern int bpf_res_spin_lock(struct bpf_res_spin_lock *lock) __weak __ksym;
+extern int bpf_res_spin_lock_irqsave(struct bpf_res_spin_lock *lock, long unsigned int *flags__irq_flag) __weak __ksym;
+extern void bpf_res_spin_unlock(struct bpf_res_spin_lock *lock) __weak __ksym;
+extern void bpf_res_spin_unlock_irqrestore(struct bpf_res_spin_lock *lock, long unsigned int *flags__irq_flag) __weak __ksym;
+
 #endif
