@@ -110,7 +110,6 @@ static int __init rseq_setup_debug(char *str)
 }
 __setup("rseq_debug=", rseq_setup_debug);
 
-#ifdef CONFIG_DEBUG_FS
 #ifdef CONFIG_RSEQ_STATS
 DEFINE_PER_CPU(struct rseq_stats, rseq_stats);
 
@@ -193,16 +192,19 @@ static const struct file_operations debug_ops = {
 	.release	= single_release,
 };
 
+static void rseq_slice_ext_init(struct dentry *root_dir);
+
 static int __init rseq_debugfs_init(void)
 {
 	struct dentry *root_dir = debugfs_create_dir("rseq", NULL);
 
 	debugfs_create_file("debug", 0644, root_dir, NULL, &debug_ops);
 	rseq_stats_init(root_dir);
+	if (IS_ENABLED(CONFIG_RSEQ_SLICE_EXTENSION))
+		rseq_slice_ext_init(root_dir);
 	return 0;
 }
 __initcall(rseq_debugfs_init);
-#endif /* CONFIG_DEBUG_FS */
 
 static int rseq_update_cpu_id(struct task_struct *t)
 {
@@ -585,7 +587,9 @@ struct slice_timer {
 	void		*cookie;
 };
 
-unsigned int rseq_slice_ext_nsecs __read_mostly = 10 * NSEC_PER_USEC;
+static const unsigned int rseq_slice_ext_nsecs_min = 10 * NSEC_PER_USEC;
+static const unsigned int rseq_slice_ext_nsecs_max = 50 * NSEC_PER_USEC;
+unsigned int rseq_slice_ext_nsecs __read_mostly = rseq_slice_ext_nsecs_min;
 static DEFINE_PER_CPU(struct slice_timer, slice_timer);
 DEFINE_STATIC_KEY_TRUE(rseq_slice_extension_key);
 
@@ -827,30 +831,48 @@ SYSCALL_DEFINE0(rseq_slice_yield)
 	return yielded;
 }
 
-#ifdef CONFIG_SYSCTL
-static const unsigned int rseq_slice_ext_nsecs_min = 10 * NSEC_PER_USEC;
-static const unsigned int rseq_slice_ext_nsecs_max = 50 * NSEC_PER_USEC;
+static int rseq_slice_ext_show(struct seq_file *m, void *p)
+{
+	seq_printf(m, "%d\n", rseq_slice_ext_nsecs);
+	return 0;
+}
 
-static struct ctl_table rseq_slice_ext_sysctl[] = {
-	{
-		.procname	= "rseq_slice_extension_nsec",
-		.data		= &rseq_slice_ext_nsecs,
-		.maxlen		= sizeof(unsigned int),
-		.mode		= 0644,
-		.proc_handler	= proc_douintvec_minmax,
-		.extra1		= (unsigned int *)&rseq_slice_ext_nsecs_min,
-		.extra2		= (unsigned int *)&rseq_slice_ext_nsecs_max,
-	},
+static ssize_t rseq_slice_ext_write(struct file *file, const char __user *ubuf,
+				    size_t count, loff_t *ppos)
+{
+	unsigned int nsecs;
+
+	if (kstrtouint_from_user(ubuf, count, 10, &nsecs))
+		return -EINVAL;
+
+	if (nsecs < rseq_slice_ext_nsecs_min)
+		return -ERANGE;
+
+	if (nsecs > rseq_slice_ext_nsecs_max)
+		return -ERANGE;
+
+	rseq_slice_ext_nsecs = nsecs;
+
+	return count;
+}
+
+static int rseq_slice_ext_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, rseq_slice_ext_show, inode->i_private);
+}
+
+static const struct file_operations slice_ext_ops = {
+	.open		= rseq_slice_ext_open,
+	.read		= seq_read,
+	.write		= rseq_slice_ext_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
 };
 
-static void rseq_slice_sysctl_init(void)
+static void rseq_slice_ext_init(struct dentry *root_dir)
 {
-	if (rseq_slice_extension_enabled())
-		register_sysctl_init("kernel", rseq_slice_ext_sysctl);
+	debugfs_create_file("slice_ext_nsec", 0644, root_dir, NULL, &slice_ext_ops);
 }
-#else /* CONFIG_SYSCTL */
-static inline void rseq_slice_sysctl_init(void) { }
-#endif  /* !CONFIG_SYSCTL */
 
 static int __init rseq_slice_cmdline(char *str)
 {
@@ -876,8 +898,9 @@ static int __init rseq_slice_init(void)
 			HRTIMER_MODE_REL_PINNED_HARD);
 		ht->function = rseq_slice_expired;
 	}
-	rseq_slice_sysctl_init();
 	return 0;
 }
 device_initcall(rseq_slice_init);
+#else
+static void rseq_slice_ext_init(struct dentry *root_dir) { }
 #endif /* CONFIG_RSEQ_SLICE_EXTENSION */
