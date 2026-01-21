@@ -239,7 +239,7 @@ restart:
 	if (!rds_conn_path_up(cp)) {
 		trace_rds_drop_egress(NULL, NULL, conn, cp,
 				      &conn->c_laddr, &conn->c_faddr,
-				      "conn path is down");
+				      "conn path is not up");
 		release_in_xmit(cp);
 		ret = 0;
 		goto out;
