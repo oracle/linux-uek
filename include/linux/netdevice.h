@@ -1815,6 +1815,8 @@ enum netdev_reg_state {
  *
  *	@mpls_features:	Mask of features inheritable by MPLS
  *	@gso_partial_features: value(s) from NETIF_F_GSO\*
+ *	@mangleid_features:	Mask of features requiring MANGLEID, will be
+ *				disabled together with the latter.
  *
  *	@ifindex:	interface index
  *	@group:		The group the device belongs to
@@ -2473,7 +2475,7 @@ struct net_device {
 	 */
 	struct mutex		lock;
 #endif /* !__GENKSYMS__ */
-	UEK_KABI_RESERVE(6)
+	UEK_KABI_USE(6, netdev_features_t mangleid_features)
 	UEK_KABI_RESERVE(7)
 	UEK_KABI_RESERVE(8)
 
