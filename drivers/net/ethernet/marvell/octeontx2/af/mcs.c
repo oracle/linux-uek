@@ -1590,14 +1590,19 @@ static int mcs_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	mcs->pdev = pdev;
 	mcs->dev = &pdev->dev;
 
+	mcs->mcs_id = (pci_resource_start(pdev, PCI_CFG_REG_BAR_NUM) >> 24)
+			& MCS_ID_MASK;
+
 	switch (pdev->subsystem_device) {
 	case PCI_SUBSYS_DEVID_CN20KA:
 		mcs->mcs_ops = cn20ka_get_mac_ops();
 		mcs->hw->mcs_devtype = CN20KA_MCS;
+		mcs->mcs_id = 0;
 		break;
 	case PCI_SUBSYS_DEVID_CNF20KA:
 		mcs->mcs_ops = cn20ka_get_mac_ops();
 		mcs->hw->mcs_devtype = CNF20KA_MCS;
+		mcs->mcs_id = 0;
 		break;
 	case PCI_SUBSYS_DEVID_CN10K_B:
 		mcs->mcs_ops = &cn10kb_mcs_ops;
@@ -1619,8 +1624,6 @@ static int mcs_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (err)
 		goto err_x2p;
 
-	mcs->mcs_id = (pci_resource_start(pdev, PCI_CFG_REG_BAR_NUM) >> 24)
-			& MCS_ID_MASK;
 
 	/* Set mcs tx side resources */
 	err = mcs_alloc_struct_mem(mcs, &mcs->tx);
@@ -1642,6 +1645,7 @@ static int mcs_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	err = mcs_register_interrupts(mcs);
 	if (err)
 		goto exit;
+
 
 	list_add_tail(&mcs->mcs_list, &mcs_list);
 	mutex_init(&mcs->stats_lock);
