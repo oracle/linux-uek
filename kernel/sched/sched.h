@@ -1676,6 +1676,12 @@ static inline struct cfs_rq *group_cfs_rq(struct sched_entity *grp)
 
 #endif /* !CONFIG_FAIR_GROUP_SCHED */
 
+#ifdef CONFIG_SMP
+extern void update_rq_avg_idle(struct rq *rq);
+#else
+static inline void update_rq_avg_idle(struct rq *rq) { }
+#endif
+
 extern void update_rq_clock(struct rq *rq);
 
 /*
