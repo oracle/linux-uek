@@ -87,6 +87,7 @@
 	__field(unsigned long, flags)		\
 	__field(int, err)			\
 	__array(char, reason, RDS_STRSIZE)	\
+	__field(int, cp_state)          \
 	__field(__u64, cgroup_id)		\
 	__field(void *, cgroup)			\
 	__field(void *, rm)			\
@@ -205,12 +206,14 @@ DECLARE_EVENT_CLASS(rds_status,
 		__entry->rm = NULL;
 		__entry->rs = rs;
 		__entry->conn = conn;
+		cp = (!cp ? (conn ? &conn->c_path[0] : NULL) : cp);
 		__entry->cp = cp;
+		__entry->cp_state = cp ? atomic_read(&cp->cp_state) : -1;
 	),
 
-	TP_printk("RDS/%s: <%pI6c,%pI6c,%d>, flags [%s] reason [%s] err [%d]",
+	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> state %d, flags [%s] reason [%s] err [%d]",
 		  show_transport(__entry->transport),
-		  __entry->laddr, __entry->faddr, __entry->tos,
+		  __entry->laddr, __entry->faddr, __entry->tos, __entry->cp_state,
 		  show_flags(__entry->flags),
 		  __entry->reason, __entry->err)
 );
@@ -395,7 +398,9 @@ TRACE_EVENT(rds_receive,
 		__entry->inc = inc;
 		__entry->rs = rs;
 		__entry->conn = conn;
+		cp = (!cp ? (conn ? &conn->c_path[0] : NULL) : cp);
 		__entry->cp = cp;
+		__entry->cp_state = cp ? atomic_read(&cp->cp_state) : -1;
 		__entry->hdr = inc ? &inc->i_hdr : NULL;
 		__entry->seq = inc ? be64_to_cpu(inc->i_hdr.h_sequence) : 0;
 		__entry->next_rx_seq = cp ? cp->cp_next_rx_seq : 0;
@@ -404,9 +409,9 @@ TRACE_EVENT(rds_receive,
 		__entry->rx_jiffies = inc ? inc->i_rx_jiffies : 0;
 	),
 
-	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> next %llu seq %llu len %u sport %u dport %u flags 0x%lx rx_jiffies %lu forward %d",
+	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> state %d, next %llu seq %llu len %u sport %u dport %u flags 0x%lx rx_jiffies %lu forward %d",
 		  show_transport(__entry->transport),
-		  __entry->laddr, __entry->faddr, __entry->tos,
+		  __entry->laddr, __entry->faddr, __entry->tos, __entry->cp_state,
 		  __entry->next_rx_seq, __entry->seq, __entry->len,
 		  __entry->fport, __entry->lport, __entry->flags,
 		  __entry->rx_jiffies, __entry->forward)
@@ -450,11 +455,13 @@ TRACE_EVENT(rds_receive_csum_err,
 		__entry->rx_jiffies = inc ? inc->i_rx_jiffies : 0;
 		__entry->csum_rcvd = inc->i_payload_csum.csum;
 		__entry->csum_calc = inc->i_usercopy_csum;
+		cp = (!cp ? (conn ? &conn->c_path[0] : NULL) : cp);
+		__entry->cp_state = cp ? atomic_read(&cp->cp_state) : -1;
 	),
 
-	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> next %llu seq %llu len %u sport %u dport %u flags 0x%lx rx_jiffies %lu: csum rcvd [0x%hx] != calc [0x%hx]",
+	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> state %d, next %llu seq %llu len %u sport %u dport %u flags 0x%lx rx_jiffies %lu: csum rcvd [0x%hx] != calc [0x%hx]",
 		  show_transport(__entry->transport),
-		  __entry->faddr, __entry->laddr, __entry->tos,
+		  __entry->faddr, __entry->laddr, __entry->tos, __entry->cp_state,
 		  __entry->next_rx_seq, __entry->seq, __entry->len,
 		  __entry->fport, __entry->lport, __entry->flags,
 		  __entry->rx_jiffies, __entry->csum_rcvd, __entry->csum_calc)
@@ -509,7 +516,9 @@ TRACE_EVENT(rds_drop_ingress,
 		__entry->inc = inc;
 		__entry->rs = rs;
 		__entry->conn = conn;
+		cp = (!cp ? (conn ? &conn->c_path[0] : NULL) : cp);
 		__entry->cp = cp;
+		__entry->cp_state = cp ? atomic_read(&cp->cp_state) : -1;
 		__entry->hdr = inc ? &inc->i_hdr : NULL;
 		__entry->seq = inc ? be64_to_cpu(inc->i_hdr.h_sequence) : 0;
 		__entry->next_rx_seq = cp ? cp->cp_next_rx_seq : 0;
@@ -518,9 +527,9 @@ TRACE_EVENT(rds_drop_ingress,
 		__entry->rx_jiffies = inc ? inc->i_rx_jiffies : 0;
 	),
 
-	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> dropping request, reason [%s]",
+	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> state %d, dropping request, reason [%s]",
 		  show_transport(__entry->transport),
-		  __entry->faddr, __entry->laddr, __entry->tos,
+		  __entry->faddr, __entry->laddr, __entry->tos, __entry->cp_state,
 		  __entry->reason)
 );
 
@@ -561,14 +570,16 @@ TRACE_EVENT(rds_send,
 		__entry->cgroup_id = rds_cgroup_id(cgrp);
 		__entry->rs = rs;
 		__entry->conn = conn;
+		cp = (!cp ? (conn ? &conn->c_path[0] : NULL) : cp);
 		__entry->cp = cp;
+		__entry->cp_state = cp ? atomic_read(&cp->cp_state) : -1;
 		__entry->hdr = rm ? &rm->m_inc.i_hdr : NULL;
 		__entry->rm = rm;
 	),
 
-	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> flags 0x%lxu",
+	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> state %d, flags 0x%lxu",
 		  show_transport(__entry->transport),
-		  __entry->laddr, __entry->faddr, __entry->tos,
+		  __entry->laddr, __entry->faddr, __entry->tos, __entry->cp_state,
 		  __entry->flags)
 );
 
@@ -609,14 +620,16 @@ TRACE_EVENT(rds_send_complete,
 		__entry->cgroup_id = rds_cgroup_id(cgrp);
 		__entry->rs = rs;
 		__entry->conn = conn;
+		cp = (!cp ? (conn ? &conn->c_path[0] : NULL) : cp);
 		__entry->cp = cp;
+		__entry->cp_state = cp ? atomic_read(&cp->cp_state) : -1;
 		__entry->hdr = rm ? &rm->m_inc.i_hdr : NULL;
 		__entry->rm = rm;
 	),
 
-	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> flags 0x%lxu reason [%s] status [%s]",
+	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> state %d, flags 0x%lxu reason [%s] status [%s]",
 		  show_transport(__entry->transport),
-		  __entry->laddr, __entry->faddr, __entry->tos,
+		  __entry->laddr, __entry->faddr, __entry->tos, __entry->cp_state,
 		  __entry->flags, __entry->reason,
 		  show_send_status(__entry->err))
 );
@@ -659,15 +672,17 @@ TRACE_EVENT(rds_drop_egress,
 		__entry->cgroup_id = rds_cgroup_id(cgrp);
 		__entry->rs = rs;
 		__entry->conn = conn;
+		cp = (!cp ? (conn ? &conn->c_path[0] : NULL) : cp);
 		__entry->cp = cp;
+		__entry->cp_state = cp ? atomic_read(&cp->cp_state) : -1;
 		__entry->hdr = rm ? &rm->m_inc.i_hdr : NULL;
 		__entry->rm = rm;
 	),
 
-	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> dropping message, flags 0x%lxu reason [%s]",
+	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> state %d, dropping message, flags 0x%lxu reason [%s]",
 		  show_transport(__entry->transport), __entry->laddr,
-		  __entry->faddr, __entry->tos, __entry->flags,
-		 __entry->reason)
+		  __entry->faddr, __entry->tos, __entry->cp_state,
+		  __entry->flags, __entry->reason)
 );
 
 DECLARE_EVENT_CLASS(rds_heartbeat,
@@ -858,7 +873,7 @@ DECLARE_EVENT_CLASS(rds_ib,
 		RDS_STRLCPY(__entry->dev_name, dev ? dev->name : NULL);
 		RDS_STRLCPY(__entry->reason, reason);
 		__entry->err = err;
-		cp = conn && conn->c_npaths == 1 ? &conn->c_path[0] : NULL;
+		cp = (conn ? &conn->c_path[0] : NULL);
 		rs = cp && cp->cp_xmit_rm ? cp->cp_xmit_rm->m_rs : NULL;
 		__entry->rs = rs;
 		__entry->netns_inum = rds_netns_inum(rs);
@@ -867,6 +882,7 @@ DECLARE_EVENT_CLASS(rds_ib,
 		__entry->cgroup_id = rds_cgroup_id(cgrp);
 		__entry->conn = conn;
 		__entry->cp = cp;
+		__entry->cp_state = cp ? atomic_read(&cp->cp_state) : -1;
 		__entry->dev = dev;
 		__entry->rds_ibdev = rds_ibdev;
 		cm_id = ic ? ic->i_cm_id : NULL;
@@ -880,11 +896,11 @@ DECLARE_EVENT_CLASS(rds_ib,
 			cm_id->route.path_rec->dgid.global.interface_id : 0;
 	),
 
-	TP_printk("RDS/IB: <%pI6c,%pI6c,%d> lguid 0x%llx fguid 0x%llx qps <%d,%d> dev %s reason [%s], err [%d]",
-		__entry->laddr, __entry->faddr, __entry->tos,
-		__entry->lguid, __entry->fguid,
-		__entry->qp_num, __entry->remote_qp_num, __entry->dev_name,
-		__entry->reason, __entry->err)
+	TP_printk("RDS/IB: <%pI6c,%pI6c,%d> state %d, lguid 0x%llx fguid 0x%llx qps <%d,%d> dev %s reason [%s], err [%d]",
+			  __entry->laddr, __entry->faddr, __entry->tos, __entry->cp_state,
+			  __entry->lguid, __entry->fguid,
+			  __entry->qp_num, __entry->remote_qp_num, __entry->dev_name,
+			  __entry->reason, __entry->err)
 );
 
 DEFINE_EVENT(rds_ib, rds_ib_add_device,
@@ -1220,7 +1236,7 @@ DECLARE_EVENT_CLASS(rds_ib_flow_cntrl,
 		__entry->flags = 0;
 		__entry->err = 0;
 		RDS_STRLCPY(__entry->reason, NULL);
-		cp = conn && conn->c_npaths == 1 ? &conn->c_path[0] : NULL;
+		cp = (conn ? &conn->c_path[0] : NULL);
 		rs = cp && cp->cp_xmit_rm ? cp->cp_xmit_rm->m_rs : NULL;
 		__entry->rs = rs;
 		__entry->netns_inum = rds_netns_inum(rs);
@@ -1229,6 +1245,7 @@ DECLARE_EVENT_CLASS(rds_ib_flow_cntrl,
 		__entry->cgroup_id = rds_cgroup_id(cgrp);
 		__entry->conn = conn;
 		__entry->cp = cp;
+		__entry->cp_state = cp ? atomic_read(&cp->cp_state) : -1;
 		__entry->dev = rds_ibdev ? rds_ibdev->dev : NULL;
 		__entry->rds_ibdev = rds_ibdev;
 		RDS_STRLCPY(__entry->dev_name, rds_ibdev && rds_ibdev->dev ?
@@ -1239,8 +1256,8 @@ DECLARE_EVENT_CLASS(rds_ib_flow_cntrl,
 		__entry->new_post_credits = IB_GET_POST_CREDITS(newval);
 	),
 
-	TP_printk("RDS/IB: <%pI6c,%pI6c,%d> dev %s send_credits [%ld -> %ld], post_credits [%ld -> %ld]",
-		  __entry->laddr, __entry->faddr, __entry->tos,
+	TP_printk("RDS/IB: <%pI6c,%pI6c,%d> state %d, dev %s send_credits [%ld -> %ld], post_credits [%ld -> %ld]",
+		  __entry->laddr, __entry->faddr, __entry->tos, __entry->cp_state,
 		  __entry->dev_name, __entry->old_send_credits,
 		  __entry->new_send_credits, __entry->old_post_credits,
 		  __entry->new_post_credits)
@@ -1315,15 +1332,17 @@ DECLARE_EVENT_CLASS(rds_queue,
 		__entry->cgroup = cgrp;
 		__entry->cgroup_id = rds_cgroup_id(cgrp);
 		__entry->conn = conn;
+		cp = (!cp ? (conn ? &conn->c_path[0] : NULL) : cp);
 		__entry->cp = cp;
+		__entry->cp_state = cp ? atomic_read(&cp->cp_state) : -1;
 		__entry->wq = wq;
 		__entry->work = work;
 		__entry->delay = delay;
 	),
 
-	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> delay %ld reason [%s]",
+	TP_printk("RDS/%s: <%pI6c,%pI6c,%d> state %d, delay %ld reason [%s]",
 		  show_transport(__entry->transport),
-		  __entry->laddr, __entry->faddr, __entry->tos,
+		  __entry->laddr, __entry->faddr, __entry->tos, __entry->cp_state,
 		  __entry->delay, __entry->reason)
 );
 
