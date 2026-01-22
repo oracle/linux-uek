@@ -61,7 +61,7 @@
 
 #define FAN_MAX_PWM 255
 
-#define FAN_ID_MASK    0x1F
+#define FAN_ID_MASK    0x3F
 #define FAN_ID_UNKNOWN (FAN_ID_MASK + 1)
 
 #define IS_LR_CPLD(Cpld) ((Cpld)->fans_per_slot == 2)
@@ -163,14 +163,16 @@ struct cpld_data {
 };
 
 static const struct fan_id mk_fan_ids[] = {
-   [0b00000]        = { "FAN-7021H-RED",   2 },
-   [0b00001]        = { "FAN-7021H-RED",   2 },
-   [0b01000]        = { "FAN-7022HQ-RED",  2 },
-   [0b01001]        = { "FAN-7022HQ-RED",  2 },
-   [0b10000]        = { "FAN-7021H-BLUE",  2 },
-   [0b10001]        = { "FAN-7021H-BLUE",  2 },
-   [0b11000]        = { "FAN-7022HQ-BLUE", 2 },
-   [0b11001]        = { "FAN-7022HQ-BLUE", 2 },
+   [0b000000]       = { "FAN-7021H-RED",   2 },
+   [0b000001]       = { "FAN-7021H-RED",   2 },
+   [0b001000]       = { "FAN-7022HQ-RED",  2 },
+   [0b001001]       = { "FAN-7022HQ-RED",  2 },
+   [0b010000]       = { "FAN-7021H-BLUE",  2 },
+   [0b010001]       = { "FAN-7021H-BLUE",  2 },
+   [0b011000]       = { "FAN-7022HQ-BLUE", 2 },
+   [0b011001]       = { "FAN-7022HQ-BLUE", 2 },
+   [0b100000]       = { "FAN-7311H-RED",   2 },
+   [0b100001]       = { "FAN-7311H-RED",   2 },
    [FAN_ID_UNKNOWN] = { "Unknown",         2 },
 };
 
