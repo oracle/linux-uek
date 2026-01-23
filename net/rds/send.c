@@ -433,10 +433,15 @@ restart:
 						      "flush due to bad MR key");
 				spin_lock_irqsave(&cp->cp_lock, flags);
 				if (test_and_clear_bit(RDS_MSG_ON_CONN,
-					&rm->m_flags))
+						       &rm->m_flags)) {
+					/* last rds_message_put happens after batch */
 					list_move_tail(&rm->m_conn_item,
 						&to_be_dropped);
-				spin_unlock_irqrestore(&cp->cp_lock, flags);
+					spin_unlock_irqrestore(&cp->cp_lock, flags);
+				} else {
+					spin_unlock_irqrestore(&cp->cp_lock, flags);
+					rds_message_put(rm); /* discard rds_message */
+				}
 				continue;
 			}
 
