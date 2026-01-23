@@ -24,6 +24,9 @@
 #define MCS_RX_SECY_PLCY_VAL		GENMASK_ULL(2, 1)
 #define MCS_RX_SECY_PLCY_ENA		BIT_ULL(0)
 
+#define MCS_TX_SECY_PLCY_MTU_CN20K	GENMASK_ULL(44, 29)
+#define MCS_TX_SECY_PLCY_ST_TCI_CN20K	GENMASK_ULL(28, 23)
+#define MCS_TX_SECY_PLCY_ST_OFFSET_CN20K	GENMASK_ULL(22, 15)
 #define MCS_TX_SECY_PLCY_MTU		GENMASK_ULL(43, 28)
 #define MCS_TX_SECY_PLCY_ST_TCI		GENMASK_ULL(27, 22)
 #define MCS_TX_SECY_PLCY_ST_OFFSET	GENMASK_ULL(21, 15)
@@ -586,6 +589,13 @@ static int cn10k_mcs_write_tx_secy(struct otx2_nic *pfvf,
 	/* Write SecTag excluding AN bits(1..0) */
 	policy |= FIELD_PREP(MCS_TX_SECY_PLCY_ST_TCI, sectag_tci >> 2);
 	policy |= FIELD_PREP(MCS_TX_SECY_PLCY_ST_OFFSET, tag_offset);
+	if (is_cn20k(pfvf->pdev)) {
+		policy = FIELD_PREP(MCS_TX_SECY_PLCY_MTU_CN20K,
+				    pfvf->netdev->mtu + OTX2_ETH_HLEN);
+		/* Write SecTag excluding AN bits(1..0) */
+		policy |= FIELD_PREP(MCS_TX_SECY_PLCY_ST_TCI_CN20K, sectag_tci >> 2);
+		policy |= FIELD_PREP(MCS_TX_SECY_PLCY_ST_OFFSET_CN20K, tag_offset);
+	}
 	policy |= MCS_TX_SECY_PLCY_INS_MODE;
 	policy |= MCS_TX_SECY_PLCY_AUTH_ENA;
 
