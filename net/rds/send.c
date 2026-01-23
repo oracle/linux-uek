@@ -1218,13 +1218,7 @@ static int rds_send_queue_rm(struct rds_sock *rs, struct rds_connection *conn,
 		rds_message_addref(rm);
 		rm->m_rs = rs;
 
-		/* The code ordering is a little weird, but we're
-		   trying to minimize the time we hold c_lock */
 		rds_message_populate_header(&rm->m_inc.i_hdr, sport, dport, 0);
-		rds_conn_get(conn);
-		rm->m_inc.i_conn = conn;
-		rm->m_inc.i_conn_path = cp;
-		rds_message_addref(rm);
 
 		spin_lock(&cp->cp_lock);
 		if (cp->cp_pending_flush) {
@@ -1250,6 +1244,10 @@ static int rds_send_queue_rm(struct rds_sock *rs, struct rds_connection *conn,
 			rds_stats_inc(rs->rs_stats, s_send_payload_csum_added);
 		}
 
+		rds_conn_get(conn);
+		rm->m_inc.i_conn = conn;
+		rm->m_inc.i_conn_path = cp;
+		rds_message_addref(rm);
 		list_add_tail(&rm->m_conn_item, &cp->cp_send_queue);
 		rm->m_inc.i_tx_lat = jiffies;
 		rds_set_rm_flag_bit(rm, RDS_MSG_ON_CONN);
