@@ -202,12 +202,13 @@ int rds_send_xmit(struct rds_conn_path *cp)
 	unsigned int tmp;
 	struct scatterlist *sg;
 	int ret = 0;
-	LIST_HEAD(to_be_dropped);
+	struct list_head to_be_dropped;
 	int same_rm = 0;
 	int batch_count;
 	unsigned long send_gen = 0;
 
 restart:
+	INIT_LIST_HEAD(&to_be_dropped);
 	batch_count = 0;
 
 	/*
