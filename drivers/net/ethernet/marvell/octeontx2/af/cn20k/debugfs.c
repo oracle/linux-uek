@@ -236,7 +236,8 @@ static int npc_mcam_layout_show(struct seq_file *s, void *unused)
 					snprintf(buf0, sizeof(buf0), "v:%u", vidx0);
 				}
 
-				seq_printf(s, "\t%u(%#x) %s\n", idx0, pf1,
+				seq_printf(s, "\t%u(%#x)%c %s\n", idx0, pf1,
+					   test_bit(idx0, npc_priv->en_map) ? '+' : 0,
 					   map ? buf0 : " ");
 			}
 			goto next;
@@ -277,9 +278,13 @@ static int npc_mcam_layout_show(struct seq_file *s, void *unused)
 					snprintf(buf1, sizeof(buf1), "v:%05u", vidx1);
 				}
 
-				seq_printf(s, "%05u(%#x) %s\t\t%05u(%#x) %s\n",
-					   idx1, pf2, v1 ? buf1 : "       ",
-					   idx0, pf1, v0 ? buf0 : "       ");
+				seq_printf(s, "%05u(%#x)%c %s\t\t%05u(%#x)%c %s\n",
+					   idx1, pf2,
+					   test_bit(idx0, npc_priv->en_map) ? '+' : 0,
+					   v1 ? buf1 : "       ",
+					   idx0, pf1,
+					   test_bit(idx1, npc_priv->en_map) ? '+' : 0,
+					   v0 ? buf0 : "       ");
 
 				continue;
 			}
@@ -294,7 +299,8 @@ static int npc_mcam_layout_show(struct seq_file *s, void *unused)
 					snprintf(buf0, sizeof(buf0), "v:%05u", vidx0);
 				}
 
-				seq_printf(s, "\t\t   \t\t%05u(%#x) %s\n", idx0, pf1,
+				seq_printf(s, "\t\t   \t\t%05u(%#x)%c %s\n", idx0, pf1,
+					   test_bit(idx0, npc_priv->en_map) ? '+' : 0,
 					   map ? buf0 : " ");
 				continue;
 			}
@@ -309,7 +315,8 @@ static int npc_mcam_layout_show(struct seq_file *s, void *unused)
 				snprintf(buf1, sizeof(buf1), "v:%05u", vidx1);
 			}
 
-			seq_printf(s, "%05u(%#x) %s\n", idx1, pf1,
+			seq_printf(s, "%05u(%#x)%c %s\n", idx1, pf1,
+				   test_bit(idx1, npc_priv->en_map) ? '+' : 0,
 				   map ? buf1 : " ");
 		}
 next:

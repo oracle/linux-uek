@@ -113,6 +113,10 @@ struct npc_priv_t {
 	const int num_banks;
 	int num_subbanks;
 	int subbank_depth;
+	DECLARE_BITMAP(en_map, MAX_NUM_BANKS *
+		       MAX_NUM_SUB_BANKS *
+		       MAX_SUBBANK_DEPTH);
+					// enable disable flag
 	u8 kw;				// Kex configure Keywidth.
 	struct npc_subbank *sb;		// Array of subbanks
 	struct xarray xa_sb_used;	// xarray of used subbanks
