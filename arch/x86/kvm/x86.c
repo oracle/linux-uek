@@ -5175,6 +5175,53 @@ static int kvm_arch_tsc_get_attr(struct kvm_vcpu *vcpu,
 	return r;
 }
 
+/*
+ * This function is invoked exclusively when uek=exadata and
+ * kvm_arch_tsc_set_attr::KVM_VCPU_TSC_OFFSET. Currently,
+ * KVM_VCPU_TSC_OFFSET is used only for live migration scenarios with
+ * uek=exadata. The 'tsc_write_lock' must be acquired before calling this
+ * function, since much of its logic is derived from
+ * kvm_track_tsc_matching() and pvclock_update_vm_gtod_copy().
+ *
+ * Each update to the masterclock increases the risk of kvm-clock drift.
+ * For uek=exadata, KVM_VCPU_TSC_OFFSET is configured only before resuming
+ * the target QEMU instance. If the masterclock is already active and will
+ * remain active, clear any pending KVM_REQ_MASTERCLOCK_UPDATE requests to
+ * avoid runtime kvm-clock drift.
+ */
+static void kvm_clear_master_clock_request(struct kvm *kvm)
+{
+	struct pvclock_gtod_data *gtod = &pvclock_gtod_data;
+	struct kvm_arch *ka = &kvm->arch;
+	bool use_master_clock;
+	struct kvm_vcpu *vcpu;
+	unsigned long i;
+
+	lockdep_assert_held(&kvm->arch.tsc_write_lock);
+
+	use_master_clock = (ka->nr_vcpus_matched_tsc + 1 ==
+			    atomic_read(&kvm->online_vcpus)) &&
+			   gtod_is_based_on_tsc(gtod->clock.vclock_mode) &&
+			   !kvm_check_tsc_unstable() &&
+			   !ka->backwards_tsc_observed &&
+			   !ka->boot_vcpu_runs_old_kvmclock;
+
+	if (use_master_clock && ka->use_master_clock) {
+		/*
+		 * It is safe to call kvm_for_each_vcpu() for the following
+		 * reasons:
+		 * (1) kvm->online_vcpus is incremented only after
+		 * kvm->vcpus[kvm->online_vcpus] becomes available.
+		 * (2) kvm_free_vcpus() is called indirectly by
+		 * kvm_destroy_vm(), which is triggered only when
+		 * kvm->users_count reaches zero, that is, after all vCPU
+		 * file descriptors have been closed.
+		 */
+		kvm_for_each_vcpu(i, vcpu, kvm)
+			kvm_clear_request(KVM_REQ_MASTERCLOCK_UPDATE, vcpu);
+	}
+}
+
 static int kvm_arch_tsc_set_attr(struct kvm_vcpu *vcpu,
 				 struct kvm_device_attr *attr)
 {
@@ -5205,6 +5252,10 @@ static int kvm_arch_tsc_set_attr(struct kvm_vcpu *vcpu,
 		ns = get_kvmclock_base_ns();
 
 		__kvm_synchronize_tsc(vcpu, offset, tsc, ns, matched);
+
+		if (static_branch_unlikely(&on_exadata) && matched)
+			kvm_clear_master_clock_request(kvm);
+
 		raw_spin_unlock_irqrestore(&kvm->arch.tsc_write_lock, flags);
 
 		r = 0;
