@@ -23,7 +23,8 @@ void __weak arch_do_signal_or_restart(struct pt_regs *regs) { }
 #endif
 
 static __always_inline unsigned long __exit_to_user_mode_loop(struct pt_regs *regs,
-							      unsigned long ti_work)
+							      unsigned long ti_work,
+							      bool irq)
 {
 	/*
 	 * Before returning to user space ensure that all pending work
@@ -33,8 +34,12 @@ static __always_inline unsigned long __exit_to_user_mode_loop(struct pt_regs *re
 
 		local_irq_enable_exit_to_user(ti_work);
 
-		if (ti_work & (_TIF_NEED_RESCHED | _TIF_NEED_RESCHED_LAZY))
-			schedule();
+		if (ti_work & (_TIF_NEED_RESCHED | _TIF_NEED_RESCHED_LAZY)) {
+			if (irq && rseq_delay_resched())
+				clear_tsk_need_resched(current);
+			else
+				schedule();
+		}
 
 		if (ti_work & _TIF_UPROBE)
 			uprobe_notify_resume(regs);
@@ -79,10 +84,11 @@ static __always_inline unsigned long __exit_to_user_mode_loop(struct pt_regs *re
  * @ti_work:	TIF work flags as read by the caller
  */
 __always_inline unsigned long exit_to_user_mode_loop(struct pt_regs *regs,
-						     unsigned long ti_work)
+						     unsigned long ti_work,
+						     bool irq)
 {
 	for (;;) {
-		ti_work = __exit_to_user_mode_loop(regs, ti_work);
+		ti_work = __exit_to_user_mode_loop(regs, ti_work, irq);
 
 		if (likely(!rseq_exit_to_user_mode_restart(regs, ti_work)))
 			return ti_work;

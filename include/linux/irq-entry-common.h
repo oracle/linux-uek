@@ -198,7 +198,8 @@ static __always_inline void arch_exit_to_user_mode(void) { }
 void arch_do_signal_or_restart(struct pt_regs *regs);
 
 /* Handle pending TIF work */
-unsigned long exit_to_user_mode_loop(struct pt_regs *regs, unsigned long ti_work);
+unsigned long exit_to_user_mode_loop(struct pt_regs *regs,
+				     unsigned long ti_work, bool irq);
 
 /**
  * __exit_to_user_mode_prepare - call exit_to_user_mode_loop() if required
@@ -212,7 +213,8 @@ unsigned long exit_to_user_mode_loop(struct pt_regs *regs, unsigned long ti_work
  *
  * Don't invoke directly, use the syscall/irqentry_ prefixed variants below
  */
-static __always_inline void __exit_to_user_mode_prepare(struct pt_regs *regs)
+static __always_inline void __exit_to_user_mode_prepare(struct pt_regs *regs,
+							bool irq)
 {
 	unsigned long ti_work;
 
@@ -223,7 +225,10 @@ static __always_inline void __exit_to_user_mode_prepare(struct pt_regs *regs)
 
 	ti_work = read_thread_flags();
 	if (unlikely(ti_work & EXIT_TO_USER_MODE_WORK))
-		ti_work = exit_to_user_mode_loop(regs, ti_work);
+		ti_work = exit_to_user_mode_loop(regs, ti_work, irq);
+
+	if (irq)
+		rseq_delay_resched_fini();
 
 	arch_exit_to_user_mode_prepare(regs, ti_work);
 }
@@ -239,7 +244,7 @@ static __always_inline void __exit_to_user_mode_validate(void)
 /* Temporary workaround to keep ARM64 alive */
 static __always_inline void exit_to_user_mode_prepare_legacy(struct pt_regs *regs)
 {
-	__exit_to_user_mode_prepare(regs);
+	__exit_to_user_mode_prepare(regs, false);
 	rseq_exit_to_user_mode_legacy();
 	__exit_to_user_mode_validate();
 }
@@ -253,7 +258,7 @@ static __always_inline void exit_to_user_mode_prepare_legacy(struct pt_regs *reg
  */
 static __always_inline void syscall_exit_to_user_mode_prepare(struct pt_regs *regs)
 {
-	__exit_to_user_mode_prepare(regs);
+	__exit_to_user_mode_prepare(regs, false);
 	rseq_syscall_exit_to_user_mode();
 	__exit_to_user_mode_validate();
 }
@@ -267,7 +272,7 @@ static __always_inline void syscall_exit_to_user_mode_prepare(struct pt_regs *re
  */
 static __always_inline void irqentry_exit_to_user_mode_prepare(struct pt_regs *regs)
 {
-	__exit_to_user_mode_prepare(regs);
+	__exit_to_user_mode_prepare(regs, true);
 	rseq_irqentry_exit_to_user_mode();
 	__exit_to_user_mode_validate();
 }
