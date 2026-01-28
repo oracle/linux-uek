@@ -1389,8 +1389,10 @@ void rvu_npc_free_mcam_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
 
 	/* Delete MCAM entries owned by this 'pcifunc' */
 	list_for_each_entry_safe(rule, tmp, &mcam->mcam_rules, list) {
-		if (!is_cn20k(rvu->pdev) &&
-		    (rule->owner != pcifunc || rule->default_rule))
+		if (rule->owner != pcifunc)
+			continue;
+
+		if (rule->default_rule)
 			continue;
 
 		list_del(&rule->list);
@@ -2676,8 +2678,15 @@ void npc_mcam_clear_bit(struct npc_mcam *mcam, u16 index)
 static void npc_mcam_free_all_entries(struct rvu *rvu, struct npc_mcam *mcam,
 				      int blkaddr, u16 pcifunc)
 {
+	u16 dft_idxs[NPC_DFT_RULE_MAX_ID];
 	u16 index, cntr;
 	int rc;
+
+	npc_cn20k_dft_rules_idx_get(rvu, pcifunc,
+				    &dft_idxs[NPC_DFT_RULE_BCAST_ID],
+				    &dft_idxs[NPC_DFT_RULE_MCAST_ID],
+				    &dft_idxs[NPC_DFT_RULE_PROMISC_ID],
+				    &dft_idxs[NPC_DFT_RULE_UCAST_ID]);
 
 	/* Scan all MCAM entries and free the ones mapped to 'pcifunc' */
 	for (index = 0; index < mcam->bmap_entries; index++) {
@@ -2698,13 +2707,17 @@ static void npc_mcam_free_all_entries(struct rvu *rvu, struct npc_mcam *mcam,
 						      cntr);
 		mcam->entry2target_pffunc[index] = 0x0;
 		if (is_cn20k(rvu->pdev)) {
+			if ((dft_idxs[NPC_DFT_RULE_BCAST_ID] == index) ||
+			    (dft_idxs[NPC_DFT_RULE_MCAST_ID] == index) ||
+			    (dft_idxs[NPC_DFT_RULE_PROMISC_ID] == index) ||
+			    (dft_idxs[NPC_DFT_RULE_UCAST_ID] == index))
+				continue;
+
 			rc = npc_cn20k_idx_free(rvu, &index, 1);
 			if (rc)
 				dev_err(rvu->dev,
 					"Failed to free mcam idx=%u pcifunc=%#x\n",
 					index, pcifunc);
-
-			npc_cn20_dft_idx_check_n_free(rvu, pcifunc, index);
 		}
 	}
 }

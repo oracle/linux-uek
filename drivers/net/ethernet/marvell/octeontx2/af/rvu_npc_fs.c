@@ -1934,7 +1934,7 @@ static int npc_delete_flow(struct rvu *rvu, struct rvu_npc_mcam_rule *rule,
 	struct npc_mcam_ena_dis_entry_req dis_req = { 0 };
 	struct msg_rsp dis_rsp;
 
-	if (!is_cn20k(rvu->pdev) && rule->default_rule)
+	if (rule->default_rule)
 		return 0;
 
 	if (rule->has_cntr)

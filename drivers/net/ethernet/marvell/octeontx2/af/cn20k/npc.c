@@ -1244,74 +1244,6 @@ static int npc_vidx_maps_add_entry(struct rvu *rvu, u16 mcam_idx, int pcifunc,
 	return 0;
 }
 
-void
-npc_cn20_dft_idx_check_n_free(struct rvu *rvu, u16 pcifunc, u16 mcam_idx)
-{
-	u16 bcast = -1, promisc = -1, mcast = -1, ucast = -1;
-	unsigned long index;
-	void *map;
-	int rc;
-
-	rc = npc_cn20k_dft_rules_idx_get(rvu, pcifunc, &bcast, &mcast,
-					 &promisc, &ucast);
-	if (rc)
-		return;
-
-	if (mcam_idx != bcast && mcam_idx != mcast &&
-	    mcam_idx != promisc && mcam_idx != ucast)
-		return;
-
-	if (bcast != -1 && mcam_idx == bcast) {
-		index = NPC_DFT_RULE_ID_MK(pcifunc, NPC_DFT_RULE_BCAST_ID);
-		map = xa_erase(&npc_priv.xa_pf2dfl_rmap, index);
-		if (!map)
-			dev_err(rvu->dev,
-				"%s: Err BCAST from delete %s mcam idx from xarray (pcifunc=%#x\n",
-				__func__,
-				npc_dft_rule_name[NPC_DFT_RULE_BCAST_ID],
-				pcifunc);
-		return;
-	}
-
-	if (mcast != -1 && mcam_idx == mcast) {
-		index = NPC_DFT_RULE_ID_MK(pcifunc, NPC_DFT_RULE_MCAST_ID);
-		map = xa_erase(&npc_priv.xa_pf2dfl_rmap, index);
-		if (!map)
-			dev_err(rvu->dev,
-				"%s: Err MCAST from delete %s mcam idx from xarray (pcifunc=%#x\n",
-				__func__,
-				npc_dft_rule_name[NPC_DFT_RULE_MCAST_ID],
-				pcifunc);
-
-		return;
-	}
-
-	if (ucast != -1 && mcam_idx == ucast) {
-		index = NPC_DFT_RULE_ID_MK(pcifunc, NPC_DFT_RULE_UCAST_ID);
-		map = xa_erase(&npc_priv.xa_pf2dfl_rmap, index);
-		if (!map)
-			dev_err(rvu->dev,
-				"%s: Err UCAST from delete %s mcam idx from xarray (pcifunc=%#x\n",
-				__func__,
-				npc_dft_rule_name[NPC_DFT_RULE_UCAST_ID],
-				pcifunc);
-
-		return;
-	}
-
-	if (promisc != -1 && mcam_idx == promisc) {
-		index = NPC_DFT_RULE_ID_MK(pcifunc, NPC_DFT_RULE_PROMISC_ID);
-		map = xa_erase(&npc_priv.xa_pf2dfl_rmap, index);
-		if (!map)
-			dev_err(rvu->dev,
-				"%s: Err PROMISC from delete %s mcam idx from xarray (pcifunc=%#x\n",
-				__func__,
-				npc_dft_rule_name[NPC_DFT_RULE_PROMISC_ID],
-				pcifunc);
-		return;
-	}
-}
-
 static int npc_idx_free(struct rvu *rvu, u16 *mcam_idx, int count,
 			bool maps_del)
 {
@@ -3731,9 +3663,10 @@ static bool npc_is_cgx_or_lbk(struct rvu *rvu, u16 pcifunc)
 
 void npc_cn20k_dft_rules_free(struct rvu *rvu, u16 pcifunc)
 {
-	struct npc_mcam_free_entry_req free_req = { 0 };
+	struct npc_mcam *mcam = &rvu->hw->mcam;
+	struct rvu_npc_mcam_rule *rule, *tmp;
 	unsigned long index;
-	struct msg_rsp rsp;
+	int blkaddr;
 	u16 ptr[4];
 	int rc, i;
 	void *map;
@@ -3758,7 +3691,7 @@ void npc_cn20k_dft_rules_free(struct rvu *rvu, u16 pcifunc)
 		index = NPC_DFT_RULE_ID_MK(pcifunc, NPC_DFT_RULE_PROMISC_ID);
 		map = xa_erase(&npc_priv.xa_pf2dfl_rmap, index);
 		if (!map)
-			dev_dbg(rvu->dev,
+			dev_err(rvu->dev,
 				"%s:%d Err from delete %s mcam idx from xarray (pcifunc=%#x\n",
 				__func__, __LINE__,
 				npc_dft_rule_name[NPC_DFT_RULE_PROMISC_ID],
@@ -3772,7 +3705,7 @@ void npc_cn20k_dft_rules_free(struct rvu *rvu, u16 pcifunc)
 		index = NPC_DFT_RULE_ID_MK(pcifunc, NPC_DFT_RULE_UCAST_ID);
 		map = xa_erase(&npc_priv.xa_pf2dfl_rmap, index);
 		if (!map)
-			dev_dbg(rvu->dev,
+			dev_err(rvu->dev,
 				"%s:%d Err from delete %s mcam idx from xarray (pcifunc=%#x\n",
 				__func__, __LINE__,
 				npc_dft_rule_name[NPC_DFT_RULE_UCAST_ID],
@@ -3786,7 +3719,7 @@ void npc_cn20k_dft_rules_free(struct rvu *rvu, u16 pcifunc)
 		index = NPC_DFT_RULE_ID_MK(pcifunc, i);
 		map = xa_erase(&npc_priv.xa_pf2dfl_rmap, index);
 		if (!map)
-			dev_dbg(rvu->dev,
+			dev_err(rvu->dev,
 				"%s:%d Err from delete %s mcam idx from xarray (pcifunc=%#x\n",
 				__func__, __LINE__, npc_dft_rule_name[i],
 				pcifunc);
@@ -3794,13 +3727,31 @@ void npc_cn20k_dft_rules_free(struct rvu *rvu, u16 pcifunc)
 
 free_rules:
 
-	free_req.hdr.pcifunc = pcifunc;
-	free_req.all = 1;
-	rc = rvu_mbox_handler_npc_mcam_free_entry(rvu, &free_req, &rsp);
-	if (rc)
-		dev_err(rvu->dev,
-			"%s:%d Error deleting default entries (pcifunc=%#x\n",
-			__func__, __LINE__, pcifunc);
+	for (int i = 0; i < 4; i++) {
+		if (ptr[i] == USHRT_MAX)
+			continue;
+
+		blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
+
+		npc_cn20k_enable_mcam_entry(rvu, blkaddr, ptr[i], false);
+		rc = npc_cn20k_idx_free(rvu, &ptr[i], 1);
+		if (rc)
+			dev_err(rvu->dev,
+				"%s:%d Error deleting default entries (pcifunc=%#x) mcam_idx=%u\n",
+				__func__, __LINE__, pcifunc, ptr[i]);
+	}
+
+	mutex_lock(&mcam->lock);
+	list_for_each_entry_safe(rule, tmp, &mcam->mcam_rules, list) {
+		for (int i = 0; i < 4; i++) {
+			if (ptr[i] != rule->entry)
+				continue;
+
+			list_del(&rule->list);
+			kfree(rule);
+		}
+	}
+	mutex_unlock(&mcam->lock);
 }
 
 int npc_cn20k_dft_rules_alloc(struct rvu *rvu, u16 pcifunc)
