@@ -155,7 +155,7 @@ struct fan_platform {
 #define FAN_LED_COLOR_GREEN(_fan) \
     (0xff & (_fan)->fan_group->platform->mask_green_led)
 #define FAN_LED_COLOR_RED(_fan) \
-    (0xff & (_fan)->fan_group->platform->mask_green_red)
+    (0xff & (_fan)->fan_group->platform->mask_red_led)
 
 #define FAN_HAS_REG(_group, _type) \
    ((_group)->platform->_type##_offset != OFFSET_UNAVAIL)
