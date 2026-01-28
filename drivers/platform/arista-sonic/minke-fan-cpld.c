@@ -105,6 +105,7 @@ struct cpld_info {
    u8 fan_count;
    u32 tach_hz;
    bool left_right;
+   u8 pwm_min;
    const struct fan_id *fan_ids;
    u8 id_base_reg;
    u8 present_reg;
@@ -195,6 +196,7 @@ static const struct cpld_info cpld_infos[] = {
       .fan_count = 4,
       .tach_hz = 100000,
       .left_right = false,
+      .pwm_min = 0x1a,
       .fan_ids = mk_fan_ids,
       .id_base_reg = 0x61,
       .present_reg = 0x70,
@@ -214,6 +216,7 @@ static const struct cpld_info cpld_infos[] = {
       .fan_count = 6,
       .tach_hz = 100000,
       .left_right = true,
+      .pwm_min = 0x00,
       .fan_ids = minke_fan_ids,
       .id_base_reg = 0x60,
       .present_reg = 0x70,
@@ -233,6 +236,7 @@ static const struct cpld_info cpld_infos[] = {
       .fan_count = 8,
       .tach_hz = 100000,
       .left_right = false,
+      .pwm_min = 0x00,
       .fan_ids = rundle_fan_ids,
       .id_base_reg = 0x91,
       .present_reg = 0xA0,
@@ -318,6 +322,31 @@ static s32 cpld_write_byte(struct cpld_data *cpld, u8 reg, u8 byte)
    }
 
    return err;
+}
+
+static u8 cpld_scale_to_hw_pwm(struct cpld_data *cpld, u8 pwm)
+{
+   u8 min = cpld->info->pwm_min;
+
+   if (!min)
+      return pwm;
+
+   return min + DIV_ROUND_CLOSEST((unsigned int)pwm * (FAN_MAX_PWM - min),
+                FAN_MAX_PWM);
+}
+
+static u8 cpld_scale_from_hw_pwm(struct cpld_data *cpld, u8 pwm)
+{
+   u8 min = cpld->info->pwm_min;
+
+   if (!min)
+      return pwm;
+
+   if (pwm <= min)
+      return 0;
+
+   return DIV_ROUND_CLOSEST((unsigned int)(pwm - min) * FAN_MAX_PWM,
+             FAN_MAX_PWM - min);
 }
 
 static void cpld_work_start(struct cpld_data *cpld)
@@ -488,17 +517,18 @@ static s32 cpld_write_fan_pwm(struct cpld_fan *fan, u8 pwm)
 {
    struct cpld_slot *slot = slot_from_fan(fan);
    struct cpld_data *cpld = cpld_from_slot(slot);
+   u8 hw_pwm = cpld_scale_to_hw_pwm(cpld, pwm);
    int err;
 
    if (IS_LR_CPLD(cpld)) {
-      err = cpld_write_byte(cpld, FAN_LR_PWM_REG(slot, fan, 0), pwm);
+      err = cpld_write_byte(cpld, FAN_LR_PWM_REG(slot, fan, 0), hw_pwm);
       if (err)
          return err;
-      err = cpld_write_byte(cpld, FAN_LR_PWM_REG(slot, fan, 1), pwm);
+      err = cpld_write_byte(cpld, FAN_LR_PWM_REG(slot, fan, 1), hw_pwm);
       if (err)
          return err;
    } else {
-      err = cpld_write_byte(cpld, FAN_PWM_REG(slot->index), pwm);
+      err = cpld_write_byte(cpld, FAN_PWM_REG(slot->index), hw_pwm);
       if (err)
          return err;
    }
@@ -632,6 +662,9 @@ static s32 cpld_read_fan_pwm(struct cpld_fan *fan)
          return err;
       pwm_inner = pwm_outer;
    }
+
+   pwm_outer = cpld_scale_from_hw_pwm(cpld, pwm_outer);
+   pwm_inner = cpld_scale_from_hw_pwm(cpld, pwm_inner);
 
    fan->pwm_outer = pwm_outer;
    fan->pwm_inner = pwm_inner;
