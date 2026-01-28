@@ -215,9 +215,9 @@ restart:
 	if (!acquire_in_xmit(cp)) {
 		trace_rds_send_lock_contention(NULL, conn, cp,
 					       "send lock contention",
-					       -EBUSY);
+					       -ENOMEM);
 		rds_stats_inc(conn->c_stats, s_send_lock_contention);
-		ret = -EBUSY;
+		ret = -ENOMEM;
 
 		/* If we cannot send, may be refill the recv queue instead? */
 		if (conn->c_trans->t_type == RDS_TRANS_IB && conn->c_trans->recv_need_bufs(cp) &&
@@ -1839,7 +1839,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 		rds_stats_inc(rs->rs_stats, s_send_ping);
 
 	ret = rds_send_xmit(cpath);
-	if (ret == -ENOMEM || ret == -EAGAIN || ret == -EBUSY)
+	if (ret == -ENOMEM || ret == -EAGAIN)
 		rds_cond_queue_send_work(cpath, 1);
 
 	rds_message_put(rm);
