@@ -20,7 +20,6 @@ modules-core:
 - ah4
 - ah6
 - algif_rng
-- ansi_cprng
 - anubis
 - arc4
 - arcmsr
@@ -38,7 +37,7 @@ modules-core:
 - bch
 - be2iscsi
 - binfmt_misc
-- blake2b_generic
+- blake2b
 - blocklayoutdriver
 - blowfish_common
 - blowfish_generic
@@ -223,6 +222,7 @@ modules-core:
 - krb5
 - krb5enc
 - libarc4
+- libblake2b
 - libceph
 - libchacha
 - libchacha20poly1305
@@ -230,6 +230,8 @@ modules-core:
 - libcxgb
 - libcxgbi
 - libdes
+- libeth
+- libeth_xdp
 - libfc
 - libfcoe
 - libie
@@ -252,6 +254,7 @@ modules-core:
 - macvlan
 - macvtap
 - md4
+- md5
 - mdio
 - megaraid_sas
 - mgag200
@@ -415,6 +418,7 @@ modules-core:
 - raid6_pq
 - raid6test
 - raid_class
+- ramdax
 - rdma_cm
 - rdma_ucm
 - rdmaip_notify
@@ -1003,8 +1007,6 @@ modules:
 - ledtrig-usbport
 - lg-vl600
 - libahci_platform
-- libeth
-- libeth_xdp
 - lineage-pem
 - lis3lv02d
 - lis3lv02d_i2c
@@ -1655,6 +1657,7 @@ modules:
 - gpio-idio-16
 - gpio-max77620
 - gpio-pci-idio-16
+- gpio-shared-proxy
 - gpio-rcar
 - gpio-regmap
 - gpio-regulator
@@ -1781,6 +1784,7 @@ modules:
 - optee
 - optee-rng
 - pci-pwrctrl-pwrseq
+- pci-pwrctrl-tc9563
 - pcie-brcmstb
 - pcs-lynx
 - pcs-mtk-lynxi
@@ -2377,14 +2381,6 @@ modules:
 - xpc
 - xpnet
 #endif /* Arch_x86_64 */
-
-/* modules: */
-#if defined(Flavour_debug) || defined(Flavour_64kdebug)
-- locktorture
-- rcutorture
-- test_bpf
-- torture
-#endif
 
 modules-extra:
 - act_connmark
@@ -3786,6 +3782,7 @@ modules-desktop:
 - snd-sof-pci-intel-icl
 - snd-sof-pci-intel-lnl
 - snd-sof-pci-intel-mtl
+- snd-sof-pci-intel-nvl
 - snd-sof-pci-intel-ptl
 - snd-sof-pci-intel-skl
 - snd-sof-pci-intel-tgl
