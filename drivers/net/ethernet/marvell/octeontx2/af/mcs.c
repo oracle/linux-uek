@@ -480,7 +480,7 @@ void mcs_flowid_entry_write(struct mcs *mcs, u64 *data, u64 *mask, int flow_id, 
 
 int mcs_install_flowid_bypass_entry(struct mcs *mcs)
 {
-	int flow_id, secy_id, reg_id;
+	int flow_id, secy_id, reg_id, sc_id;
 	struct secy_mem_map map;
 	u64 reg, plcy = 0;
 
@@ -533,6 +533,15 @@ int mcs_install_flowid_bypass_entry(struct mcs *mcs)
 	mcs_ena_dis_flowid_entry(mcs, flow_id, MCS_RX, true);
 	mcs_ena_dis_flowid_entry(mcs, flow_id, MCS_TX, true);
 
+	if (!is_cn20k(mcs->pdev))
+		return 0;
+
+	/* SCI Cam entry */
+	sc_id = mcs->hw->sc_entries - MCS_RSRC_RSVD_CNT;
+	__set_bit(sc_id, mcs->rx.sc.bmap);
+	mcs_reg_write(mcs, MCSX_CPM_RX_SLAVE_LABEL_CAM_DATAX(sc_id), 0ull);
+	mcs_reg_write(mcs, MCSX_CPM_RX_SLAVE_LABEL_CAM_MASKX(sc_id), GENMASK_ULL(63, 0));
+	mcs_reg_write(mcs, MCSX_CPM_RX_SLAVE_LABEL_TCAM_ENABLEX(1), BIT_ULL(sc_id));
 	return 0;
 }
 
@@ -1118,6 +1127,8 @@ static int mcs_alloc_struct_mem(struct mcs *mcs, struct mcs_rsrc_map *res)
 		return err;
 
 	res->sc.max = hw->sc_entries;
+	if (is_cn20k(mcs->pdev))
+		res->sc.max = hw->sc_entries - MCS_RSRC_RSVD_CNT;
 	err = rvu_alloc_bitmap(&res->sc);
 	if (err)
 		return err;
