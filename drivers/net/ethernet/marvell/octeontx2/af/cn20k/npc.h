@@ -250,4 +250,7 @@ void npc_cn20k_update_action_entries_n_flags(struct rvu *rvu,
 
 int npc_cn20k_search_order_set(struct rvu *rvu, int (*arr)[2], int cnt);
 const int *npc_cn20k_search_order_get(bool *restricted_order);
+int npc_mcam_idx_2_subbank_idx(struct rvu *rvu, u16 mcam_idx,
+			       struct npc_subbank **sb,
+			       int *sb_off);
 #endif /* NPC_CN20K_H */
