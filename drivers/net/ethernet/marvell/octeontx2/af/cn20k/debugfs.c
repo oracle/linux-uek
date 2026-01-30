@@ -630,6 +630,91 @@ static int sdp_ring_stats_show(struct seq_file *s, void *unused)
 
 DEFINE_SHOW_ATTRIBUTE(sdp_ring_stats);
 
+static void sdp_show_tl4_bp_status(struct seq_file *s, int ring)
+{
+	struct rvu *rvu = s->private;
+	u8 host_pf, host_vf, rvu_pf;
+	struct nix_txsch *txsch;
+	struct nix_hw *nix_hw;
+	struct sdp_rsrc *sdp;
+	u16 sdp_vf_pcifunc;
+	u16 epcifunc;
+	int schq;
+
+	/* Derive RVU SDP VF mapped to the given ring */
+	sdp = &rvu->hw->sdp;
+	epcifunc = sdp->fn_map[ring];
+
+	host_vf = epcifunc & RVU_PFVF_FUNC_MASK;
+	host_pf = (epcifunc >> RVU_CN20K_PFVF_PF_SHIFT) & RVU_CN20K_PFVF_PF_MASK;
+
+	rvu_pf = sdp->host2rvupf[host_pf];
+	sdp_vf_pcifunc = (rvu_pf & RVU_CN20K_PFVF_PF_MASK) << RVU_CN20K_PFVF_PF_SHIFT;
+	/* Host PF's IO are handled by first VFs of PF. Hence on RVU side
+	 * PFs are only to receive message from AF and forward to VFs.
+	 */
+	sdp_vf_pcifunc |= (host_vf + 1);
+
+	nix_hw = get_nix_hw(rvu->hw, BLKADDR_NIX0);
+	txsch = &nix_hw->txsch[NIX_TXSCH_LVL_TL4];
+
+	for_each_set_bit(schq, txsch->schq.bmap, txsch->schq.max)
+		if (sdp_vf_pcifunc == TXSCH_MAP_FUNC(txsch->pfvf_map[schq]))
+			break;
+
+	if (schq >= txsch->schq.max)
+		return;
+
+	seq_printf(s, "HW_XOFF of TL4 scheduler queue%d: %llx\n", schq,
+		   rvu_read64(rvu, BLKADDR_NIX0, NIX_AF_TL4X_BP_STATUS(schq)));
+}
+
+static int sdp_ring_bp_stats_show(struct seq_file *s, void *unused)
+{
+	struct rvu *rvu = s->private;
+	struct sdp_rsrc *sdp;
+	int ring = 0;
+	u8 reg, bit;
+	u64 cfg;
+
+	sdp = &rvu->hw->sdp;
+
+	mutex_lock(&sdp->cfg_lock);
+
+	for_each_set_bit(ring, sdp->rings.bmap, sdp->rings.max) {
+		seq_printf(s, "====== Ring %d backpressure stats ======\n",
+			   ring);
+
+		reg = ring / 64;
+		bit = ring % 64;
+
+		cfg = rvu_read64(rvu, BLKADDR_SDP, SDP_AF_OUT_BP_ENX_W1S(reg));
+
+		seq_printf(s, "SDP_AF_OUT_BP_EN: %d\n", !!(cfg & 1ULL << bit));
+
+		cfg = rvu_read64(rvu, BLKADDR_SDP, SDP_AF_OUT_DROP_STATEX(reg));
+
+		seq_printf(s, "SDP_AF_OUT_DROP_STATE: %d\n",
+			   !!(cfg & 1ULL << bit));
+
+		seq_printf(s, "SDP_AF_RX_OUT_SLIST_DBELL: %lld\n",
+			   rvu_read64(rvu, BLKADDR_SDP,
+				      SDP_AF_RX_OUT_SLIST_DBELL(ring)));
+
+		seq_printf(s, "SDP_AF_RX_OUT_WMARK: %lld\n",
+			   rvu_read64(rvu, BLKADDR_SDP,
+				      SDP_AF_RX_OUT_WMARK(ring)));
+
+		sdp_show_tl4_bp_status(s, ring);
+	}
+
+	mutex_unlock(&sdp->cfg_lock);
+
+	return 0;
+}
+
+DEFINE_SHOW_ATTRIBUTE(sdp_ring_bp_stats);
+
 void rvu_dbg_sdp_init(struct rvu *rvu)
 {
 	struct dentry *sdp_dentry;
@@ -648,6 +733,11 @@ void rvu_dbg_sdp_init(struct rvu *rvu)
 					 &sdp_ring_stats_fops);
 	if (!sdp_dentry)
 		dev_err(rvu->dev, "Could not create sdp stats file\n");
+
+	sdp_dentry = debugfs_create_file("ring_bp_stats", 0444, rvu->rvu_dbg.sdp,
+					 rvu, &sdp_ring_bp_stats_fops);
+	if (!sdp_dentry)
+		dev_err(rvu->dev, "Could not create sdp backpressure stats\n");
 }
 
 void print_npa_cn20k_halo_ctx(struct seq_file *m, struct npa_aq_enq_rsp *rsp)

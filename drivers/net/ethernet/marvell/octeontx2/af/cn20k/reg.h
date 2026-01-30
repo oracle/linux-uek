@@ -219,6 +219,12 @@ static inline u64 pf_to_bitoff(u8 pf)
 #define SDP_AF_RX_OUT_DROP_PKT_CNT(a)		(0x8000580 | (a) << 16)
 #define SDP_AF_RX_OUT_DROP_BYTE_CNT(a)		(0x8000590 | (a) << 16)
 #define SDP_AF_RX_OUT_PTP_STATS(a)		(0x8000710 | (a) << 16)
+#define SDP_AF_RX_OUT_SLIST_DBELL(a)		(0x8000120 | (a) << 16)
+#define SDP_AF_RX_OUT_WMARK(a)			(0x8000128 | (a) << 16)
+
+#define SDP_AF_OUT_BP_ENX_W1S(a)		(0x4093040 | (a) << 3)
+#define SDP_AF_OUT_DROP_STATEX(a)		(0x4093080 | (a) << 3)
+
 /* CPT Registers */
 #define CPT_AF_CN20K_INST_GENERIC0_PC		(0x15000)
 #define CPT_AF_CN20K_INST_GENERIC1_PC		(0x15100)
