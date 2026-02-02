@@ -22,9 +22,14 @@ void __weak arch_do_signal_or_restart(struct pt_regs *regs) { }
 #define EXIT_TO_USER_MODE_WORK_LOOP	(EXIT_TO_USER_MODE_WORK)
 #endif
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 static __always_inline unsigned long __exit_to_user_mode_loop(struct pt_regs *regs,
 							      unsigned long ti_work,
 							      bool irq)
+#else
+static __always_inline unsigned long __exit_to_user_mode_loop(struct pt_regs *regs,
+							      unsigned long ti_work)
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 {
 	/*
 	 * Before returning to user space ensure that all pending work
@@ -35,9 +40,11 @@ static __always_inline unsigned long __exit_to_user_mode_loop(struct pt_regs *re
 		local_irq_enable_exit_to_user(ti_work);
 
 		if (ti_work & (_TIF_NEED_RESCHED | _TIF_NEED_RESCHED_LAZY)) {
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 			if (irq && rseq_delay_resched())
 				clear_tsk_need_resched(current);
 			else
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 				schedule();
 		}
 
@@ -83,12 +90,21 @@ static __always_inline unsigned long __exit_to_user_mode_loop(struct pt_regs *re
  * @regs:	Pointer to pt_regs on entry stack
  * @ti_work:	TIF work flags as read by the caller
  */
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 __always_inline unsigned long exit_to_user_mode_loop(struct pt_regs *regs,
 						     unsigned long ti_work,
 						     bool irq)
+#else
+__always_inline unsigned long exit_to_user_mode_loop(struct pt_regs *regs,
+						     unsigned long ti_work)
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 {
 	for (;;) {
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 		ti_work = __exit_to_user_mode_loop(regs, ti_work, irq);
+#else
+		ti_work = __exit_to_user_mode_loop(regs, ti_work);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 		if (likely(!rseq_exit_to_user_mode_restart(regs, ti_work)))
 			return ti_work;

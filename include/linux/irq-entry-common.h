@@ -198,8 +198,12 @@ static __always_inline void arch_exit_to_user_mode(void) { }
 void arch_do_signal_or_restart(struct pt_regs *regs);
 
 /* Handle pending TIF work */
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 unsigned long exit_to_user_mode_loop(struct pt_regs *regs,
 				     unsigned long ti_work, bool irq);
+#else
+unsigned long exit_to_user_mode_loop(struct pt_regs *regs, unsigned long ti_work);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 /**
  * __exit_to_user_mode_prepare - call exit_to_user_mode_loop() if required
@@ -213,8 +217,12 @@ unsigned long exit_to_user_mode_loop(struct pt_regs *regs,
  *
  * Don't invoke directly, use the syscall/irqentry_ prefixed variants below
  */
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 static __always_inline void __exit_to_user_mode_prepare(struct pt_regs *regs,
 							bool irq)
+#else
+static __always_inline void __exit_to_user_mode_prepare(struct pt_regs *regs)
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 {
 	unsigned long ti_work;
 
@@ -225,10 +233,14 @@ static __always_inline void __exit_to_user_mode_prepare(struct pt_regs *regs,
 
 	ti_work = read_thread_flags();
 	if (unlikely(ti_work & EXIT_TO_USER_MODE_WORK))
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 		ti_work = exit_to_user_mode_loop(regs, ti_work, irq);
+#else
+		ti_work = exit_to_user_mode_loop(regs, ti_work);
 
 	if (irq)
 		rseq_delay_resched_fini();
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	arch_exit_to_user_mode_prepare(regs, ti_work);
 }
@@ -244,7 +256,11 @@ static __always_inline void __exit_to_user_mode_validate(void)
 /* Temporary workaround to keep ARM64 alive */
 static __always_inline void exit_to_user_mode_prepare_legacy(struct pt_regs *regs)
 {
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 	__exit_to_user_mode_prepare(regs, false);
+#else
+	__exit_to_user_mode_prepare(regs);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	rseq_exit_to_user_mode_legacy();
 	__exit_to_user_mode_validate();
 }
@@ -258,7 +274,11 @@ static __always_inline void exit_to_user_mode_prepare_legacy(struct pt_regs *reg
  */
 static __always_inline void syscall_exit_to_user_mode_prepare(struct pt_regs *regs)
 {
+#ifndef WITHOUT_ORACLE_EXTENSIONS
 	__exit_to_user_mode_prepare(regs, false);
+#else
+	__exit_to_user_mode_prepare(regs);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	rseq_syscall_exit_to_user_mode();
 	__exit_to_user_mode_validate();
 }
