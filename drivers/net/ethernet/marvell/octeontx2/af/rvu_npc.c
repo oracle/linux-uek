@@ -161,13 +161,27 @@ int npc_get_nixlf_mcam_index(struct rvu *rvu, struct npc_mcam *mcam,
 			return -EFAULT;
 
 		switch (type) {
-		case NIXLF_BCAST_ENTRY:
+		case NIXLF_BCAST_ENTRY: {
+			if (bcast == USHRT_MAX)
+				return -EINVAL;
+
 			return bcast;
+		}
+
 		case NIXLF_ALLMULTI_ENTRY:
+			if (mcast == USHRT_MAX)
+				return -EINVAL;
 			return mcast;
+
 		case NIXLF_PROMISC_ENTRY:
+			if (promisc == USHRT_MAX)
+				return -EINVAL;
 			return promisc;
+
 		case NIXLF_UCAST_ENTRY:
+			if (ucast == USHRT_MAX)
+				return -EINVAL;
+
 			return ucast;
 		default:
 			return -EINVAL;
@@ -229,12 +243,8 @@ void npc_enable_mcam_entry(struct rvu *rvu, struct npc_mcam *mcam,
 	int actbank = bank;
 
 	trace_otx2_npc_enable_mcam_entry(index, (u8)enable);
-	if (is_cn20k(rvu->pdev)) {
-		if (index < 0 || index >= mcam->banksize * mcam->banks)
-			return;
-
+	if (is_cn20k(rvu->pdev))
 		return npc_cn20k_enable_mcam_entry(rvu, blkaddr, index, enable);
-	}
 
 	index &= (mcam->banksize - 1);
 	for (; bank < (actbank + mcam->banks_per_entry); bank++) {
@@ -1178,16 +1188,19 @@ void rvu_npc_update_flowkey_alg_idx(struct rvu *rvu, u16 pcifunc, int nixlf,
 		/* If PF's promiscuous  entry is enabled,
 		 * Set RSS action for that entry as well
 		 */
-		npc_update_rx_action_with_alg_idx(rvu, action, pfvf, index,
-						  blkaddr, alg_idx);
+
+		if (index >= 0)
+			npc_update_rx_action_with_alg_idx(rvu, action, pfvf, index,
+							  blkaddr, alg_idx);
 
 		index = npc_get_nixlf_mcam_index(rvu, mcam, pcifunc,
 						 nixlf, NIXLF_ALLMULTI_ENTRY);
 		/* If PF's allmulti  entry is enabled,
 		 * Set RSS action for that entry as well
 		 */
-		npc_update_rx_action_with_alg_idx(rvu, action, pfvf, index,
-						  blkaddr, alg_idx);
+		if (index >= 0)
+			npc_update_rx_action_with_alg_idx(rvu, action, pfvf, index,
+							  blkaddr, alg_idx);
 	}
 }
 
@@ -1249,15 +1262,6 @@ static void npc_enadis_default_entries(struct rvu *rvu, u16 pcifunc,
 
 		index = npc_get_nixlf_mcam_index(rvu, mcam, pcifunc,
 						 nixlf, type);
-
-		if (index == USHRT_MAX)
-			dev_err(rvu->dev,
-				"%s:%d idx=%u pfunc=%#x lf=%u %s lbkvf=%u vf=%u cgx=%u sdp=%u\n",
-				__func__, __LINE__, index, pcifunc, nixlf,
-				enable ? "enable" : "disable",
-				is_lbk_vf(rvu, pcifunc), is_vf(pcifunc),
-				is_pf_cgxmapped(rvu, rvu_get_pf(pcifunc)),
-				is_sdp_pfvf(pcifunc));
 
 		npc_enable_mcam_entry(rvu, mcam, blkaddr, index, enable);
 	}
