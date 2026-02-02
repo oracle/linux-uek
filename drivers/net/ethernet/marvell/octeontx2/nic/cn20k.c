@@ -507,10 +507,12 @@ int cn20k_register_pfvf_mbox_intr(struct otx2_nic *pf, int numvfs)
 static u8 cn20k_aura_bpid_idx(struct otx2_nic *pfvf, int aura_id)
 {
 #ifdef CONFIG_DCB
-	return pfvf->queue_to_pfc_map[aura_id];
-#else
-	return 0;
+	if (pfvf->queue_to_pfc_map)
+		return pfvf->queue_to_pfc_map[aura_id];
+	else
+		return 0;
 #endif
+	return 0;
 }
 
 static int cn20k_aura_aq_init(struct otx2_nic *pfvf, int aura_id,

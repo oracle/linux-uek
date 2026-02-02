@@ -1150,10 +1150,10 @@ int otx2_cq_init(struct otx2_nic *pfvf, u16 qidx)
 		if (!is_otx2_lbkvf(pfvf->pdev)) {
 			/* Enable receive CQ backpressure */
 			aq->cq.bp_ena = 1;
-#ifdef CONFIG_DCB
-			aq->cq.bpid = pfvf->bpid[pfvf->queue_to_pfc_map[qidx]];
-#else
 			aq->cq.bpid = pfvf->bpid[0];
+#ifdef CONFIG_DCB
+			if (pfvf->queue_to_pfc_map)
+				aq->cq.bpid = pfvf->bpid[pfvf->queue_to_pfc_map[qidx]];
 #endif
 
 			/* Set backpressure level is same as cq pass level */
@@ -1452,12 +1452,12 @@ int otx2_aura_aq_init(struct otx2_nic *pfvf, int aura_id,
 		 */
 		if (pfvf->nix_blkaddr == BLKADDR_NIX1)
 			aq->aura.bp_ena = 1;
-#ifdef CONFIG_DCB
-		aq->aura.nix0_bpid = pfvf->bpid[pfvf->queue_to_pfc_map[aura_id]];
-#else
-		aq->aura.nix0_bpid = pfvf->bpid[0];
-#endif
 
+		aq->aura.nix0_bpid = pfvf->bpid[0];
+#ifdef CONFIG_DCB
+		if (pfvf->queue_to_pfc_map)
+			aq->aura.nix0_bpid = pfvf->bpid[pfvf->queue_to_pfc_map[aura_id]];
+#endif
 		/* Set backpressure level for RQ's Aura */
 		aq->aura.bp = RQ_BP_LVL_AURA;
 	}
