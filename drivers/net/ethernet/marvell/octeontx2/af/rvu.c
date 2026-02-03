@@ -3958,7 +3958,11 @@ static void rvu_shutdown(struct pci_dev *pdev)
 {
 	struct rvu *rvu = pci_get_drvdata(pdev);
 
+	if (!rvu)
+		return;
+
 	rvu_reset_msix(rvu);
+	rvu_clear_rvum_blk_revid(rvu);
 }
 
 static struct pci_driver rvu_driver = {
