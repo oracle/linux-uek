@@ -270,7 +270,7 @@ static int cpld_update(struct cpld_data *cpld)
       err = cpld_read_byte(cpld, FAN_PRESENT_CHNG_REG, &pres_chng);
       if (err)
          goto fail;
-      err = cpld_read_byte(cpld, FAN_OK_REG, &cpld->present);
+      err = cpld_read_byte(cpld, FAN_PRESENT_REG, &cpld->present);
       if (err)
          goto fail;
    }
@@ -857,7 +857,7 @@ static int cpld_init(struct cpld_data *cpld)
    }
 
    cpld_write_byte(cpld, FAN_OK_CHNG_REG, 0xff);
-   cpld_write_byte(cpld, FAN_ID_CHNG_REG, 0xff);
+   cpld_write_byte(cpld, FAN_PRESENT_CHNG_REG, 0xff);
    cpld_write_byte(cpld, FAN_ID_CHNG_REG, 0xff);
 
    if (managed_leds) {
