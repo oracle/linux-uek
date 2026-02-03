@@ -656,6 +656,22 @@ static int ext4_errno_to_code(int errno)
 	return EXT4_ERR_UNKNOWN;
 }
 
+static bool is_exadata(void)
+{
+	return static_branch_unlikely(&on_exadata);
+}
+
+static bool skip_sb_flush_on_eio(struct super_block *sb)
+{
+	struct ext4_sb_info *sbi = EXT4_SB(sb);
+	int err = sbi->s_first_error_code;
+
+	if (err == 0)
+		err = sbi->s_last_error_code;
+
+	return is_exadata() && err == EIO;
+}
+
 static void save_error_info(struct super_block *sb, int error,
 			    __u32 ino, __u64 block,
 			    const char *func, unsigned int line)
@@ -6207,6 +6223,9 @@ static void ext4_update_super(struct super_block *sb)
 static int ext4_commit_super(struct super_block *sb)
 {
 	struct buffer_head *sbh = EXT4_SB(sb)->s_sbh;
+
+	if (skip_sb_flush_on_eio(sb))
+		return -EIO;
 
 	if (!sbh)
 		return -EINVAL;
