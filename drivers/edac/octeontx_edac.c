@@ -707,10 +707,10 @@ static int octeontx_ghes_of_match_resource(struct octeontx_ghes_list *list)
 		return -ENODEV;
 
 	if (of_property_read_u32(root, "version", &octeontx_ghes_record_ver)) {
-		otx_printk(KERN_ALERT, "old firmware detected will use ghes record old format\n");
+		otx_printk(KERN_INFO, "old firmware detected will use ghes record old format\n");
 		octeontx_ghes_record_ver = OCTEONTX_GHES_REC_OLD_VER;
 	}
-	otx_printk(KERN_ALERT, "rec version:%d\n", octeontx_ghes_record_ver);
+	otx_printk(KERN_INFO, "rec version:%d\n", octeontx_ghes_record_ver);
 
 	for_each_available_child_of_node(root, node)
 		count++;
