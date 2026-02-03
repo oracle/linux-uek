@@ -54,7 +54,12 @@
 #define RVU_OTX2_PFVF_PF_SHIFT			10
 #define RVU_OTX2_PFVF_PF_MASK			0x3F
 #define RVU_PFVF_FUNC_SHIFT			0
-#define RVU_PFVF_FUNC_MASK			0x3FF
+/* VF is reduced to 9 bits from 10 bits in CN20K compared to
+ * previous silicons. 9 bits(256 VFs per PF) are more than enough
+ * for any silicon. Hence use 9 bits mask instead of 10 bits mask
+ * always.
+ */
+#define RVU_PFVF_FUNC_MASK			0x1FF
 #define RVU_CN20K_PFVF_PF_SHIFT			9
 #define RVU_CN20K_PFVF_PF_MASK			0x7F
 
