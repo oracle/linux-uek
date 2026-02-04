@@ -502,12 +502,22 @@ EXPORT_SYMBOL(otx2_register_dl);
 
 void otx2_unregister_dl(struct otx2_nic *pfvf)
 {
-	struct otx2_devlink *otx2_dl = pfvf->dl;
-	struct devlink *dl = otx2_dl->dl;
+	struct otx2_devlink *otx2_dl;
+	struct devlink *dl;
+
+	if (!pfvf || !pfvf->dl)
+		return;
+
+	otx2_dl = pfvf->dl;
+	dl = otx2_dl->dl;
+
+	if (!dl)
+		return;
 
 	devlink_unregister(dl);
 	devlink_params_unregister(dl, otx2_dl_params,
 				  ARRAY_SIZE(otx2_dl_params));
 	devlink_free(dl);
+	pfvf->dl = NULL;
 }
 EXPORT_SYMBOL(otx2_unregister_dl);
