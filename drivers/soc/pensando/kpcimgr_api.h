@@ -58,12 +58,15 @@ struct kpcimgr_entry_points_t {
 #define FLAG_PSCI_CPU_RELEASED	BIT_ULL(3)
 #define FLAG_KEXEC		BIT_ULL(4)
 #define FLAG_PORT_BIFURCATION	BIT_ULL(5)
+#define FLAG_DYN_EVQ		BIT_ULL(6)
 #define FLAG_FUTURE_FEATURE	BIT_ULL(15)
 
 /* upcalls */
 #define WAKE_UP_EVENT_QUEUE 1
 #define PRINT_LOG_MSG 2
 #define PREG_READ 3
+#define SET_DYN_EVENT_QUEUE_STATE 4
+#define WAKE_UP_DYN_EVENT_QUEUE 5
 
 /* event queue sizing */
 #define EVENT_QUEUE_LENGTH 1024
@@ -87,6 +90,13 @@ struct kpcimgr_entry_points_t {
 #define LAST_CALL_TIME 8
 #define EARLY_POLL 9
 #define MAX_DATA 10
+
+typedef struct kpcimgr_dyn_evq_state {
+	uint32_t *ring_pi;
+	uint32_t *ring_ci;
+	uint32_t *miss_evt_pi;
+	uint32_t *miss_evt_ci;
+} kpcimgr_dyn_evq_state_t;
 
 typedef struct {
 	unsigned long msgaddr;
@@ -116,6 +126,7 @@ struct kpcimgr_state_t {
 			int features_valid;
 			unsigned int active_port_mask;
 			msi_info_t msi[MSI_NVECTORS];
+			int dynevq_idx;
 		};
 	};
 
@@ -167,6 +178,9 @@ _Static_assert(sizeof(kstate_t) < SHMEM_KSTATE_SIZE,
 #define KPCIMGR_NAME "kpcimgr"
 #define PFX KPCIMGR_NAME ": "
 #define KPCIMGR_KERNEL_VERSION 3
+
+#define KPCIMGR_EVQ_DEV "/dev/kpcimgr_evq"
+#define KPCIMGR_EVQ_NAME "kpcimgr_evq"
 
 #define FW_INFO_OFFSET   0x800
 #define FW_INFO_MAX_SIZE 0x800

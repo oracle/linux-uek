@@ -34,6 +34,9 @@ kstate_t *kstate;
 DEFINE_SPINLOCK(kpcimgr_lock);
 static DECLARE_WAIT_QUEUE_HEAD(event_queue);
 
+kpcimgr_dyn_evq_state_t dyn_evq_state;
+static DECLARE_WAIT_QUEUE_HEAD(dyn_event_queue);
+
 /*
  * get_uart_addr
  *
@@ -178,6 +181,7 @@ void kpcimgr_stop_running(void)
 	}
 	spin_unlock_irqrestore(&kpcimgr_lock, flags);
 
+	kpci_memset(&dyn_evq_state, 0, sizeof(kpcimgr_dyn_evq_state_t));
 	ks->running = 0;
 }
 
@@ -300,6 +304,53 @@ static int open_kpcimgr(struct inode *inode, struct file *filp)
 }
 
 /*
+ * nicmgrd will select() on /dev/kpcimgr_evq via the pciemgr_if client interface
+ * to discover if there are events in the dynamic  event queue.
+ */
+static unsigned int
+poll_kpcimgr_evq(struct file *file, poll_table *wait)
+{
+	poll_wait(file, &dyn_event_queue, wait);
+	/*
+	 * if ring_pi is set, indicates all other ring params are also set
+	 */
+	if (dyn_evq_state.ring_pi) {
+		if ((*dyn_evq_state.ring_pi != *dyn_evq_state.ring_ci) ||
+			(*dyn_evq_state.miss_evt_pi != *dyn_evq_state.miss_evt_ci)) {
+			return POLLIN | POLLRDNORM;
+		}
+	}
+	return 0;
+}
+
+static void wake_up_dyn_event_queue(void)
+{
+	wake_up_interruptible(&dyn_event_queue);
+}
+
+static void setup_dyn_evq_state(uint64_t arg1)
+{
+	kpcimgr_dyn_evq_state_t *rp;
+
+	pr_info("KPCIMGR setup dyn_evq state\n");
+	rp = (kpcimgr_dyn_evq_state_t *)arg1;
+	if (!rp) {
+		pr_err("KPCIMGR error null arg for dynamic evq param\n");
+		return;
+	}
+
+	if (!rp->ring_pi || !rp->ring_ci || !rp->miss_evt_pi || !rp->miss_evt_ci) {
+		pr_err("KPCIMGR error null dynamic evq params\n");
+		return;
+	}
+
+	dyn_evq_state.ring_pi = rp->ring_pi;
+	dyn_evq_state.ring_ci = rp->ring_ci;
+	dyn_evq_state.miss_evt_pi = rp->miss_evt_pi;
+	dyn_evq_state.miss_evt_ci = rp->miss_evt_ci;
+}
+
+/*
  * Examine code and look for calls (BL insn) that are beyond the bounds of the text section, and
  * data references (ADRP) to memory outside of the image. If any are found, report them and return
  * an error.
@@ -375,9 +426,22 @@ static int feature_check(long features)
 	kstate_t *ks = get_kstate();
 	int apm = ks->active_port_mask;
 
+	/*
+	 * If a mask was given (as opposed to a single bit), then ensure
+	 * that the library supports bifurcation.
+	 */
 	if (apm && (apm & (apm - 1)) != 0 && (features & FLAG_PORT_BIFURCATION) == 0) {
 		pr_err("KPCIMGR: pciesvc module does not support port bifurcation\n");
 		return -1;
+	}
+
+	if ((ks->features & FLAG_DYN_EVQ) == 0 && (features & FLAG_DYN_EVQ)) {
+		/*
+		 * The module supports dynamic-evq but kpcimgr does not. This is allowed in
+		 * upgrade scenarios where the kernel has not been updated. The pciesvc module
+		 * will disable the dyn-evq in this situation.
+		 */
+		pr_warn("KPCIMGR: module uses dynamic event queue, but kpcimgr does not support it\n");
 	}
 
 	if (!ks->have_persistent_mem)
@@ -709,7 +773,7 @@ static void unmap_resources(void)
 static int map_resources(struct platform_device *pfdev)
 {
 	struct device_node *dn = pfdev->dev.of_node;
-	u32 shmem_idx, hwmem_idx, kstate_idx = -1;
+	u32 shmem_idx, hwmem_idx, dynevq_idx, kstate_idx = -1;
 	struct resource res, kstate_res;
 	kstate_t *ks;
 	void *shmem;
@@ -725,6 +789,13 @@ static int map_resources(struct platform_device *pfdev)
 	if (err) {
 		pr_err("KPCIMGR: no shmem-index value found\n");
 		return -ENOMEM;
+	}
+
+	/* Dynamic event queue index is optional */
+	err = of_property_read_u32(dn, "dynevq-index", &dynevq_idx);
+	if (err) {
+		pr_err("KPCIMGR: no dynevq-index value found\n");
+		dynevq_idx = -1;
 	}
 
 	err = of_address_to_resource(dn, shmem_idx, &res);
@@ -853,8 +924,13 @@ static int map_resources(struct platform_device *pfdev)
 			pr_err(PFX "iomap resource %d failed\n", i);
 			goto errout;
 		}
-		if (i == hwmem_idx)
+
+		if (i == hwmem_idx) {
 			ks->hwmem_idx = ks->nranges;
+		} else if (i == dynevq_idx) {
+			ks->dynevq_idx = ks->nranges;
+			ks->features |= FLAG_DYN_EVQ;
+		}
 		ks->nranges++;
 	}
 
@@ -933,7 +1009,7 @@ static u64 kpcimgr_upcall(int req, u64 arg1, u64 arg2, u64 arg3)
 {
 	kstate_t *ks = get_kstate();
 
-	if (ks->valid != KSTATE_MAGIC)		/* no code loaded */
+	if (ks->valid != KSTATE_MAGIC && req != PRINT_LOG_MSG)	/* no code loaded */
 		return 1;
 
 	switch (req) {
@@ -941,11 +1017,17 @@ static u64 kpcimgr_upcall(int req, u64 arg1, u64 arg2, u64 arg3)
 		ks->event_intr++;
 		wake_up_event_queue();
 		break;
+	case WAKE_UP_DYN_EVENT_QUEUE:
+		wake_up_dyn_event_queue();
+		break;
 	case PRINT_LOG_MSG:
 		printk((char *)arg1); /* KERN_LEVEL provided by arg1 */
 		break;
 	case PREG_READ:
 		return kpcimgr_preg_read(arg1);
+	case SET_DYN_EVENT_QUEUE_STATE:
+		setup_dyn_evq_state(arg1);
+		break;
 	default:
 		return 1;
 	}
@@ -1086,6 +1168,20 @@ static int kpcimgr_notify_reboot(struct notifier_block *this,
 }
 
 /*
+ * Misc device for dynamic pcie event queue
+ */
+static const struct file_operations __maybe_unused kpcimgr_evq_fops = {
+	.owner          = THIS_MODULE,
+	.poll           = poll_kpcimgr_evq,
+	.open           = open_kpcimgr,
+};
+
+static struct miscdevice kpcimgr_evq_dev = {
+	MISC_DYNAMIC_MINOR,
+	KPCIMGR_EVQ_NAME,
+	&kpcimgr_evq_fops
+};
+/*
  * Driver Initialization
  */
 static const struct file_operations __maybe_unused kpcimgr_fops = {
@@ -1124,6 +1220,14 @@ static int kpcimgr_probe(struct platform_device *pfdev)
 	if (err) {
 		pr_err(PFX "register pciemgr_dev failed: %d\n", err);
 		goto errout_free_intrs;
+	}
+
+	if (ks->features & FLAG_DYN_EVQ) {
+		err = misc_register(&kpcimgr_evq_dev);
+		if (err) {
+			pr_err(PFX "register pciemgr_evq_dev failed: %d\n", err);
+			ks->features &= ~FLAG_DYN_EVQ;
+		}
 	}
 
 	ks->upcall = (void *)kpcimgr_upcall;

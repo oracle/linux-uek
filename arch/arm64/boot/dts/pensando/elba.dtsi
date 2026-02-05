@@ -298,6 +298,7 @@
 		kpcimgr@20000000 {
 			compatible = "pensando,kpcimgr";
 			msi-parent = <&its 0x0000000f>;
+			dynevq-index = <5>;
 			kstate-index = <4>;
 			shmem-index = <3>;
 			hwmem-index = <2>;
@@ -306,6 +307,7 @@
 				0x0 0xc4000000 0x0 0x00d00000	/* HWMEM */
 				0x0 0xc4d00000 0x0 0x0128d000	/* SHMEM */
 				0x0 0xc5f8d000 0x0 0x00072fe0	/* kpcimgr state */
+				0x0 0xc0000000 0x0 0x00800000	/* Dynamic Event Queue (8MB) */
 			/* the last 32 bytes are reserved for oracle { linux,mem-reserve } */
 				0x0 0xee72a000 0x0 0x2000000>;	/* virtio */
 		};
