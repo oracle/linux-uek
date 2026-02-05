@@ -820,6 +820,7 @@ void rds_ib_tx(struct rds_ib_connection *ic)
 static void rds_ib_send_cb(struct rds_ib_connection *ic)
 {
 	struct rds_connection *conn = ic->conn;
+	int ret;
 
 	rds_ib_stats_inc(s_ib_tasklet_call);
 
@@ -827,8 +828,11 @@ static void rds_ib_send_cb(struct rds_ib_connection *ic)
 
 	if (rds_conn_up(conn) &&
 	   (!test_bit(RDS_LL_SEND_FULL, &conn->c_flags) ||
-	    test_bit(RCMQ_BITOFF_CONGU_PENDING, &conn->c_map_queued)))
-		rds_send_xmit(&ic->conn->c_path[0]);
+	    test_bit(RCMQ_BITOFF_CONGU_PENDING, &conn->c_map_queued))) {
+		ret = rds_send_xmit(ic->conn->c_path);
+		if (ret == -ENOMEM || ret == -EAGAIN)
+			rds_cond_queue_send_work(ic->conn->c_path, 1);
+	}
 }
 
 void rds_ib_tasklet_fn_send(unsigned long data)
