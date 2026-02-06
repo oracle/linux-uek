@@ -28,8 +28,8 @@
 #define DRIVER_NAME "minke-fan-cpld"
 
 #define LED_NAME_MAX_SZ 20
-#define MAX_SLOT_COUNT 5
-#define MAX_FAN_COUNT 6
+#define MAX_SLOT_COUNT 8
+#define MAX_FAN_COUNT 8
 
 #define MINOR_VERSION_REG  0x00
 #define MAJOR_VERSION_REG  0x01
@@ -103,6 +103,7 @@ static struct workqueue_struct *pali_cpld_workqueue;
 enum cpld_type {
    PALI2_CPLD = 0,
    MINKE_CPLD = 1,
+   RUNDLE_CPLD = 2,
 };
 
 struct fan_id {
@@ -181,6 +182,12 @@ static const struct fan_id minke_fan_ids[] = {
    [FAN_ID_UNKNOWN] = { "Unknown",         2 },
 };
 
+static const struct fan_id rundle_fan_ids[] = {
+   [0b000010]       = { "FAN-7310H-RED",   2 },
+   [0b000011]       = { "FAN-7310H-RED",   2 },
+   [FAN_ID_UNKNOWN] = { "Unknown",         2 },
+};
+
 static const struct cpld_info cpld_infos[] = {
    [PALI2_CPLD] = {
       .name = "pali2",
@@ -199,6 +206,15 @@ static const struct cpld_info cpld_infos[] = {
       .left_right = true,
       .fan_ids = minke_fan_ids,
       .id_base_reg = 0x60,
+   },
+   [RUNDLE_CPLD] = {
+      .name = "rundle",
+      .slot_count = 8,
+      .fan_count = 8,
+      .tach_hz = 100000,
+      .left_right = false,
+      .fan_ids = rundle_fan_ids,
+      .id_base_reg = 0x91,
    },
 };
 
@@ -1146,6 +1162,7 @@ static int cpld_probe(struct i2c_client *client
 static const struct i2c_device_id cpld_id[] = {
    { "pali2_cpld", PALI2_CPLD },
    { "minke_cpld", MINKE_CPLD },
+   { "rundle_cpld", RUNDLE_CPLD },
    {}
 };
 
