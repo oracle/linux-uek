@@ -1230,8 +1230,8 @@ BuildKernel() {
           cp $RPM_SOURCE_DIR/Module.kabi_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/Module.kabi
           cp $RPM_SOURCE_DIR/Symtypes.kabi_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/Symtypes.kabi
           cp $RPM_SOURCE_DIR/kabi_lockedlist_%{_target_cpu}$Flavour $RPM_BUILD_ROOT/kabi_lockedlist
-          $RPM_SOURCE_DIR/kabi check -k $RPM_BUILD_ROOT/Module.kabi -s Module.symvers \
-                                          -K $RPM_BUILD_ROOT/Symtypes.kabi -S Symtypes.build
+          python3 $RPM_SOURCE_DIR/kabi check -k $RPM_BUILD_ROOT/Module.kabi -s Module.symvers \
+                                             -K $RPM_BUILD_ROOT/Symtypes.kabi -S Symtypes.build
           # Smoke tests verify that the kABI definitions are internally consistent:
           # they contain the exact same set of symbols and symbol versions.
           python3 $RPM_SOURCE_DIR/kabi smoke -v $RPM_BUILD_ROOT/Module.kabi \
