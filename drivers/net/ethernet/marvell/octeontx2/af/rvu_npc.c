@@ -1262,7 +1262,6 @@ static void npc_enadis_default_entries(struct rvu *rvu, u16 pcifunc,
 
 		index = npc_get_nixlf_mcam_index(rvu, mcam, pcifunc,
 						 nixlf, type);
-
 		npc_enable_mcam_entry(rvu, mcam, blkaddr, index, enable);
 	}
 
@@ -1272,9 +1271,12 @@ static void npc_enadis_default_entries(struct rvu *rvu, u16 pcifunc,
 	if ((pcifunc & RVU_PFVF_FUNC_MASK) && !rvu->hw->cap.nix_rx_multicast)
 		return;
 
+	if (is_cn20k(rvu->pdev) && is_lbk_vf(rvu, pcifunc))
+		type = NIXLF_PROMISC_ENTRY;
+
 	/* add/delete pf_func to broadcast MCE list */
 	npc_enadis_default_mce_entry(rvu, pcifunc, nixlf,
-				     NIXLF_BCAST_ENTRY, enable);
+				     type, enable);
 }
 
 void rvu_npc_disable_default_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
@@ -1283,6 +1285,9 @@ void rvu_npc_disable_default_entries(struct rvu *rvu, u16 pcifunc, int nixlf)
 		return;
 
 	npc_enadis_default_entries(rvu, pcifunc, nixlf, false);
+
+	if (is_cn20k(rvu->pdev) && is_vf(pcifunc))
+		return;
 
 	/* Delete multicast and promisc MCAM entries */
 	npc_enadis_default_mce_entry(rvu, pcifunc, nixlf,
@@ -2300,6 +2305,7 @@ static void rvu_npc_hw_init(struct rvu *rvu, int blkaddr)
 
 	mcam->banks = (npc_const >> 44) & 0xFULL;
 	mcam->banksize = (npc_const >> 28) & 0xFFFFULL;
+
 	hw->npc_stat_ena = BIT_ULL(9);
 	/* Extended set */
 	if (npc_const2) {
@@ -4202,17 +4208,27 @@ int rvu_mbox_handler_npc_mcam_mul_stats(struct rvu *rvu,
 }
 
 void rvu_npc_clear_ucast_entry(struct rvu *rvu, int pcifunc, int nixlf)
+
 {
 	struct npc_mcam *mcam = &rvu->hw->mcam;
 	struct rvu_npc_mcam_rule *rule;
 	int ucast_idx, blkaddr;
+	u8 type;
 
 	blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 	if (blkaddr < 0)
 		return;
 
+	type = NIXLF_UCAST_ENTRY;
+	if (is_cn20k(rvu->pdev) && is_lbk_vf(rvu, pcifunc))
+		type = NIXLF_PROMISC_ENTRY;
+
 	ucast_idx = npc_get_nixlf_mcam_index(rvu, mcam, pcifunc,
-					     nixlf, NIXLF_UCAST_ENTRY);
+					     nixlf, type);
+
+	/* In cn20k, default rules are freed before detach rsrc */
+	if (ucast_idx < 0)
+		return;
 
 	npc_enable_mcam_entry(rvu, mcam, blkaddr, ucast_idx, false);
 
