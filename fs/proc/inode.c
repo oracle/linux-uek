@@ -38,12 +38,6 @@ static void proc_evict_inode(struct inode *inode)
 	truncate_inode_pages_final(&inode->i_data);
 	clear_inode(inode);
 
-	/* Stop tracking associated processes */
-	if (ei->pid) {
-		put_pid(ei->pid);
-		ei->pid = NULL;
-	}
-
 	/* Let go of any associated proc directory entry */
 	de = ei->pde;
 	if (de) {
@@ -80,6 +74,7 @@ static struct inode *proc_alloc_inode(struct super_block *sb)
 
 static void proc_free_inode(struct inode *inode)
 {
+	put_pid(PROC_I(inode)->pid);
 	kmem_cache_free(proc_inode_cachep, PROC_I(inode));
 }
 
