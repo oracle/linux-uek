@@ -307,7 +307,6 @@ restart:
 			}
 			rm->data.op_active = 1;
 			rm->m_inc.i_conn_path = cp;
-			rds_conn_get(cp->cp_conn);
 			rm->m_inc.i_conn = cp->cp_conn;
 
 			cp->cp_xmit_rm = rm;
@@ -1238,7 +1237,6 @@ static int rds_send_queue_rm(struct rds_sock *rs, struct rds_connection *conn,
 			rds_stats_inc(s_send_payload_csum_added);
 		}
 
-		rds_conn_get(conn);
 		rm->m_inc.i_conn = conn;
 		rm->m_inc.i_conn_path = cp;
 		rds_message_addref(rm);
@@ -1906,7 +1904,6 @@ static int rds_send_probe(struct rds_conn_path *cp, __be16 sport,
 	rm->m_inc.i_tx_lat = jiffies;
 	rds_set_rm_flag_bit(rm, RDS_MSG_ON_CONN);
 	rds_message_addref(rm);
-	rds_conn_get(cp->cp_conn);
 	rm->m_inc.i_conn = cp->cp_conn;
 	rm->m_inc.i_conn_path = cp;
 
