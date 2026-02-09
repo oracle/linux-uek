@@ -642,7 +642,7 @@ static void ext4_handle_error(struct super_block *sb, bool force_ro, int error,
 	if (!continue_fs && !sb_rdonly(sb)) {
 		ext4_set_mount_flag(sb, EXT4_MF_FS_ABORTED);
 		if (journal)
-			jbd2_journal_abort(journal, -EIO);
+			jbd2_journal_abort(journal, -error);
 	}
 
 	if (!bdev_read_only(sb->s_bdev)) {
