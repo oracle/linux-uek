@@ -447,6 +447,7 @@ BuildRequires: fontconfig >= 2.13.0
 %if %{with_bpftool}
 BuildRequires: python3-docutils
 BuildRequires: zlib-devel
+BuildRequires: zlib-static
 %endif
 BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 
@@ -628,6 +629,8 @@ License: GPLv2
 BuildRequires: libtraceevent
 BuildRequires: libtraceevent-devel
 BuildRequires: python3-docutils
+BuildRequires: perl-ExtUtils-Embed 
+BuildRequires: elfutils-debuginfod-client-devel
 Requires: libtraceevent
 Requires: slang
 %ifnarch aarch64
