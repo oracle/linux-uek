@@ -33,6 +33,30 @@ static struct _req_type __maybe_unused					\
 MBOX_UP_MCS_MESSAGES
 #undef M
 
+void rvu_mcs_dsa_cfg(struct rvu *rvu, u8 rpm_id, u8 lmac_id, int len, bool ena)
+{
+	struct mcs *mcs;
+	u64 cfg;
+	u8 port;
+
+	/* MCS not supported */
+	if (!rvu->mcs_blk_cnt)
+		return;
+
+	mcs = mcs_get_pdata(0);
+	if (mcs->hw->mcs_devtype != CN20KA_MCS)
+		return;
+
+	port = (rpm_id * rvu->hw->lmac_per_cgx) + lmac_id;
+	cfg = mcs_reg_read(mcs, MCSX_PEX_RX_SLAVE_POST_MAC_DA_PARSE_SKIP(port));
+	if (ena)
+		cfg = (len & 0x1f) >> 1;
+	else
+		cfg = 0x0;
+
+	mcs_reg_write(mcs, MCSX_PEX_RX_SLAVE_POST_MAC_DA_PARSE_SKIP(port), cfg);
+}
+
 void rvu_mcs_ptp_cfg(struct rvu *rvu, u8 rpm_id, u8 lmac_id, bool ena)
 {
 	struct mcs *mcs;

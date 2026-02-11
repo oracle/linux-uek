@@ -4016,6 +4016,12 @@ int rvu_npc_set_parse_mode(struct rvu *rvu, u16 pcifunc, u64 mode, u8 dir,
 				   rxpkind);
 		if (rc)
 			return rc;
+
+		/* MCS configuration */
+		if (rxpkind == NPC_RX_EDSA_PKIND)
+			rvu_mcs_dsa_cfg(rvu, cgx_id, lmac_id, var_len_off, true);
+		else
+			rvu_mcs_dsa_cfg(rvu, cgx_id, lmac_id, var_len_off, false);
 	}
 
 	if (dir & PKIND_TX) {
