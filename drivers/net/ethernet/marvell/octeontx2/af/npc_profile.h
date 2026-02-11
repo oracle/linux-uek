@@ -293,6 +293,10 @@ enum npc_kpu9_extra_parser_state {
 	NPC_S_KPU9_ROCEV2 = NPC_S_LAST + 6,
 };
 
+enum npc_kpu4_extra_parser_state {
+	NPC_S_KPU4_SBTAG_PTP = NPC_S_LAST + 7,
+};
+
 enum npc_kpu_la_uflag {
 	NPC_F_LA_U_HAS_TAG = 0x10,
 	NPC_F_LA_U_HAS_IH_NIX = 0x20,
@@ -1303,6 +1307,15 @@ static struct npc_kpu_profile_cam kpu1_cam_entries[] = {
 		0xffff,
 		0x0000,
 		0x0000,
+		0x0000,
+		0x0000,
+	},
+	{
+		NPC_S_KPU1_ETHER, 0xff,
+		NPC_ETYPE_SBTAG,
+		0xffff,
+		NPC_ETYPE_PTP,
+		0xffff,
 		0x0000,
 		0x0000,
 	},
@@ -4586,6 +4599,15 @@ static struct npc_kpu_profile_cam kpu4_cam_entries[] = {
 		NPC_S_KPU4_PPPOE, 0xff,
 		NPC_PPP_IP6,
 		0xffff,
+		0x0000,
+		0x0000,
+		0x0000,
+		0x0000,
+	},
+	{
+		NPC_S_KPU4_SBTAG_PTP, 0xff,
+		0x0000,
+		0x0000,
 		0x0000,
 		0x0000,
 		0x0000,
@@ -9322,6 +9344,14 @@ static struct npc_kpu_profile_action kpu1_action_entries[] = {
 	},
 	{
 		NPC_ERRLEV_RE, NPC_EC_NOERR,
+		4, 8, 22, 2, 0,
+		NPC_S_KPU4_SBTAG_PTP, 12, 1,
+		NPC_LID_LA, NPC_LT_LA_ETHER,
+		NPC_F_LA_U_HAS_TAG | NPC_F_LA_L_WITH_VLAN,
+		0, 0, 0, 0,
+	},
+	{
+		NPC_ERRLEV_RE, NPC_EC_NOERR,
 		4, 8, 22, 0, 0,
 		NPC_S_KPU2_SBTAG, 12, 1,
 		NPC_LID_LA, NPC_LT_LA_ETHER,
@@ -12259,6 +12289,14 @@ static struct npc_kpu_profile_action kpu4_action_entries[] = {
 		6, 0, 42, 0, 0,
 		NPC_S_KPU5_IP6, 10, 1,
 		NPC_LID_LB, NPC_LT_LB_PPPOE,
+		0,
+		0, 0, 0, 0,
+	},
+	{
+		NPC_ERRLEV_RE, NPC_EC_NOERR,
+		8, 0, 6, 0, 0,
+		NPC_S_KPU5_PTP, 4, 1,
+		NPC_LID_LB, NPC_LT_LB_CTAG,
 		0,
 		0, 0, 0, 0,
 	},
