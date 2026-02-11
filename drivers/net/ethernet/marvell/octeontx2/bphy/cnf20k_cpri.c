@@ -96,8 +96,6 @@
 struct cnf20k_cpri_drv_ctx cnf20k_cpri_drv_ctx[CNF20K_BPHY_CPRI_MAX_INTF];
 static struct class *cnf20k_cpri_class;
 
-struct msix_entry msix_entries[NUM_VECTORS];
-
 void __iomem *cnf20k_cpri_reg_base;
 
 static inline u64 cnf20k_get_cpri_regaddr(u64 offset, u8 cpri_num)
@@ -889,15 +887,6 @@ static void generate_cpri_mac(u8 mac[ETH_ALEN], u8 node_id,
 	mac[5] = lmac;
 }
 
-static inline void msix_enable_ctrl(struct pci_dev *dev)
-{
-	u16 control;
-
-	pci_read_config_word(dev, dev->msix_cap + PCI_MSIX_FLAGS, &control);
-	control |= PCI_MSIX_FLAGS_ENABLE;
-	pci_write_config_word(dev, dev->msix_cap + PCI_MSIX_FLAGS, control);
-}
-
 static int cnf20k_cpri_parse_and_init_intf(struct cnf20k_cdev_priv *cdev,
 					   struct cnf20k_bphy_cpri_netdev_comm_intf_cfg
 					   *cfg)
@@ -911,13 +900,13 @@ static int cnf20k_cpri_parse_and_init_intf(struct cnf20k_cdev_priv *cdev,
 	u8 mac_addr[ETH_ALEN];
 	int msix_vecs = 0;
 	int irq0, irq1;
+	int nvec;
 
 	if (!cdev || !cdev->pdev) {
 		pr_info("pdev is NULL — device not ready\n");
 		return -ENODEV;
 	}
 	pdev = cdev->pdev;
-
 	if (cfg->bphy_chiplet_mask >= 1 && cfg->bphy_chiplet_mask <= 3) {
 		int max_chiplet = (cfg->bphy_chiplet_mask == 3) ?
 			MAX_NUM_BPHY_CHIPLET : MAX_NUM_HALF_BPHY_CHIPLET;
@@ -1045,56 +1034,66 @@ static int cnf20k_cpri_parse_and_init_intf(struct cnf20k_cdev_priv *cdev,
 				}
 			}
 		}
-		if (cfg->bphy_chiplet_mask) {
-			for (i = 0; i < NUM_VECTORS; i++) {
-				msix_entries[i].entry =
-				cfg->hw_params.msix_offset[0] + i;
-			}
-			msix_vecs = NUM_VECTORS;
-		}
-		msix_enable_ctrl(pdev);
-		ret = pci_enable_msix_range(pdev, msix_entries, msix_vecs, NUM_VECTORS);
-		if (ret < 0) {
-			dev_err(&pdev->dev, "Failed to enable MSI-X: %d\n",
-				ret);
+
+		msix_vecs = NUM_VECTORS;
+
+		/* Check hardware capability */
+		nvec = pci_msix_vec_count(pdev);
+		if (nvec < msix_vecs) {
+			dev_err(&pdev->dev,
+				"MSI-X vectors requested=%d supported=%d\n",
+				msix_vecs, nvec);
+			ret = -ERANGE;
 			goto err_exit;
 		}
 
+		/* Enable MSI-X */
+		nvec = pci_alloc_irq_vectors(pdev,
+					     msix_vecs,
+					     msix_vecs,
+					     PCI_IRQ_MSIX);
+		if (nvec < 0) {
+			dev_err(&pdev->dev,
+				"Failed to enable MSI-X: %d\n", nvec);
+			ret = nvec;
+			goto err_exit;
+		}
+
+		/* -------- Request IRQs -------- */
+
 		if (cfg->bphy_chiplet_mask & 1) {
-			irq0 = msix_entries[1].vector;
+			irq0 = pci_irq_vector(pdev, 1);
 			ret = request_irq(irq0,
-					  cnf20k_gpint_bphy0_intr_handler, 0,
+					  cnf20k_gpint_bphy0_intr_handler,
+					  0,
 					  "cnf20k_gpint_bphy0_intr_handler",
 					  cdev);
-			if (ret) {
-				dev_err(&pdev->dev,
-					"Failed to request IRQ %d: %d\n",
-					irq0, ret);
-				goto err_exit;
-			}
+			if (ret)
+				goto err_free_irqs;
 		}
-		if (cfg->bphy_chiplet_mask & 2) {
-			int msix_idx = (cfg->bphy_chiplet_mask == 3) ? 2 : 0;
 
-			irq1 = msix_entries[msix_idx + 1].vector;
-			ret = request_irq(irq1, cnf20k_gpint_bphy1_intr_handler,
-					  0, "cnf20k_gpint_bphy1_intr_handler",
+		if (cfg->bphy_chiplet_mask & 2) {
+			int vec = (cfg->bphy_chiplet_mask == 3) ? 2 : 1;
+
+			irq1 = pci_irq_vector(pdev, vec);
+			ret = request_irq(irq1,
+					  cnf20k_gpint_bphy1_intr_handler,
+					  0,
+					  "cnf20k_gpint_bphy1_intr_handler",
 					  cdev);
 			if (ret) {
-				dev_err(&pdev->dev,
-					"Failed to request IRQ %d: %d\n",
-					irq1, ret);
 				if (cfg->bphy_chiplet_mask & 1)
 					free_irq(irq0, cdev);
-				goto err_exit;
+				goto err_free_irqs;
 			}
 		}
-	} else {
-		pr_info("Invalid chiplet mask: %d\n", cfg->bphy_chiplet_mask);
-		return -EINVAL;
-	}
 
-	return 0;
+		return 0;
+
+	}
+err_free_irqs:
+	pci_free_irq_vectors(pdev);
+
 
 err_exit:
 	for (i = 0; i < CNF20K_BPHY_CPRI_MAX_INTF; i++) {
@@ -1475,6 +1474,9 @@ static void cpri_remove(struct pci_dev *pdev)
 
 	if (!cdev_priv)
 		return;
+
+	/* Free MSI-X vectors */
+	pci_free_irq_vectors(pdev);
 
 	/* Destroy the device node */
 	if (cdev_priv->dev)
