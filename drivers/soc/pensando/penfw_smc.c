@@ -75,6 +75,8 @@ static const char *_opcode_to_str(uint8_t opcode)
 		return "PENFW_OP_GET_RESET_CAUSE";
 	case PENFW_OP_SET_RESET_CAUSE:
 		return "PENFW_OP_SET_RESET_CAUSE";
+	case PENFW_OP_PCIEPORT_DOWNLOAD_FW:
+		return "PENFW_OP_PCIEPORT_DOWNLOAD_FW";
 	default:
 		return "PENFW_OP_UNKNOWN";
 	}
@@ -242,6 +244,49 @@ void penfw_smc_get_secure_intrs(struct penfw_call_args *args)
 	memset(penfwdata, 0, PAGE_SIZE);
 }
 
+#define PCIE_SERDES_FW_SIZE (48 * 1024)
+
+/*
+ * a1 = smc op (PENFW_OP_PCIEPORT_DOWNLOAD_FW)
+ * a2 = px_port
+ * a3 = Address of user buffer for fw image
+ * a4 = fw size
+ */
+static void penfw_smc_pcieport_download_fw(struct penfw_call_args *args)
+{
+	uint8_t *fw_buf;
+	phys_addr_t fw_buf_phys;
+	uint64_t px_port = args->a2;
+	uint64_t fw_size = args->a4 * 4;
+	struct arm_smccc_res res = {0};
+
+	if (fw_size > PCIE_SERDES_FW_SIZE) {
+		args->a0 = -1;
+		return;
+	}
+
+	fw_buf = (uint8_t *)__get_free_pages((GFP_KERNEL | GFP_ATOMIC | __GFP_ZERO),
+					     get_order(PCIE_SERDES_FW_SIZE));
+
+	if (fw_buf == NULL) {
+		args->a0 = -1;
+		return;
+	}
+
+	fw_buf_phys = virt_to_phys((void *)fw_buf);
+
+	if (copy_from_user(fw_buf, (void __user *)args->a3, fw_size)) {
+		args->a0 = -5;
+		goto err;
+	}
+
+	arm_smccc_smc(PENFW_CALL_FID, PENFW_OP_PCIEPORT_DOWNLOAD_FW,
+				   px_port, (uint64_t) fw_buf_phys, fw_size, 0, 0, 0, &res);
+err:
+	if (fw_buf)
+		free_pages((unsigned long)fw_buf, get_order(PCIE_SERDES_FW_SIZE));
+}
+
 void penfw_smc(struct penfw_call_args *args)
 {
 	struct arm_smccc_res res = {0};
@@ -291,6 +336,9 @@ void penfw_smc(struct penfw_call_args *args)
 		break;
 	case PENFW_OP_ATOMIC_INC_AXI_LIMITER:
 		// deprecated, do nothing
+		break;
+	case PENFW_OP_PCIEPORT_DOWNLOAD_FW:
+		penfw_smc_pcieport_download_fw(args);
 		break;
 	default:
 		break;

@@ -42,6 +42,8 @@
 #define	PENFW_OP_GET_BSM_STATE				30
 #define	PENFW_OP_GET_RESET_CAUSE			31
 #define	PENFW_OP_SET_RESET_CAUSE			32
+#define	PENFW_OP_SET_BSM_STATE				33
+#define	PENFW_OP_PCIEPORT_DOWNLOAD_FW		34
 
 struct penfw_call_args {
 	int64_t a0;
