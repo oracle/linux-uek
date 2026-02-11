@@ -295,6 +295,42 @@ static void cpt_rx_qid_init(struct rvu *rvu)
 	set_bit(0, cpt->cpt_rx_queue_bitmap);
 }
 
+static void cpt_cn20k_cfg_ucc_cq_err_codes(struct rvu *rvu, int blkaddr)
+{
+	static const u8 ucc_error_codes[] = {
+		/* Success/Warning Codes */
+		0xF0,  /* UCODE_IPSEC_SUCCESS_SOFT_LIFETIME_EXPIRED */
+		0xF2,  /* UCODE_IPSEC_SUCCESS_SOFT_LIFETIME2_EXPIRED */
+		/* SA-Related Errors */
+		0xB0,  /* ERR_UCODE_IPSEC_SA_INVAL */
+		0xB1,  /* ERR_UCODE_IPSEC_SA_EXPIRED */
+		0xB2,  /* ERR_UCODE_IPSEC_SA_OVERFLO */
+		0xB3,  /* ERR_UCODE_IPSEC_SA_ESP_BADALGO */
+		0xB4,  /* ERR_UCODE_IPSEC_SA_AH_BADALGO */
+		0xB5,  /* ERR_UCODE_IPSEC_SA_BADCTX */
+		0xB6,  /* ERR_UCODE_IPSEC_SA_CTX_FLAG_MISMATCH */
+		/* Atomic Operation Error */
+		0xB7,  /* ERR_UCODE_IPSEC_AOP_ERR */
+		/* Packet Errors */
+		0xB8,  /* ERR_UCODE_IPSEC_PKT_IP */
+		0xB9,  /* ERR_UCODE_IPSEC_PKT_IP6_BADEXT */
+		0xBA,  /* ERR_UCODE_IPSEC_PKT_IP6_HBH */
+		0xBB,  /* ERR_UCODE_IPSEC_PKT_IP6_BIGEXT */
+		/* Additional Errors */
+		0xC0,  /* ERR_UCODE_IPSEC_PKT_BADICV */
+		0xC4,  /* ERR_UCODE_IPSEC_BAD_DLEN */
+		0xC5,  /* ERR_UCODE_SA_ESP_BADKEYS5 */
+		0xC6,  /* ERR_UCODE_SA_AH_BADKEYS */
+		0xC7   /* ERR_UCODE_BADIP */
+	};
+	u64 reg_val = CPT_AF_UCC_CTL_CQ_ENA_MASK;
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(ucc_error_codes); i++)
+		rvu_write64(rvu, blkaddr,
+			    CPT_AF_UCCX_CTL(ucc_error_codes[i]), reg_val);
+}
+
 void rvu_cn20k_cpt_init(struct rvu *rvu)
 {
 	u64 reg_val;
@@ -312,6 +348,9 @@ void rvu_cn20k_cpt_init(struct rvu *rvu)
 	reg_val = rvu_read64(rvu, BLKADDR_CPT0, CPT_AF_CTL);
 	reg_val |= FIELD_PREP(CPT_AF_CTL_RES_META_OFFSET, 1);
 	rvu_write64(rvu, BLKADDR_CPT0, CPT_AF_CTL, reg_val);
+
+	/* Configure UCC error codes for inline IPsec CQ error path */
+	cpt_cn20k_cfg_ucc_cq_err_codes(rvu, BLKADDR_CPT0);
 
 	cpt_rx_qid_init(rvu);
 }

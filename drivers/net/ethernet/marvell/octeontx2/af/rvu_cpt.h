@@ -47,6 +47,12 @@
 #define RXC_ACTIVE_THRES  GENMASK_ULL(27, 16)
 #define RXC_ACTIVE_LIMIT  GENMASK_ULL(11, 0)
 
+/* CPT_AF_UCCX_CTL bits: CQ_ENA (0), CQ_ENA_SWARN (1). */
+#define CPT_AF_UCC_CTL_CQ_ENA		BIT_ULL(0)
+#define CPT_AF_UCC_CTL_CQ_ENA_SWARN	BIT_ULL(1)
+#define CPT_AF_UCC_CTL_CQ_ENA_MASK	(CPT_AF_UCC_CTL_CQ_ENA | \
+					 CPT_AF_UCC_CTL_CQ_ENA_SWARN)
+
 struct rvu_cpt {
 	/* PCIFUNC to CPT RX Queue map */
 	u16                     cptpfvf_map[CPT_AF_MAX_RXC_QUEUES];
