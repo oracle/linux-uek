@@ -35,14 +35,14 @@
  * ----------------------------------------------------------------------------
  *|LBK_CHAN:    |                        1 |             LBK_CHAN             |
  * ----------------------------------------------------------------------------
- *|SDP_CHAN:    |                   1 |             SDP_CHAN                  |
+ *|SDP_CHAN:    |              1 |                  SDP_CHAN                  |
  * ----------------------------------------------------------------------------
  *|CPT_CHAN:    |                                         |   CPT_QUEUE/CHAN  |
  * ----------------------------------------------------------------------------
  */
 
 #define NIX_CHAN_LBK_BASE		BIT_ULL(7)
-#define NIX_CHAN_SDP_BASE		BIT_ULL(8)
+#define NIX_CHAN_SDP_BASE		BIT_ULL(9)
 #define NIX_CHAN_RPM_BASE		BIT_ULL(10)
 #define NIX_CHAN_CPT_BASE		(0x00ULL)
 
