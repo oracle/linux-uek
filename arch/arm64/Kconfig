@@ -955,11 +955,14 @@ config QCOM_FALKOR_ERRATUM_E1041
 
 config NVIDIA_CARMEL_CNP_ERRATUM
 	bool "NVIDIA Carmel CNP: CNP on Carmel semantically different than ARM cores"
-	default y
+	depends on BROKEN
 	help
 	  If CNP is enabled on Carmel cores, non-sharable TLBIs on a core will not
 	  invalidate shared TLB entries installed by a different core, as it would
 	  on standard ARM cores.
+
+	  UEK: Due to KABI, WORKAROUND_NVIDIA_CARMEL_CNP was removed from
+	  arch/arm64/tools/cpucaps to free up slot for another bug.
 
 	  If unsure, say Y.
 
