@@ -3029,7 +3029,8 @@ void npc_cn20k_enable_mcam_entry(struct rvu *rvu, int blkaddr, int index, bool e
 	u64 cfg, hw_prio;
 	u8 kw_type;
 
-	WARN_ON(index < 0 || index >= mcam->total_entries);
+	if (index < 0 || index >= mcam->total_entries)
+		return;
 
 	enable ? set_bit(index, npc_priv.en_map) :
 		clear_bit(index, npc_priv.en_map);
@@ -3733,7 +3734,13 @@ free_rules:
 
 		blkaddr = rvu_get_blkaddr(rvu, BLKTYPE_NPC, 0);
 
+		mutex_lock(&mcam->lock);
+		npc_mcam_clear_bit(mcam, ptr[i]);
+		mcam->entry2pfvf_map[ptr[i]] = NPC_MCAM_INVALID_MAP;
 		npc_cn20k_enable_mcam_entry(rvu, blkaddr, ptr[i], false);
+		mcam->entry2target_pffunc[ptr[i]] = 0x0;
+		mutex_unlock(&mcam->lock);
+
 		rc = npc_cn20k_idx_free(rvu, &ptr[i], 1);
 		if (rc)
 			dev_err(rvu->dev,

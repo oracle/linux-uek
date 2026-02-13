@@ -1663,11 +1663,6 @@ static int rvu_detach_rsrcs(struct rvu *rvu, struct rsrc_detach *detach,
 				continue;
 		}
 
-		if (detach_all ||
-		    (detach && (blkid == BLKADDR_NIX0 || blkid == BLKADDR_NIX1) &&
-		     detach->nixlf))
-			npc_cn20k_dft_rules_free(rvu, pcifunc);
-
 		rvu_detach_block(rvu, pcifunc, block->type);
 	}
 
