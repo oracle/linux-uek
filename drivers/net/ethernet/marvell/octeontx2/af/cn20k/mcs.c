@@ -77,9 +77,29 @@ void cn20k_mcs_set_port_cfg(struct mcs *mcs, struct mcs_port_cfg_set_req *req)
 
 static void cn20k_mcs_parser_cfg(struct mcs *mcs)
 {
-	/* Default configuration is enough for parsing basic  IEEE 802.1AE-2006
-	 * frames
-	 */
+	u64 reg, val;
+
+	/* VLAN CTag */
+	val = BIT_ULL(0) | (0x8100ull & 0xFFFF) << 1 | BIT_ULL(17) |
+	      BIT_ULL(24) | (0x4 & 0xF) << 20;
+	/* RX */
+	reg = MCSX_PEX_RX_SLAVE_VLAN_CFGX(0);
+	mcs_reg_write(mcs, reg, val);
+
+	/* TX */
+	reg = MCSX_PEX_TX_SLAVE_VLAN_CFGX(0);
+	mcs_reg_write(mcs, reg, val);
+
+	/* VLAN STag */
+	val = BIT_ULL(0) | (0x88a8ull & 0xFFFF) << 1 | BIT_ULL(18) |
+	      BIT_ULL(24) | (0x4 & 0xF) << 20;
+	/* RX */
+	reg = MCSX_PEX_RX_SLAVE_VLAN_CFGX(1);
+	mcs_reg_write(mcs, reg, val);
+
+	/* TX */
+	reg = MCSX_PEX_TX_SLAVE_VLAN_CFGX(1);
+	mcs_reg_write(mcs, reg, val);
 }
 
 static void cn20k_mcs_set_external_bypass(struct mcs *mcs, bool state)
