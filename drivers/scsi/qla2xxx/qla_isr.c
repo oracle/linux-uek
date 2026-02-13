@@ -49,11 +49,11 @@ qla27xx_process_purex_fpin(struct scsi_qla_host *vha, struct purex_item *item)
 }
 
 const char *const port_state_str[] = {
-	"Unknown",
-	"UNCONFIGURED",
-	"DEAD",
-	"LOST",
-	"ONLINE"
+	[FCS_UNKNOWN]		= "Unknown",
+	[FCS_UNCONFIGURED]	= "UNCONFIGURED",
+	[FCS_DEVICE_DEAD]	= "DEAD",
+	[FCS_DEVICE_LOST]	= "LOST",
+	[FCS_ONLINE]		= "ONLINE"
 };
 
 #define SFP_DISABLE_LASER_INITIATED    0x15  /* Sub code of 8070 AEN */
