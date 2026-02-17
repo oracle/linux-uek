@@ -2376,6 +2376,11 @@ modules:
 - xpnet
 #endif /* Arch_x86_64 */
 
+/* modules: */
+#if defined(Flavour_debug) || defined(Flavour_64kdebug)
+- dmabuf_selftests
+#endif
+
 modules-extra:
 - act_connmark
 - act_ct
