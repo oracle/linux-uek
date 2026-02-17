@@ -851,7 +851,7 @@ static int tegra186_gpio_probe(struct platform_device *pdev)
 	struct device_node *np;
 	struct resource *res;
 	char **names;
-	int err;
+	int node, err;
 
 	gpio = devm_kzalloc(&pdev->dev, sizeof(*gpio), GFP_KERNEL);
 	if (!gpio)
@@ -931,13 +931,23 @@ static int tegra186_gpio_probe(struct platform_device *pdev)
 	if (!names)
 		return -ENOMEM;
 
+	node = dev_to_node(&pdev->dev);
+
 	for (i = 0, offset = 0; i < gpio->soc->num_ports; i++) {
 		const struct tegra_gpio_port *port = &gpio->soc->ports[i];
 		char *name;
 
 		for (j = 0; j < port->pins; j++) {
-			name = devm_kasprintf(gpio->gpio.parent, GFP_KERNEL, "%sP%s.%02x",
-					      gpio->soc->prefix ?: "", port->name, j);
+			if (node >= 0)
+				name = devm_kasprintf(gpio->gpio.parent, GFP_KERNEL,
+						      "%d-%sP%s.%02x", node,
+						      gpio->soc->prefix ?: "",
+						      port->name, j);
+			else
+				name = devm_kasprintf(gpio->gpio.parent, GFP_KERNEL,
+						      "%sP%s.%02x",
+						      gpio->soc->prefix ?: "",
+						      port->name, j);
 			if (!name)
 				return -ENOMEM;
 
