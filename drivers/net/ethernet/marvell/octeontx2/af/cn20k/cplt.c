@@ -8,6 +8,9 @@
 
 bool is_pf_cgxcpltmapped(struct rvu *rvu, u8 pf)
 {
+	if (!is_cnf20ka(rvu->pdev))
+		return false;
+
 	return (pf >= PF_CPLTMAP_BASE && pf < (PF_CPLTMAP_BASE + 16));
 }
 
