@@ -936,12 +936,8 @@ static int tegra186_gpio_probe(struct platform_device *pdev)
 		char *name;
 
 		for (j = 0; j < port->pins; j++) {
-			if (gpio->soc->prefix)
-				name = devm_kasprintf(gpio->gpio.parent, GFP_KERNEL, "%s-P%s.%02x",
-						      gpio->soc->prefix, port->name, j);
-			else
-				name = devm_kasprintf(gpio->gpio.parent, GFP_KERNEL, "P%s.%02x",
-						      port->name, j);
+			name = devm_kasprintf(gpio->gpio.parent, GFP_KERNEL, "%sP%s.%02x",
+					      gpio->soc->prefix ?: "", port->name, j);
 			if (!name)
 				return -ENOMEM;
 
@@ -1291,6 +1287,9 @@ static const struct tegra_gpio_soc tegra256_main_soc = {
 	.has_vm_support = true,
 };
 
+/* Macro to define GPIO name prefix with separator */
+#define TEGRA_GPIO_PREFIX(_x)	_x "-"
+
 #define TEGRA410_COMPUTE_GPIO_PORT(_name, _bank, _port, _pins)	\
 	TEGRA_GPIO_PORT(TEGRA410_COMPUTE, _name, _bank, _port, _pins)
 
@@ -1306,7 +1305,7 @@ static const struct tegra_gpio_soc tegra410_compute_soc = {
 	.num_ports = ARRAY_SIZE(tegra410_compute_ports),
 	.ports = tegra410_compute_ports,
 	.name = "tegra410-gpio-compute",
-	.prefix = "COMPUTE",
+	.prefix = TEGRA_GPIO_PREFIX("COMPUTE"),
 	.num_irqs_per_bank = 8,
 	.instance = 0,
 };
@@ -1336,7 +1335,7 @@ static const struct tegra_gpio_soc tegra410_system_soc = {
 	.num_ports = ARRAY_SIZE(tegra410_system_ports),
 	.ports = tegra410_system_ports,
 	.name = "tegra410-gpio-system",
-	.prefix = "SYSTEM",
+	.prefix = TEGRA_GPIO_PREFIX("SYSTEM"),
 	.num_irqs_per_bank = 8,
 	.instance = 0,
 };
