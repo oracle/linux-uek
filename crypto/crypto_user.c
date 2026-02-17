@@ -21,6 +21,15 @@
 
 #include "internal.h"
 
+#ifdef CONFIG_CRYPTO_FIPS140_EXTMOD
+#undef crypto_alg_list
+#undef crypto_alg_sem
+#define crypto_alg_list fips_crypto_alg_list
+#define crypto_alg_sem fips_crypto_alg_sem
+extern struct list_head fips_crypto_alg_list __weak;
+extern struct rw_semaphore fips_crypto_alg_sem __weak;
+#endif
+
 #define null_terminated(x)	(strnlen(x, sizeof(x)) < sizeof(x))
 
 static DEFINE_MUTEX(crypto_cfg_mutex);
