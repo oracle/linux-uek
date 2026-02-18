@@ -774,7 +774,7 @@ config MRVL_ERRATUM_35443
 
 config QCOM_FALKOR_ERRATUM_1003
 	bool "Falkor E1003: Incorrect translation due to ASID change"
-	default y
+	depends on BROKEN
 	help
 	  On Falkor v1, an incorrect ASID may be cached in the TLB when ASID
 	  and BADDR are changed together in TTBRx_EL1. Since we keep the ASID
@@ -782,6 +782,9 @@ config QCOM_FALKOR_ERRATUM_1003
 	  then only for entries in the walk cache, since the leaf translation
 	  is unchanged. Work around the erratum by invalidating the walk cache
 	  entries for the trampoline before entering the kernel proper.
+
+	  UEK: Due to KABI, QCOM_FALKOR_ERRATUM_1003 was removed from
+	  arch/arm64/tools/cpucaps to free up slot for another bug.
 
 config ARM64_WORKAROUND_REPEAT_TLBI
 	bool
