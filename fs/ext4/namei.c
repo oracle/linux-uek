@@ -76,6 +76,7 @@ static struct buffer_head *ext4_append(handle_t *handle,
 	if (err < 0)
 		return ERR_PTR(err);
 	if (err) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "Logical block already allocated");
 		return ERR_PTR(-EFSCORRUPTED);
 	}
@@ -137,6 +138,7 @@ static struct buffer_head *__ext4_read_dirblock(struct inode *inode,
 	}
 	/* The first directory block must not be a hole. */
 	if (!bh && (type == INDEX || type == DIRENT_HTREE || block == 0)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		ext4_error_inode(inode, func, line, block,
 				 "Directory hole found for htree %s block %u",
 				 (type == INDEX) ? "index" : "leaf", block);
@@ -155,6 +157,7 @@ static struct buffer_head *__ext4_read_dirblock(struct inode *inode,
 			is_dx_block = 1;
 	}
 	if (!is_dx_block && type == INDEX) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		ext4_error_inode(inode, func, line, block,
 		       "directory leaf block found instead of index block");
 		brelse(bh);
@@ -173,6 +176,7 @@ static struct buffer_head *__ext4_read_dirblock(struct inode *inode,
 		if (ext4_dx_csum_verify(inode, dirent))
 			set_buffer_verified(bh);
 		else {
+			ext4_set_errno(inode->i_sb, EFSBADCRC);
 			ext4_error_inode(inode, func, line, block,
 					 "Directory index failed checksum");
 			brelse(bh);
@@ -183,6 +187,7 @@ static struct buffer_head *__ext4_read_dirblock(struct inode *inode,
 		if (ext4_dirblock_csum_verify(inode, bh))
 			set_buffer_verified(bh);
 		else {
+			ext4_set_errno(inode->i_sb, EFSBADCRC);
 			ext4_error_inode(inode, func, line, block,
 					 "Directory block failed checksum");
 			brelse(bh);
@@ -481,6 +486,7 @@ static int ext4_dx_csum_verify(struct inode *inode,
 
 	c = get_dx_countlimit(inode, dirent, &count_offset);
 	if (!c) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "dir seems corrupt?  Run e2fsck -D.");
 		return 0;
 	}
@@ -510,6 +516,7 @@ static void ext4_dx_csum_set(struct inode *inode, struct ext4_dir_entry *dirent)
 
 	c = get_dx_countlimit(inode, dirent, &count_offset);
 	if (!c) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "dir seems corrupt?  Run e2fsck -D.");
 		return;
 	}
@@ -1571,6 +1578,7 @@ restart:
 			goto next;
 		wait_on_buffer(bh);
 		if (!buffer_uptodate(bh)) {
+			ext4_set_errno(sb, EIO);
 			EXT4_ERROR_INODE(dir, "reading directory lblock %lu",
 					 (unsigned long) block);
 			brelse(bh);
@@ -1581,6 +1589,7 @@ restart:
 		    !is_dx_internal_node(dir, block,
 					 (struct ext4_dir_entry *)bh->b_data) &&
 		    !ext4_dirblock_csum_verify(dir, bh)) {
+			ext4_set_errno(sb, EFSBADCRC);
 			EXT4_ERROR_INODE(dir, "checksumming directory "
 					 "block %lu", (unsigned long)block);
 			brelse(bh);
@@ -1735,16 +1744,19 @@ static struct dentry *ext4_lookup(struct inode *dir, struct dentry *dentry, unsi
 		__u32 ino = le32_to_cpu(de->inode);
 		brelse(bh);
 		if (!ext4_valid_inum(dir->i_sb, ino)) {
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(dir, "bad inode number: %u", ino);
 			return ERR_PTR(-EFSCORRUPTED);
 		}
 		if (unlikely(ino == dir->i_ino)) {
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(dir, "'%pd' linked to parent dir",
 					 dentry);
 			return ERR_PTR(-EFSCORRUPTED);
 		}
 		inode = ext4_iget(dir->i_sb, ino, EXT4_IGET_NORMAL);
 		if (inode == ERR_PTR(-ESTALE)) {
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(dir,
 					 "deleted inode referenced: %u",
 					 ino);
@@ -1791,6 +1803,7 @@ struct dentry *ext4_get_parent(struct dentry *child)
 	brelse(bh);
 
 	if (!ext4_valid_inum(child->d_sb, ino)) {
+		ext4_set_errno(d_inode(child)->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(d_inode(child),
 				 "bad parent inode number: %u", ino);
 		return ERR_PTR(-EFSCORRUPTED);
@@ -2130,6 +2143,7 @@ static bool ext4_check_dx_root(struct inode *dir, struct dx_root *root)
 	return true;
 
 corrupted:
+	ext4_set_errno(dir->i_sb, EFSCORRUPTED);
 	EXT4_ERROR_INODE(dir, "Corrupt dir, %s, running e2fsck is recommended",
 			 error_msg);
 	return false;
@@ -2324,6 +2338,7 @@ static int ext4_add_entry(handle_t *handle, struct dentry *dentry,
 			goto out;
 		/* Can we just ignore htree data? */
 		if (ext4_has_metadata_csum(sb)) {
+			ext4_set_errno(sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(dir,
 				"Directory has corrupted htree index.");
 			retval = -EFSCORRUPTED;
@@ -2945,6 +2960,7 @@ bool ext4_empty_dir(struct inode *inode)
 
 	sb = inode->i_sb;
 	if (inode->i_size < EXT4_DIR_REC_LEN(1) + EXT4_DIR_REC_LEN(2)) {
+		ext4_set_errno(sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "invalid size");
 		return true;
 	}
@@ -3553,6 +3569,7 @@ static struct buffer_head *ext4_get_first_dir_block(handle_t *handle,
 					 bh->b_size, 0) ||
 		    le32_to_cpu(de->inode) != inode->i_ino ||
 		    strcmp(".", de->name)) {
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(inode, "directory missing '.'");
 			brelse(bh);
 			*retval = -EFSCORRUPTED;
@@ -3564,6 +3581,7 @@ static struct buffer_head *ext4_get_first_dir_block(handle_t *handle,
 		if (ext4_check_dir_entry(inode, NULL, de, bh, bh->b_data,
 					 bh->b_size, offset) ||
 		    le32_to_cpu(de->inode) == 0 || strcmp("..", de->name)) {
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(inode, "directory missing '..'");
 			brelse(bh);
 			*retval = -EFSCORRUPTED;
@@ -3814,6 +3832,7 @@ static int ext4_rename(struct inode *old_dir, struct dentry *old_dentry,
 	u8 old_file_type;
 
 	if (new.inode && new.inode->i_nlink == 0) {
+		ext4_set_errno(new.inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(new.inode,
 				 "target of rename is already freed");
 		return -EFSCORRUPTED;

@@ -422,6 +422,7 @@ repair_branches:
 					   block_len_in_page, 0, &err2);
 	ext4_double_up_write_data_sem(orig_inode, donor_inode);
 	if (replaced_count != block_len_in_page) {
+		ext4_set_errno(orig_inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE_BLOCK(orig_inode, (sector_t)(orig_blk_offset),
 				       "Unable to copy data block,"
 				       " data will be lost.");

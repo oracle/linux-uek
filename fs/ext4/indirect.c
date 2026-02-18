@@ -586,6 +586,7 @@ int ext4_ind_map_blocks(handle_t *handle, struct inode *inode,
 	 * Okay, we need to do block allocation.
 	*/
 	if (ext4_has_feature_bigalloc(inode->i_sb)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "Can't allocate blocks for "
 				 "non-extent mapped inodes with bigalloc");
 		return -EFSCORRUPTED;
@@ -853,6 +854,7 @@ static int ext4_clear_blocks(handle_t *handle, struct inode *inode,
 
 	if (!ext4_data_block_valid(EXT4_SB(inode->i_sb), block_to_free,
 				   count)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "attempt to clear invalid "
 				 "blocks %llu len %lu",
 				 (unsigned long long) block_to_free, count);
@@ -974,11 +976,13 @@ static void ext4_free_data(handle_t *handle, struct inode *inode,
 		 */
 		if ((EXT4_JOURNAL(inode) == NULL) || bh2jh(this_bh))
 			ext4_handle_dirty_metadata(handle, inode, this_bh);
-		else
+		else {
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(inode,
 					 "circular indirect block detected at "
 					 "block %llu",
 				(unsigned long long) this_bh->b_blocknr);
+		}
 	}
 }
 
@@ -1016,6 +1020,7 @@ static void ext4_free_branches(handle_t *handle, struct inode *inode,
 
 			if (!ext4_data_block_valid(EXT4_SB(inode->i_sb),
 						   nr, 1)) {
+				ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 				EXT4_ERROR_INODE(inode,
 						 "invalid indirect mapped "
 						 "block %lu (level %d)",
@@ -1031,6 +1036,7 @@ static void ext4_free_branches(handle_t *handle, struct inode *inode,
 			 * (should be rare).
 			 */
 			if (!bh) {
+				ext4_set_errno(inode->i_sb, EIO);
 				EXT4_ERROR_INODE_BLOCK(inode, nr,
 						       "Read failure");
 				continue;

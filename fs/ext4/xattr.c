@@ -248,12 +248,14 @@ __ext4_xattr_check_block(struct inode *inode, struct buffer_head *bh,
 	error = ext4_xattr_check_entries(BFIRST(bh), bh->b_data + bh->b_size,
 					 bh->b_data);
 errout:
-	if (error)
+	if (error) {
+		ext4_set_errno(inode->i_sb, -error);
 		__ext4_error_inode(inode, function, line, 0,
 				   "corrupted xattr block %llu",
 				   (unsigned long long) bh->b_blocknr);
-	else
+	} else {
 		set_buffer_verified(bh);
+	}
 	return error;
 }
 
@@ -272,9 +274,11 @@ __xattr_check_inode(struct inode *inode, struct ext4_xattr_ibody_header *header,
 		goto errout;
 	error = ext4_xattr_check_entries(IFIRST(header), end, IFIRST(header));
 errout:
-	if (error)
+	if (error) {
+		ext4_set_errno(inode->i_sb, -error);
 		__ext4_error_inode(inode, function, line, 0,
 				   "corrupted in-inode xattr");
+	}
 	return error;
 }
 
@@ -295,6 +299,7 @@ xattr_find_entry(struct inode *inode, struct ext4_xattr_entry **pentry,
 	for (entry = *pentry; !IS_LAST_ENTRY(entry); entry = next) {
 		next = EXT4_XATTR_NEXT(entry);
 		if ((void *) next >= end) {
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(inode, "corrupted xattr entries");
 			return -EFSCORRUPTED;
 		}
@@ -394,6 +399,7 @@ static int ext4_xattr_inode_iget(struct inode *parent, unsigned long ea_ino,
 	 * parent inode.
 	 */
 	if (parent->i_ino == ea_ino) {
+		ext4_set_errno(parent->i_sb, EFSCORRUPTED);
 		ext4_error(parent->i_sb,
 			   "Parent and EA inode have the same ino %lu", ea_ino);
 		return -EFSCORRUPTED;
@@ -402,6 +408,7 @@ static int ext4_xattr_inode_iget(struct inode *parent, unsigned long ea_ino,
 	inode = ext4_iget(parent->i_sb, ea_ino, EXT4_IGET_EA_INODE);
 	if (IS_ERR(inode)) {
 		err = PTR_ERR(inode);
+		ext4_set_errno(parent->i_sb, -err);
 		ext4_error(parent->i_sb,
 			   "error while reading EA inode %lu err=%d", ea_ino,
 			   err);
@@ -1041,6 +1048,7 @@ static int ext4_xattr_inode_update_ref(handle_t *handle, struct inode *ea_inode,
 
 	ref_count = ext4_xattr_inode_get_ref(ea_inode);
 	if ((ref_count == 0 && ref_change < 0) || (ref_count == U64_MAX && ref_change > 0)) {
+		ext4_set_errno(ea_inode->i_sb, EFSCORRUPTED);
 		ext4_error_inode(ea_inode, __func__, __LINE__, 0,
 			"EA inode %lu ref wraparound: ref_count=%lld ref_change=%d",
 			ea_inode->i_ino, ref_count, ref_change);
@@ -1397,6 +1405,7 @@ retry:
 			return PTR_ERR(bh);
 		if (!bh) {
 			WARN_ON_ONCE(1);
+			ext4_set_errno(ea_inode->i_sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(ea_inode,
 					 "ext4_getblk() return bh = NULL");
 			return -EFSCORRUPTED;
@@ -1632,6 +1641,7 @@ static int ext4_xattr_set_entry(struct ext4_xattr_info *i,
 	for (; !IS_LAST_ENTRY(last); last = next) {
 		next = EXT4_XATTR_NEXT(last);
 		if ((void *)next >= s->end) {
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(inode, "corrupted xattr entries");
 			ret = -EFSCORRUPTED;
 			goto out;
@@ -2211,6 +2221,7 @@ cleanup_dquot:
 	goto cleanup;
 
 bad_block:
+	ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 	EXT4_ERROR_INODE(inode, "bad block %llu",
 			 EXT4_I(inode)->i_file_acl);
 	goto cleanup;
@@ -2903,6 +2914,7 @@ int ext4_xattr_delete_inode(handle_t *handle, struct inode *inode,
 					  false /* dirty */,
 					  false /* block_csum */);
 	if (error) {
+		ext4_set_errno(inode->i_sb, -error);
 		EXT4_ERROR_INODE(inode, "ensure credits (error %d)", error);
 		goto cleanup;
 	}
@@ -2912,12 +2924,14 @@ int ext4_xattr_delete_inode(handle_t *handle, struct inode *inode,
 
 		error = ext4_get_inode_loc(inode, &iloc);
 		if (error) {
+			ext4_set_errno(inode->i_sb, -error);
 			EXT4_ERROR_INODE(inode, "inode loc (error %d)", error);
 			goto cleanup;
 		}
 
 		error = ext4_journal_get_write_access(handle, iloc.bh);
 		if (error) {
+			ext4_set_errno(inode->i_sb, -error);
 			EXT4_ERROR_INODE(inode, "write access (error %d)",
 					 error);
 			goto cleanup;
@@ -2937,9 +2951,11 @@ int ext4_xattr_delete_inode(handle_t *handle, struct inode *inode,
 		bh = ext4_sb_bread(inode->i_sb, EXT4_I(inode)->i_file_acl, REQ_PRIO);
 		if (IS_ERR(bh)) {
 			error = PTR_ERR(bh);
-			if (error == -EIO)
+			if (error == -EIO) {
+				ext4_set_errno(inode->i_sb, EIO);
 				EXT4_ERROR_INODE(inode, "block %llu read error",
 						 EXT4_I(inode)->i_file_acl);
+			}
 			bh = NULL;
 			goto cleanup;
 		}
@@ -2974,6 +2990,7 @@ int ext4_xattr_delete_inode(handle_t *handle, struct inode *inode,
 		EXT4_I(inode)->i_file_acl = 0;
 		error = ext4_mark_inode_dirty(handle, inode);
 		if (error) {
+			ext4_set_errno(inode->i_sb, -error);
 			EXT4_ERROR_INODE(inode, "mark inode dirty (error %d)",
 					 error);
 			goto cleanup;
@@ -3100,6 +3117,7 @@ ext4_xattr_block_cache_find(struct inode *inode,
 				return NULL;
 			}
 			bh = NULL;
+			ext4_set_errno(inode->i_sb, -PTR_ERR(bh));
 			EXT4_ERROR_INODE(inode, "block %lu read error",
 					 (unsigned long)ce->e_value);
 		} else if (ext4_xattr_cmp(header, BHDR(bh)) == 0) {

@@ -174,8 +174,10 @@ static int kmmpd(void *data)
 		 * (s_mmp_update_interval * 60) seconds.
 		 */
 		if (retval) {
-			if ((failed_writes % 60) == 0)
+			if ((failed_writes % 60) == 0) {
+				ext4_set_errno(sb, -retval);
 				ext4_error(sb, "Error writing to MMP block");
+			}
 			failed_writes++;
 		}
 
@@ -206,6 +208,7 @@ static int kmmpd(void *data)
 
 			retval = read_mmp_block(sb, &bh_check, mmp_block);
 			if (retval) {
+				ext4_set_errno(sb, -retval);
 				ext4_error(sb, "error reading MMP data: %d",
 					   retval);
 				goto exit_thread;
@@ -219,6 +222,7 @@ static int kmmpd(void *data)
 					     "Error while updating MMP info. "
 					     "The filesystem seems to have been"
 					     " multiply mounted.");
+				ext4_set_errno(sb, EBUSY);
 				ext4_error(sb, "abort");
 				put_bh(bh_check);
 				retval = -EBUSY;

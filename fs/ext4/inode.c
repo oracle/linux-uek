@@ -306,6 +306,7 @@ void ext4_evict_inode(struct inode *inode)
 	if (inode->i_blocks) {
 		err = ext4_truncate(inode);
 		if (err) {
+			ext4_set_errno(inode->i_sb, -err);
 			ext4_error(inode->i_sb,
 				   "couldn't truncate inode %lu (err %d)",
 				   inode->i_ino, err);
@@ -425,6 +426,7 @@ static int __check_block_validity(struct inode *inode, const char *func,
 		return 0;
 	if (!ext4_data_block_valid(EXT4_SB(inode->i_sb), map->m_pblk,
 				   map->m_len)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		ext4_error_inode(inode, func, line, map->m_pblk,
 				 "lblock %lu mapped to illegal pblock %llu "
 				 "(length %d)", (unsigned long) map->m_lblk,
@@ -2618,10 +2620,12 @@ update_disksize:
 			EXT4_I(inode)->i_disksize = disksize;
 		up_write(&EXT4_I(inode)->i_data_sem);
 		err2 = ext4_mark_inode_dirty(handle, inode);
-		if (err2)
+		if (err2) {
+			ext4_set_errno(inode->i_sb, -err2);
 			ext4_error(inode->i_sb,
 				   "Failed to mark inode %lu dirty",
 				   inode->i_ino);
+		}
 		if (!err)
 			err = err2;
 	}
@@ -4658,6 +4662,7 @@ static int __ext4_get_inode_loc(struct inode *inode,
 	block = ext4_inode_table(sb, gdp);
 	if ((block <= le32_to_cpu(EXT4_SB(sb)->s_es->s_first_data_block)) ||
 	    (block >= ext4_blocks_count(EXT4_SB(sb)->s_es))) {
+		ext4_set_errno(sb, EFSCORRUPTED);
 		ext4_error(sb, "Invalid inode table block %llu in "
 			   "block_group %u", block, iloc->block_group);
 		return -EFSCORRUPTED;
@@ -4765,6 +4770,7 @@ make_io:
 		blk_finish_plug(&plug);
 		wait_on_buffer(bh);
 		if (!buffer_uptodate(bh)) {
+			ext4_set_errno(inode->i_sb, EIO);
 			EXT4_ERROR_INODE_BLOCK(inode, block,
 					       "unable to read itable block");
 			brelse(bh);
@@ -4934,6 +4940,7 @@ static int check_igot_inode(struct inode *inode, ext4_iget_flags flags,
 	return 0;
 
 error:
+	ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 	ext4_error_inode(inode, function, line, 0, err_str);
 	return -EFSCORRUPTED;
 }
@@ -4960,6 +4967,7 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 	    (ino > le32_to_cpu(EXT4_SB(sb)->s_es->s_inodes_count))) {
 		if (flags & EXT4_IGET_HANDLE)
 			return ERR_PTR(-ESTALE);
+		ext4_set_errno(sb, EFSCORRUPTED);
 		__ext4_error(sb, function, line,
 			     "inode #%lu: comm %s: iget: illegal inode #",
 			     ino, current->comm);
@@ -4997,6 +5005,7 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 		if (EXT4_GOOD_OLD_INODE_SIZE + ei->i_extra_isize >
 			EXT4_INODE_SIZE(inode->i_sb) ||
 		    (ei->i_extra_isize & 3)) {
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			ext4_error_inode(inode, function, line, 0,
 					 "iget: bad extra_isize %u "
 					 "(inode size %u)",
@@ -5021,6 +5030,7 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 	}
 
 	if (!ext4_inode_csum_verify(inode, raw_inode, ei)) {
+		ext4_set_errno(inode->i_sb, EFSBADCRC);
 		ext4_error_inode(inode, function, line, 0,
 				 "iget: checksum invalid");
 		ret = -EFSBADCRC;
@@ -5061,6 +5071,7 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 		    ino != EXT4_BOOT_LOADER_INO) {
 			/* this inode is deleted or unallocated */
 			if (flags & EXT4_IGET_SPECIAL) {
+				ext4_set_errno(sb, EFSCORRUPTED);
 				ext4_error_inode(inode, function, line, 0,
 						 "iget: special inode unallocated");
 				ret = -EFSCORRUPTED;
@@ -5080,6 +5091,7 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 	/* Detect invalid flag combination - can't have both inline data and extents */
 	if (ext4_test_inode_flag(inode, EXT4_INODE_INLINE_DATA) &&
 	    ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		ext4_error_inode(inode, function, line, 0,
 			"inode has both inline data and extents flags");
 		ret = -EFSCORRUPTED;
@@ -5092,6 +5104,7 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 			((__u64)le16_to_cpu(raw_inode->i_file_acl_high)) << 32;
 	inode->i_size = ext4_isize(sb, raw_inode);
 	if ((size = i_size_read(inode)) < 0) {
+		ext4_set_errno(sb, EFSCORRUPTED);
 		ext4_error_inode(inode, function, line, 0,
 				 "iget: bad i_size value: %lld", size);
 		ret = -EFSCORRUPTED;
@@ -5104,6 +5117,7 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 	 */
 	if (!ext4_has_feature_dir_index(sb) && ext4_has_metadata_csum(sb) &&
 	    ext4_test_inode_flag(inode, EXT4_INODE_INDEX)) {
+		ext4_set_errno(sb, EFSCORRUPTED);
 		ext4_error_inode(inode, function, line, 0,
 			 "iget: Dir with htree data on filesystem without dir_index feature.");
 		ret = -EFSCORRUPTED;
@@ -5181,6 +5195,7 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 	ret = 0;
 	if (ei->i_file_acl &&
 	    !ext4_data_block_valid(EXT4_SB(sb), ei->i_file_acl, 1)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		ext4_error_inode(inode, function, line, 0,
 				 "iget: bad extended attribute block %llu",
 				 ei->i_file_acl);
@@ -5210,6 +5225,7 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 	} else if (S_ISLNK(inode->i_mode)) {
 		/* VFS does not allow setting these so must be corruption */
 		if (IS_APPEND(inode) || IS_IMMUTABLE(inode)) {
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			ext4_error_inode(inode, function, line, 0,
 					 "iget: immutable or append flags "
 					 "not allowed on symlinks");
@@ -5242,11 +5258,13 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 		make_bad_inode(inode);
 	} else {
 		ret = -EFSCORRUPTED;
+		ext4_set_errno(inode->i_sb, -ret);
 		ext4_error_inode(inode, function, line, 0,
 				 "iget: bogus i_mode (%o)", inode->i_mode);
 		goto bad_inode;
 	}
 	if (IS_CASEFOLDED(inode) && !ext4_has_feature_casefold(inode->i_sb)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		ext4_error_inode(inode, function, line, 0,
 				 "casefold flag without casefold feature");
 		ret = -EFSCORRUPTED;
@@ -5601,6 +5619,7 @@ int ext4_write_inode(struct inode *inode, struct writeback_control *wbc)
 		if (wbc->sync_mode == WB_SYNC_ALL && !wbc->for_sync)
 			sync_dirty_buffer(iloc.bh);
 		if (buffer_req(iloc.bh) && !buffer_uptodate(iloc.bh)) {
+			ext4_set_errno(inode->i_sb, EIO);
 			EXT4_ERROR_INODE_BLOCK(inode, iloc.bh->b_blocknr,
 					 "IO error syncing inode");
 			err = -EIO;
@@ -6105,6 +6124,7 @@ static int __ext4_expand_extra_isize(struct inode *inode,
 	/* this was checked at iget time, but double check for good measure */
 	if ((EXT4_GOOD_OLD_INODE_SIZE + ei->i_extra_isize > inode_size) ||
 	    (ei->i_extra_isize & 3)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "bad extra_isize %u (inode size %u)",
 				 ei->i_extra_isize,
 				 EXT4_INODE_SIZE(inode->i_sb));

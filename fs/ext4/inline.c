@@ -63,6 +63,7 @@ static int get_max_inline_xattr_value_size(struct inode *inode,
 		void *next = EXT4_XATTR_NEXT(entry);
 
 		if (next >= end) {
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(inode,
 					 "corrupt xattr in inline inode");
 			return 0;
@@ -111,6 +112,7 @@ int ext4_get_max_inline_size(struct inode *inode)
 
 	error = ext4_get_inode_loc(inode, &iloc);
 	if (error) {
+		ext4_set_errno(inode->i_sb, -error);
 		ext4_error_inode(inode, __func__, __LINE__, 0,
 				 "can't get inode location %lu",
 				 inode->i_ino);
@@ -158,6 +160,7 @@ int ext4_find_inline_data_nolock(struct inode *inode)
 
 	if (!is.s.not_found) {
 		if (is.s.here->e_value_inum) {
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(inode, "inline data xattr refers "
 					 "to an external xattr inode");
 			error = -EFSCORRUPTED;
@@ -297,6 +300,7 @@ static int ext4_create_inline_data(handle_t *handle,
 		goto out;
 
 	if (!is.s.not_found) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "unexpected inline data xattr");
 		error = -EFSCORRUPTED;
 		goto out;
@@ -352,6 +356,7 @@ static int ext4_update_inline_data(handle_t *handle, struct inode *inode,
 		goto out;
 
 	if (is.s.not_found) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "missing inline data xattr");
 		error = -EFSCORRUPTED;
 		goto out;
@@ -1806,6 +1811,7 @@ bool empty_inline_dir(struct inode *dir, int *has_inline_data)
 
 	err = ext4_get_inode_loc(dir, &iloc);
 	if (err) {
+		ext4_set_errno(dir->i_sb, -err);
 		EXT4_ERROR_INODE(dir, "error %d getting inode %lu block",
 				 err, dir->i_ino);
 		return true;
@@ -1987,6 +1993,7 @@ int ext4_inline_data_truncate(struct inode *inode, int *has_inline)
 				goto out_error;
 
 			if (is.s.not_found) {
+				ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 				EXT4_ERROR_INODE(inode,
 						 "missing inline data xattr");
 				err = -EFSCORRUPTED;

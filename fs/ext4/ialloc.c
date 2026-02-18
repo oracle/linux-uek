@@ -96,6 +96,7 @@ static int ext4_validate_inode_bitmap(struct super_block *sb,
 	if (!ext4_inode_bitmap_csum_verify(sb, block_group, desc, bh,
 					   EXT4_INODES_PER_GROUP(sb) / 8)) {
 		ext4_unlock_group(sb, block_group);
+		ext4_set_errno(sb, EFSBADCRC);
 		ext4_error(sb, "Corrupt inode bitmap - block_group = %u, "
 			   "inode_bitmap = %llu", block_group, blk);
 		ext4_mark_group_bitmap_corrupted(sb, block_group,
@@ -130,6 +131,7 @@ ext4_read_inode_bitmap(struct super_block *sb, ext4_group_t block_group)
 	bitmap_blk = ext4_inode_bitmap(sb, desc);
 	if ((bitmap_blk <= le32_to_cpu(sbi->s_es->s_first_data_block)) ||
 	    (bitmap_blk >= ext4_blocks_count(sbi->s_es))) {
+		ext4_set_errno(sb, EFSCORRUPTED);
 		ext4_error(sb, "Invalid inode bitmap blk %llu in "
 			   "block_group %u", bitmap_blk, block_group);
 		ext4_mark_group_bitmap_corrupted(sb, block_group,
@@ -158,6 +160,7 @@ ext4_read_inode_bitmap(struct super_block *sb, ext4_group_t block_group)
 		if (block_group == 0) {
 			ext4_unlock_group(sb, block_group);
 			unlock_buffer(bh);
+			ext4_set_errno(sb, EFSCORRUPTED);
 			ext4_error(sb, "Inode bitmap for bg 0 marked "
 				   "uninitialized");
 			err = -EFSCORRUPTED;
@@ -194,6 +197,7 @@ ext4_read_inode_bitmap(struct super_block *sb, ext4_group_t block_group)
 	wait_on_buffer(bh);
 	if (!buffer_uptodate(bh)) {
 		put_bh(bh);
+		ext4_set_errno(sb, EIO);
 		ext4_error(sb, "Cannot read inode bitmap - "
 			   "block_group = %u, inode_bitmap = %llu",
 			   block_group, bitmap_blk);
@@ -275,6 +279,7 @@ void ext4_free_inode(handle_t *handle, struct inode *inode)
 
 	es = sbi->s_es;
 	if (ino < EXT4_FIRST_INO(sb) || ino > le32_to_cpu(es->s_inodes_count)) {
+		ext4_set_errno(sb, EFSCORRUPTED);
 		ext4_error(sb, "reserved or nonexistent inode %lu", ino);
 		goto error_return;
 	}
@@ -342,6 +347,7 @@ out:
 		if (!fatal)
 			fatal = err;
 	} else {
+		ext4_set_errno(sb, EFSCORRUPTED);
 		ext4_error(sb, "bit already cleared for inode %lu", ino);
 		ext4_mark_group_bitmap_corrupted(sb, block_group,
 					EXT4_GROUP_INFO_IBITMAP_CORRUPT);
@@ -915,6 +921,7 @@ repeat_in_this_group:
 			goto next_group;
 
 		if (group == 0 && (ino + 1) < EXT4_FIRST_INO(sb)) {
+			ext4_set_errno(sb, EFSCORRUPTED);
 			ext4_error(sb, "reserved inode found cleared - "
 				   "inode=%lu", ino + 1);
 			ext4_mark_group_bitmap_corrupted(sb, group,
@@ -1111,6 +1118,7 @@ got:
 		 * twice.
 		 */
 		err = -EIO;
+		ext4_set_errno(sb, EFSCORRUPTED);
 		ext4_error(sb, "failed to insert inode %lu: doubly allocated?",
 			   inode->i_ino);
 		ext4_mark_group_bitmap_corrupted(sb, group,
@@ -1229,6 +1237,7 @@ struct inode *ext4_orphan_get(struct super_block *sb, unsigned long ino)
 	inode = ext4_iget(sb, ino, EXT4_IGET_NORMAL);
 	if (IS_ERR(inode)) {
 		err = PTR_ERR(inode);
+		ext4_set_errno(sb, -err);
 		ext4_error(sb, "couldn't read orphan inode %lu (err %d)",
 			   ino, err);
 		return inode;
@@ -1250,6 +1259,7 @@ struct inode *ext4_orphan_get(struct super_block *sb, unsigned long ino)
 	return inode;
 
 bad_orphan:
+	ext4_set_errno(sb, -err);
 	ext4_error(sb, "bad orphan inode %lu", ino);
 	if (bitmap_bh)
 		printk(KERN_ERR "ext4_test_bit(bit=%d, block=%llu) = %d\n",
@@ -1392,6 +1402,7 @@ int ext4_init_inode_table(struct super_block *sb, ext4_group_t group,
 
 		/* Bogus inode unused count? */
 		if (used_blks < 0 || used_blks > sbi->s_itb_per_group) {
+			ext4_set_errno(sb, EFSCORRUPTED);
 			ext4_error(sb, "Something is wrong with group %u: "
 				   "used itable blocks: %d; "
 				   "itable unused count: %u",
@@ -1408,6 +1419,7 @@ int ext4_init_inode_table(struct super_block *sb, ext4_group_t group,
 		 */
 		if ((used_blks != sbi->s_itb_per_group) &&
 		     (used_inos < EXT4_FIRST_INO(sb))) {
+			ext4_set_errno(sb, EFSCORRUPTED);
 			ext4_error(sb, "Something is wrong with group %u: "
 				   "itable unused count: %u; "
 				   "itables initialized count: %ld",

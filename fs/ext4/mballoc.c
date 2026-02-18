@@ -2994,6 +2994,7 @@ ext4_mb_mark_diskspace_used(struct ext4_allocation_context *ac,
 
 	len = EXT4_C2B(sbi, ac->ac_b_ex.fe_len);
 	if (!ext4_data_block_valid(sbi, block, len)) {
+		ext4_set_errno(sb, EFSCORRUPTED);
 		ext4_error(sb, "Allocating blocks %llu-%llu which overlap "
 			   "fs metadata", block, block+len);
 		/* File system mounted not to panic on error
@@ -3956,6 +3957,7 @@ ext4_mb_discard_group_preallocations(struct super_block *sb,
 	bitmap_bh = ext4_read_block_bitmap(sb, group);
 	if (IS_ERR(bitmap_bh)) {
 		err = PTR_ERR(bitmap_bh);
+		ext4_set_errno(sb, -err);
 		ext4_error(sb, "Error %d reading block bitmap for %u",
 			   err, group);
 		return 0;
@@ -4124,6 +4126,7 @@ repeat:
 		err = ext4_mb_load_buddy_gfp(sb, group, &e4b,
 					     GFP_NOFS|__GFP_NOFAIL);
 		if (err) {
+			ext4_set_errno(sb, -err);
 			ext4_error(sb, "Error %d loading buddy information for %u",
 				   err, group);
 			continue;
@@ -4132,6 +4135,7 @@ repeat:
 		bitmap_bh = ext4_read_block_bitmap(sb, group);
 		if (IS_ERR(bitmap_bh)) {
 			err = PTR_ERR(bitmap_bh);
+			ext4_set_errno(sb, -err);
 			ext4_error(sb, "Error %d reading block bitmap for %u",
 					err, group);
 			ext4_mb_unload_buddy(&e4b);
@@ -4386,6 +4390,7 @@ ext4_mb_discard_lg_preallocations(struct super_block *sb,
 		err = ext4_mb_load_buddy_gfp(sb, group, &e4b,
 					     GFP_NOFS|__GFP_NOFAIL);
 		if (err) {
+			ext4_set_errno(sb, -err);
 			ext4_error(sb, "Error %d loading buddy information for %u",
 				   err, group);
 			continue;
@@ -4791,6 +4796,7 @@ void ext4_free_blocks(handle_t *handle, struct inode *inode,
 	sbi = EXT4_SB(sb);
 	if (!(flags & EXT4_FREE_BLOCKS_VALIDATED) &&
 	    !ext4_data_block_valid(sbi, block, count)) {
+		ext4_set_errno(sb, EFSCORRUPTED);
 		ext4_error(sb, "Freeing blocks not in datazone - "
 			   "block = %llu, count = %lu", block, count);
 		goto error_return;
@@ -4887,6 +4893,7 @@ do_more:
 	    in_range(block + count - 1, ext4_inode_table(sb, gdp),
 		     sbi->s_itb_per_group)) {
 
+		ext4_set_errno(sb, EFSCORRUPTED);
 		ext4_error(sb, "Freeing blocks in system zone - "
 			   "Block = %llu, count = %lu", block, count);
 		/* err = 0. ext4_std_error should be a no op */
@@ -5078,6 +5085,7 @@ int ext4_group_add_blocks(handle_t *handle, struct super_block *sb,
 	    in_range(block, ext4_inode_table(sb, desc), sbi->s_itb_per_group) ||
 	    in_range(block + count - 1, ext4_inode_table(sb, desc),
 		     sbi->s_itb_per_group)) {
+		ext4_set_errno(sb, EFSCORRUPTED);
 		ext4_error(sb, "Adding blocks in system zones - "
 			   "Block = %llu, count = %lu",
 			   block, count);
@@ -5103,6 +5111,7 @@ int ext4_group_add_blocks(handle_t *handle, struct super_block *sb,
 	for (i = 0, clusters_freed = 0; i < cluster_count; i++) {
 		BUFFER_TRACE(bitmap_bh, "clear bit");
 		if (!mb_test_bit(bit + i, bitmap_bh->b_data)) {
+			ext4_set_errno(sb, EFSCORRUPTED);
 			ext4_error(sb, "bit already cleared for block %llu",
 				   (ext4_fsblk_t)(block + i));
 			BUFFER_TRACE(bitmap_bh, "bit already cleared");

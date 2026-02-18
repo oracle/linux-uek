@@ -286,6 +286,7 @@ static int ext4_get_verity_descriptor_location(struct inode *inode,
 	 */
 
 	if (!ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "verity file doesn't use extents");
 		return -EFSCORRUPTED;
 	}
@@ -296,6 +297,7 @@ static int ext4_get_verity_descriptor_location(struct inode *inode,
 
 	last_extent = path[path->p_depth].p_ext;
 	if (!last_extent) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "verity file has no extents");
 		ext4_ext_drop_refs(path);
 		kfree(path);
@@ -335,6 +337,7 @@ static int ext4_get_verity_descriptor_location(struct inode *inode,
 	return 0;
 
 bad:
+	ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 	EXT4_ERROR_INODE(inode, "verity file corrupted; can't find descriptor");
 	return -EFSCORRUPTED;
 }

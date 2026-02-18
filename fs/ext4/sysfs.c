@@ -122,8 +122,10 @@ static ssize_t trigger_test_error(struct ext4_sb_info *sbi,
 	if (len && buf[len-1] == '\n')
 		len--;
 
-	if (len)
+	if (len) {
+		ext4_set_errno(sbi->s_sb, EFSCORRUPTED);
 		ext4_error(sbi->s_sb, "%.*s", len, buf);
+	}
 	return count;
 }
 

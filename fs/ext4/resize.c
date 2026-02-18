@@ -58,6 +58,7 @@ int ext4_resize_begin(struct super_block *sb)
 	 */
 	if (EXT4_SB(sb)->s_es->s_reserved_gdt_blocks &&
 	    !ext4_has_feature_resize_inode(sb)) {
+		ext4_set_errno(sb, EFSCORRUPTED);
 		ext4_error(sb, "resize_inode disabled but reserved GDT blocks non-zero");
 		return -EFSCORRUPTED;
 	}
@@ -1886,6 +1887,7 @@ static int ext4_convert_meta_bg(struct super_block *sb, struct inode *inode)
 	ext4_msg(sb, KERN_INFO, "Converting file system to meta_bg");
 	if (inode) {
 		if (es->s_reserved_gdt_blocks) {
+			ext4_set_errno(sb, EFSCORRUPTED);
 			ext4_error(sb, "Unexpected non-zero "
 				   "s_reserved_gdt_blocks");
 			return -EPERM;
@@ -1946,6 +1948,7 @@ errout:
 	return err ? err : ret;
 
 invalid_resize_inode:
+	ext4_set_errno(sb, EFSCORRUPTED);
 	ext4_error(sb, "corrupted/inconsistent resize inode");
 	return -EINVAL;
 }
@@ -2023,6 +2026,7 @@ retry:
 
 	if (ext4_has_feature_resize_inode(sb)) {
 		if (meta_bg) {
+			ext4_set_errno(sb, EFSCORRUPTED);
 			ext4_error(sb, "resize_inode and meta_bg enabled "
 				   "simultaneously");
 			return -EINVAL;

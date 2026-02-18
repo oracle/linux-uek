@@ -206,6 +206,7 @@ static int ext4_protect_reserved_inode(struct super_block *sb,
 		} else {
 			if (!ext4_data_block_valid_rcu(sbi, system_blks,
 						map.m_pblk, n)) {
+				ext4_set_errno(sb, EFSCORRUPTED);
 				ext4_error(sb, "blocks %llu-%llu from inode %u "
 					   "overlap system zone", map.m_pblk,
 					   map.m_pblk + map.m_len - 1, ino);
@@ -358,6 +359,7 @@ int ext4_check_blockref(const char *function, unsigned int line,
 		    unlikely(!ext4_data_block_valid(EXT4_SB(inode->i_sb),
 						    blk, 1))) {
 			es->s_last_error_block = cpu_to_le64(blk);
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			ext4_error_inode(inode, function, line, blk,
 					 "invalid block");
 			return -EFSCORRUPTED;

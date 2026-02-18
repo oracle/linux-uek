@@ -94,18 +94,21 @@ int __ext4_check_dir_entry(const char *function, unsigned int line,
 	else
 		return 0;
 
-	if (filp)
+	if (filp) {
+		ext4_set_errno(file_inode(filp)->i_sb, EFSCORRUPTED);
 		ext4_error_file(filp, function, line, bh->b_blocknr,
 				"bad entry in directory: %s - offset=%u, "
 				"inode=%u, rec_len=%d, name_len=%d, size=%d",
 				error_msg, offset, le32_to_cpu(de->inode),
 				rlen, de->name_len, size);
-	else
+	} else {
+		ext4_set_errno(dir->i_sb, EFSCORRUPTED);
 		ext4_error_inode(dir, function, line, bh->b_blocknr,
 				"bad entry in directory: %s - offset=%u, "
 				"inode=%u, rec_len=%d, name_len=%d, size=%d",
 				 error_msg, offset, le32_to_cpu(de->inode),
 				 rlen, de->name_len, size);
+	}
 
 	return 1;
 }
@@ -204,6 +207,7 @@ static int ext4_readdir(struct file *file, struct dir_context *ctx)
 		/* Check the checksum */
 		if (!buffer_verified(bh) &&
 		    !ext4_dirblock_csum_verify(inode, bh)) {
+			ext4_set_errno(sb, EFSBADCRC);
 			EXT4_ERROR_FILE(file, 0, "directory fails checksum "
 					"at offset %llu",
 					(unsigned long long)ctx->pos);

@@ -525,6 +525,7 @@ static int __ext4_ext_check(const char *function, unsigned int line,
 	return 0;
 
 corrupted:
+	ext4_set_errno(inode->i_sb, -err);
 	ext4_error_inode(inode, function, line, 0,
 			 "pblk %llu bad header/extent: %s - magic %x, "
 			 "entries %u, max %u(%u), depth %u(%u)",
@@ -934,6 +935,7 @@ ext4_find_extent(struct inode *inode, ext4_lblk_t block,
 	eh = ext_inode_hdr(inode);
 	depth = ext_depth(inode);
 	if (depth < 0 || depth > EXT4_MAX_EXTENT_DEPTH) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "inode has invalid extent depth: %d",
 				 depth);
 		ret = -EFSCORRUPTED;
@@ -1022,6 +1024,7 @@ static int ext4_ext_insert_index(handle_t *handle, struct inode *inode,
 		return err;
 
 	if (unlikely(logical == le32_to_cpu(curp->p_idx->ei_block))) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode,
 				 "logical %d == ei_block %d!",
 				 logical, le32_to_cpu(curp->p_idx->ei_block));
@@ -1030,6 +1033,7 @@ static int ext4_ext_insert_index(handle_t *handle, struct inode *inode,
 
 	if (unlikely(le16_to_cpu(curp->p_hdr->eh_entries)
 			     >= le16_to_cpu(curp->p_hdr->eh_max))) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode,
 				 "eh_entries %d >= eh_max %d!",
 				 le16_to_cpu(curp->p_hdr->eh_entries),
@@ -1048,6 +1052,7 @@ static int ext4_ext_insert_index(handle_t *handle, struct inode *inode,
 	}
 
 	if (unlikely(ix > EXT_MAX_INDEX(curp->p_hdr))) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "ix > EXT_MAX_INDEX!");
 		return -EFSCORRUPTED;
 	}
@@ -1066,6 +1071,7 @@ static int ext4_ext_insert_index(handle_t *handle, struct inode *inode,
 	le16_add_cpu(&curp->p_hdr->eh_entries, 1);
 
 	if (unlikely(ix > EXT_LAST_INDEX(curp->p_hdr))) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "ix > EXT_LAST_INDEX!");
 		return -EFSCORRUPTED;
 	}
@@ -1112,6 +1118,7 @@ static int ext4_ext_split(handle_t *handle, struct inode *inode,
 	/* if current leaf will be split, then we should use
 	 * border from split point */
 	if (unlikely(path[depth].p_ext > EXT_MAX_EXTENT(path[depth].p_hdr))) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "p_ext > EXT_MAX_EXTENT!");
 		return -EFSCORRUPTED;
 	}
@@ -1156,6 +1163,7 @@ static int ext4_ext_split(handle_t *handle, struct inode *inode,
 	/* initialize new leaf */
 	newblock = ablocks[--a];
 	if (unlikely(newblock == 0)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "newblock == 0!");
 		err = -EFSCORRUPTED;
 		goto cleanup;
@@ -1181,6 +1189,7 @@ static int ext4_ext_split(handle_t *handle, struct inode *inode,
 	/* move remainder of path[depth] to the new leaf */
 	if (unlikely(path[depth].p_hdr->eh_entries !=
 		     path[depth].p_hdr->eh_max)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "eh_entries %d != eh_max %d!",
 				 path[depth].p_hdr->eh_entries,
 				 path[depth].p_hdr->eh_max);
@@ -1226,6 +1235,7 @@ static int ext4_ext_split(handle_t *handle, struct inode *inode,
 	/* create intermediate indexes */
 	k = depth - at - 1;
 	if (unlikely(k < 0)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "k %d < 0!", k);
 		err = -EFSCORRUPTED;
 		goto cleanup;
@@ -1265,6 +1275,7 @@ static int ext4_ext_split(handle_t *handle, struct inode *inode,
 		/* move remainder of path[i] to the new index block */
 		if (unlikely(EXT_MAX_INDEX(path[i].p_hdr) !=
 					EXT_LAST_INDEX(path[i].p_hdr))) {
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(inode,
 					 "EXT_MAX_INDEX != EXT_LAST_INDEX ee_block %d!",
 					 le32_to_cpu(path[i].p_ext->ee_block));
@@ -1509,6 +1520,7 @@ static int ext4_ext_search_left(struct inode *inode,
 	int depth, ee_len;
 
 	if (unlikely(path == NULL)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "path == NULL *logical %d!", *logical);
 		return -EFSCORRUPTED;
 	}
@@ -1526,6 +1538,7 @@ static int ext4_ext_search_left(struct inode *inode,
 	ee_len = ext4_ext_get_actual_len(ex);
 	if (*logical < le32_to_cpu(ex->ee_block)) {
 		if (unlikely(EXT_FIRST_EXTENT(path[depth].p_hdr) != ex)) {
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(inode,
 					 "EXT_FIRST_EXTENT != ex *logical %d ee_block %d!",
 					 *logical, le32_to_cpu(ex->ee_block));
@@ -1534,6 +1547,7 @@ static int ext4_ext_search_left(struct inode *inode,
 		while (--depth >= 0) {
 			ix = path[depth].p_idx;
 			if (unlikely(ix != EXT_FIRST_INDEX(path[depth].p_hdr))) {
+				ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 				EXT4_ERROR_INODE(inode,
 				  "ix (%d) != EXT_FIRST_INDEX (%d) (depth %d)!",
 				  ix != NULL ? le32_to_cpu(ix->ei_block) : 0,
@@ -1547,6 +1561,7 @@ static int ext4_ext_search_left(struct inode *inode,
 	}
 
 	if (unlikely(*logical < (le32_to_cpu(ex->ee_block) + ee_len))) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode,
 				 "logical %d < ee_block %d + ee_len %d!",
 				 *logical, le32_to_cpu(ex->ee_block), ee_len);
@@ -1578,6 +1593,7 @@ static int ext4_ext_search_right(struct inode *inode,
 	int ee_len;
 
 	if (unlikely(path == NULL)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "path == NULL *logical %d!", *logical);
 		return -EFSCORRUPTED;
 	}
@@ -1595,6 +1611,7 @@ static int ext4_ext_search_right(struct inode *inode,
 	ee_len = ext4_ext_get_actual_len(ex);
 	if (*logical < le32_to_cpu(ex->ee_block)) {
 		if (unlikely(EXT_FIRST_EXTENT(path[depth].p_hdr) != ex)) {
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(inode,
 					 "first_extent(path[%d].p_hdr) != ex",
 					 depth);
@@ -1603,6 +1620,7 @@ static int ext4_ext_search_right(struct inode *inode,
 		while (--depth >= 0) {
 			ix = path[depth].p_idx;
 			if (unlikely(ix != EXT_FIRST_INDEX(path[depth].p_hdr))) {
+				ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 				EXT4_ERROR_INODE(inode,
 						 "ix != EXT_FIRST_INDEX *logical %d!",
 						 *logical);
@@ -1613,6 +1631,7 @@ static int ext4_ext_search_right(struct inode *inode,
 	}
 
 	if (unlikely(*logical < (le32_to_cpu(ex->ee_block) + ee_len))) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode,
 				 "logical %d < ee_block %d + ee_len %d!",
 				 *logical, le32_to_cpu(ex->ee_block), ee_len);
@@ -1749,6 +1768,7 @@ static int ext4_ext_correct_indexes(handle_t *handle, struct inode *inode,
 	ex = path[depth].p_ext;
 
 	if (unlikely(ex == NULL || eh == NULL)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode,
 				 "ex %p == NULL or eh %p == NULL", ex, eh);
 		return -EFSCORRUPTED;
@@ -1874,8 +1894,10 @@ static int ext4_ext_try_to_merge_right(struct inode *inode,
 		le16_add_cpu(&eh->eh_entries, -1);
 		merge_done = 1;
 		WARN_ON(eh->eh_entries == 0);
-		if (!eh->eh_entries)
+		if (!eh->eh_entries) {
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(inode, "eh->eh_entries = 0!");
+		}
 	}
 
 	return merge_done;
@@ -2025,6 +2047,7 @@ int ext4_ext_insert_extent(handle_t *handle, struct inode *inode,
 	if (gb_flags & EXT4_GET_BLOCKS_DELALLOC_RESERVE)
 		mb_flags |= EXT4_MB_DELALLOC_RESERVED;
 	if (unlikely(ext4_ext_get_actual_len(newext) == 0)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "ext4_ext_get_actual_len(newext) == 0");
 		return -EFSCORRUPTED;
 	}
@@ -2032,6 +2055,7 @@ int ext4_ext_insert_extent(handle_t *handle, struct inode *inode,
 	ex = path[depth].p_ext;
 	eh = path[depth].p_hdr;
 	if (unlikely(path[depth].p_hdr == NULL)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "path[%d].p_hdr == NULL", depth);
 		return -EFSCORRUPTED;
 	}
@@ -2260,6 +2284,7 @@ static int ext4_fill_fiemap_extents(struct inode *inode,
 		depth = ext_depth(inode);
 		if (unlikely(path[depth].p_hdr == NULL)) {
 			up_read(&EXT4_I(inode)->i_data_sem);
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(inode, "path[%d].p_hdr == NULL", depth);
 			err = -EFSCORRUPTED;
 			break;
@@ -2329,6 +2354,7 @@ static int ext4_fill_fiemap_extents(struct inode *inode,
 		up_read(&EXT4_I(inode)->i_data_sem);
 
 		if (unlikely(es.es_len == 0)) {
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(inode, "es.es_len == 0");
 			err = -EFSCORRUPTED;
 			break;
@@ -2349,6 +2375,7 @@ static int ext4_fill_fiemap_extents(struct inode *inode,
 			flags |= FIEMAP_EXTENT_LAST;
 			if (unlikely(next_del != EXT_MAX_BLOCKS ||
 				     next != EXT_MAX_BLOCKS)) {
+				ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 				EXT4_ERROR_INODE(inode,
 						 "next extent == %u, next "
 						 "delalloc extent = %u",
@@ -2507,6 +2534,7 @@ static int ext4_ext_rm_idx(handle_t *handle, struct inode *inode,
 	path = path + depth;
 	leaf = ext4_idx_pblock(path->p_idx);
 	if (unlikely(path->p_hdr->eh_entries == 0)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "path->p_hdr->eh_entries == 0");
 		return -EFSCORRUPTED;
 	}
@@ -2664,6 +2692,7 @@ static int ext4_remove_blocks(handle_t *handle, struct inode *inode,
 	/* only extent tail removal is allowed */
 	if (from < le32_to_cpu(ex->ee_block) ||
 	    to != le32_to_cpu(ex->ee_block) + ee_len - 1) {
+		ext4_set_errno(sbi->s_sb, EFSCORRUPTED);
 		ext4_error(sbi->s_sb,
 			   "strange request: removal(2) %u-%u from %u:%u",
 			   from, to, le32_to_cpu(ex->ee_block), ee_len);
@@ -2809,6 +2838,7 @@ ext4_ext_rm_leaf(handle_t *handle, struct inode *inode,
 		path[depth].p_hdr = ext_block_hdr(path[depth].p_bh);
 	eh = path[depth].p_hdr;
 	if (unlikely(path[depth].p_hdr == NULL)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "path[%d].p_hdr == NULL", depth);
 		return -EFSCORRUPTED;
 	}
@@ -2859,6 +2889,7 @@ ext4_ext_rm_leaf(handle_t *handle, struct inode *inode,
 			ex_ee_len = ext4_ext_get_actual_len(ex);
 			continue;
 		} else if (b != ex_ee_block + ex_ee_len - 1) {
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(inode,
 					 "can not handle truncate %u:%u "
 					 "on extent %u:%u",
@@ -3045,6 +3076,7 @@ again:
 		ex = path[depth].p_ext;
 		if (!ex) {
 			if (depth) {
+				ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 				EXT4_ERROR_INODE(inode,
 						 "path[%d].p_hdr == NULL",
 						 depth);
@@ -3452,6 +3484,7 @@ static int ext4_split_extent_at(handle_t *handle,
 	path = ext4_find_extent(inode, ee_block, ppath,
 				flags | EXT4_EX_NOFAIL);
 	if (IS_ERR(path)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "Failed split extent on %u, err %ld",
 				 split, PTR_ERR(path));
 		return PTR_ERR(path);
@@ -3570,6 +3603,7 @@ static int ext4_split_extent(handle_t *handle,
 	depth = ext_depth(inode);
 	ex = path[depth].p_ext;
 	if (!ex) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "unexpected hole at %lu",
 				 (unsigned long) map->m_lblk);
 		return -EFSCORRUPTED;
@@ -4077,6 +4111,7 @@ convert_initialized_extent(handle_t *handle, struct inode *inode,
 		depth = ext_depth(inode);
 		ex = path[depth].p_ext;
 		if (!ex) {
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(inode, "unexpected hole at %lu",
 					 (unsigned long) map->m_lblk);
 			return -EFSCORRUPTED;
@@ -4381,6 +4416,7 @@ int ext4_ext_map_blocks(handle_t *handle, struct inode *inode,
 	 * this is why assert can't be put in ext4_find_extent()
 	 */
 	if (unlikely(path[depth].p_ext == NULL && depth != 0)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode, "bad extent address "
 				 "lblock: %lu, depth: %d pblock %lld",
 				 (unsigned long) map->m_lblk, depth,
@@ -5487,6 +5523,7 @@ ext4_ext_shift_extents(struct inode *inode, handle_t *handle,
 		depth = path->p_depth;
 		extent = path[depth].p_ext;
 		if (!extent) {
+			ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 			EXT4_ERROR_INODE(inode, "unexpected hole at %lu",
 					 (unsigned long) *iterator);
 			return -EFSCORRUPTED;
@@ -6094,6 +6131,7 @@ int ext4_clu_mapped(struct inode *inode, ext4_lblk_t lclu)
 	 * be put in ext4_find_extent().
 	 */
 	if (unlikely(path[depth].p_ext == NULL && depth != 0)) {
+		ext4_set_errno(inode->i_sb, EFSCORRUPTED);
 		EXT4_ERROR_INODE(inode,
 		    "bad extent address - lblock: %lu, depth: %d, pblock: %lld",
 				 (unsigned long) EXT4_C2B(sbi, lclu),
