@@ -1271,6 +1271,7 @@ static void npc_enadis_default_entries(struct rvu *rvu, u16 pcifunc,
 	if ((pcifunc & RVU_PFVF_FUNC_MASK) && !rvu->hw->cap.nix_rx_multicast)
 		return;
 
+	type = NIXLF_BCAST_ENTRY;
 	if (is_cn20k(rvu->pdev) && is_lbk_vf(rvu, pcifunc))
 		type = NIXLF_PROMISC_ENTRY;
 
