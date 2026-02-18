@@ -1342,6 +1342,16 @@ static int journal_reset(journal_t *journal)
 	return jbd2_journal_start_thread(journal);
 }
 
+static bool is_exadata(void)
+{
+	return static_branch_unlikely(&on_exadata);
+}
+
+static bool skip_sb_flush_on_eio(journal_superblock_t *sb)
+{
+	return is_exadata() && be32_to_cpu(sb->s_errno) == -EIO;
+}
+
 /*
  * This function expects that the caller will have locked the journal
  * buffer head, and will return with it unlocked
@@ -1351,6 +1361,9 @@ static int jbd2_write_superblock(journal_t *journal, int write_flags)
 	struct buffer_head *bh = journal->j_sb_buffer;
 	journal_superblock_t *sb = journal->j_superblock;
 	int ret;
+
+	if (skip_sb_flush_on_eio(sb))
+		return -EIO;
 
 	/* Buffer got discarded which means block device got invalidated */
 	if (!buffer_mapped(bh)) {

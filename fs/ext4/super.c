@@ -388,6 +388,20 @@ static void __save_error_info(struct super_block *sb, const char *func,
 	le32_add_cpu(&es->s_error_count, 1);
 }
 
+static bool is_exadata(void)
+{
+	return static_branch_unlikely(&on_exadata);
+}
+
+static bool skip_sb_flush_on_eio(struct ext4_super_block *es)
+{
+	__u8 err = es->s_first_error_errcode;
+
+	if (err == 0)
+		err = es->s_last_error_errcode;
+	return is_exadata() && err == EXT4_ERR_EIO;
+}
+
 static void save_error_info(struct super_block *sb, const char *func,
 			    unsigned int line)
 {
@@ -5195,6 +5209,9 @@ static int ext4_commit_super(struct super_block *sb, int sync)
 	struct ext4_super_block *es = EXT4_SB(sb)->s_es;
 	struct buffer_head *sbh = EXT4_SB(sb)->s_sbh;
 	int error = 0;
+
+	if (skip_sb_flush_on_eio(es))
+		return -EIO;
 
 	if (!sbh)
 		return -EINVAL;
