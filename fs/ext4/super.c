@@ -441,6 +441,8 @@ static bool system_going_down(void)
 		|| system_state == SYSTEM_RESTART;
 }
 
+int ext4_get_sb_errno(struct super_block *sb);
+
 /* Deal with the reporting of failure conditions on a filesystem such as
  * inconsistencies detected or read IO failures.
  *
@@ -468,7 +470,7 @@ static void ext4_handle_error(struct super_block *sb)
 
 	EXT4_SB(sb)->s_mount_flags |= EXT4_MF_FS_ABORTED;
 	if (journal)
-		jbd2_journal_abort(journal, -EIO);
+		jbd2_journal_abort(journal, ext4_get_sb_errno(sb));
 	/*
 	 * We force ERRORS_RO behavior when system is rebooting. Otherwise we
 	 * could panic during 'reboot -f' as the underlying device got already
@@ -693,6 +695,48 @@ void ext4_set_errno(struct super_block *sb, int err)
 	EXT4_SB(sb)->s_es->s_last_error_errcode = err;
 }
 
+/* convert s_es->s_last_error_errcode to error code */
+int ext4_get_sb_errno(struct super_block *sb)
+{
+	switch (EXT4_SB(sb)->s_es->s_last_error_errcode) {
+	case EXT4_ERR_EIO:
+		return -EIO;
+	case EXT4_ERR_ENOMEM:
+		return -ENOMEM;
+	case EXT4_ERR_EFSBADCRC:
+		return -EFSBADCRC;
+	case EXT4_ERR_EFSCORRUPTED:
+		return -EFSCORRUPTED;
+	case EXT4_ERR_ENOSPC:
+		return -ENOSPC;
+	case EXT4_ERR_ENOKEY:
+		return -ENOKEY;
+	case EXT4_ERR_EROFS:
+		return -EROFS;
+	case EXT4_ERR_EFBIG:
+		return -EFBIG;
+	case EXT4_ERR_EEXIST:
+		return -EEXIST;
+	case EXT4_ERR_ERANGE:
+		return -ERANGE;
+	case EXT4_ERR_EOVERFLOW:
+		return -EOVERFLOW;
+	case EXT4_ERR_EBUSY:
+		return -EBUSY;
+	case EXT4_ERR_ENOTDIR:
+		return -ENOTDIR;
+	case EXT4_ERR_ENOTEMPTY:
+		return -ENOTEMPTY;
+	case EXT4_ERR_ESHUTDOWN:
+		return -ESHUTDOWN;
+	case EXT4_ERR_UNKNOWN:
+		return -EFSCORRUPTED;
+	default:
+		/* no error was set */
+		return 0;
+	}
+}
+
 /* __ext4_std_error decodes expected errors from journaling functions
  * automatically and invokes the appropriate error response.  */
 
@@ -759,7 +803,8 @@ void __ext4_abort(struct super_block *sb, const char *function,
 		smp_wmb();
 		sb->s_flags |= SB_RDONLY;
 		if (EXT4_SB(sb)->s_journal)
-			jbd2_journal_abort(EXT4_SB(sb)->s_journal, -EIO);
+			jbd2_journal_abort(EXT4_SB(sb)->s_journal,
+					   ext4_get_sb_errno(sb));
 		save_error_info(sb, function, line);
 	}
 	if (test_opt(sb, ERRORS_PANIC) && !system_going_down()) {
