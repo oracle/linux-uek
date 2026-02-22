@@ -109,6 +109,15 @@
 /* Peripheral Device Text Identification Information */
 #define PD_TEXT_ID_INFO_LEN			256
 
+enum target_compl_type {
+	/* Use the fabric driver's default completion type */
+	TARGET_FABRIC_DEFAULT_COMPL,
+	/* Complete from the backend calling context */
+	TARGET_DIRECT_COMPL,
+	/* Defer completion to the LIO workqueue */
+	TARGET_QUEUE_COMPL,
+};
+
 enum target_submit_type {
 	/* Use the fabric driver's default submission type */
 	TARGET_FABRIC_DEFAULT_SUBMIT,
@@ -733,6 +742,7 @@ struct se_dev_attrib {
 	u32		unmap_granularity_alignment;
 	u32		max_write_same_len;
 	u32		max_bytes_per_io;
+	u8		complete_type;
 	u8		submit_type;
 	struct se_device *da_dev;
 	struct config_group da_group;
