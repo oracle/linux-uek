@@ -1018,8 +1018,7 @@ static struct attribute_group optoe_attr_group = {
 	.attrs = optoe_attrs,
 };
 
-static int optoe_probe(struct i2c_client *client,
-			const struct i2c_device_id *id)
+static int optoe_probe(struct i2c_client *client)
 {
 	int err;
 	int use_smbus = 0;
@@ -1047,10 +1046,6 @@ static int optoe_probe(struct i2c_client *client,
 			"probe, chip provided, flags:0x%x; name: %s\n",
 			chip.flags, client->name);
 	} else {
-		if (!id->driver_data) {
-			err = -ENODEV;
-			goto exit;
-		}
 		dev_dbg(&client->dev, "probe, building chip\n");
 		strcpy(port_name, "unitialized");
 		chip.flags = 0;
