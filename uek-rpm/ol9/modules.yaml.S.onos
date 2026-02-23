@@ -1301,6 +1301,7 @@ modules-core:
 - i2c-amd8111
 - i2c-amd-mp2-pci
 - i2c-amd-mp2-plat
+- i2c-asf
 - i2c-ccgx-ucsi
 - i2c-designware-core
 - i2c-designware-pci
@@ -2334,6 +2335,7 @@ modules-core:
 - opt3001
 - opticon
 - option
+- optoe
 - or51132
 - or51211
 - orangefs
