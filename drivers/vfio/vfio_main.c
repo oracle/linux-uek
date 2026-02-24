@@ -2076,6 +2076,23 @@ vfio_ioctl_device_feature_migration_data_size(struct vfio_device *device,
 	return 0;
 }
 
+static int
+vfio_ioctl_device_feature_migration_precopy_info_v2(struct vfio_device *device,
+						    u32 flags, size_t argsz)
+{
+	int ret;
+
+	if (!(device->migration_flags & VFIO_MIGRATION_PRE_COPY))
+		return -EINVAL;
+
+	ret = vfio_check_feature(flags, argsz, VFIO_DEVICE_FEATURE_SET, 0);
+	if (ret != 1)
+		return ret;
+
+	device->precopy_info_flags_fix = 1;
+	return 0;
+}
+
 static int vfio_ioctl_device_feature_migration(struct vfio_device *device,
 					       u32 flags, void __user *arg,
 					       size_t argsz)
@@ -2354,6 +2371,9 @@ static int vfio_ioctl_device_feature(struct vfio_device *device,
 		return vfio_ioctl_device_feature_migration_data_size(
 			device, feature.flags, arg->data,
 			feature.argsz - minsz);
+	case UEK_VFIO_DEVICE_FEATURE_MIG_PRECOPY_INFOv2:
+		return vfio_ioctl_device_feature_migration_precopy_info_v2(
+			device, feature.flags, feature.argsz - minsz);
 	default:
 		if (unlikely(!device->ops->device_feature))
 			return -EINVAL;
