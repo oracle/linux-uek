@@ -530,16 +530,27 @@ static void __rvu_nix_set_channels(struct rvu *rvu, int blkaddr)
 			}
 			cfg |=	FIELD_PREP(GENMASK_ULL(21, 20), 2);
 			cfg |=	FIELD_PREP(GENMASK_ULL(26, 25), 2);
+			/* For cnf20k, NIX LINKS are mapped to XCB0/1 LMACs in
+			 * case of 1st chiplet, for 2nd chiplet XCB2/3 are
+			 * used.
+			 * Single chiplet case:
+			 *  XCB0_LMAC0--> XCB0_LMAC11 mapped to 4-15 NIX links.
+			 * Two chiplet case:
+			 *  XCB0_LMAC0--> XCB0_LMAC7 mapped to 4-11 NIX links.
+			 *  XCB2_LMAC0--> XCB2_LMAC7 mapped to 12-19 NIX links.
+			 */
 			if (!rvu->fwdata->csr_rpmx_cmr_num_lmacs[2][0] ||
 			    (link < cplt_lmac_cnt(rvu, 1) + 4)) {
 				cfg |=	FIELD_PREP(GENMASK_ULL(31, 30), 0);
 				cfg |=	FIELD_PREP(GENMASK_ULL(35, 32),
 						   link - 4);
+				if (link >= cplt_lmac_cnt(rvu, 1) + 4)
+					break;
 			} else {
 				cfg |=	FIELD_PREP(GENMASK_ULL(31, 30), 2);
 				cfg |=	FIELD_PREP(GENMASK_ULL(35, 32),
 						   link %
-						   (cplt_lmac_cnt(rvu, 1) + 4));
+						   (cplt_lmac_cnt(rvu, 2) + 4));
 			}
 		}
 		cfg |=	FIELD_PREP(NIX_AF_LINKX_BASE_MASK, start);
