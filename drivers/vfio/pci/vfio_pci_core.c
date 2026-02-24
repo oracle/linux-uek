@@ -452,6 +452,8 @@ void vfio_pci_core_close_device(struct vfio_device *core_vdev)
 	vfio_spapr_pci_eeh_release(vdev->pdev);
 	vfio_pci_core_disable(vdev);
 
+	core_vdev->precopy_info_flags_fix = 0;
+
 	mutex_lock(&vdev->igate);
 	if (vdev->err_trigger) {
 		eventfd_ctx_put(vdev->err_trigger);
