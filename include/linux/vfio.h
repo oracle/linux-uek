@@ -41,6 +41,7 @@ struct vfio_device {
 	struct vfio_device_set *dev_set;
 	struct list_head dev_set_list;
 	unsigned int migration_flags;
+	u8 precopy_info_flags_fix;
 
 	/* Members below here are private, not for driver use */
 	struct kref kref;       /* object life cycle */
