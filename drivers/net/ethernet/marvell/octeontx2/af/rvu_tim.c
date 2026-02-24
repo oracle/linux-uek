@@ -14,6 +14,9 @@
 #include "rvu_reg.h"
 #include "rvu.h"
 
+/* IPBUTIM-37936: max periodic timers per ring when errata applies */
+#define TIM_ERRATA_MAX_PERIODIC_TIMERS 1023
+
 #define TIM_CHUNKSIZE_MULTIPLE	(16)
 #define TIM_CHUNKSIZE_MIN	(TIM_CHUNKSIZE_MULTIPLE * 0x2)
 #define TIM_CHUNKSIZE_MAX	(TIM_CHUNKSIZE_MULTIPLE * 0x1FFF)
@@ -626,6 +629,9 @@ int rvu_mbox_handler_tim_get_hw_info(struct rvu *rvu, struct msg_req *req,
 	rsp->engines = (reg >> 16) & 0xFF;
 	rsp->hwwqe = (reg >> 24) & 0x1;
 	rsp->intvl_ext = (reg >> 25) & 0x1;
+	rsp->max_prd_timers = rvu_tim_has_inflight_wqe_errata(rvu) ?
+				      TIM_ERRATA_MAX_PERIODIC_TIMERS :
+				      0;
 
 	return 0;
 }

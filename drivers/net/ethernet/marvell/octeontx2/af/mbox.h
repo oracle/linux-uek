@@ -2797,7 +2797,8 @@ struct tim_hw_info {
 	u8	engines;
 	u8	hwwqe : 1;
 	u8	intvl_ext : 1;
-	u8	rsvd8[4];
+	u16	max_prd_timers;
+	u8	rsvd8[2];
 	u64 rsvd[2];
 };
 

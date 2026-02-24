@@ -1467,6 +1467,7 @@ int rvu_ndc_fix_locked_cacheline(struct rvu *rvu, int blkaddr);
 int rvu_tim_lookup_rsrc(struct rvu *rvu, struct rvu_block *block,
 			u16 pcifunc, int slot);
 void rvu_tim_hw_fixes(struct rvu *rvu, int blkaddr);
+bool rvu_tim_has_inflight_wqe_errata(struct rvu *rvu);
 bool rvu_tim_ptp_has_errata(struct pci_dev *pdev);
 u64 rvu_tim_ptp_rollover_errata_fix(struct rvu *rvu, u64 time);
 

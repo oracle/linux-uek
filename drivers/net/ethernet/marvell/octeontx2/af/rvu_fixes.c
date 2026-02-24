@@ -72,6 +72,14 @@ void rvu_tim_hw_fixes(struct rvu *rvu, int blkaddr)
 	rvu_write64(rvu, blkaddr, TIM_AF_FLAGS_REG, cfg);
 }
 
+/* IPBUTIM-37936: Periodic rings are limited to 1023 in-flight timer events per
+ * bucket on CN20K. When true, caller must limit periodic timers per ring to 1023.
+ */
+bool rvu_tim_has_inflight_wqe_errata(struct rvu *rvu)
+{
+	return is_cn20k(rvu->pdev);
+}
+
 bool rvu_tim_ptp_has_errata(struct pci_dev *pdev)
 {
 	if (pdev->subsystem_device == PCI_SUBSYS_DEVID_CN10K_A ||
