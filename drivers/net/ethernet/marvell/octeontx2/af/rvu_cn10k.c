@@ -499,7 +499,7 @@ static void __rvu_nix_set_channels(struct rvu *rvu, int blkaddr)
 		devm_kzalloc(rvu->dev,
 			     NODE_MAX * rvu->cgx_cnt_max * 10 * sizeof(u16),
 			     GFP_KERNEL);
-	if (!rvu->cgxchan2link_map)
+	if (ZERO_OR_NULL_PTR(rvu->cgxchan2link_map))
 		return;
 
 	start = hw->cgx_chan_base;
