@@ -700,6 +700,7 @@ struct npc_kpu_profile_adapter {
 	size_t				pkinds;
 	size_t				kpus;
 	bool from_fs;
+	void __iomem			*mkex_prfl_addr;
 };
 
 #define RVU_SWITCH_LBK_CHAN	63

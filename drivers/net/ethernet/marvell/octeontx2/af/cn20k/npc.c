@@ -2998,6 +2998,10 @@ void npc_cn20k_load_mkex_profile(struct rvu *rvu, int blkaddr,
 	if (ret < 0)
 		goto program_mkex_extr;
 
+	if (rvu->kpu.mkex_prfl_addr)
+		iounmap(rvu->kpu.mkex_prfl_addr);
+	rvu->kpu.mkex_prfl_addr = mkex_prfl_addr;
+
 	mcam_kex_extr = (struct npc_mcam_kex_extr __force *)mkex_prfl_addr;
 
 	while (((s64)prfl_sz > 0) && (mcam_kex_extr->mkex_sign != MKEX_END_SIGN)) {
@@ -3017,8 +3021,6 @@ program_mkex_extr:
 	dev_info(rvu->dev, "Using %s mkex profile\n", rvu->kpu.mcam_kex_prfl.mkex_extr->name);
 	/* Program selected mkex profile */
 	npc_program_mkex_profile(rvu, blkaddr, rvu->kpu.mcam_kex_prfl.mkex_extr);
-	if (mkex_prfl_addr)
-		iounmap(mkex_prfl_addr);
 }
 
 void npc_cn20k_enable_mcam_entry(struct rvu *rvu, int blkaddr, int index, bool enable)
@@ -3300,6 +3302,8 @@ void npc_cn20k_config_mcam_entry(struct rvu *rvu, int blkaddr, int index, u8 int
 		rvu_write64(rvu, blkaddr,
 			    NPC_AF_CN20K_MCAMEX_BANKX_ACTIONX_EXT(mcam_idx, bank, 2),
 			    entry->action2);
+
+		npc_cn20k_set_mcam_bank_cfg(rvu, blkaddr, mcam_idx, bank, kw_type, hw_prio);
 	} else {
 		/* Clear mcam entry to avoid writes being suppressed by NPC */
 		npc_cn20k_clear_mcam_entry(rvu, blkaddr, 0, mcam_idx);
@@ -3324,6 +3328,7 @@ void npc_cn20k_config_mcam_entry(struct rvu *rvu, int blkaddr, int index, u8 int
 				    NPC_AF_CN20K_MCAMEX_BANKX_ACTIONX_EXT(mcam_idx, bank, 2),
 				    entry->action2);
 		}
+		npc_cn20k_set_mcam_bank_cfg(rvu, blkaddr, mcam_idx, 0, kw_type, hw_prio);
 	}
 
 	/* TODO: */
@@ -3331,7 +3336,6 @@ void npc_cn20k_config_mcam_entry(struct rvu *rvu, int blkaddr, int index, u8 int
 	//if (is_npc_intf_rx(intf) && index < mcam->bmap_entries)
 		//npc_cn20k_fixup_vf_rule(rvu, mcam, blkaddr, index, entry, &enable);
 
-	npc_cn20k_set_mcam_bank_cfg(rvu, blkaddr, mcam_idx, bank, kw_type, hw_prio);
 	npc_cn20k_enable_mcam_entry(rvu, blkaddr, index, enable);
 }
 
@@ -3408,6 +3412,12 @@ void npc_cn20k_read_mcam_entry(struct rvu *rvu, int blkaddr, u16 index,
 	npc_mcam_idx_2_key_type(rvu, index, &kw_type);
 
 	bank = npc_get_bank(rvu, mcam, index);
+
+	entry->action = rvu_read64(rvu, blkaddr,
+				   NPC_AF_CN20K_MCAMEX_BANKX_ACTIONX_EXT(index, bank, 0));
+	entry->vtag_action = rvu_read64(rvu, blkaddr,
+					NPC_AF_CN20K_MCAMEX_BANKX_ACTIONX_EXT(index, bank, 1));
+
 	index &= (mcam->banksize - 1);
 	*intf = rvu_read64(rvu, blkaddr,
 			   NPC_AF_CN20K_MCAMEX_BANKX_CAMX_INTF_EXT(index, bank, 1)) & 3;
@@ -3439,7 +3449,7 @@ void npc_cn20k_read_mcam_entry(struct rvu *rvu, int blkaddr, u16 index,
 		cam0 = rvu_read64(rvu, blkaddr,
 				  NPC_AF_CN20K_MCAMEX_BANKX_CAMX_W3_EXT(index, bank, 0));
 		npc_cn20k_fill_entryword(entry, kw + 3, cam0, cam1);
-		goto read_action;
+		return;
 	}
 
 	for (bank = 0; bank < mcam->banks_per_entry; bank++, kw = kw + 4) {
@@ -3467,15 +3477,6 @@ void npc_cn20k_read_mcam_entry(struct rvu *rvu, int blkaddr, u16 index,
 				  NPC_AF_CN20K_MCAMEX_BANKX_CAMX_W3_EXT(index, bank, 0));
 		npc_cn20k_fill_entryword(entry, kw + 3, cam0, cam1);
 	}
-
-read_action:
-	/* 'action' is set to same value for both bank '0' and '1'.
-	 * Hence, reading bank '0' should be enough.
-	 */
-	entry->action = rvu_read64(rvu, blkaddr,
-				   NPC_AF_CN20K_MCAMEX_BANKX_ACTIONX_EXT(index, 0, 0));
-	entry->vtag_action = rvu_read64(rvu, blkaddr,
-					NPC_AF_CN20K_MCAMEX_BANKX_ACTIONX_EXT(index, 0, 1));
 }
 
 static int npc_setup_mcam_section(struct rvu *rvu, int key_type)

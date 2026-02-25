@@ -1529,6 +1529,10 @@ static void npc_load_mkex_profile(struct rvu *rvu, int blkaddr,
 	if (ret < 0)
 		goto program_mkex;
 
+	if (rvu->kpu.mkex_prfl_addr)
+		iounmap(rvu->kpu.mkex_prfl_addr);
+	rvu->kpu.mkex_prfl_addr = mkex_prfl_addr;
+
 	mcam_kex = (struct npc_mcam_kex __force *)mkex_prfl_addr;
 
 	while (((s64)prfl_sz > 0) && (mcam_kex->mkex_sign != MKEX_END_SIGN)) {
@@ -1554,8 +1558,6 @@ program_mkex:
 	dev_info(rvu->dev, "Using %s mkex profile\n", rvu->kpu.mcam_kex_prfl.mkex->name);
 	/* Program selected mkex profile */
 	npc_program_mkex_profile(rvu, blkaddr, rvu->kpu.mcam_kex_prfl.mkex);
-	if (mkex_prfl_addr)
-		iounmap(mkex_prfl_addr);
 }
 
 void npc_config_kpuaction(struct rvu *rvu, int blkaddr,
@@ -2540,6 +2542,8 @@ void rvu_npc_freemem(struct rvu *rvu)
 	else
 		kfree(rvu->kpu_fwdata);
 	mutex_destroy(&mcam->lock);
+	if (rvu->kpu.mkex_prfl_addr)
+		iounmap(rvu->kpu.mkex_prfl_addr);
 }
 
 void rvu_npc_get_mcam_entry_alloc_info(struct rvu *rvu, u16 pcifunc,
