@@ -2308,6 +2308,7 @@ replay:
 		flags |= TCA_ACT_FLAGS_AT_INGRESS;
 	if (is_ingress_or_clsact(block, q))
 		flags |= TCA_ACT_FLAGS_AT_INGRESS_OR_CLSACT;
+
 	err = tp->ops->change(net, skb, tp, cl, t->tcm_handle, tca, &fh,
 			      flags, extack);
 	if (err == 0) {
