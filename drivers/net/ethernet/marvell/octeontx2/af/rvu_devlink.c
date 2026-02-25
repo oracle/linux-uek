@@ -1201,6 +1201,8 @@ enum rvu_af_dl_param_id {
 	RVU_AF_DEVLINK_PARAM_ID_NPC_DEF_RULE_CNTR_ENABLE,
 	RVU_AF_DEVLINK_PARAM_ID_NPC_DEFRAG,
 	RVU_AF_DEVLINK_PARAM_ID_NIX_MAXLF,
+	RVU_AF_DEVLINK_PARAM_ID_NPA_INT_REQ_DWRR,
+	RVU_AF_DEVLINK_PARAM_ID_NPA_EXT_REQ_DWRR,
 };
 
 static u64 rvu_af_dl_tim_param_id_to_offset(u32 id)
@@ -1751,6 +1753,94 @@ static int rvu_af_dl_nix_maxlf_validate(struct devlink *devlink, u32 id,
 	return 0;
 }
 
+static int rvu_af_dl_npa_int_req_dwrr_get(struct devlink *devlink, u32 id,
+					  struct devlink_param_gset_ctx *ctx)
+{
+	struct rvu_devlink *rvu_dl = devlink_priv(devlink);
+	struct rvu *rvu = rvu_dl->rvu;
+	u64 val;
+
+	val = rvu_read64(rvu, BLKADDR_NPA, NPA_AF_INT_REQ_DWRR);
+	snprintf(ctx->val.vstr, sizeof(ctx->val.vstr), "0x%llx", val);
+
+	return 0;
+}
+
+static int rvu_af_dl_npa_int_req_dwrr_set(struct devlink *devlink, u32 id,
+					  struct devlink_param_gset_ctx *ctx,
+					  struct netlink_ext_ack *extack)
+{
+	struct rvu_devlink *rvu_dl = devlink_priv(devlink);
+	struct rvu *rvu = rvu_dl->rvu;
+	u64 val;
+
+	if (kstrtoull(ctx->val.vstr, 0, &val))
+		return -EINVAL;
+
+	rvu_write64(rvu, BLKADDR_NPA, NPA_AF_INT_REQ_DWRR, val);
+
+	return 0;
+}
+
+static int rvu_af_dl_npa_int_req_dwrr_validate(struct devlink *devlink, u32 id,
+					       union devlink_param_value val,
+					       struct netlink_ext_ack *extack)
+{
+	u64 dwrr;
+
+	if (kstrtoull(val.vstr, 0, &dwrr)) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "Invalid value, use hex e.g. 0x80808080808080");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int rvu_af_dl_npa_ext_req_dwrr_get(struct devlink *devlink, u32 id,
+					  struct devlink_param_gset_ctx *ctx)
+{
+	struct rvu_devlink *rvu_dl = devlink_priv(devlink);
+	struct rvu *rvu = rvu_dl->rvu;
+	u64 val;
+
+	val = rvu_read64(rvu, BLKADDR_NPA, NPA_AF_EXT_REQ_DWRR);
+	snprintf(ctx->val.vstr, sizeof(ctx->val.vstr), "0x%llx", val);
+
+	return 0;
+}
+
+static int rvu_af_dl_npa_ext_req_dwrr_set(struct devlink *devlink, u32 id,
+					  struct devlink_param_gset_ctx *ctx,
+					  struct netlink_ext_ack *extack)
+{
+	struct rvu_devlink *rvu_dl = devlink_priv(devlink);
+	struct rvu *rvu = rvu_dl->rvu;
+	u64 val;
+
+	if (kstrtoull(ctx->val.vstr, 0, &val))
+		return -EINVAL;
+
+	rvu_write64(rvu, BLKADDR_NPA, NPA_AF_EXT_REQ_DWRR, val);
+
+	return 0;
+}
+
+static int rvu_af_dl_npa_ext_req_dwrr_validate(struct devlink *devlink, u32 id,
+					       union devlink_param_value val,
+					       struct netlink_ext_ack *extack)
+{
+	u64 dwrr;
+
+	if (kstrtoull(val.vstr, 0, &dwrr)) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "Invalid value, use hex e.g. 0x80808080808080");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static const struct devlink_param rvu_af_dl_params[] = {
 	DEVLINK_PARAM_DRIVER(RVU_AF_DEVLINK_PARAM_ID_DWRR_MTU,
 			     "dwrr_mtu", DEVLINK_PARAM_TYPE_U32,
@@ -1844,6 +1934,18 @@ static const struct devlink_param rvu_af_dl_params[] = {
 			     rvu_af_dl_nix_maxlf_get,
 			     rvu_af_dl_nix_maxlf_set,
 			     rvu_af_dl_nix_maxlf_validate),
+	DEVLINK_PARAM_DRIVER(RVU_AF_DEVLINK_PARAM_ID_NPA_INT_REQ_DWRR,
+			     "npa_internal_requestors_weights", DEVLINK_PARAM_TYPE_STRING,
+			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
+			     rvu_af_dl_npa_int_req_dwrr_get,
+			     rvu_af_dl_npa_int_req_dwrr_set,
+			     rvu_af_dl_npa_int_req_dwrr_validate),
+	DEVLINK_PARAM_DRIVER(RVU_AF_DEVLINK_PARAM_ID_NPA_EXT_REQ_DWRR,
+			     "npa_external_requestors_weights", DEVLINK_PARAM_TYPE_STRING,
+			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
+			     rvu_af_dl_npa_ext_req_dwrr_get,
+			     rvu_af_dl_npa_ext_req_dwrr_set,
+			     rvu_af_dl_npa_ext_req_dwrr_validate),
 };
 
 static const struct devlink_param rvu_af_dl_param_tim_adj_gti[] = {

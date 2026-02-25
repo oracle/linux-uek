@@ -2814,12 +2814,61 @@ static void rvu_dbg_nix_init(struct rvu *rvu, int blkaddr)
 			    &rvu_dbg_nix_band_prof_rsrc_fops);
 }
 
+static int rvu_dbg_npa_dwrr_display(struct seq_file *m, void *unused)
+{
+	struct rvu *rvu = m->private;
+	u64 int_req_dwrr, ext_req_dwrr;
+
+	int_req_dwrr = rvu_read64(rvu, BLKADDR_NPA, NPA_AF_INT_REQ_DWRR);
+	ext_req_dwrr = rvu_read64(rvu, BLKADDR_NPA, NPA_AF_EXT_REQ_DWRR);
+
+	seq_printf(m, "NPA_AF_INT_REQ_DWRR (0x0C0): 0x%llx\n", int_req_dwrr);
+	seq_printf(m, "  [55:48] ref_cnt_wt      : %llu\n",
+		   (int_req_dwrr >> 48) & 0xFF);
+	seq_printf(m, "  [47:40] dsf_upd_wt      : %llu\n",
+		   (int_req_dwrr >> 40) & 0xFF);
+	seq_printf(m, "  [39:32] aq_inst_wt      : %llu\n",
+		   (int_req_dwrr >> 32) & 0xFF);
+	seq_printf(m, "  [31:24] batch_free_wt   : %llu\n",
+		   (int_req_dwrr >> 24) & 0xFF);
+	seq_printf(m, "  [23:16] batch_alloc_wt  : %llu\n",
+		   (int_req_dwrr >> 16) & 0xFF);
+	seq_printf(m, "  [15:8]  oob_op_wt       : %llu\n",
+		   (int_req_dwrr >> 8) & 0xFF);
+	seq_printf(m, "  [7:0]   sw_ptr_op_wt    : %llu\n",
+		   int_req_dwrr & 0xFF);
+
+	seq_puts(m, "\n");
+
+	seq_printf(m, "NPA_AF_EXT_REQ_DWRR (0x0C8): 0x%llx\n", ext_req_dwrr);
+	seq_printf(m, "  [55:48] dpi_wt          : %llu\n",
+		   (ext_req_dwrr >> 48) & 0xFF);
+	seq_printf(m, "  [47:40] nixrx_wt        : %llu\n",
+		   (ext_req_dwrr >> 40) & 0xFF);
+	seq_printf(m, "  [39:32] nixtx_wt        : %llu\n",
+		   (ext_req_dwrr >> 32) & 0xFF);
+	seq_printf(m, "  [31:24] xcb_wt          : %llu\n",
+		   (ext_req_dwrr >> 24) & 0xFF);
+	seq_printf(m, "  [23:16] cpt_wt          : %llu\n",
+		   (ext_req_dwrr >> 16) & 0xFF);
+	seq_printf(m, "  [15:8]  tim_wt          : %llu\n",
+		   (ext_req_dwrr >> 8) & 0xFF);
+	seq_printf(m, "  [7:0]   sso_wt          : %llu\n",
+		   ext_req_dwrr & 0xFF);
+
+	return 0;
+}
+
+RVU_DEBUG_SEQ_FOPS(npa_dwrr, npa_dwrr_display, NULL);
+
 static void rvu_dbg_npa_init(struct rvu *rvu)
 {
 	rvu->rvu_dbg.npa = debugfs_create_dir("npa", rvu->rvu_dbg.root);
 
 	debugfs_create_file("qsize", 0600, rvu->rvu_dbg.npa, rvu,
 			    &rvu_dbg_npa_qsize_fops);
+	debugfs_create_file("dwrr", 0400, rvu->rvu_dbg.npa, rvu,
+			    &rvu_dbg_npa_dwrr_fops);
 	debugfs_create_file("aura_ctx", 0600, rvu->rvu_dbg.npa, rvu,
 			    &rvu_dbg_npa_aura_ctx_fops);
 	if (is_cn20k(rvu->pdev))

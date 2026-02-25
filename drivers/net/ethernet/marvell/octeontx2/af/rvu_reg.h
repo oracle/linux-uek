@@ -126,6 +126,8 @@
 #define NPA_AF_GEN_CFG                  (0x0030)
 #define NPA_AF_NDC_CFG                  (0x0040)
 #define NPA_AF_NDC_SYNC                 (0x0050)
+#define NPA_AF_INT_REQ_DWRR             (0x00C0)
+#define NPA_AF_EXT_REQ_DWRR             (0x00C8)
 #define NPA_AF_INP_CTL                  (0x00D0)
 #define NPA_AF_ACTIVE_CYCLES_PC         (0x00F0)
 #define NPA_AF_AVG_DELAY                (0x0100)
