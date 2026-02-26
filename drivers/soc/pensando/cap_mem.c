@@ -350,6 +350,14 @@ static int cap_mem_mmap(struct file *file, struct vm_area_struct *vma)
 
 	default:
 		// CAPMEM_TYPE_COHERENT - default inner shareable mapping
+		if (file->f_flags & O_SYNC) {
+			/*
+			 * Honor non-caching behavior if requested by the user. Required
+			 * for uniform non-cached behvior for cache coherent shared memory
+			 * ioremapped by kpcimgr that is mmapped in userspace.
+			 */
+			pgprot = pgprot_noncached(pgprot);
+		}
 		break;
 	}
 
