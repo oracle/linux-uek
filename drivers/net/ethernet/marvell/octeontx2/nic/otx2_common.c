@@ -942,7 +942,7 @@ int otx2_rq_init(struct otx2_nic *pfvf, u16 qidx, u16 lpb_aura)
 
 	aq->rq.cq = qidx;
 	aq->rq.ena = 1;
-	aq->rq.pb_caching = 1;
+	aq->rq.pb_caching = pfvf->hw.pb_caching;
 	aq->rq.lpb_aura = lpb_aura; /* Use large packet buffer aura */
 	aq->rq.lpb_sizem1 = (DMA_BUFFER_LEN(pfvf->rbsize) / 8) - 1;
 	aq->rq.xqe_imm_size = 0; /* Copying of packet to CQE not needed */

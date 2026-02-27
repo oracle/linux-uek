@@ -412,6 +412,50 @@ static int otx2_dl_mac_stats_reset_validate(struct devlink *devlink, u32 id,
 	return 0;
 }
 
+static int otx2_dl_pb_caching_get(struct devlink *devlink, u32 id,
+				  struct devlink_param_gset_ctx *ctx)
+{
+	struct otx2_devlink *otx2_dl = devlink_priv(devlink);
+	struct otx2_nic *pfvf = otx2_dl->pfvf;
+
+	ctx->val.vu8 = pfvf->hw.pb_caching;
+	return 0;
+}
+
+static int otx2_dl_pb_caching_set(struct devlink *devlink, u32 id,
+				  struct devlink_param_gset_ctx *ctx,
+				  struct netlink_ext_ack *extack)
+{
+	struct otx2_devlink *otx2_dl = devlink_priv(devlink);
+	struct otx2_nic *pfvf = otx2_dl->pfvf;
+	struct net_device *netdev = pfvf->netdev;
+	bool if_up = netif_running(netdev);
+	int err;
+
+	if (if_up)
+		netdev->netdev_ops->ndo_stop(netdev);
+
+	pfvf->hw.pb_caching = ctx->val.vu8;
+
+	if (if_up)
+		err = netdev->netdev_ops->ndo_open(netdev);
+
+	return err;
+}
+
+static int otx2_dl_pb_caching_validate(struct devlink *devlink, u32 id,
+				       union devlink_param_value val,
+				       struct netlink_ext_ack *extack)
+{
+	if (val.vu8 > 3 || val.vu8 < 0) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "PB_CACHING must be 0-3: 0=no cache, 1=cache "
+				   "all, 2=first cache line, 3=first two cache lines");
+		return -EINVAL;
+	}
+	return 0;
+}
+
 enum otx2_dl_param_id {
 	OTX2_DEVLINK_PARAM_ID_BASE = DEVLINK_PARAM_GENERIC_ID_MAX,
 	OTX2_DEVLINK_PARAM_ID_MCAM_COUNT,
@@ -421,6 +465,7 @@ enum otx2_dl_param_id {
 	OTX2_DEVLINK_PARAM_ID_RBUF_SIZE,
 	OTX2_DEVLINK_PARAM_ID_SERDES_LINK,
 	OTX2_DEVLINK_PARAM_ID_MAC_STATS_RST,
+	OTX2_DEVLINK_PARAM_ID_PB_CACHING
 };
 
 static const struct devlink_param otx2_dl_params[] = {
@@ -460,6 +505,12 @@ static const struct devlink_param otx2_dl_params[] = {
 			     otx2_dl_mac_stats_reset_get,
 			     otx2_dl_mac_stats_reset_set,
 			     otx2_dl_mac_stats_reset_validate),
+	DEVLINK_PARAM_DRIVER(OTX2_DEVLINK_PARAM_ID_PB_CACHING,
+			     "pb_caching", DEVLINK_PARAM_TYPE_U8,
+			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
+			     otx2_dl_pb_caching_get,
+			     otx2_dl_pb_caching_set,
+			     otx2_dl_pb_caching_validate)
 };
 
 static const struct devlink_ops otx2_devlink_ops = {

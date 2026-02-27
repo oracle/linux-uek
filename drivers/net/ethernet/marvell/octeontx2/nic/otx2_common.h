@@ -235,6 +235,9 @@ struct otx2_hw {
 	u32			dwrr_mtu;
 	u32			max_mtu;
 	u8			smq_link_type;
+#define NIX_PB_CACHING_DEFAULT  1
+#define NIX_PB_CACHING_MASK     0x3
+	u8			pb_caching;
 
 	/* HW settings, coalescing etc */
 	u16			rx_chan_base;
@@ -722,6 +725,9 @@ static inline bool is_dev_cn10ka_b0(struct pci_dev *pdev)
 static inline void otx2_setup_dev_hw_settings(struct otx2_nic *pfvf)
 {
 	struct otx2_hw *hw = &pfvf->hw;
+
+	/* All writes of SPB/LPB data are allocated into LLC by default */
+	pfvf->hw.pb_caching = (NIX_PB_CACHING_DEFAULT & NIX_PB_CACHING_MASK);
 
 	pfvf->hw.cq_time_wait = CQ_TIMER_THRESH_DEFAULT;
 	pfvf->hw.cq_ecount_wait = CQ_CQE_THRESH_DEFAULT;
