@@ -292,7 +292,7 @@ static int rvu_alloc_mbox_memory(struct rvu *rvu, int type,
 	switch (type) {
 	case TYPE_AFPF:
 		rvu->ng_rvu->pf_mbox_addr = mbox_addr;
-		pa = (u64)mbox_addr->base;
+		pa = (u64)virt_to_phys(mbox_addr->base);
 		for (pf = 0; pf < ndevs; pf++) {
 			rvu_write64(rvu, BLKADDR_RVUM, RVU_MBOX_AF_PFX_ADDR(pf),
 				    pa);
