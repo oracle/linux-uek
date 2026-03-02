@@ -46,7 +46,7 @@ required:
   - reg
   - refresh-rate-hz
 
-additionalProperties: false
+unevaluatedProperties: false
 
 examples:
   - |
