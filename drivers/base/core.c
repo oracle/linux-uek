@@ -2546,6 +2546,7 @@ static void device_release(struct kobject *kobj)
 {
 	struct device *dev = kobj_to_dev(kobj);
 	struct device_private *p = dev->p;
+	struct device_driver_override *override = dev->driver_override;
 
 	/*
 	 * Some platform devices are driven without driver attached
@@ -2559,6 +2560,10 @@ static void device_release(struct kobject *kobj)
 	devres_release_all(dev);
 
 	kfree(dev->dma_range_map);
+	if (override) {
+		kfree(override->name);
+		kfree(override);
+	}
 
 	if (dev->release)
 		dev->release(dev);

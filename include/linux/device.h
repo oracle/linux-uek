@@ -46,6 +46,7 @@ struct iommu_group;
 struct dev_pin_info;
 struct dev_iommu;
 struct msi_device_data;
+struct device_driver_override;
 
 /**
  * struct subsys_interface - interfaces to device functions
@@ -430,6 +431,15 @@ struct dev_msi_info {
 #endif
 };
 
+/*
+ * Generic driver_override state lives out of line so struct device can keep
+ * its kABI-stable layout.
+ */
+struct device_driver_override {
+	const char	*name;
+	spinlock_t	lock;
+};
+
 /**
  * enum device_physical_location_panel - Describes which panel surface of the
  * system's housing the device connection point resides on.
@@ -592,6 +602,8 @@ struct device_physical_location {
  * @dma_skip_sync: DMA sync operations can be skipped for coherent buffers.
  * @dma_iommu: Device is using default IOMMU implementation for DMA and
  *		doesn't rely on dma_ops structure.
+ * @driver_override: Driver name to force a match.  Do not touch directly; use
+ *		     device_set_driver_override() instead.
  *
  * At the lowest level, every device in a Linux system is represented by an
  * instance of struct device. The device structure contains the information
@@ -710,7 +722,7 @@ struct device {
 #ifdef CONFIG_IOMMU_DMA
 	bool			dma_iommu:1;
 #endif
-	UEK_KABI_RESERVE(1)
+	UEK_KABI_USE(1, struct device_driver_override *driver_override)
 };
 
 /**
@@ -742,6 +754,64 @@ struct device_link {
 };
 
 #define kobj_to_dev(__kobj)	container_of_const(__kobj, struct device, kobj)
+
+int __device_set_driver_override(struct device *dev, const char *s, size_t len);
+
+/**
+ * device_set_driver_override() - Helper to set or clear driver override.
+ * @dev: Device to change
+ * @s: NUL-terminated string, new driver name to force a match, pass empty
+ *     string to clear it ("" or "\n", where the latter is only for sysfs
+ *     interface).
+ *
+ * Helper to set or clear driver override of a device.
+ *
+ * Returns: 0 on success or a negative error code on failure.
+ */
+static inline int device_set_driver_override(struct device *dev, const char *s)
+{
+	return __device_set_driver_override(dev, s, s ? strlen(s) : 0);
+}
+
+/**
+ * device_has_driver_override() - Check if a driver override has been set.
+ * @dev: device to check
+ *
+ * Returns true if a driver override has been set for this device.
+ */
+static inline bool device_has_driver_override(struct device *dev)
+{
+	struct device_driver_override *override = READ_ONCE(dev->driver_override);
+
+	if (!override)
+		return false;
+
+	guard(spinlock)(&override->lock);
+	return !!override->name;
+}
+
+/**
+ * device_match_driver_override() - Match a driver against the device's driver_override.
+ * @dev: device to check
+ * @drv: driver to match against
+ *
+ * Returns > 0 if a driver override is set and matches the given driver, 0 if a
+ * driver override is set but does not match, or < 0 if a driver override is not
+ * set at all.
+ */
+static inline int device_match_driver_override(struct device *dev,
+					       const struct device_driver *drv)
+{
+	struct device_driver_override *override = READ_ONCE(dev->driver_override);
+
+	if (!override)
+		return -1;
+
+	guard(spinlock)(&override->lock);
+	if (override->name)
+		return !strcmp(override->name, drv->name);
+	return -1;
+}
 
 /**
  * device_iommu_mapped - Returns true when the device DMA is translated

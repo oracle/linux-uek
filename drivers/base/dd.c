@@ -380,6 +380,94 @@ static void __exit deferred_probe_exit(void)
 }
 __exitcall(deferred_probe_exit);
 
+int __device_set_driver_override(struct device *dev, const char *s, size_t len)
+{
+	struct device_driver_override *override, *new_override = NULL, *old_override;
+	const char *new, *old;
+	char *cp;
+
+	if (!s)
+		return -EINVAL;
+
+	/*
+	 * The stored value will be used in sysfs show callback (sysfs_emit()),
+	 * which has a length limit of PAGE_SIZE and adds a trailing newline.
+	 * Thus we can store one character less to avoid truncation during sysfs
+	 * show.
+	 */
+	if (len >= (PAGE_SIZE - 1))
+		return -EINVAL;
+
+	/*
+	 * Compute the real length of the string in case userspace sends us a
+	 * bunch of \0 characters like python likes to do.
+	 */
+	len = strlen(s);
+
+	if (!len) {
+		/* Empty string passed - clear override */
+		override = READ_ONCE(dev->driver_override);
+		if (!override)
+			return 0;
+
+		spin_lock(&override->lock);
+		old = override->name;
+		override->name = NULL;
+		spin_unlock(&override->lock);
+		kfree(old);
+
+		return 0;
+	}
+
+	cp = strnchr(s, len, '\n');
+	if (cp)
+		len = cp - s;
+
+	new = kstrndup(s, len, GFP_KERNEL);
+	if (!new)
+		return -ENOMEM;
+
+	override = READ_ONCE(dev->driver_override);
+	if (cp != s && !override) {
+		new_override = kzalloc(sizeof(*new_override), GFP_KERNEL);
+		if (!new_override) {
+			kfree(new);
+			return -ENOMEM;
+		}
+
+		spin_lock_init(&new_override->lock);
+		old_override = cmpxchg(&dev->driver_override, NULL, new_override);
+		if (old_override) {
+			kfree(new_override);
+			override = old_override;
+		} else {
+			override = new_override;
+		}
+	}
+
+	if (!override) {
+		kfree(new);
+		return 0;
+	}
+
+	spin_lock(&override->lock);
+	old = override->name;
+	if (cp != s) {
+		override->name = new;
+		spin_unlock(&override->lock);
+	} else {
+		/* "\n" passed - clear override */
+		override->name = NULL;
+		spin_unlock(&override->lock);
+
+		kfree(new);
+	}
+	kfree(old);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(__device_set_driver_override);
+
 /**
  * device_is_bound() - Check if device is bound to a driver
  * @dev: device to check
