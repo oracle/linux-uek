@@ -236,9 +236,9 @@ static void psw_api_notif_wqe_handler(struct work_struct *work)
 	struct psw_rsrc *psw;
 	u64 desc_data, data;
 	void *anq_base;
-	u8 dtype, be;
 	u16 epffunc;
 	u16 pi, ci;
+	u8 dtype;
 	u32 addr;
 
 	psw = rvu->hw->psw;
@@ -252,7 +252,6 @@ static void psw_api_notif_wqe_handler(struct work_struct *work)
 		epffunc = FIELD_GET(ANQ_DESC_EPFFUNC, desc_data);
 		data = FIELD_GET(ANQ_DESC_DATA, desc_data);
 		dtype = FIELD_GET(ANQ_DESC_DTYPE, desc_data);
-		be = FIELD_GET(ANQ_DESC_BE, desc_data);
 
 		if (dtype != PSW_NOTIF_DESC_TYPE_WRITE_CFG) {
 			dev_err_ratelimited(rvu->dev, "Received Incorrect Notif Descriptor %u",
