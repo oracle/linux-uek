@@ -280,10 +280,10 @@ static int npc_mcam_layout_show(struct seq_file *s, void *unused)
 
 				seq_printf(s, "%05u(%#x)%c %s\t\t%05u(%#x)%c %s\n",
 					   idx1, pf2,
-					   test_bit(idx0, npc_priv->en_map) ? '+' : 0,
+					   test_bit(idx1, npc_priv->en_map) ? '+' : 0,
 					   v1 ? buf1 : "       ",
 					   idx0, pf1,
-					   test_bit(idx1, npc_priv->en_map) ? '+' : 0,
+					   test_bit(idx0, npc_priv->en_map) ? '+' : 0,
 					   v0 ? buf0 : "       ");
 
 				continue;

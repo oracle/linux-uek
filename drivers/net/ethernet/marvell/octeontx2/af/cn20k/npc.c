@@ -3757,6 +3757,7 @@ free_rules:
 
 			list_del(&rule->list);
 			kfree(rule);
+			break;
 		}
 	}
 	mutex_unlock(&mcam->lock);
