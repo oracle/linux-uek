@@ -527,7 +527,6 @@ modules-core:
 - xfrm_interface
 - xfrm_ipcomp
 - xfs
-- xhci-pci-renesas
 - xor
 - xt_CHECKSUM
 - xt_MASQUERADE
