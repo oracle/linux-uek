@@ -1586,7 +1586,12 @@ struct task_struct {
 	UEK_KABI_RESERVE(1)
 #endif
 
+#ifdef CONFIG_RANDOMIZE_KSTACK_OFFSET
+	UEK_KABI_USE(2, u32 kstack_offset)
+#else
 	UEK_KABI_RESERVE(2)
+#endif
+
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
 	UEK_KABI_RESERVE(5)
@@ -1596,7 +1601,6 @@ struct task_struct {
 	/* Reserved for cgroups */
 	UEK_KABI_RESERVE(9)
 	UEK_KABI_RESERVE(10)
-
 
 #ifdef CONFIG_X86_MCE
 	void __user			*mce_vaddr;
