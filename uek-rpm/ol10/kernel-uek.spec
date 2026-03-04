@@ -300,6 +300,15 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define asmarch x86
 %define image_install_path boot
 %define kernel_image arch/x86/boot/bzImage
+%if %{with_onosonly}
+%define with_up 0
+%define with_container 0
+%define with_debug 0
+%define with_headers 0
+%define with_bpftool 0
+%define with_tools 0
+%define with_onos 1
+%endif
 %if %{with_container}
 #
 # With binutils >= 2.36 the PVH ELF Note does not function as expected
@@ -310,14 +319,6 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 # by the bootloader.
 #
 %define container_cflags       EXTRA_CFLAGS="-Wa,-mx86-used-note=no"
-%elif %{with_onosonly}
-%define with_up 0
-%define with_container 0
-%define with_debug 0
-%define with_headers 0
-%define with_bpftool 0
-%define with_tools 0
-%define with_onos 1
 %endif
 %endif
 
