@@ -385,6 +385,30 @@ ssize_t psu_show_default(struct device *dev, struct device_attribute *da, char *
         case PSU_FAN_DIR:
             return sprintf(buf, "%s\n", sysfs_attr_info->val.strval);
             break;
+        case PSU_FW_VERSION:
+        {
+            /*
+             * Firmware revision is reported as "major.minor.patch".
+             * Manufacturers return the raw block in one of two layouts:
+             *
+             *   binary: byte[2] = major (bits 0-6), byte[1] = minor,
+             *           byte[0] = patch
+             *   ASCII:  a preformatted "minor.patch" string, with the
+             *           major number still in byte[2]
+             *
+             * A leading digit means the block is ASCII.
+             */
+            unsigned char *fw_data = (unsigned char *)sysfs_attr_info->val.strval;
+
+            if (fw_data[0] >= '0' && fw_data[0] <= '9') {
+                /* ASCII: prepend the major number */
+                return sprintf(buf, "%u.%s", fw_data[2] & 0x7F, sysfs_attr_info->val.strval);
+            } else {
+                /* binary: format the three bytes */
+                return sprintf(buf, "%u.%u.%u\n", fw_data[2] & 0x7F, fw_data[1], fw_data[0]);
+            }
+        }
+        break;
         case PSU_V_OUT:
         case PSU_V_OUT_MIN:
         case PSU_V_OUT_MAX:
