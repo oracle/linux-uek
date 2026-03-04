@@ -1135,11 +1135,13 @@ static int cpld_init(struct cpld_data *cpld)
       slot->present = !!(cpld->present & (1 << i));
       slot->ok = !!(cpld->ok & (1 << i));
       slot->fan_id = &cpld->info->fan_ids[FAN_ID_UNKNOWN];
-
       if (slot->present) {
          cpld_read_slot_id(slot);
       }
+   }
 
+   for (i = 0; i < cpld->info->slot_count; ++i) {
+      slot = slot_from_cpld(cpld, i);
       for (j = 0; j < cpld->fans_per_slot; j++) {
          fan = &slot->fans[j];
          fan->slot = slot;
