@@ -1002,6 +1002,7 @@ modules-core:
 - geneve
 - geniv
 - gen_probe
+- genl-packet
 - g_ether
 - gf128mul
 - gf2k
@@ -1739,6 +1740,13 @@ modules-core:
 - libpoly1305
 - lineage-pem
 - linear
+- linux_bcmgenl
+- linux_ngbde
+- linux_ngedk
+- linux_ngknet
+- linux_ngknetcb
+- linux_ngptpclock
+- linux_ngst
 - liquidio
 - liquidio-core
 - liquidio_vf
