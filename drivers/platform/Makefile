@@ -14,3 +14,4 @@ obj-$(CONFIG_CZNIC_PLATFORMS)	+= cznic/
 obj-$(CONFIG_SURFACE_PLATFORMS)	+= surface/
 obj-$(CONFIG_ARM64_PLATFORM_DEVICES)	+= arm64/
 obj-$(CONFIG_ARISTA_SCD_DRIVER) += arista-sonic/
+obj-$(CONFIG_BCM_HSDK_GPL)	+=  bcm-hsdk-gpl/

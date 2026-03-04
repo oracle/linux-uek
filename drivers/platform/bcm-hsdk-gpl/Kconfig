@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+menuconfig BCM_HSDK_GPL
+        bool "Broadcom HSDK drivers"
+        depends on X86
+        help
+          Say Y here to get to see options for BCM_HSDK_GPL kernel drivers.
+          This option alone does not add any kernel code.
+          If you say N, all options in this submenu will be skipped and disabled.
+
+if BCM_HSDK_GPL
+
+config BCM_HSDK_BDE
+	tristate "Broadcom HSDK BDE core"
+	depends on PCI
+	depends on HAS_DMA
+	help
+	  Build the Broadcom NG BDE core and device access layer.
+
+config BCM_HSDK_KNET
+	tristate "Broadcom HSDK KNET"
+	depends on NETDEVICES
+	depends on BCM_HSDK_BDE
+	help
+	  Build the Broadcom packet I/O network driver together with the
+	  BCMCNET DMA back end.
+
+config BCM_HSDK_KNETCB
+	tristate "Broadcom HSDK KNET callbacks"
+	depends on BCM_HSDK_KNET
+	help
+	  Build the NGKNET callback driver.
+
+config BCM_HSDK_GENL_PACKET
+	tristate "Broadcom HSDK genl-packet transport"
+	help
+	  Build the generic netlink transport used by BCMGENL.
+
+config BCM_HSDK_BCMGENL
+	tristate "Broadcom HSDK BCMGENL"
+	depends on BCM_HSDK_KNET
+	depends on BCM_HSDK_GENL_PACKET
+	help
+	  Build the Broadcom generic netlink callback driver.
+
+config BCM_HSDK_EDK
+	tristate
+	depends on BCM_HSDK_BDE
+
+config BCM_HSDK_PTPCLOCK
+	tristate "Broadcom HSDK PTP clock"
+	depends on PTP_1588_CLOCK
+	depends on BCM_HSDK_KNET
+	select BCM_HSDK_EDK
+	help
+	  Build the Broadcom PTP clock driver.
+	  This also enables the internal EDK helper required by the
+	  timestamp log path.
+
+config BCM_HSDK_ST
+	tristate "Broadcom HSDK streaming telemetry"
+	depends on BCM_HSDK_BDE
+	help
+	  Build the Broadcom streaming telemetry driver.
+
+endif  #BCM_HSDK_GPL
