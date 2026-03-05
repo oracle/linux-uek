@@ -335,6 +335,12 @@ static void rds_connect_worker(struct rds_conn_path *cp,
 		ret = conn->c_trans->conn_path_connect(cp);
 		if (ret)
 			rds_conn_path_drop(cp, DR_CONN_CONNECT_FAIL, ret);
+	} else {
+		pr_info("RDS/%s: connection <%pI6c,%pI6c,%d> connect_worker failed due to conn state '%s'\n",
+			(is_tcp ? "TCP" : "IB"),
+			&conn->c_laddr, &conn->c_faddr, conn->c_tos,
+			conn_state_mnem(atomic_read(&cp->cp_state)));
+		rds_conn_path_drop(cp, DR_INV_CONN_STATE, -ENOLINK);
 	}
 
 out:
