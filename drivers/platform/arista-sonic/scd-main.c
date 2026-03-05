@@ -67,22 +67,6 @@ static void scd_unlock(struct scd_context *ctx)
 
 static struct list_head scd_list;
 
-static struct scd_context *get_context_for_pdev(struct pci_dev *pdev)
-{
-   struct scd_context *ctx;
-
-   module_lock();
-   list_for_each_entry(ctx, &scd_list, list) {
-      if (ctx->pdev == pdev) {
-         module_unlock();
-         return ctx;
-      }
-   }
-   module_unlock();
-
-   return NULL;
-}
-
 static struct scd_context *get_context_for_dev(struct device *dev)
 {
    struct scd_context *ctx;
@@ -726,9 +710,9 @@ fail_new_object:
    return err;
 }
 
-static int scd_ext_hwmon_probe(struct pci_dev *pdev, size_t mem_len)
+static int scd_ext_hwmon_probe(struct device *dev, size_t mem_len)
 {
-   struct scd_context *ctx = get_context_for_pdev(pdev);
+   struct scd_context *ctx = get_context_for_dev(dev);
    int err;
 
    if (ctx) {
@@ -741,8 +725,8 @@ static int scd_ext_hwmon_probe(struct pci_dev *pdev, size_t mem_len)
       return -ENOMEM;
    }
 
-   ctx->pdev = pdev;
-   get_device(&pdev->dev);
+   ctx->dev = dev;
+   get_device(dev);
    INIT_LIST_HEAD(&ctx->list);
 
    ctx->initialized = false;
@@ -759,7 +743,7 @@ static int scd_ext_hwmon_probe(struct pci_dev *pdev, size_t mem_len)
    INIT_LIST_HEAD(&ctx->xcvr_list);
    INIT_LIST_HEAD(&ctx->fan_group_list);
 
-   kobject_get(&pdev->dev.kobj);
+   kobject_get(get_scd_kobj(ctx));
 
    module_lock();
    list_add_tail(&ctx->list, &scd_list);
@@ -777,16 +761,16 @@ fail_sysfs:
    list_del(&ctx->list);
    module_unlock();
 
-   kobject_put(&pdev->dev.kobj);
+   kobject_put(get_scd_kobj(ctx));
    kfree(ctx);
-   put_device(&pdev->dev);
+   put_device(dev);
 
    return err;
 }
 
-static void scd_ext_hwmon_remove(struct pci_dev *pdev)
+static void scd_ext_hwmon_remove(struct device *dev)
 {
-   struct scd_context *ctx = get_context_for_pdev(pdev);
+   struct scd_context *ctx = get_context_for_dev(dev);
 
    if (!ctx) {
       return;
@@ -810,18 +794,18 @@ static void scd_ext_hwmon_remove(struct pci_dev *pdev)
    list_del(&ctx->list);
    module_unlock();
 
-   sysfs_remove_file(&pdev->dev.kobj, &dev_attr_new_object.attr);
-   sysfs_remove_file(&pdev->dev.kobj, &dev_attr_smbus_tweaks.attr);
+   sysfs_remove_file(get_scd_kobj(ctx), &dev_attr_new_object.attr);
+   sysfs_remove_file(get_scd_kobj(ctx), &dev_attr_smbus_tweaks.attr);
 
+   kobject_put(get_scd_kobj(ctx));
    kfree(ctx);
 
-   kobject_put(&pdev->dev.kobj);
-   put_device(&pdev->dev);
+   put_device(dev);
 }
 
-static int scd_ext_hwmon_init_trigger(struct pci_dev *pdev)
+static int scd_ext_hwmon_init_trigger(struct device *dev)
 {
-   struct scd_context *ctx = get_context_for_pdev(pdev);
+   struct scd_context *ctx = get_context_for_dev(dev);
 
    if (!ctx) {
       return -ENODEV;

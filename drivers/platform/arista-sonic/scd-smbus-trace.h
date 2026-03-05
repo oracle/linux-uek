@@ -23,25 +23,42 @@
 
 #include <linux/tracepoint.h>
 
+#define DEV_ID_BUF_SIZE 32
+
+/*
+ * Fills buf with a human-readable device identifier.
+ * For PCI devices: "<bus>:<slot>.<func>" (e.g. "01:00.0")
+ * For other devices (e.g. I2C): the kernel dev_name() string
+ */
+#define SCD_SMBUS_FILL_DEV_ID(dev, buf)                                 \
+   do {                                                                 \
+      if ((dev)->bus == &pci_bus_type) {                                \
+         struct pci_dev *_pdev = to_pci_dev(dev);                       \
+         snprintf(buf, sizeof(buf), "%02x:%02x.%d",                     \
+                  _pdev->bus->number,                                   \
+                  PCI_SLOT(_pdev->devfn),                               \
+                  PCI_FUNC(_pdev->devfn));                              \
+      } else {                                                          \
+         snprintf(buf, sizeof(buf), "%s", dev_name(dev));               \
+      }                                                                 \
+   } while (0)
+
+
 DECLARE_EVENT_CLASS(
         scd_smbus_cs,
         TP_PROTO(struct scd_smbus_master *master,
                  union smbus_ctrl_status_reg cs),
         TP_ARGS(master, cs),
         TP_STRUCT__entry(
-                __field(__u16, pciId)
+                __array(char, devId, DEV_ID_BUF_SIZE)
                 __field(__u16, accId)
                 __field(__u32, reg)),
         TP_fast_assign(
-                __entry->pciId = PCI_DEVID(
-                        master->ctx->pdev->bus->number,
-                        master->ctx->pdev->devfn),
-                __entry->accId = master->id,
-                __entry->reg = cs.reg),
-        TP_printk("%02x:%02x.%d-%d " CS_FMT,
-                  PCI_BUS_NUM(__entry->pciId),
-                  PCI_SLOT(__entry->pciId),
-                  PCI_FUNC(__entry->pciId),
+                SCD_SMBUS_FILL_DEV_ID(master->ctx->dev, __entry->devId);
+                __entry->accId = master->id;
+                __entry->reg = cs.reg;),
+        TP_printk("%s-%d " CS_FMT,
+                  __entry->devId,
                   __entry->accId,
                   CS_ARGS((union smbus_ctrl_status_reg) {
                                   .reg = __entry->reg })))
@@ -64,19 +81,15 @@ TRACE_EVENT(
                  union smbus_request_reg req),
         TP_ARGS(master, req),
         TP_STRUCT__entry(
-                __field(__u16, pciId)
+                __array(char, devId, DEV_ID_BUF_SIZE)
                 __field(__u16, accId)
                 __field(__u32, reg)),
         TP_fast_assign(
-                __entry->pciId = PCI_DEVID(
-                        master->ctx->pdev->bus->number,
-                        master->ctx->pdev->devfn),
-                __entry->accId = master->id,
-                __entry->reg = req.reg),
-        TP_printk("%02x:%02x.%d-%d " REQ_FMT,
-                  PCI_BUS_NUM(__entry->pciId),
-                  PCI_SLOT(__entry->pciId),
-                  PCI_FUNC(__entry->pciId),
+                SCD_SMBUS_FILL_DEV_ID(master->ctx->dev, __entry->devId);
+                __entry->accId = master->id;
+                __entry->reg = req.reg;),
+        TP_printk("%s-%d " REQ_FMT,
+                  __entry->devId,
                   __entry->accId,
                   REQ_ARGS((union smbus_request_reg) {
                                   .reg = __entry->reg })))
@@ -87,19 +100,15 @@ TRACE_EVENT(
                  union smbus_response_reg req),
         TP_ARGS(master, req),
         TP_STRUCT__entry(
-                __field(__u16, pciId)
+                __array(char, devId, DEV_ID_BUF_SIZE)
                 __field(__u16, accId)
                 __field(__u32, reg)),
         TP_fast_assign(
-                __entry->pciId = PCI_DEVID(
-                        master->ctx->pdev->bus->number,
-                        master->ctx->pdev->devfn),
-                __entry->accId = master->id,
-                __entry->reg = req.reg),
-        TP_printk("%02x:%02x.%d-%d " RSP_FMT,
-                  PCI_BUS_NUM(__entry->pciId),
-                  PCI_SLOT(__entry->pciId),
-                  PCI_FUNC(__entry->pciId),
+                SCD_SMBUS_FILL_DEV_ID(master->ctx->dev, __entry->devId);
+                __entry->accId = master->id;
+                __entry->reg = req.reg;),
+        TP_printk("%s-%d " RSP_FMT,
+                  __entry->devId,
                   __entry->accId,
                   RSP_ARGS((union smbus_response_reg) {
                                   .reg = __entry->reg })))
@@ -110,19 +119,15 @@ DECLARE_EVENT_CLASS(
                  union smbus_speed_reg sp),
         TP_ARGS(master, sp),
         TP_STRUCT__entry(
-                __field(__u16, pciId)
+                __array(char, devId, DEV_ID_BUF_SIZE)
                 __field(__u16, accId)
                 __field(__u32, reg)),
         TP_fast_assign(
-                __entry->pciId = PCI_DEVID(
-                        master->ctx->pdev->bus->number,
-                        master->ctx->pdev->devfn),
-                __entry->accId = master->id,
-                __entry->reg = sp.reg),
-        TP_printk("%02x:%02x.%d-%d " SP_FMT,
-                  PCI_BUS_NUM(__entry->pciId),
-                  PCI_SLOT(__entry->pciId),
-                  PCI_FUNC(__entry->pciId),
+                SCD_SMBUS_FILL_DEV_ID(master->ctx->dev, __entry->devId);
+                __entry->accId = master->id;
+                __entry->reg = sp.reg;),
+        TP_printk("%s-%d " SP_FMT,
+                  __entry->devId,
                   __entry->accId,
                   SP_ARGS((union smbus_speed_reg) {
                                   .reg = __entry->reg })))

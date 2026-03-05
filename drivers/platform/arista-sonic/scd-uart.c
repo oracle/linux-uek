@@ -43,13 +43,13 @@ static inline struct scd_context *to_scd_ctx(struct scd_uart_port *port)
 
 static inline u32 scd_read_uart_port(struct scd_uart_port *port, u32 offset)
 {
-   return scd_read_register(to_scd_ctx(port)->pdev, offset);
+   return scd_read_register(to_scd_ctx(port)->dev, offset);
 }
 
 static inline void scd_write_uart_port(struct scd_uart_port *port, u32 offset,
                                        u32 val)
 {
-   scd_write_register(to_scd_ctx(port)->pdev, offset, val);
+   scd_write_register(to_scd_ctx(port)->dev, offset, val);
 }
 
 static inline union uart_rx_ctl scd_read_rx_ctl(struct scd_uart_port *port)
@@ -113,7 +113,7 @@ static inline union uart_tx_sm_res scd_read_tx_sm_res(struct scd_uart_port *port
 }
 
 #define uart_prefix(_func, _uart, _fmt, _args...)            \
-   _func(&to_scd_ctx(to_scd_uart_port(_uart))->pdev->dev,    \
+   _func(to_scd_ctx(to_scd_uart_port(_uart))->dev,    \
          "UART #%u: " _fmt, to_scd_uart_port(_uart)->id, ##_args)
 #define uart_dbg(_uart, _fmt, _args...)                       \
    uart_prefix(dev_dbg, _uart, _fmt, ##_args)
@@ -501,7 +501,7 @@ int scd_uart_add(struct scd_context *ctx, u32 addr, u32 id)
 
    spin_lock_init(&port->port.lock);
    port->port.dev = get_scd_dev(ctx);
-   port->port.irq = ctx->pdev->irq;
+   port->port.irq = scd_get_interrupt_irq(get_scd_dev(ctx));
    port->port.line = id;
    port->port.type = PORT_SCD;
    port->port.ops = &scd_uart_ops;

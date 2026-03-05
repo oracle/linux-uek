@@ -28,7 +28,7 @@ static u32 scd_xcvr_read_register(const struct scd_xcvr_attribute *gpio)
    int i;
    u32 reg;
 
-   reg = scd_read_register(gpio->xcvr->ctx->pdev, gpio->xcvr->addr);
+   reg = scd_read_register(gpio->xcvr->ctx->dev, gpio->xcvr->addr);
    for (i = 0; i < XCVR_ATTR_MAX_COUNT; i++) {
       if (xcvr->attr[i].clear_on_read) {
          xcvr->attr[i].clear_on_read_value =
@@ -83,7 +83,7 @@ static ssize_t attribute_xcvr_set(struct device *dev,
       else
          reg &= ~(1 << gpio->bit);
    }
-   scd_write_register(gpio->xcvr->ctx->pdev, gpio->xcvr->addr, reg);
+   scd_write_register(gpio->xcvr->ctx->dev, gpio->xcvr->addr, reg);
 
    return count;
 }

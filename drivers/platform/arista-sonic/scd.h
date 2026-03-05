@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010-2016 Arista Networks, Inc.
+ * Copyright (C) 2010-2025 Arista Networks, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,19 +36,25 @@ struct scd_ardma_ops {
    bool (*interrupt)(struct pci_dev *pdev);
 };
 
+enum em_interrupt {
+   SCD_EM_INT_HANDOVER = 1U<<0,
+   SCD_EM_INT_TAKEOVER = 1U<<1,
+   SCD_EM_INT_SELF_SUP_PRESENCE = 1U<<2,
+};
 // Allow scd-em callbacks to be registered
 struct scd_em_ops {
-   bool (*probe)(struct pci_dev *pdev);
-   void (*finish_init)(struct pci_dev *pdev);
-   void (*remove)(struct pci_dev *pdev);
+   bool (*probe)(struct device *dev);
+   void (*finish_init)(struct device *dev);
+   void (*interrupt)(struct device *dev, enum em_interrupt which);
+   void (*remove)(struct device *dev);
 };
 
 // Allow scd-ext callbacks to be registered
 struct scd_ext_ops {
-   int (*probe)(struct pci_dev *pdev, size_t mem_len);
-   void (*remove)(struct pci_dev *pdev);
-   int (*init_trigger)(struct pci_dev *pdev);
-   int (*finish_init)(struct pci_dev *pdev);
+   int (*probe)(struct device *dev, size_t mem_len);
+   void (*remove)(struct device *dev);
+   int (*init_trigger)(struct device *dev);
+   int (*finish_init)(struct device *dev);
 };
 
 struct scd_extension {
@@ -61,14 +67,15 @@ int scd_register_ardma_ops(struct scd_ardma_ops *ops);
 void scd_unregister_ardma_ops(void);
 int scd_register_em_ops(struct scd_em_ops *ops);
 void scd_unregister_em_ops(void);
+void scd_enable_em_interrupts(struct device *pdev, int interrupt_select,
+   bool enable);
 int scd_register_extension(struct scd_extension *ext);
 void scd_unregister_extension(struct scd_extension *ext);
-u32 scd_read_register(struct pci_dev *pdev, u32 offset);
-void scd_write_register(struct pci_dev *pdev, u32 offset, u32 val);
-u64 scd_ptp_timestamp(void);
+u32 scd_read_register(struct device *dev, u32 offset);
+void scd_write_register(struct device *dev, u32 offset, u32 val);
+unsigned int scd_get_interrupt_irq(struct device *dev);
 void scd_timestamped_panic(const char *msg);
+extern void (*update_shutdown_dev)(void *);
+extern void (*put_shutdown_dev)(void *);
 
 #endif /* !LINUX_DRIVER_SCD_H_ */
-
-// Copyright (c) 2010-2016 Arista Networks, Inc.  All rights reserved.
-// Arista Networks, Inc. Confidential and Proprietary.

@@ -26,7 +26,7 @@ static ssize_t attribute_gpio_get(struct device *dev,
                                   struct device_attribute *devattr, char *buf)
 {
    const struct scd_gpio_attribute *gpio = to_scd_gpio_attr(devattr);
-   u32 reg = scd_read_register(gpio->ctx->pdev, gpio->addr);
+   u32 reg = scd_read_register(gpio->ctx->dev, gpio->addr);
    u32 res = !!(reg & (1 << gpio->bit));
    res = (gpio->active_low) ? !res : res;
    return sprintf(buf, "%u\n", res);
@@ -48,7 +48,7 @@ static ssize_t attribute_gpio_set(struct device *dev,
    if (value != 0 && value != 1)
       return -EINVAL;
 
-   reg = scd_read_register(gpio->ctx->pdev, gpio->addr);
+   reg = scd_read_register(gpio->ctx->dev, gpio->addr);
    if (gpio->active_low) {
       if (value)
          reg &= ~(1 << gpio->bit);
@@ -60,7 +60,7 @@ static ssize_t attribute_gpio_set(struct device *dev,
       else
          reg &= ~(1 << gpio->bit);
    }
-   scd_write_register(gpio->ctx->pdev, gpio->addr, reg);
+   scd_write_register(gpio->ctx->dev, gpio->addr, reg);
 
    return count;
 }

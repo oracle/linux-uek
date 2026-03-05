@@ -27,16 +27,16 @@
 #include "scd-smbus-trace.h"
 
 #define master_dbg(_master, _fmt, _args... )          \
-   dev_dbg(&(_master)->ctx->pdev->dev, "#%d " _fmt,    \
+   dev_dbg((_master)->ctx->dev, "#%d " _fmt,    \
            (_master)->id, ##_args)
 #define master_notice(_master, _fmt, _args... )       \
-   dev_notice(&(_master)->ctx->pdev->dev, "#%d " _fmt, \
+   dev_notice((_master)->ctx->dev, "#%d " _fmt, \
               (_master)->id, ##_args)
 #define master_warn(_master, _fmt, _args... )         \
-   dev_warn(&(_master)->ctx->pdev->dev, "#%d " _fmt " (%s:%d)",   \
+   dev_warn((_master)->ctx->dev, "#%d " _fmt " (%s:%d)",   \
             (_master)->id, ##_args, __func__, __LINE__)
 #define master_err(_master, _fmt, _args... )          \
-   dev_warn(&(_master)->ctx->pdev->dev, "#%d " _fmt " (%s:%d)",   \
+   dev_warn((_master)->ctx->dev, "#%d " _fmt " (%s:%d)",   \
            (_master)->id, ##_args, __func__, __LINE__)
 
 static int smbus_master_max_retries = MASTER_DEFAULT_MAX_RETRIES;
@@ -67,7 +67,7 @@ static void smbus_master_write_req(struct scd_smbus_master *master,
 {
    trace_scd_smbus_req_wr(master, req);
    master_dbg(master, "wr req " REQ_FMT "\n", REQ_ARGS(req) );
-   scd_write_register(master->ctx->pdev, master->req, req.reg);
+   scd_write_register(master->ctx->dev, master->req, req.reg);
 }
 
 static void smbus_master_write_cs(struct scd_smbus_master *master,
@@ -75,13 +75,13 @@ static void smbus_master_write_cs(struct scd_smbus_master *master,
 {
    trace_scd_smbus_cs_wr(master, cs);
    master_dbg(master, "wr cs " CS_FMT "\n", CS_ARGS(cs));
-   scd_write_register(master->ctx->pdev, master->cs, cs.reg);
+   scd_write_register(master->ctx->dev, master->cs, cs.reg);
 }
 
 static union smbus_ctrl_status_reg smbus_master_read_cs(struct scd_smbus_master *master)
 {
    union smbus_ctrl_status_reg cs;
-   cs.reg = scd_read_register(master->ctx->pdev, master->cs);
+   cs.reg = scd_read_register(master->ctx->dev, master->cs);
    trace_scd_smbus_cs_rd(master, cs);
    master_dbg(master, "rd cs " CS_FMT "\n", CS_ARGS(cs));
    return cs;
@@ -90,7 +90,7 @@ static union smbus_ctrl_status_reg smbus_master_read_cs(struct scd_smbus_master 
 static union smbus_response_reg __smbus_master_read_resp(struct scd_smbus_master *master)
 {
    union smbus_response_reg resp;
-   resp.reg = scd_read_register(master->ctx->pdev, master->resp);
+   resp.reg = scd_read_register(master->ctx->dev, master->resp);
    trace_scd_smbus_rsp_rd(master, resp);
    master_dbg(master, "rd rsp " RSP_FMT "\n", RSP_ARGS(resp));
    return resp;
@@ -101,13 +101,13 @@ static void smbus_master_write_sp(struct scd_smbus_master *master,
 {
    trace_scd_smbus_sp_wr(master, sp);
    master_dbg(master, "wr sp " SP_FMT "\n", SP_ARGS(sp));
-   scd_write_register(master->ctx->pdev, master->sp, sp.reg);
+   scd_write_register(master->ctx->dev, master->sp, sp.reg);
 }
 
 static union smbus_speed_reg smbus_master_read_sp(struct scd_smbus_master *master)
 {
    union smbus_speed_reg sp;
-   sp.reg = scd_read_register(master->ctx->pdev, master->sp);
+   sp.reg = scd_read_register(master->ctx->dev, master->sp);
    trace_scd_smbus_sp_rd(master, sp);
    master_dbg(master, "rd sp " SP_FMT "\n", SP_ARGS(sp));
    return sp;
@@ -611,8 +611,8 @@ static int scd_smbus_bus_add(struct scd_smbus_master *master, int id)
    bus->adap.dev.parent = get_scd_dev(master->ctx);
    scnprintf(bus->adap.name,
              sizeof(bus->adap.name),
-             "SCD %s SMBus master %d bus %d", pci_name(master->ctx->pdev),
-             master->id, bus->id);
+             "SCD %s SMBus master %d bus %d",
+             get_scd_name(master->ctx), master->id, bus->id);
    i2c_set_adapdata(&bus->adap, bus);
    err = i2c_add_adapter(&bus->adap);
    if (err) {

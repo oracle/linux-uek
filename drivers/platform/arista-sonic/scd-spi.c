@@ -24,7 +24,7 @@
 #include "scd-hwmon.h"
 
 #define spi_prefix(_func, _spi, _fmt, _args...)            \
-   _func(&(_spi)->ctx->pdev->dev,    \
+   _func((_spi)->ctx->dev,    \
          "spi @ %#x: " _fmt, (_spi)->csr_addr, ##_args)
 #define spi_dbg(_spi, _fmt, _args...)                       \
    spi_prefix(dev_dbg, _spi, _fmt, ##_args)
@@ -48,13 +48,13 @@ static struct spi_controller *scd_spi_get_controller(struct scd_context *ctx,
 
 static u32 spi_csr_read(struct scd_spi_controller *spi, u32 reg_offset)
 {
-   return scd_read_register(spi->ctx->pdev, spi->csr_addr + reg_offset);
+   return scd_read_register(spi->ctx->dev, spi->csr_addr + reg_offset);
 }
 
 static void spi_csr_write(struct scd_spi_controller *spi,
                           u32 reg_offset, u32 val)
 {
-   scd_write_register(spi->ctx->pdev,
+   scd_write_register(spi->ctx->dev,
                       spi->csr_addr + reg_offset, val);
 }
 

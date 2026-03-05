@@ -38,14 +38,14 @@ static union mdio_ctrl_status_reg mdio_master_read_cs(struct scd_mdio_master *ma
 {
    union mdio_ctrl_status_reg cs;
 
-   cs.reg = scd_read_register(master->ctx->pdev, master->cs);
+   cs.reg = scd_read_register(master->ctx->dev, master->cs);
    return cs;
 }
 
 static void mdio_master_write_cs(struct scd_mdio_master *master,
                                  union mdio_ctrl_status_reg cs)
 {
-   scd_write_register(master->ctx->pdev, master->cs, cs.reg);
+   scd_write_register(master->ctx->dev, master->cs, cs.reg);
 }
 
 static union mdio_ctrl_status_reg get_default_mdio_cs(struct scd_mdio_master *master)
@@ -129,10 +129,10 @@ static s32 scd_mdio_bus_request(struct scd_mdio_bus *mdio_bus,
    req_lo.dt = devad;
    req_lo.pa = prtad;
    req_lo.d = data;
-   scd_write_register(master->ctx->pdev, master->req_lo, req_lo.reg);
+   scd_write_register(master->ctx->dev, master->req_lo, req_lo.reg);
 
    req_hi.ri = mdio_master_get_req_id(master);
-   scd_write_register(master->ctx->pdev, master->req_hi, req_hi.reg);
+   scd_write_register(master->ctx->dev, master->req_hi, req_hi.reg);
 
    err = mdio_master_wait_response(master);
    if (err)
@@ -140,7 +140,7 @@ static s32 scd_mdio_bus_request(struct scd_mdio_bus *mdio_bus,
 
    mdio_master_reset_interrupt(master);
 
-   resp.reg = scd_read_register(master->ctx->pdev, master->resp);
+   resp.reg = scd_read_register(master->ctx->dev, master->resp);
    if (resp.ts != 1 || resp.fe == 1) {
       dev_warn(get_scd_dev(master->ctx), "mdio bus request failed in reading resp");
       return -EIO;
@@ -417,7 +417,7 @@ static int scd_mdio_bus_add(struct scd_mdio_master *master, int id)
    mii_bus->parent = get_scd_dev(master->ctx);
    mii_bus->phy_mask = GENMASK(31, 0);
    scnprintf(mii_bus->id, MII_BUS_ID_SIZE,
-             "scd-%s-mdio-%02x:%02x", pci_name(master->ctx->pdev),
+             "scd-%s-mdio-%02x:%02x", get_scd_name(master->ctx),
              master->id, id);
 
    err = mdiobus_register(mii_bus);

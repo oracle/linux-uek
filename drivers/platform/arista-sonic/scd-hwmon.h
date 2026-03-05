@@ -20,6 +20,7 @@
 
 #include <linux/printk.h>
 #include <linux/pci.h>
+#include <linux/i2c.h>
 
 #include "scd-led.h"
 #include "scd-uart.h"
@@ -30,7 +31,7 @@
 #endif
 
 struct scd_context {
-   struct pci_dev *pdev;
+   struct device *dev;
    size_t res_size;
 
    struct list_head list;
@@ -53,13 +54,26 @@ struct scd_context {
 
 static inline struct device *get_scd_dev(struct scd_context *ctx)
 {
-   return &ctx->pdev->dev;
+   return ctx->dev;
 }
 
 
 static inline struct kobject *get_scd_kobj(struct scd_context *ctx)
 {
-   return &ctx->pdev->dev.kobj;
+   return &ctx->dev->kobj;
+}
+
+static inline const char *get_scd_name(struct scd_context *ctx)
+{
+    if (ctx->dev->bus == &pci_bus_type)
+        return pci_name(to_pci_dev(ctx->dev));
+#ifdef CONFIG_OF
+    // FIXME: make this unique by using adapter data (e.g. "i2c-<nr>-<addr>")
+    // get_scd_name() returns const char * so we cannot snprintf into a local buffer
+    if (ctx->dev->bus == &i2c_bus_type)
+        return "I2C";
+#endif
+    return "N/A";
 }
 
 #endif /* !LINUX_DRIVER_SCD_HWMON_H_ */
