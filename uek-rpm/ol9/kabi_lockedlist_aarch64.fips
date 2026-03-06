@@ -270,6 +270,7 @@
 	__SCK__crypto_x509_free_certificate_key
 	__SCK__crypto_x509_load_certificate_list_key
 	___ratelimit
+	__alloc_skb
 	__bitmap_weight
 	__check_object_size
 	__cond_resched
@@ -291,6 +292,10 @@
 	__module_get
 	__module_put_and_kthread_exit
 	__mutex_init
+	__netlink_dump_start
+	__netlink_kernel_create
+	__nla_parse
+	__nlmsg_put
 	__per_cpu_offset
 	__request_module
 	__seq_puts
@@ -320,6 +325,7 @@
 	crypto_comp_compress
 	crypto_comp_decompress
 	destroy_workqueue
+	do_trace_netlink_extack
 	down_read
 	down_write
 	fips_enabled
@@ -389,6 +395,10 @@
 	mpi_write_to_sgl
 	mutex_lock
 	mutex_unlock
+	netlink_capable
+	netlink_kernel_release
+	netlink_rcv_skb
+	netlink_unicast
 	nla_put
 	nonfips_crypto_alg_list
 	nr_cpu_ids
@@ -415,6 +425,7 @@
 	random_kmalloc_seed
 	refcount_warn_saturate
 	register_key_type
+	register_pernet_subsys
 	register_sysctl_sz
 	remove_proc_entry
 	restrict_link_by_builtin_and_secondary_trusted
@@ -439,6 +450,8 @@
 	sgl_alloc
 	sgl_free
 	sized_strscpy
+	sk_skb_reason_drop
+	skb_trim
 	snprintf
 	sprint_oid
 	sprintf
@@ -453,6 +466,7 @@
 	system_wq
 	try_module_get
 	unregister_key_type
+	unregister_pernet_subsys
 	up_read
 	up_write
 	user_describe

@@ -248,12 +248,6 @@
 	__SCK__crypto_shash_ahash_update_key
 	__SCK__crypto_shash_free_singlespawn_instance_key
 	__SCK__crypto_shash_register_instance_key
-	__SCK__crypto_simd_register_aeads_compat_key
-	__SCK__crypto_simd_register_skciphers_compat_key
-	__SCK__crypto_simd_skcipher_create_compat_key
-	__SCK__crypto_simd_skcipher_free_key
-	__SCK__crypto_simd_unregister_aeads_key
-	__SCK__crypto_simd_unregister_skciphers_key
 	__SCK__crypto_skcipher_alloc_instance_simple_key
 	__SCK__crypto_skcipher_register_instance_key
 	__SCK__crypto_skcipher_walk_aead_decrypt_key
@@ -519,12 +513,6 @@
 	__SCT__crypto_shash_ahash_update_key
 	__SCT__crypto_shash_free_singlespawn_instance_key
 	__SCT__crypto_shash_register_instance_key
-	__SCT__crypto_simd_register_aeads_compat_key
-	__SCT__crypto_simd_register_skciphers_compat_key
-	__SCT__crypto_simd_skcipher_create_compat_key
-	__SCT__crypto_simd_skcipher_free_key
-	__SCT__crypto_simd_unregister_aeads_key
-	__SCT__crypto_simd_unregister_skciphers_key
 	__SCT__crypto_skcipher_alloc_instance_simple_key
 	__SCT__crypto_skcipher_register_instance_key
 	__SCT__crypto_skcipher_walk_aead_decrypt_key
@@ -549,6 +537,7 @@
 	__SCT__crypto_x509_load_certificate_list_key
 	__SCT__might_resched
 	___ratelimit
+	__alloc_skb
 	__bitmap_weight
 	__check_object_size
 	__cpu_online_mask
@@ -570,6 +559,10 @@
 	__module_get
 	__module_put_and_kthread_exit
 	__mutex_init
+	__netlink_dump_start
+	__netlink_kernel_create
+	__nla_parse
+	__nlmsg_put
 	__per_cpu_offset
 	__request_module
 	__seq_puts
@@ -616,6 +609,7 @@
 	crypto_comp_compress
 	crypto_comp_decompress
 	destroy_workqueue
+	do_trace_netlink_extack
 	down_read
 	down_write
 	fips_enabled
@@ -685,6 +679,10 @@
 	mpi_write_to_sgl
 	mutex_lock
 	mutex_unlock
+	netlink_capable
+	netlink_kernel_release
+	netlink_rcv_skb
+	netlink_unicast
 	nla_put
 	nonfips_crypto_alg_list
 	nr_cpu_ids
@@ -714,6 +712,7 @@
 	random_kmalloc_seed
 	refcount_warn_saturate
 	register_key_type
+	register_pernet_subsys
 	register_sysctl_sz
 	remove_proc_entry
 	restrict_link_by_builtin_and_secondary_trusted
@@ -738,6 +737,8 @@
 	sgl_alloc
 	sgl_free
 	sized_strscpy
+	sk_skb_reason_drop
+	skb_trim
 	snprintf
 	sprint_oid
 	sprintf
@@ -753,6 +754,7 @@
 	this_cpu_off
 	try_module_get
 	unregister_key_type
+	unregister_pernet_subsys
 	up_read
 	up_write
 	user_describe
