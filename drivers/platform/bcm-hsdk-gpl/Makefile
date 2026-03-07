@@ -3,9 +3,8 @@
 # Build Broadcom HSDK drivers from the local in-tree bcm-hsdk-gpl
 # source tree.
 
-bcm_hsdk_root := $(srctree)/drivers/platform/bcm-hsdk/bcm-hsdk-gpl
-#bcm_hsdk_root := bcm-hsdk-gpl
-bcm_hsdk_rel := bcm-hsdk-gpl/
+bcm_hsdk_root := $(srctree)/drivers/platform/bcm-hsdk-gpl/bcm-hsdk-gpl-6.5.32
+bcm_hsdk_rel := bcm-hsdk-gpl-6.5.32/
 
 bcm_hsdk_genhdrs := generated/include/bcmcnet/bcmcnet_dep.h \
 	generated/include/bcmcnet/bcmcnet_buff.h

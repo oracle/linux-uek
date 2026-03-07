@@ -1692,7 +1692,7 @@ ngknet_get_drvinfo(struct net_device *ndev, struct ethtool_drvinfo *drvinfo)
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0))
 static int
-ngknet_get_ts_info(struct net_device *ndev, struct ethtool_ts_info *info)
+ngknet_get_ts_info(struct net_device *ndev, struct kernel_ethtool_ts_info *info)
 {
     int rv;
 
