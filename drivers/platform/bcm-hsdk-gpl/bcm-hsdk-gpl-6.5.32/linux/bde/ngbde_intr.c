@@ -330,7 +330,11 @@ ngbde_intr_alloc(int kdev, unsigned int num_irq)
     }
 
     /* Use new API if available (Linux 4.8 and newer) */
+#ifdef PCI_IRQ_INTX
+    irq_types = PCI_IRQ_INTX;
+#else
     irq_types = PCI_IRQ_LEGACY;
+#endif
     if (sd->use_msi) {
         irq_types |= PCI_IRQ_MSI;
         if (sd->use_msi == NGBDE_MSI_T_MSIX) {

@@ -139,7 +139,7 @@ static inline void page_ref_dec(struct page *page)
 #define DMA_FORCE_CONTIGUOUS DMA_ATTR_FORCE_CONTIGUOUS
 #endif
 
-#ifndef PCI_IRQ_LEGACY
+#ifndef PCI_IRQ_INTX
 /* Emulate new IRQ API if not available */
 #define PCI_IRQ_LEGACY          (1 << 0)
 #define PCI_IRQ_MSI             (1 << 1)
