@@ -4171,7 +4171,7 @@ static int irdma_create_ah(struct ib_ah *ibah,
 	struct irdma_sc_ah *sc_ah;
 	u32 ah_id = 0;
 	struct irdma_ah_info *ah_info;
-	struct irdma_create_ah_resp uresp;
+	struct irdma_create_ah_resp uresp = {};
 	union {
 		struct sockaddr saddr;
 		struct sockaddr_in saddr_in;
