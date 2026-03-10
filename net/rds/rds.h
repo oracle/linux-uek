@@ -133,7 +133,6 @@ struct rds_cong_map {
 	struct in6_addr		m_addr;
 	wait_queue_head_t	m_waitq;
 	struct list_head	m_conn_list;
-	struct wait_queue_head *m_wait_queue_ptr;
 	unsigned long		m_page_addrs[RDS_CONG_MAP_PAGES];
 	struct rds_net		*m_rns;
 };
@@ -1167,8 +1166,7 @@ static inline void __rds_wake_sk_sleep(struct sock *sk)
 
 int rds_check_qos_threshold(struct rds_statistics __percpu *stats, u8 tos,
 			    size_t pauload_len);
-#define RDS_NMBR_WAITQ BIT(6)
-extern struct wait_queue_head rds_poll_waitq[RDS_NMBR_WAITQ];
+extern wait_queue_head_t rds_poll_waitq;
 
 void debug_sock_hold(struct sock *sock);
 void debug_sock_put(struct sock *sock);

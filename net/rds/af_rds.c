@@ -221,7 +221,7 @@ char *rds_str_array(char **array, size_t elements, size_t index)
 }
 EXPORT_SYMBOL(rds_str_array);
 
-struct wait_queue_head rds_poll_waitq[RDS_NMBR_WAITQ];
+DECLARE_WAIT_QUEUE_HEAD(rds_poll_waitq);
 
 /* kmem cache slab for struct rds_buf_info */
 static struct kmem_cache *rds_rs_buf_info_slab;
@@ -411,7 +411,7 @@ static unsigned int rds_poll(struct file *file, struct socket *sock,
 	poll_wait(file, sk_sleep(sk), wait);
 
 	if (rs->rs_seen_congestion)
-		poll_wait(file, rs->rs_conn->c_fcong->m_wait_queue_ptr, wait);
+		poll_wait(file, &rds_poll_waitq, wait);
 
 	read_lock_irqsave(&rs->rs_recv_lock, flags);
 	if (!rs->rs_cong_monitor) {
@@ -1577,10 +1577,6 @@ module_exit(rds_exit);
 static int __init rds_init(void)
 {
 	int ret;
-	int i;
-
-	for (i = 0; i < RDS_NMBR_WAITQ; ++i)
-		init_waitqueue_head(rds_poll_waitq + i);
 
 	rds_trace_init();
 	rds_rt_debug_tp_enable();
