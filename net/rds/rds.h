@@ -880,13 +880,6 @@ struct rds_sock {
 	__be16			rs_conn_port;
 	struct rds_transport    *rs_transport;
 
-	/*
-	 * rds_sendmsg caches the conn and conn_path it used the last time
-	 * around. This helps avoid costly lookups.
-	 */
-	struct rds_connection	*rs_conn;
-	struct rds_conn_path	*rs_conn_path;
-
 	/* flag indicating we were congested or not */
 	int			rs_congested;
 	/* seen congestion (ENOBUFS) when sending? */
@@ -941,7 +934,14 @@ struct rds_sock {
 				rs_cong_monitor;
 	unsigned long long	poison;
 
+	/*
+	 * Socket default TOS is user-defined via SIOCRDSSETTOS. It must
+	 * be configured before initiating traffic; once sendmsg() uses the
+	 * socket, TOS is frozen and can no longer be changed. Outgoing
+	 * traffic uses this default unless a per-message override is given.
+	 */
 	u8                      rs_tos;
+	bool			rs_tos_frozen;
 
 	/* Socket receive path trace points*/
 	u8			rs_rx_traces;
