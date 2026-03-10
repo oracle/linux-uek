@@ -107,7 +107,7 @@ static void rds_destroy_mr(struct rds_mr *mr)
 				   __func__, __LINE__, rs, READ_ONCE(rs->poison), nmbr_uaf);
 	}
 
-	trace_rds_mr_destroy(rs, rs->rs_conn, mr, kref_read(&mr->r_kref),
+	trace_rds_mr_destroy(rs, NULL, mr, kref_read(&mr->r_kref),
 			     NULL, 0);
 
 	spin_lock_irqsave(&rs->rs_rdma_lock, flags);
@@ -348,11 +348,11 @@ out:
 	kfree(pages);
 
 	if (ret)
-		trace_rds_mr_get_err(rs, rs->rs_conn, mr,
+		trace_rds_mr_get_err(rs, NULL, mr,
 				     mr ? kref_read(&mr->r_kref) : 0,
 				     reason, ret);
 	else
-		trace_rds_mr_get(rs, rs->rs_conn, mr,
+		trace_rds_mr_get(rs, NULL, mr,
 				 kref_read(&mr->r_kref), NULL, 0);
 
 	if (mr)
