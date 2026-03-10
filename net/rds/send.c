@@ -713,9 +713,10 @@ static inline void do_trace_rds_send_complete(struct rds_message *rm,
 					      struct rds_sock *rs,
 					      char *reason, int status)
 {
-	trace_rds_send_complete(rm, rs, rs ? rs->rs_conn : NULL, NULL,
-				rs && rs->rs_conn ? &rs->rs_conn->c_laddr :
-						    NULL,
+	struct rds_connection *conn = rm ? rm->m_inc.i_conn : NULL;
+
+	trace_rds_send_complete(rm, rs, conn, NULL,
+				conn ? &conn->c_laddr : NULL,
 				rm ? &rm->m_daddr : NULL, reason, status);
 }
 
@@ -1696,42 +1697,29 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 		goto out;
 	}
 
-	/* rds_conn_create has a spinlock that runs with IRQ off.
-	 * Caching the conn in the socket helps a lot.
-	 * But with connection-reaping and no locks, these checks
-	 * are subject to race conditions to be addressed later.
-	 */
-	smp_rmb(); /* for rs_conn->c_destroy_in_prog */
-	if (rs->rs_conn && !rs->rs_conn->c_destroy_in_prog &&
-	    ipv6_addr_equal(&rs->rs_conn->c_faddr, &daddr) &&
-	    tos == rs->rs_conn->c_tos) {
-		conn = rs->rs_conn;
-		cpath = rs->rs_conn_path;
-	} else {
-		conn = rds_conn_create_outgoing(sock_net(sock->sk),
-						&rs->rs_bound_addr, &daddr,
-						rs->rs_transport, tos,
-						sock->sk->sk_allocation,
-						scope_id);
-		if (IS_ERR(conn)) {
-			ret = PTR_ERR(conn);
-			reason = "conn creation error";
-			conn = NULL;
-			goto out;
-		}
-		if (conn->c_trans->t_mp_capable) {
-			/* Use c_path[0] until we learn that
-			 * the peer supports more (c_npaths > 1)
-			 */
-			cpath = &conn->c_path[RDS_MPATH_HASH(rs, conn->c_npaths ? : 1)];
-		} else {
-			cpath = &conn->c_path[0];
-		}
-		if (rs->rs_conn)
-			rds_conn_put(rs->rs_conn); /* rs_conn overwritten */
-		rs->rs_conn = conn; /* put new conn in rds_sock_put() */
-		rs->rs_conn_path = cpath;
+	/* rds_conn_create has a spinlock that runs with IRQ off. */
+	conn = rds_conn_create_outgoing(sock_net(sock->sk),
+					&rs->rs_bound_addr, &daddr,
+					rs->rs_transport, tos,
+					sock->sk->sk_allocation,
+					scope_id);
+	if (IS_ERR(conn)) {
+		ret = PTR_ERR(conn);
+		reason = "conn creation error";
+		conn = NULL;
+		goto out;
 	}
+	if (conn->c_trans->t_mp_capable) {
+		/* Use c_path[0] until we learn that
+		 * the peer supports more (c_npaths > 1)
+		 */
+		cpath = &conn->c_path[RDS_MPATH_HASH(rs, conn->c_npaths ? : 1)];
+	} else {
+		cpath = &conn->c_path[0];
+	}
+
+	/* Freeze default TOS via SIOCRDSSETTOS */
+	WRITE_ONCE(rs->rs_tos_frozen, 1);
 
 	smp_rmb(); /* Pairs with smp_mb() in rds_conn_destroy() */
 	if (conn->c_destroy_in_prog) {
@@ -1882,6 +1870,8 @@ out_ret:
 			kfree(iov->iv_nr_pages);
 		}
 	kfree(iov_arr.iva_iov);
+	if (conn)
+		rds_conn_put(conn); /* for rds_conn_create_outgoing/lookup */
 	return ret;
 }
 

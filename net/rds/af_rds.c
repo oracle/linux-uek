@@ -442,7 +442,7 @@ static unsigned int rds_poll(struct file *file, struct socket *sock,
 	/* clear state any time we wake a seen-congested socket */
 	if (mask) {
 		if (rs->rs_seen_congestion == 1)
-			trace_rds_cong_cleared(rs, rs->rs_conn, NULL,
+			trace_rds_cong_cleared(rs, NULL, NULL,
 					       "poll woke seen-congested sock",
 					       0);
 		rs->rs_seen_congestion = 0;
@@ -468,7 +468,7 @@ static int rds_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 			tos = 0;
 
 		mutex_lock(sock_lock);
-		if (rs->rs_tos || rs->rs_conn) {
+		if (rs->rs_tos || rs->rs_tos_frozen) {
 			mutex_unlock(sock_lock);
 			return -EINVAL;
 		}
@@ -1183,8 +1183,7 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 	rs->rs_rdma_keys = RB_ROOT;
 	rs->poison = 0xABABABAB;
 	rs->rs_tos = 0;
-	rs->rs_conn = NULL;
-	rs->rs_conn_path = NULL;
+	rs->rs_tos_frozen = 0;
 	rs->rs_rx_traces = 0;
 	rs->rs_pid = current->pid;
 	net = sock_net(sk);
@@ -1260,9 +1259,6 @@ void debug_sock_put(struct sock *sk)
 	}
 	if (refcount_dec_and_test(&sk->sk_refcnt)) {
 		struct rds_sock *rs = rds_sk_to_rs(sk);
-
-		if (rs->rs_conn)
-			rds_conn_put(rs->rs_conn); /* rs_conn from rds_sendmsg */
 
 		if (rs->poison != 0xABABABAB) {
 			printk(KERN_CRIT "bad poison on put %x\n", rs->poison);

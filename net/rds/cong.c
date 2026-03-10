@@ -102,10 +102,7 @@ static void rds_cong_notify_worker(struct work_struct *work)
 		atomic64_or(atomic64_read(&rs->rs_cong_mask) & portmask, &rs->rs_cong_notify);
 		atomic64_and(~portmask, &rs->rs_cong_mask);
 		if (atomic64_read(&rs->rs_cong_notify)) {
-			trace_rds_cong_notify(rs, rs->rs_conn,
-					      rs->rs_conn ?
-					      &rs->rs_conn->c_path[0] :
-					      NULL,
+			trace_rds_cong_notify(rs, NULL, NULL,
 					      "cong map update", 0);
 			rds_wake_sk_sleep(rs);
 		}
