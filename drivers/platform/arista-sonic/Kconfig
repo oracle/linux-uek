@@ -8,6 +8,7 @@ config ARISTA_SCD_DRIVER
 	depends on NETDEVICES && ETHERNET
 	depends on PCI
 	depends on I2C
+	select REGMAP_I2C
 	depends on HWMON
 	depends on LEDS_CLASS
 	help
@@ -20,4 +21,3 @@ config ARISTA_SCD_DRIVER
 	  PCI, I2C, HWMON, and LED subsystems.
 
 	  Say Y here to build it into the kernel, or M to build it as a module.
-
