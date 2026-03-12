@@ -461,23 +461,8 @@
 		*(__fips140_digest)					\
 	}
 #else
-#ifdef CONFIG_CRYPTO_FIPS140_EXTMOD
-/*
- * We don't have an external module (yet) but the kernel has been built
- * with the loader, so this just defines an empty byte array where the
- * module will go eventually.
- */
-#define FIPS140 \
-	_binary_fips140_ko_start = .; \
-	_binary_fips140_ko_end = .; \
-	_binary_fips140_hmac_start = .; \
-	_binary_fips140_hmac_end = .;
-#else
 #define FIPS140
 #endif
-#endif
-
-
 
 /*
  * Read only Data
