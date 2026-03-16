@@ -270,7 +270,7 @@
  * leverage those common names making it easier to read and find in the
  * code.
  */
-# define _UEK_KABI_RESERVE(n)		unsigned long uek_reserved##n
+# define _UEK_KABI_RESERVE(n)		u64 uek_reserved##n
 
 #define UEK_KABI_EXCLUDE(_elem)		_UEK_KABI_EXCLUDE(_elem);
 
