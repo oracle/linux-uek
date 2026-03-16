@@ -194,7 +194,7 @@
 # define UEK_KABI_HIDE_INCLUDE(_file)		_file
 # define UEK_KABI_FAKE_INCLUDE(_file)		<linux/uek_kabi.h>
 
-#if IS_BUILTIN(CONFIG_UEK_KABI_SIZE_ALIGN_CHECKS)
+#if IS_BUILTIN(CONFIG_UEK_KABI_SIZE_ALIGN_CHECKS) && defined(CONFIG_64BIT)
 # define __UEK_KABI_CHECK_SIZE_ALIGN(_orig, _new)			\
 	union {								\
 		_Static_assert(sizeof(struct{_new;}) <= sizeof(struct{_orig;}), \
