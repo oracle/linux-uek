@@ -248,6 +248,12 @@
 	__SCK__crypto_shash_ahash_update_key
 	__SCK__crypto_shash_free_singlespawn_instance_key
 	__SCK__crypto_shash_register_instance_key
+	__SCK__crypto_simd_register_aeads_compat_key
+	__SCK__crypto_simd_register_skciphers_compat_key
+	__SCK__crypto_simd_skcipher_create_compat_key
+	__SCK__crypto_simd_skcipher_free_key
+	__SCK__crypto_simd_unregister_aeads_key
+	__SCK__crypto_simd_unregister_skciphers_key
 	__SCK__crypto_skcipher_alloc_instance_simple_key
 	__SCK__crypto_skcipher_register_instance_key
 	__SCK__crypto_skcipher_walk_aead_decrypt_key
@@ -513,6 +519,12 @@
 	__SCT__crypto_shash_ahash_update_key
 	__SCT__crypto_shash_free_singlespawn_instance_key
 	__SCT__crypto_shash_register_instance_key
+	__SCT__crypto_simd_register_aeads_compat_key
+	__SCT__crypto_simd_register_skciphers_compat_key
+	__SCT__crypto_simd_skcipher_create_compat_key
+	__SCT__crypto_simd_skcipher_free_key
+	__SCT__crypto_simd_unregister_aeads_key
+	__SCT__crypto_simd_unregister_skciphers_key
 	__SCT__crypto_skcipher_alloc_instance_simple_key
 	__SCT__crypto_skcipher_register_instance_key
 	__SCT__crypto_skcipher_walk_aead_decrypt_key
@@ -574,6 +586,7 @@
 	__x86_indirect_thunk_r13
 	__x86_indirect_thunk_r14
 	__x86_indirect_thunk_r8
+	__x86_indirect_thunk_r9
 	__x86_indirect_thunk_rax
 	__x86_indirect_thunk_rbp
 	__x86_indirect_thunk_rbx
@@ -654,6 +667,7 @@
 	lzo1x_decompress_safe
 	lzorle1x_1_compress_safe
 	match_string
+	mem_alloc_profiling_key
 	memchr_inv
 	memcmp
 	memcpy

@@ -370,6 +370,7 @@
 	lzo1x_decompress_safe
 	lzorle1x_1_compress_safe
 	match_string
+	mem_alloc_profiling_key
 	memchr_inv
 	memcmp
 	memcpy

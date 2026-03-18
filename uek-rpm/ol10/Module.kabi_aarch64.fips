@@ -369,6 +369,7 @@
 0x04df8fbc	lzo1x_decompress_safe	vmlinux	EXPORT_SYMBOL_GPL
 0x0fab1acc	lzorle1x_1_compress_safe	vmlinux	EXPORT_SYMBOL_GPL
 0x81188c30	match_string	vmlinux	EXPORT_SYMBOL
+0x0f05f001	mem_alloc_profiling_key	vmlinux	EXPORT_SYMBOL
 0x8df92f66	memchr_inv	vmlinux	EXPORT_SYMBOL
 0x449ad0a7	memcmp	vmlinux	EXPORT_SYMBOL
 0x4829a47e	memcpy	vmlinux	EXPORT_SYMBOL
