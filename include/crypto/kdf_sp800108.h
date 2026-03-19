@@ -7,6 +7,7 @@
 #ifndef _CRYPTO_KDF108_H
 #define _CRYPTO_KDF108_H
 
+#include <crypto/api.h>
 #include <crypto/hash.h>
 #include <linux/uio.h>
 
@@ -28,9 +29,11 @@
  *
  * @return 0 on success, < 0 on error
  */
-int crypto_kdf108_ctr_generate(struct crypto_shash *kmd,
-			       const struct kvec *info, unsigned int info_nvec,
-			       u8 *dst, unsigned int dlen);
+DECLARE_CRYPTO_API(crypto_kdf108_ctr_generate, int,
+		   (struct crypto_shash *kmd,
+		    const struct kvec *info, unsigned int info_nvec,
+		    u8 *dst, unsigned int dlen),
+		   (kmd, info, info_nvec, dst, dlen));
 
 /**
  * Counter KDF setkey operation
@@ -54,8 +57,10 @@ int crypto_kdf108_ctr_generate(struct crypto_shash *kmd,
  *
  * @return 0 on success, < 0 on error
  */
-int crypto_kdf108_setkey(struct crypto_shash *kmd,
-			 const u8 *key, size_t keylen,
-			 const u8 *ikm, size_t ikmlen);
+DECLARE_CRYPTO_API(crypto_kdf108_setkey, int,
+		   (struct crypto_shash *kmd,
+		    const u8 *key, size_t keylen,
+		    const u8 *ikm, size_t ikmlen),
+		   (kmd, key, keylen, ikm, ikmlen));
 
 #endif /* _CRYPTO_KDF108_H */

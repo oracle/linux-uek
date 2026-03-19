@@ -8,15 +8,16 @@
 
 #include <linux/fips.h>
 #include <linux/module.h>
+#include <crypto/api.h>
 #include <crypto/kdf_sp800108.h>
 #include <crypto/internal/kdf_selftest.h>
 
 /*
  * SP800-108 CTR KDF implementation
  */
-int crypto_kdf108_ctr_generate(struct crypto_shash *kmd,
-			       const struct kvec *info, unsigned int info_nvec,
-			       u8 *dst, unsigned int dlen)
+int CRYPTO_API(crypto_kdf108_ctr_generate)(struct crypto_shash *kmd,
+					   const struct kvec *info, unsigned int info_nvec,
+					   u8 *dst, unsigned int dlen)
 {
 	SHASH_DESC_ON_STACK(desc, kmd);
 	__be32 counter = cpu_to_be32(1);
@@ -69,14 +70,14 @@ out:
 	shash_desc_zero(desc);
 	return err;
 }
-EXPORT_SYMBOL(crypto_kdf108_ctr_generate);
+DEFINE_CRYPTO_API(crypto_kdf108_ctr_generate);
 
 /*
  * The seeding of the KDF
  */
-int crypto_kdf108_setkey(struct crypto_shash *kmd,
-			 const u8 *key, size_t keylen,
-			 const u8 *ikm, size_t ikmlen)
+int CRYPTO_API(crypto_kdf108_setkey)(struct crypto_shash *kmd,
+				     const u8 *key, size_t keylen,
+				     const u8 *ikm, size_t ikmlen)
 {
 	unsigned int ds = crypto_shash_digestsize(kmd);
 
@@ -91,7 +92,7 @@ int crypto_kdf108_setkey(struct crypto_shash *kmd,
 	/* Set the key for the MAC used for the KDF. */
 	return crypto_shash_setkey(kmd, key, keylen);
 }
-EXPORT_SYMBOL(crypto_kdf108_setkey);
+DEFINE_CRYPTO_API(crypto_kdf108_setkey);
 
 /*
  * Test vector obtained from
@@ -149,8 +150,8 @@ static int __init crypto_kdf108_init(void)
 
 static void __exit crypto_kdf108_exit(void) { }
 
-module_init(crypto_kdf108_init);
-module_exit(crypto_kdf108_exit);
+crypto_module_init(crypto_kdf108_init);
+crypto_module_exit(crypto_kdf108_exit);
 
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Stephan Mueller <smueller@chronox.de>");
