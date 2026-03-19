@@ -29,9 +29,6 @@ fips140-y += crypto/algboss.o crypto/testmgr.o
 
 fips140-y += crypto/sha3_generic.o
 
-# ansi_cprng.ko
-fips140-y += crypto/ansi_cprng.o
-
 # jitterentropy_rng.ko
 CFLAGS_crypto/jitterentropy.o = -O0
 KASAN_SANITIZE_crypto/jitterentropy.o = n
