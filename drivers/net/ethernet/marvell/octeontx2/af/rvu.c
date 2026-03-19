@@ -3784,6 +3784,9 @@ static irqreturn_t rvu_flr_intr_handler(int irq, void *rvu_irq)
 	u64 intr;
 	u8  pf;
 
+	if (is_cn20k(rvu->pdev))
+		goto afvf_flr;
+
 	intr = rvu_read64(rvu, BLKADDR_RVUM, RVU_AF_PFFLR_INT);
 	if (!intr)
 		goto afvf_flr;
