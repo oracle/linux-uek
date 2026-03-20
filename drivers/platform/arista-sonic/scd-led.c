@@ -38,19 +38,6 @@ static int led_legacy_multicolors[][2] = {
    { 0, 0 },
 };
 
-static void scd_led_pmw_config_set(struct scd_context *ctx, u32 regbase)
-{
-   u32 red_addr = regbase + 0x30;
-   u32 green_addr = regbase + 0x34;
-   u32 blue_addr = regbase + 0x38;
-   u32 blue_reg = 0x0;
-   u32 red_reg = 0x0;
-   u32 green_reg = 0x1FFFFFF;
-   scd_write_register(ctx->pdev, green_addr, green_reg);
-   scd_write_register(ctx->pdev, red_addr, red_reg);
-   scd_write_register(ctx->pdev, blue_addr, blue_reg);
-}
-
 static void scd_led_tricolor_config_set(struct scd_context *ctx, u32 regbase)
 {
    struct regs {
@@ -104,18 +91,6 @@ static void led_brightness_set_legacy(struct led_classdev *led_cdev,
       break;
    case 6:
       reg = 0x1C06ff00;
-      break;
-   case 7:
-      scd_led_pmw_config_set(led->ctx, 0x6f00);
-      return;
-   case 10:
-      reg = 0x0;
-      break;
-   case 11:
-      reg = 0x0A000000;
-      break;
-   case 13:
-      reg = 0x0E000000;
       break;
    default:
       reg = 0x1806ff00;
