@@ -13,7 +13,7 @@
  * memory failure (MF) within the page. Only at the end of the mapping
  * will its HWPoison-ed pages be dealt with.
  */
-#define MFD_MF_KEEP_UE_MAPPED	0x0020U
+#define MFD_MF_KEEP_UE_MAPPED	0x02000000U /* this flag value can evolve */
 
 /*
  * Huge page size encoding when MFD_HUGETLB is specified, and a huge page
