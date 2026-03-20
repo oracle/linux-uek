@@ -22,8 +22,8 @@ This repository hosts source code for UEK versions which are in development and 
 |--------------------|-----------------------------|----------------------|-----------------|--------------------------------------------|
 | [`ueknext/latest`](https://github.com/oracle/linux-uek/tree/ueknext/latest) | latest | Production | `x86_64`, `aarch64` | Oracle Linux 9, Oracle Linux 10 |
 | [`uek8/u1`](https://github.com/oracle/linux-uek/tree/uek8/u1)<br/>[`v6.12.0-109.67.6`](https://github.com/oracle/linux-uek/tree/v6.12.0-109.67.6) | v6.12 | Production | `x86_64`, `aarch64` | Oracle Linux 9, Oracle Linux 10 |
-| [`uek7/u3`](https://github.com/oracle/linux-uek/tree/uek7/u3)<br/>[`v5.15.0-319.201.2`](https://github.com/oracle/linux-uek/tree/v5.15.0-319.201.2) | v5.15 | Production | `x86_64`, `aarch64` | Oracle Linux 8, Oracle Linux 9 |
-| [`uek6/u3`](https://github.com/oracle/linux-uek/tree/uek6/u3)<br/>[`v5.4.17-2136.354.2`](https://github.com/oracle/linux-uek/tree/v5.4.17-2136.354.2) | v5.4 | Production | `x86_64`, `aarch64` | Oracle Linux 7, Oracle Linux 8 |
+| [`uek7/u3`](https://github.com/oracle/linux-uek/tree/uek7/u3)<br/>[`v5.15.0-319.201.4`](https://github.com/oracle/linux-uek/tree/v5.15.0-319.201.4) | v5.15 | Production | `x86_64`, `aarch64` | Oracle Linux 8, Oracle Linux 9 |
+| [`uek6/u3`](https://github.com/oracle/linux-uek/tree/uek6/u3)<br/>[`v5.4.17-2136.354.4`](https://github.com/oracle/linux-uek/tree/v5.4.17-2136.354.4) | v5.4 | Production | `x86_64`, `aarch64` | Oracle Linux 7, Oracle Linux 8 |
 
 Building from this repository requires [libdtrace-ctf](https://github.com/oracle/libdtrace-ctf/) in addition to standard kernel build tools.
 
