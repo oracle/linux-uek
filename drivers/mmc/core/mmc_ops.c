@@ -20,6 +20,7 @@
 #include "mmc_ops.h"
 
 #define MMC_BKOPS_TIMEOUT_MS		(120 * 1000) /* 120s */
+#define MMC_CACHE_FLUSH_INTERRUPT_MS	(3 * 1000) /* 3s */
 #define MMC_SANITIZE_TIMEOUT_MS		(240 * 1000) /* 240s */
 
 static const u8 tuning_blk_pattern_4bit[] = {
@@ -56,7 +57,11 @@ struct mmc_busy_data {
 	struct mmc_card *card;
 	bool retry_crc_err;
 	enum mmc_busy_cmd busy_cmd;
+	unsigned long timeout_hpi;
+	bool hpi_sent;
 };
+
+static int mmc_send_hpi_cmd(struct mmc_card *card);
 
 int __mmc_send_status(struct mmc_card *card, u32 *status, unsigned int retries)
 {
@@ -437,13 +442,13 @@ static int mmc_busy_cb(void *cb_data, bool *busy)
 
 	if (data->busy_cmd != MMC_BUSY_IO && host->ops->card_busy) {
 		*busy = host->ops->card_busy(host);
-		return 0;
+		goto maybe_hpi;
 	}
 
 	err = mmc_send_status(data->card, &status);
 	if (data->retry_crc_err && err == -EILSEQ) {
 		*busy = true;
-		return 0;
+		goto maybe_hpi;
 	}
 	if (err)
 		return err;
@@ -467,6 +472,21 @@ static int mmc_busy_cb(void *cb_data, bool *busy)
 		return err;
 
 	*busy = !mmc_ready_for_data(status);
+
+maybe_hpi:
+	if (!data->hpi_sent && data->card->ext_csd.hpi_en &&
+	    time_after(jiffies, data->timeout_hpi) && *busy &&
+	    data->busy_cmd == MMC_BUSY_CMD6) {
+		err = mmc_send_hpi_cmd(data->card);
+		if (err) {
+			pr_err("%s: HPI to interrupt cache flush failed %d\n",
+			       mmc_hostname(host), err);
+		} else {
+			pr_info("%s: HPI sent to interrupt cache flush\n",
+				mmc_hostname(host));
+			data->hpi_sent = true;
+		}
+	}
 	return 0;
 }
 
@@ -520,6 +540,9 @@ int mmc_poll_for_busy(struct mmc_card *card, unsigned int timeout_ms,
 	cb_data.card = card;
 	cb_data.retry_crc_err = retry_crc_err;
 	cb_data.busy_cmd = busy_cmd;
+	cb_data.timeout_hpi = jiffies +
+		msecs_to_jiffies(MMC_CACHE_FLUSH_INTERRUPT_MS) + 1;
+	cb_data.hpi_sent = false;
 
 	return __mmc_poll_for_busy(card, timeout_ms, &mmc_busy_cb, &cb_data);
 }
