@@ -1266,7 +1266,7 @@ static int vfio_ioctl_device_feature(struct vfio_device *device,
 		return vfio_ioctl_device_feature_migration_data_size(
 			device, feature.flags, arg->data,
 			feature.argsz - minsz);
-	case UEK_VFIO_DEVICE_FEATURE_MIG_PRECOPY_INFOv2:
+	case VFIO_DEVICE_FEATURE_MIG_PRECOPY_INFOv2:
 		return vfio_ioctl_device_feature_migration_precopy_info_v2(
 			device, feature.flags, feature.argsz - minsz);
 	default:

@@ -547,7 +547,7 @@ static long mlx5vf_precopy_ioctl(struct file *filp, unsigned int cmd,
 		migf->pre_copy_initial_bytes_start = *pos;
 		migf->pre_copy_initial_bytes = migf->max_pos - *pos;
 		info.initial_bytes = migf->pre_copy_initial_bytes + inc_length;
-		info.flags |= UEK_VFIO_PRECOPY_INFO_REINIT;
+		info.flags |= VFIO_PRECOPY_INFO_REINIT;
 	} else {
 		if (migf->pre_copy_initial_bytes_start +
 		    migf->pre_copy_initial_bytes > *pos) {
