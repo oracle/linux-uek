@@ -295,4 +295,11 @@ config CXL_PMU
 
 	  If unsure say 'm'.
 
+config NVIDIA_TEGRA410_CMEM_LATENCY_PMU
+	tristate "NVIDIA Tegra410 CPU Memory Latency PMU"
+	depends on ARM64 && ACPI
+	help
+	  Enable perf support for CPU memory latency counters monitoring on
+	  NVIDIA Tegra410 SoC.
+
 endmenu
