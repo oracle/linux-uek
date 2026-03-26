@@ -469,6 +469,7 @@ modules-core:
 - ts_bm
 - ts_fsm
 - ts_kmp
+- tsm
 - ttm
 - tun
 - tunnel4
@@ -540,6 +541,7 @@ modules-core:
 /* modules-core: */
 #ifdef Arch_aarch64
 - aes-arm64
+- arm-cca-guest
 - aes-ce-blk
 - aes-ce-ccm
 - aes-ce-cipher
@@ -1694,6 +1696,7 @@ modules:
 - ipr
 - k3dma
 - ksz884x
+- lan743x
 - lan9303-core
 - lan9303_i2c
 - lan9303_mdio
