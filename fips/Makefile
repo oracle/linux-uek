@@ -98,6 +98,7 @@ fips140-y += $(addprefix crypto/, \
 )
 
 fips140-y += crypto/gcm.o
+fips140-y += crypto/keywrap.o
 fips140-y += crypto/xts.o
 fips140-y += crypto/echainiv.o
 fips140-y += crypto/seqiv.o
