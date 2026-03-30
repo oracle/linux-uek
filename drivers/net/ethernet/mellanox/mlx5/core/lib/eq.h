@@ -48,6 +48,7 @@ struct mlx5_eq_comp {
 	struct list_head        list;
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 	u32                     cq_count;
+	struct irq_affinity_notify notify;
 #endif
 };
 
