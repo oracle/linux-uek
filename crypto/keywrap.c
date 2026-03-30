@@ -84,6 +84,7 @@
 #include <linux/module.h>
 #include <linux/crypto.h>
 #include <linux/scatterlist.h>
+#include <crypto/api.h>
 #include <crypto/scatterwalk.h>
 #include <crypto/internal/cipher.h>
 #include <crypto/internal/skcipher.h>
@@ -310,8 +311,8 @@ static void __exit crypto_kw_exit(void)
 	crypto_unregister_template(&crypto_kw_tmpl);
 }
 
-subsys_initcall(crypto_kw_init);
-module_exit(crypto_kw_exit);
+crypto_subsys_initcall(crypto_kw_init);
+crypto_module_exit(crypto_kw_exit);
 
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Stephan Mueller <smueller@chronox.de>");
