@@ -1176,11 +1176,14 @@ BuildKernel() {
     perl -p -i -e "s/^CONFIG_BUILD_SALT.*/CONFIG_BUILD_SALT=\"%{KVERREL}\"/" .config
 
 %if %{with_fips_build}
-    # Prepare for building out-of-tree modules
-    %{make} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} modules_prepare
+    # Seed temporary payloads so an early in-tree module build can generate
+    # the full Module.symvers before the real external FIPS module exists.
+    printf '\0' > crypto/fips140.ko
+    printf '\0' > crypto/fips140.hmac
+    %{make} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} modules
 
     # Build fips140.ko
-    %{make} ARCH=$Arch M=fips/ KBUILD_MODPOST_WARN=1 KBUILD_SYMTYPES=y
+    %{make} ARCH=$Arch M=fips/ KBUILD_SYMTYPES=y
 
     # Copy fips140.ko in preparation for stripping
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer/fips
