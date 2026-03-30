@@ -41,6 +41,8 @@
 
 extern unsigned int mlx5_core_verify_eqe_flag;
 void verify_eqe(struct mlx5_eq *eq, struct mlx5_eqe *eqe);
+void mlx5_eq_reap_irq_notify(struct irq_affinity_notify *notify, const cpumask_t *mask);
+void mlx5_eq_reap_irq_release(struct kref *ref);
 
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
