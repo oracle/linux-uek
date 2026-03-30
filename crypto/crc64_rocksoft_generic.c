@@ -2,6 +2,7 @@
 
 #include <linux/crc64.h>
 #include <linux/module.h>
+#include <crypto/api.h>
 #include <crypto/internal/hash.h>
 #include <linux/unaligned.h>
 
@@ -80,10 +81,23 @@ static void __exit crc64_rocksoft_exit(void)
 	crypto_unregister_shash(&alg);
 }
 
-module_init(crc64_rocksoft_init);
-module_exit(crc64_rocksoft_exit);
+crypto_module_init(crc64_rocksoft_init);
+crypto_module_exit(crc64_rocksoft_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Rocksoft model CRC64 calculation.");
 MODULE_ALIAS_CRYPTO("crc64-rocksoft");
 MODULE_ALIAS_CRYPTO("crc64-rocksoft-generic");
+
+#ifdef FIPS_MODULE
+#undef EXPORT_SYMBOL
+#define EXPORT_SYMBOL(x)
+#undef EXPORT_SYMBOL_GPL
+#define EXPORT_SYMBOL_GPL(x)
+
+/*
+ * Keep the CRC64 library implementation private to the FIPS CRC64 provider.
+ * This avoids a vmlinux dependency on crc64_rocksoft_generic().
+ */
+#include <../lib/crc64.c>
+#endif
