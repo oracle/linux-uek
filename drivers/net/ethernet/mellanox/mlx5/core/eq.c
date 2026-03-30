@@ -968,6 +968,12 @@ static void destroy_comp_eq(struct mlx5_core_dev *dev, struct mlx5_eq_comp *eq, 
 {
 	struct mlx5_eq_table *table = dev->priv.eq_table;
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (irq_set_affinity_notifier(eq->core.irqn, NULL))
+		mlx5_core_warn(dev, "failed to unset EQ 0x%x to irq 0x%x affinty\n",
+			      eq->core.eqn, eq->core.irqn);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	xa_erase(&table->comp_eqs, vecidx);
 	mlx5_eq_disable(dev, &eq->core, &eq->irq_nb);
 	if (destroy_unmap_eq(dev, &eq->core))
@@ -1003,6 +1009,7 @@ static int create_comp_eq(struct mlx5_core_dev *dev, u16 vecidx)
 	struct mlx5_irq *irq;
 	int nent;
 	int err;
+	int ret;
 
 	lockdep_assert_held(&table->comp_lock);
 	if (table->curr_comp_eqs == table->max_comp_eqs) {
@@ -1048,6 +1055,18 @@ static int create_comp_eq(struct mlx5_core_dev *dev, u16 vecidx)
 	err = xa_err(xa_store(&table->comp_eqs, vecidx, eq, GFP_KERNEL));
 	if (err)
 		goto disable_eq;
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	eq->notify.notify = mlx5_eq_reap_irq_notify;
+	eq->notify.release = mlx5_eq_reap_irq_release;
+	ret = irq_set_affinity_notifier(eq->core.irqn, &eq->notify);
+	if (ret) {
+		mlx5_core_warn(dev, "mlx5_eq_reap_irq_nofifier: EQ 0x%x irqn = 0x%x irq_set_affinity_notifier failed: %d\n",
+			      eq->core.eqn, eq->core.irqn, ret);
+	}
+	mlx5_core_dbg(dev, "mlx5_eq_reap_irq_nofifier: EQ 0x%x irqn = 0x%x irq_set_affinity_notifier set.\n",
+		     eq->core.eqn, eq->core.irqn);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	table->curr_comp_eqs++;
 	return eq->core.eqn;
