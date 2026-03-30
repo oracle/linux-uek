@@ -71,6 +71,7 @@ fips140-y += crypto/cmac.o
 fips140-y += crypto/aes_generic.o
 fips140-y += crypto/cbc.o
 fips140-y += crypto/ccm.o
+fips140-y += crypto/cts.o
 fips140-y += crypto/ecb.o
 fips140-y += crypto/ctr.o
 fips140-y += crypto/ecc.o
