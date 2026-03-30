@@ -51,6 +51,11 @@ unsigned int mlx5_core_verify_eqe_flag;
 module_param_named(verify_eqe, mlx5_core_verify_eqe_flag, uint, 0644);
 MODULE_PARM_DESC(verify_eqe, "verify_eqe: 0 = Disable eqe verification, 1 = Enable eqe verification. Default=0");
 
+unsigned int mlx5_reap_eq_irq_aff_change;
+module_param(mlx5_reap_eq_irq_aff_change, int, 0644);
+MODULE_PARM_DESC(mlx5_reap_eq_irq_aff_change, "mlx5_reap_eq_irq_aff_change: 0 = Disable MLX5 EQ Reap upon IRQ affinity change, \
+		1 = Enable MLX5 EQ Reap upon IRQ affinity change. Default=0");
+
 void verify_eqe(struct mlx5_eq *eq, struct mlx5_eqe *eqe)
 {
 	u64 *eight_byte_raw_eqe = (u64 *)eqe;
@@ -87,4 +92,25 @@ void verify_eqe(struct mlx5_eq *eq, struct mlx5_eqe *eqe)
 		       16, 1, eqe, sizeof(*eqe), false);
 }
 
+void mlx5_eq_reap_irq_notify(struct irq_affinity_notify *notify, const cpumask_t *mask)
+{
+	u32 eqe_count;
+	struct mlx5_eq_comp *eq = container_of(notify, struct mlx5_eq_comp, notify);
+
+	if (mlx5_reap_eq_irq_aff_change) {
+		mlx5_core_warn(eq->core.dev, "irqn = 0x%x migration notified, EQ 0x%x: Cons = 0x%x\n",
+			      eq->core.irqn, eq->core.eqn, eq->core.cons_index);
+
+		while (!rtnl_trylock())
+			msleep(20);
+
+		eqe_count = mlx5_eq_poll_irq_disabled(eq);
+		if (eqe_count)
+			mlx5_core_warn(eq->core.dev, "Recovered %d eqes on EQ 0x%x\n",
+				      eqe_count, eq->core.eqn);
+		rtnl_unlock();
+	}
+}
+
+void mlx5_eq_reap_irq_release(struct kref *ref) {}
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
