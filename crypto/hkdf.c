@@ -10,6 +10,7 @@
 #include <crypto/internal/hash.h>
 #include <crypto/sha2.h>
 #include <crypto/hkdf.h>
+#include <linux/fips.h>
 #include <linux/module.h>
 
 /*
@@ -462,11 +463,16 @@ static const struct hkdf_testvec hkdf_sha512_tv[] = {
 };
 
 static int hkdf_test(const char *shash, const struct hkdf_testvec *tv)
-{	struct crypto_shash *tfm = NULL;
+{
+	struct crypto_shash *tfm = NULL;
 	u8 *prk = NULL, *okm = NULL;
 	unsigned int prk_size;
 	const char *driver;
 	int err;
+
+	/* Skip the tests with keys too short in FIPS mode */
+	if (fips_enabled && (tv->salt_size < 112 / 8))
+		return 0;
 
 	tfm = crypto_alloc_shash(shash, 0, 0);
 	if (IS_ERR(tfm)) {
