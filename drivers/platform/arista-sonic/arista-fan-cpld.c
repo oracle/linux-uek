@@ -25,7 +25,7 @@
 #include <linux/leds.h>
 #include <linux/version.h>
 
-#define DRIVER_NAME "minke-fan-cpld"
+#define DRIVER_NAME "arista-fan-cpld"
 
 #define LED_NAME_MAX_SZ 20
 #define MAX_SLOT_COUNT 8
@@ -1309,4 +1309,4 @@ module_exit(pali_cpld_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Arista Networks");
-MODULE_DESCRIPTION("Pali fan cpld");
+MODULE_DESCRIPTION("Arista fan cpld");
