@@ -254,9 +254,10 @@
 #define PPR_REQ_FAULT		0x01
 
 /* Constants for GA Log handling */
-#define GA_LOG_ENTRIES		512
+#define GA_LOG_ENTRIES		8192
 #define GA_LOG_SIZE_SHIFT	56
 #define GA_LOG_SIZE_512		(0x8ULL << GA_LOG_SIZE_SHIFT)
+#define GA_LOG_SIZE_8192	(0xCULL << GA_LOG_SIZE_SHIFT)
 #define GA_ENTRY_SIZE		8
 #define GA_LOG_SIZE		(GA_ENTRY_SIZE * GA_LOG_ENTRIES)
 

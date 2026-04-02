@@ -889,7 +889,7 @@ static int iommu_ga_log_enable(struct amd_iommu *iommu)
 	if (!iommu->ga_log)
 		return -EINVAL;
 
-	entry = iommu_virt_to_phys(iommu->ga_log) | GA_LOG_SIZE_512;
+	entry = iommu_virt_to_phys(iommu->ga_log) | GA_LOG_SIZE_8192;
 	memcpy_toio(iommu->mmio_base + MMIO_GA_LOG_BASE_OFFSET,
 		    &entry, sizeof(entry));
 	entry = (iommu_virt_to_phys(iommu->ga_log_tail) &
