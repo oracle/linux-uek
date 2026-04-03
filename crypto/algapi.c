@@ -32,11 +32,10 @@ static inline void crypto_check_module_sig(struct module *mod)
 {
 #ifdef FIPS_MODULE
 	/*
-	 * The FIPS module should ignore module signatures while it is
-	 * not yet operational (i.e. while it is still loading its
-	 * individual unsigned kernel modules).
+	 * The FIPS module should ignore its own signature check, as it was
+	 * already verified during loading.
 	 */
-	if (!fips_operational)
+	if (mod == THIS_MODULE)
 		return;
 #else
 	if (!fips_enabled)
