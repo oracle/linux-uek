@@ -646,6 +646,7 @@ static inline bool mptcp_has_another_subflow(struct sock *ssk)
 void __init mptcp_proto_init(void);
 #if IS_ENABLED(CONFIG_MPTCP_IPV6)
 int __init mptcp_proto_v6_init(void);
+void __init mptcp_subflow_v6_init(void);
 #endif
 
 struct sock *mptcp_sk_clone(const struct sock *sk,
