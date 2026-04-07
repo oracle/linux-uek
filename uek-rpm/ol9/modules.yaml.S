@@ -15,7 +15,6 @@ modules-core:
 - act_tunnel_key
 - act_vlan
 - adiantum
-- aes_ti
 - af_key
 - ah4
 - ah6
@@ -37,7 +36,6 @@ modules-core:
 - bch
 - be2iscsi
 - binfmt_misc
-- blake2b
 - blocklayoutdriver
 - blowfish_common
 - blowfish_generic
@@ -70,7 +68,6 @@ modules-core:
 - cnic
 - cordic
 - crc-itu-t
-- crc32c-cryptoapi
 - crc7
 - cryptd
 - crypto_engine
@@ -80,6 +77,7 @@ modules-core:
 - cxgb3i
 - cxgb4
 - cxgb4i
+- cxl_acpi
 - cxl_pmem
 - deflate
 - des_generic
@@ -155,7 +153,6 @@ modules-core:
 - hv_utils
 - hwpoison-inject
 - hyperv_drm
-- hyperv_fb
 - i2c-algo-bit
 - i2c-smbus
 - i40e
@@ -239,6 +236,7 @@ modules-core:
 - libie_fwlog
 - libiscsi
 - libiscsi_tcp
+- libnh
 - libnvdimm
 - libpoly1305
 - libsas
@@ -372,7 +370,6 @@ modules-core:
 - nft_tproxy
 - nft_tunnel
 - nft_xfrm
-- nhpoly1305
 - nls_ucs2_utils
 - nls_utf8
 - nsh
@@ -542,10 +539,8 @@ modules-core:
 
 /* modules-core: */
 #ifdef Arch_aarch64
-- aes-arm64
 - aes-ce-blk
 - aes-ce-ccm
-- aes-ce-cipher
 - aes-neon-blk
 - aes-neon-bs
 - arm_dmc620_pmu
@@ -610,7 +605,6 @@ modules-core:
 - i2c-i801
 - i2c-piix4
 - i5500_temp
-- iTCO_vendor_support
 - iTCO_wdt
 - intel_pch_thermal
 - intel_pmc_bxt
@@ -645,8 +639,6 @@ modules-core:
 - mstflint_access
 - mxm-wmi
 - nd_e820
-- nhpoly1305-avx2
-- nhpoly1305-sse2
 - opbmc
 - ovmapi
 - pcc-cpufreq
@@ -810,7 +802,6 @@ modules:
 - cxgb
 - cxgb4vf
 - cxgbit
-- cxl_mem
 - cxl_pmu
 - cyapatp
 - davicom
@@ -818,7 +809,6 @@ modules:
 - dl2k
 - dm-io-affinity
 - dm9601
-- dnet
 - dp83640
 - dp83822
 - dp83848
@@ -1799,7 +1789,6 @@ modules:
 - pwm-fan
 - pwm-tegra
 - pwm_bl
-- pwrseq-core
 - pwrseq-qcom-wcn
 - qca8k
 - qcom-emac
@@ -2261,7 +2250,6 @@ modules:
 - rionet
 - rivafb
 - rtc-m48t86
-- s2io
 - samsung-laptop
 - samsung-q10
 - sata_inic162x
@@ -3577,6 +3565,7 @@ modules-desktop:
 - vsp1
 - zet6223
 - zforce_ts
+- inno-hdmi
 #endif /* Arch_aarch64 */
 
 /* modules-desktop: */
@@ -3623,7 +3612,6 @@ modules-desktop:
 - ov2740
 - ov5675
 - ov8856
-- pinctrl-cs42l43
 - pinctrl-intel-platform
 - pinctrl-meteorlake
 - pinctrl-meteorpoint
@@ -3672,6 +3660,7 @@ modules-desktop:
 - snd-soc-acp6x-mach
 - snd-soc-acpi
 - snd-soc-acpi-amd-match
+- snd-soc-acpi-amd-sdca-quirks
 - snd-soc-acpi-intel-match
 - snd-soc-acpi-intel-sdca-quirks
 - snd-soc-avs
@@ -3719,6 +3708,7 @@ modules-desktop:
 - snd-soc-intel-sof-maxim-common
 - snd-soc-intel-sof-nuvoton-common
 - snd-soc-intel-sof-realtek-common
+- snd-soc-intel-sof-ti-common
 - snd-soc-max98363
 - snd-soc-max98373-i2c
 - snd-soc-max98388
@@ -3763,6 +3753,7 @@ modules-desktop:
 - snd-soc-tas2781-comlib
 - snd-soc-tas2781-comlib-i2c
 - snd-soc-tas2781-fmwlib
+- snd-soc-tas2781-i2c
 - snd-soc-wm-adsp
 - snd-sof
 - snd-sof-acpi
@@ -3795,10 +3786,10 @@ modules-desktop:
 - snd-sof-utils
 - snd-sof-xtensa-dsp
 - soundwire-amd
-- spi-cs42l43
 - toshiba_acpi
 - toshiba_bluetooth
 - usdhi6rol0
+- v4l2-cci
 - wbsd
 - winbond-cir
 - yenta_socket
@@ -4049,6 +4040,7 @@ modules-wireless:
 - ath11k
 - ath11k_pci
 - ath12k
+- ath12k_wifi7
 - ath9k
 - ath9k_common
 - ath9k_htc
@@ -4172,4 +4164,3 @@ modules-wireless:
 - libipw
 - iwlmld
 #endif /* Arch_x86_64 */
-
