@@ -1452,6 +1452,12 @@ static inline int tcrypt_test(const char *name)
 		return PTR_ERR(alg);
 	}
 
+	if (fips_enabled && (alg->cra_flags & CRYPTO_ALG_TESTED)) {
+		/* The crypto manager already ran the self-test. */
+		crypto_mod_put(alg);
+		return 0;
+	}
+
 	ret = alg_test(alg, alg->cra_driver_name, alg->cra_name,
 				alg->cra_flags, 0);
 	/* non-fips algs return -EINVAL or -ECANCELED in fips mode */
