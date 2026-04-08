@@ -149,15 +149,14 @@ static struct ctl_table crypto_sysctl_table[] = {
 
 static struct ctl_table_header *crypto_sysctls;
 
-static int __init check_nonfips_alg_list(void)
+static int __init check_crypto_alg_list(void)
 {
-	extern struct list_head nonfips_crypto_alg_list;
-
 	struct crypto_alg *q;
 	int err = 0;
 
-	list_for_each_entry(q, &nonfips_crypto_alg_list, cra_list) {
-		pr_err("FIPS 140: found registered non-FIPS algorithm %s (%s)\n", q->cra_name, q->cra_driver_name);
+	list_for_each_entry(q, &crypto_alg_list, cra_list) {
+		pr_err("FIPS 140: found registered algorithm %s (%s)\n",
+		       q->cra_name, q->cra_driver_name);
 		err = 1;
 	}
 
@@ -192,8 +191,8 @@ static int __init fips140_init(void)
 {
 	pr_info("FIPS 140: %s version %s\n", fips_name, fips_version);
 
-	if (check_nonfips_alg_list())
-		panic("FIPS 140: found registered non-FIPS algorithms\n");
+	if (check_crypto_alg_list())
+		panic("FIPS 140: found registered algorithms before FIPS startup\n");
 
 	run_initcalls();
 

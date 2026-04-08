@@ -60,16 +60,6 @@ enum {
 /* Maximum number of (rtattr) parameters for each template. */
 #define CRYPTO_MAX_ATTRS 32
 
-#ifndef FIPS_MODULE
-#define crypto_alg_list nonfips_crypto_alg_list
-#define crypto_alg_sem nonfips_crypto_alg_sem
-#define crypto_chain nonfips_crypto_chain
-#else
-#define crypto_alg_list fips_crypto_alg_list
-#define crypto_alg_sem fips_crypto_alg_sem
-#define crypto_chain fips_crypto_chain
-#endif
-
 extern struct list_head crypto_alg_list;
 extern struct rw_semaphore crypto_alg_sem;
 extern struct blocking_notifier_head crypto_chain;
@@ -255,4 +245,3 @@ static inline struct crypto_tfm *crypto_tfm_get(struct crypto_tfm *tfm)
 }
 
 #endif	/* _CRYPTO_INTERNAL_H */
-
