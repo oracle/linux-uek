@@ -357,21 +357,7 @@ static bool is_entry_func(unsigned long addr)
 
 static inline unsigned long bt_address(unsigned long ra)
 {
-#if defined(CONFIG_NUMA) && !defined(CONFIG_PREEMPT_RT)
-	int cpu;
-	int vec_sz = sizeof(exception_handlers);
-
-	for_each_possible_cpu(cpu) {
-		if (!pcpu_handlers[cpu])
-			continue;
-
-		if (ra >= pcpu_handlers[cpu] &&
-		    ra < pcpu_handlers[cpu] + vec_sz) {
-			ra = ra + eentry - pcpu_handlers[cpu];
-			break;
-		}
-	}
-#endif
+	extern unsigned long eentry;
 
 	if (ra >= eentry && ra < eentry +  EXCCODE_INT_END * VECSIZE) {
 		unsigned long func;
