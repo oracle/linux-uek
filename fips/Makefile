@@ -66,7 +66,6 @@ fips140-y += $(addprefix crypto/, \
 fips140-y += crypto/sha256_generic.o
 fips140-$(CONFIG_CRYPTO_KDF800108_CTR) += crypto/kdf_sp800108.o
 
-fips140-y += crypto/crypto_user.o
 fips140-y += crypto/cmac.o
 fips140-y += crypto/aes_generic.o
 fips140-y += crypto/cbc.o
