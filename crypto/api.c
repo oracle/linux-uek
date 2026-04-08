@@ -23,6 +23,7 @@
 #include <linux/completion.h>
 #include "internal.h"
 
+#ifndef FIPS_MODULE
 LIST_HEAD(crypto_alg_list);
 EXPORT_SYMBOL_GPL(crypto_alg_list);
 DECLARE_RWSEM(crypto_alg_sem);
@@ -30,6 +31,7 @@ EXPORT_SYMBOL_GPL(crypto_alg_sem);
 
 BLOCKING_NOTIFIER_HEAD(crypto_chain);
 EXPORT_SYMBOL_GPL(crypto_chain);
+#endif
 
 #if IS_BUILTIN(CONFIG_CRYPTO_ALGAPI) && \
     !IS_ENABLED(CONFIG_CRYPTO_MANAGER_DISABLE_TESTS)
