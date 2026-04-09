@@ -306,7 +306,7 @@
 			compatible = "pensando,uio_penmsi1";
 			reg = <0x0 0x520000 0x0 0x10000>;
 			msi-parent = <&its 0xa>;
-			num-interrupts = <16>;  /* # MSI interrupts to get */
+			num-interrupts = <32>;  /* # MSI interrupts to get */
 		};
 
 		gic: interrupt-controller@800000 {
@@ -440,7 +440,7 @@
 
 		kpcimgr@20000000 {
 			compatible = "pensando,kpcimgr";
-			msi-parent = <&its 0xf>;
+			msi-parent = <&its 0x1f>;
 			kstate-index = <4>;
 			shmem-index = <3>;
 			hwmem-index = <2>;
