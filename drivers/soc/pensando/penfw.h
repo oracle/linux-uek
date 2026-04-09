@@ -98,4 +98,43 @@ typedef struct penfw_svc_args_s {
 void penfw_smc(struct penfw_call_args *args);
 long penfw_svc_smc(penfw_svc_args_t *args);
 
+#define PENFW_CERT_CHAIN_MAX_LEN  4096
+
+struct penfw_get_cert_chain_req {
+	uint32_t chunk_size;
+	uint32_t offset;
+	uint64_t cert_buff;	/* physical address of chunk data area */
+};
+
+struct penfw_attest_meas_req {
+	uint8_t  nonce[PENFW_NONCE_LEN];
+	uint8_t *meas_buf;
+	uint32_t meas_buflen;
+	uint8_t *sig;
+	uint32_t siglen;
+};
+
+#define PENFW_MEAS_DIGEST_LEN	64
+
+struct penfw_meas {
+	uint32_t meas_id;
+	uint32_t hash_fct;
+	uint8_t  meas_value[PENFW_MEAS_DIGEST_LEN];
+};
+
+struct penfw_meas_resp_hdr {
+	uint32_t magic_number;
+	uint32_t version;
+	uint8_t  nonce[PENFW_NONCE_LEN];
+	uint32_t resp_len;
+};
+
+struct penfw_meas_resp {
+	struct penfw_meas_resp_hdr hdr;
+	uint32_t sig_algo;
+	uint32_t sig_len;
+	uint32_t meas_count;
+	struct penfw_meas meas[0];
+};
+
 #endif /* __PENFW_H__ */

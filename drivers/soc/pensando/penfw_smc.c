@@ -14,6 +14,9 @@
 
 #define PENFW_CALL_FID			    0xC2000002
 
+#define PENFW_CERT_CHAIN_CHUNK_SZ \
+	(PAGE_SIZE - sizeof(struct penfw_get_cert_chain_req))
+
 extern void *penfwdata;
 extern struct device *penfw_dev;
 extern phys_addr_t penfwdata_phys;
@@ -77,6 +80,10 @@ static const char *_opcode_to_str(uint8_t opcode)
 		return "PENFW_OP_SET_RESET_CAUSE";
 	case PENFW_OP_PCIEPORT_DOWNLOAD_FW:
 		return "PENFW_OP_PCIEPORT_DOWNLOAD_FW";
+	case PENFW_OP_GET_CERT_CHAIN:
+		return "PENFW_OP_GET_CERT_CHAIN";
+	case PENFW_OP_ATTEST_MEAS:
+		return "PENFW_OP_ATTEST_MEAS";
 	default:
 		return "PENFW_OP_UNKNOWN";
 	}
@@ -287,6 +294,174 @@ err:
 		free_pages((unsigned long)fw_buf, get_order(PCIE_SERDES_FW_SIZE));
 }
 
+/*
+ * a1 = smc op (PENFW_OP_GET_CERT_CHAIN)
+ * a2 = userspace output buffer pointer (must be non-NULL)
+ */
+static void penfw_smc_get_cert_chain(struct penfw_call_args *args)
+{
+	struct penfw_get_cert_chain_req *req;
+	struct arm_smccc_res res = {0};
+	void __user *user_cert = (void __user *)args->a2;
+	void *buf;
+	phys_addr_t buf_phys, chunk_phys;
+	uint8_t *chunk_buf;
+	uint32_t remaining = 0, offset = 0, written;
+
+	if (!user_cert) {
+		args->a0 = -1;
+		return;
+	}
+
+	buf = (void *)__get_free_pages(GFP_KERNEL | GFP_DMA32 | __GFP_ZERO, 0);
+	if (!buf) {
+		args->a0 = -1;
+		return;
+	}
+	buf_phys = virt_to_phys(buf);
+
+	req = buf;
+	chunk_buf = (uint8_t *)buf + sizeof(*req);
+	chunk_phys = buf_phys + sizeof(*req);
+
+	do {
+		req->chunk_size = (remaining > 0 && remaining < PENFW_CERT_CHAIN_CHUNK_SZ) ?
+					remaining : (uint32_t)PENFW_CERT_CHAIN_CHUNK_SZ;
+		req->offset    = offset;
+		req->cert_buff = (uint64_t)chunk_phys;
+
+		arm_smccc_smc(PENFW_CALL_FID, PENFW_OP_GET_CERT_CHAIN,
+			      (uint64_t)buf_phys, 0, 0, 0, 0, 0, &res);
+
+		if (res.a0 != 0) {
+			args->a0 = -1;
+			goto out;
+		}
+
+		written   = (uint32_t)res.a2;
+		remaining = (uint32_t)res.a1;
+
+		if (offset + written > PENFW_CERT_CHAIN_MAX_LEN ||
+		    copy_to_user((uint8_t __user *)user_cert + offset,
+				 chunk_buf, written)) {
+			args->a0 = -EFAULT;
+			goto out;
+		}
+		offset += written;
+	} while (remaining > 0);
+
+	args->a0 = 0;
+	args->a1 = offset;
+out:
+	memset(buf, 0, PAGE_SIZE);
+	free_pages((unsigned long)buf, 0);
+}
+
+/*
+ * a1 = smc op (PENFW_OP_ATTEST_MEAS)
+ * a2 = pointer to user-provided struct penfw_attest_meas_req
+ */
+static void penfw_smc_attest_meas(struct penfw_call_args *args)
+{
+	struct penfw_attest_meas_req u_req;
+	struct penfw_attest_meas_req *bl31req;
+	struct arm_smccc_res res = {0};
+	struct penfw_meas_resp_hdr *hdr;
+	void *buf;
+	phys_addr_t buf_phys;
+	uint8_t *meas_kbuf;
+	phys_addr_t meas_phys;
+	uint8_t *sig_kbuf;
+	phys_addr_t sig_phys;
+	uint32_t probe_buflen = sizeof(struct penfw_meas_resp_hdr);
+	uint32_t resp_len;
+
+	if (copy_from_user(&u_req, (void __user *)args->a2, sizeof(u_req))) {
+		args->a0 = -EFAULT;
+		return;
+	}
+
+	buf = (void *)__get_free_pages(GFP_KERNEL | GFP_DMA32 | __GFP_ZERO, 0);
+	if (!buf) {
+		args->a0 = -1;
+		return;
+	}
+	buf_phys = virt_to_phys(buf);
+
+	/* === Call 1: probe (siglen=0) to get resp_len === */
+	bl31req = buf;
+	meas_kbuf = (uint8_t *)buf + sizeof(*bl31req);
+	meas_phys = buf_phys + sizeof(*bl31req);
+
+	memcpy(bl31req->nonce, u_req.nonce, PENFW_NONCE_LEN);
+	bl31req->meas_buf    = (uint8_t *)(uintptr_t)meas_phys;
+	bl31req->meas_buflen = probe_buflen;
+	bl31req->sig         = NULL;
+	bl31req->siglen      = 0;
+
+	arm_smccc_smc(PENFW_CALL_FID, PENFW_OP_ATTEST_MEAS,
+		      (uint64_t)buf_phys, 0, 0, 0, 0, 0, &res);
+
+	if (res.a0 != 0) {
+		args->a0 = -1;
+		goto out;
+	}
+
+	hdr = (struct penfw_meas_resp_hdr *)meas_kbuf;
+	resp_len = hdr->resp_len;
+
+	if (resp_len == 0 ||
+	    sizeof(*bl31req) + (uint64_t)resp_len + PENFW_EC_SIG_SZ > PAGE_SIZE) {
+		args->a0 = -1;
+		goto out;
+	}
+
+	if (u_req.meas_buflen < resp_len) {
+		args->a0 = -1;
+		goto out;
+	}
+
+	/* === Call 2: full fetch (siglen=96) === */
+	memset(buf, 0, PAGE_SIZE);
+	res = (struct arm_smccc_res){0};
+
+	bl31req = buf;
+	meas_kbuf = (uint8_t *)buf + sizeof(*bl31req);
+	meas_phys = buf_phys + sizeof(*bl31req);
+	sig_kbuf = meas_kbuf + resp_len;
+	sig_phys = meas_phys + resp_len;
+
+	memcpy(bl31req->nonce, u_req.nonce, PENFW_NONCE_LEN);
+	bl31req->meas_buf    = (uint8_t *)(uintptr_t)meas_phys;
+	bl31req->meas_buflen = resp_len;
+	bl31req->sig         = (uint8_t *)(uintptr_t)sig_phys;
+	bl31req->siglen      = PENFW_EC_SIG_SZ;
+
+	arm_smccc_smc(PENFW_CALL_FID, PENFW_OP_ATTEST_MEAS,
+		      (uint64_t)buf_phys, 0, 0, 0, 0, 0, &res);
+
+	if (res.a0 != 0) {
+		args->a0 = -1;
+		goto out;
+	}
+
+	if (copy_to_user((void __user *)u_req.meas_buf, meas_kbuf, resp_len)) {
+		args->a0 = -EFAULT;
+		goto out;
+	}
+
+	if (u_req.sig && u_req.siglen >= PENFW_EC_SIG_SZ &&
+	    copy_to_user((void __user *)u_req.sig, sig_kbuf, PENFW_EC_SIG_SZ)) {
+		args->a0 = -EFAULT;
+		goto out;
+	}
+
+	args->a0 = 0;
+out:
+	memset(buf, 0, PAGE_SIZE);
+	free_pages((unsigned long)buf, 0);
+}
+
 void penfw_smc(struct penfw_call_args *args)
 {
 	struct arm_smccc_res res = {0};
@@ -333,6 +508,12 @@ void penfw_smc(struct penfw_call_args *args)
 		break;
 	case PENFW_OP_GET_SECURE_INTERRUPTS:
 		penfw_smc_get_secure_intrs(args);
+		break;
+	case PENFW_OP_GET_CERT_CHAIN:
+		penfw_smc_get_cert_chain(args);
+		break;
+	case PENFW_OP_ATTEST_MEAS:
+		penfw_smc_attest_meas(args);
 		break;
 	case PENFW_OP_ATOMIC_INC_AXI_LIMITER:
 		// deprecated, do nothing
