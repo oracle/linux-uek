@@ -147,7 +147,7 @@ static ssize_t bl31_show(struct kobject *kobj, struct kobj_attribute *attr,
 			 char *buf)
 {
 	struct penfw_call_args args = {0};
-	char vers[256];
+	char vers[33];
 	uint64_t val;
 	int byte, shift;
 
@@ -157,7 +157,7 @@ static ssize_t bl31_show(struct kobject *kobj, struct kobj_attribute *attr,
 	if (args.a0 < 0)
 		return -EIO;
 
-	for (byte = 0; byte < 256 - 1; byte++) {
+	for (byte = 0; byte < 33 - 1; byte++) {
 		if ((byte / 8) == 0)
 			val = args.a0;
 		else if ((byte / 8) == 1)
@@ -172,7 +172,7 @@ static ssize_t bl31_show(struct kobject *kobj, struct kobj_attribute *attr,
 		if (vers[byte] == 0)
 			break;
 	}
-	vers[255] = 0;
+	vers[32] = 0;
 
 	return sprintf(buf, "%s\n", vers);
 }
