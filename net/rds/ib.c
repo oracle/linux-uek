@@ -1221,7 +1221,7 @@ static int rds_ib_laddr_check_cm(struct net *net, const struct in6_addr *addr,
 
 out:
 	if (cm_id->context)
-		rds_conn_put(RDS_IB_CM_ID_EXTRACT_CONN(cm_id)); /* get in rds_ib_cm_accept */
+		rds_conn_put(cm_id->context); /* get in rds_ib_cm_accept */
 	rdma_destroy_id(cm_id);
 
 	return ret;

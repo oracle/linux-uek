@@ -1803,7 +1803,7 @@ static void rds_destroy_cm_id_worker(struct work_struct *_work)
 							      work);
 
 	if (work->cm_id->context)
-		rds_conn_put(RDS_IB_CM_ID_EXTRACT_CONN(work->cm_id)); /* get in rds_ib_cm_accept */
+		rds_conn_put(work->cm_id->context); /* get in rds_ib_cm_accept */
 	rdma_destroy_id(work->cm_id);
 	kfree(work);
 }
@@ -1822,7 +1822,7 @@ static void rds_spawn_destroy_cm_id(struct rdma_cm_id *cm_id)
 		queue_work(rds_aux_wq, &work->work);
 	} else {
 		if (cm_id->context)
-			rds_conn_put(RDS_IB_CM_ID_EXTRACT_CONN(cm_id)); /* get in rds_ib_cm_accept */
+			rds_conn_put(cm_id->context); /* get in rds_ib_cm_accept */
 		rdma_destroy_id(cm_id);
 	}
 }
@@ -1848,7 +1848,6 @@ static int rds_ib_cm_accept(struct rds_connection *conn,
 	BUG_ON(ic->i_cm_id);
 
 	ic->i_cm_id = cm_id;
-	ic->i_cm_id_gen = 0;
 	/* put for cm_id->context in:
 	 * rds_rdma_cm_event_handler_cmn
 	 * or rds_ib_conn_path_shutdown_final
@@ -2236,7 +2235,7 @@ void rds_ib_conn_destroy_init(struct rds_connection *conn)
 
 int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id, bool isv6)
 {
-	struct rds_connection *conn = RDS_IB_CM_ID_EXTRACT_CONN(cm_id);
+	struct rds_connection *conn = cm_id->context;
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rdma_conn_param conn_param;
 	union rds_ib_conn_priv dp;
@@ -2442,9 +2441,8 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 
 	WARN_ON(ic->i_cm_id);
 	rds_conn_get(conn); /* for cm_id->context */
-	ic->i_cm_id = rdma_create_id(rds_conn_net(conn), handler,
-				     RDS_IB_CM_ID_ADD_GEN(conn, ++ic->i_cm_id_gen),
-				     RDMA_PS_TCP, IB_QPT_RC);
+	ic->i_cm_id = rdma_create_id(rds_conn_net(conn),
+				     handler, conn, RDMA_PS_TCP, IB_QPT_RC);
 
 	if (IS_ERR(ic->i_cm_id)) {
 		ret = PTR_ERR(ic->i_cm_id);
@@ -2494,7 +2492,7 @@ int rds_ib_conn_path_connect(struct rds_conn_path *cp)
 		up_write(&ic->i_cm_id_free_lock);
 
 		if (cm_id->context)
-			rds_conn_put(RDS_IB_CM_ID_EXTRACT_CONN(cm_id)); /* get in rds_ib_cm_accept */
+			rds_conn_put(cm_id->context); /* get in rds_ib_cm_accept */
 		rdma_destroy_id(cm_id);
 	}
 
@@ -2868,7 +2866,7 @@ void rds_ib_conn_free(void *arg)
 	if (ic->i_alt.cm_id) {
 	        /* get in rds_ib_cm_accept */
 		if (ic->i_alt.cm_id->context)
-			rds_conn_put(RDS_IB_CM_ID_EXTRACT_CONN(ic->i_alt.cm_id));
+			rds_conn_put(ic->i_alt.cm_id->context);
 		rdma_destroy_id(ic->i_alt.cm_id);
 	}
 
