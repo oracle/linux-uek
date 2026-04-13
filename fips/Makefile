@@ -193,6 +193,9 @@ arch-y += sha512-ce-glue.o sha512-ce-core.o
 # sha3-ce.ko
 arch-y += sha3-ce-glue.o sha3-ce-core.o
 
+# ghash-ce.ko
+arch-y += ghash-ce-glue.o ghash-ce-core.o
+
 # aes-ce-cipher.ko
 arch-y += aes-ce-core.o aes-ce-glue.o
 
@@ -229,7 +232,7 @@ $(obj)/arch/arm64/crypto/sha256-core.S: $(src)/arch/arm64/crypto/sha512-armv8.pl
 clean-files += $(addprefix arch/arm64/crypto/, sha256-core.S sha512-core.S)
 
 # crct10dif-ce
-arch-y := crct10dif-ce-core.o crct10dif-ce-glue.o
+arch-y += crct10dif-ce-core.o crct10dif-ce-glue.o
 endif
 
 #
