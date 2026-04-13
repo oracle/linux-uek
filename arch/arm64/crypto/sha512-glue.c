@@ -12,12 +12,19 @@
 #include <crypto/sha512_base.h>
 #include <asm/neon.h>
 
+#ifdef FIPS_MODULE
+#undef EXPORT_SYMBOL
+#define EXPORT_SYMBOL(x)
+#endif
+
 MODULE_DESCRIPTION("SHA-384/SHA-512 secure hash for arm64");
 MODULE_AUTHOR("Andy Polyakov <appro@openssl.org>");
 MODULE_AUTHOR("Ard Biesheuvel <ard.biesheuvel@linaro.org>");
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS_CRYPTO("sha384");
 MODULE_ALIAS_CRYPTO("sha512");
+MODULE_ALIAS_CRYPTO("sha384-arm64");
+MODULE_ALIAS_CRYPTO("sha512-arm64");
 
 asmlinkage void sha512_block_data_order(u64 *digest, const void *data,
 					unsigned int num_blks);

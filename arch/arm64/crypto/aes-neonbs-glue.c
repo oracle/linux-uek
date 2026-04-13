@@ -23,6 +23,10 @@ MODULE_ALIAS_CRYPTO("ecb(aes)");
 MODULE_ALIAS_CRYPTO("cbc(aes)");
 MODULE_ALIAS_CRYPTO("ctr(aes)");
 MODULE_ALIAS_CRYPTO("xts(aes)");
+MODULE_ALIAS_CRYPTO("ecb-aes-neonbs");
+MODULE_ALIAS_CRYPTO("cbc-aes-neonbs");
+MODULE_ALIAS_CRYPTO("ctr-aes-neonbs");
+MODULE_ALIAS_CRYPTO("xts-aes-neonbs");
 
 asmlinkage void aesbs_convert_key(u8 out[], u32 const rk[], int rounds);
 

@@ -21,6 +21,12 @@
 MODULE_DESCRIPTION("AES-ECB/CBC/CTR/XTS using ARMv8 Crypto Extensions");
 MODULE_AUTHOR("Ard Biesheuvel <ard.biesheuvel@linaro.org>");
 MODULE_LICENSE("GPL v2");
+MODULE_ALIAS_CRYPTO("ecb-aes-ce");
+MODULE_ALIAS_CRYPTO("cbc-aes-ce");
+MODULE_ALIAS_CRYPTO("cts-cbc-aes-ce");
+MODULE_ALIAS_CRYPTO("ctr-aes-ce");
+MODULE_ALIAS_CRYPTO("ctr-aes-ce-sync");
+MODULE_ALIAS_CRYPTO("xts-aes-ce");
 
 /* defined in aes-ce-core.S */
 asmlinkage u32 ce_aes_sub(u32 input);

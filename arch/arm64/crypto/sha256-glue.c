@@ -16,12 +16,21 @@
 #include <linux/string.h>
 #include <linux/types.h>
 
+#ifdef FIPS_MODULE
+#undef EXPORT_SYMBOL
+#define EXPORT_SYMBOL(x)
+#endif
+
 MODULE_DESCRIPTION("SHA-224/SHA-256 secure hash for arm64");
 MODULE_AUTHOR("Andy Polyakov <appro@openssl.org>");
 MODULE_AUTHOR("Ard Biesheuvel <ard.biesheuvel@linaro.org>");
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS_CRYPTO("sha224");
 MODULE_ALIAS_CRYPTO("sha256");
+MODULE_ALIAS_CRYPTO("sha224-arm64");
+MODULE_ALIAS_CRYPTO("sha256-arm64");
+MODULE_ALIAS_CRYPTO("sha224-arm64-neon");
+MODULE_ALIAS_CRYPTO("sha256-arm64-neon");
 
 asmlinkage void sha256_block_data_order(u32 *digest, const void *data,
 					unsigned int num_blks);

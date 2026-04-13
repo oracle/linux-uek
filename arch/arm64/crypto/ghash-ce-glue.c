@@ -26,6 +26,10 @@ MODULE_DESCRIPTION("GHASH and AES-GCM using ARMv8 Crypto Extensions");
 MODULE_AUTHOR("Ard Biesheuvel <ard.biesheuvel@linaro.org>");
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS_CRYPTO("ghash");
+MODULE_ALIAS_CRYPTO("gcm(aes)");
+MODULE_ALIAS_CRYPTO("rfc4106(gcm(aes))");
+MODULE_ALIAS_CRYPTO("gcm-aes-ce");
+MODULE_ALIAS_CRYPTO("rfc4106-gcm-aes-ce");
 
 #define GHASH_BLOCK_SIZE	16
 #define GHASH_DIGEST_SIZE	16
@@ -582,5 +586,5 @@ static const struct cpu_feature __maybe_unused ghash_cpu_feature[] = {
 };
 MODULE_DEVICE_TABLE(cpu, ghash_cpu_feature);
 
-module_init(ghash_ce_mod_init);
-module_exit(ghash_ce_mod_exit);
+crypto_module_init(ghash_ce_mod_init);
+crypto_module_exit(ghash_ce_mod_exit);
