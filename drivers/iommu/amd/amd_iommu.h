@@ -7,6 +7,7 @@
 #ifndef AMD_IOMMU_H
 #define AMD_IOMMU_H
 
+#include <linux/io.h>
 #include <linux/iommu.h>
 
 #include "amd_iommu_types.h"
@@ -90,6 +91,25 @@ static inline bool is_rd890_iommu(struct pci_dev *pdev)
 static inline bool iommu_feature(struct amd_iommu *iommu, u64 mask)
 {
 	return !!(iommu->features & mask);
+}
+
+/* Generic functions to enable/disable certain features of the IOMMU. */
+static inline void iommu_feature_enable(struct amd_iommu *iommu, u8 bit)
+{
+	u64 ctrl;
+
+	ctrl = readq(iommu->mmio_base + MMIO_CONTROL_OFFSET);
+	ctrl |= (1ULL << bit);
+	writeq(ctrl, iommu->mmio_base + MMIO_CONTROL_OFFSET);
+}
+
+static inline void iommu_feature_disable(struct amd_iommu *iommu, u8 bit)
+{
+	u64 ctrl;
+
+	ctrl = readq(iommu->mmio_base + MMIO_CONTROL_OFFSET);
+	ctrl &= ~(1ULL << bit);
+	writeq(ctrl, iommu->mmio_base + MMIO_CONTROL_OFFSET);
 }
 
 static inline u64 iommu_virt_to_phys(void *vaddr)
