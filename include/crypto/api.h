@@ -83,8 +83,15 @@ struct crypto_api_key {
 
 #define CRYPTO_MODULE_DEVICE_TABLE(type, name) MODULE_DEVICE_TABLE(type, name)
 
-#define crypto_module_cpu_feature_match(x, __initfunc) \
-	module_cpu_feature_match(x, __initfunc)
+/* Keep the CPU check, but suppress CPU-feature modalias autoload. */
+#define crypto_module_cpu_feature_match(x, __initfunc)		\
+static int __init cpu_feature_match_ ## x ## _init(void)	\
+{								\
+	if (!cpu_have_feature(cpu_feature(x)))			\
+		return -ENODEV;					\
+	return __initfunc();					\
+}								\
+crypto_module_init(cpu_feature_match_ ## x ## _init)
 
 #else /* defined(FIPS_MODULE) */
 
