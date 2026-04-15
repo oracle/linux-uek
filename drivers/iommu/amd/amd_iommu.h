@@ -112,6 +112,8 @@ static inline void iommu_feature_disable(struct amd_iommu *iommu, u8 bit)
 	writeq(ctrl, iommu->mmio_base + MMIO_CONTROL_OFFSET);
 }
 
+void iommu_poll_ga_log(struct amd_iommu *iommu);
+
 static inline u64 iommu_virt_to_phys(void *vaddr)
 {
 	return (u64)__sme_set(virt_to_phys(vaddr));
