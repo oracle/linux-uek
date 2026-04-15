@@ -706,12 +706,12 @@ void amd_iommu_restart_ga_log(struct amd_iommu *iommu)
 	pr_info_ratelimited("IOMMU GA Log restarting\n");
 
 	iommu_feature_disable(iommu, CONTROL_GALOG_EN);
-	iommu_feature_disable(iommu, CONTROL_GAINT_EN);
 
 	writel(MMIO_STATUS_GALOG_OVERFLOW_MASK,
 	       iommu->mmio_base + MMIO_STATUS_OFFSET);
-
-	iommu_feature_enable(iommu, CONTROL_GAINT_EN);
+#ifdef CONFIG_IRQ_REMAP
+	iommu_poll_ga_log(iommu);
+#endif
 	iommu_feature_enable(iommu, CONTROL_GALOG_EN);
 }
 

@@ -693,7 +693,7 @@ int amd_iommu_register_ga_log_notifier(int (*notifier)(u32))
 }
 EXPORT_SYMBOL(amd_iommu_register_ga_log_notifier);
 
-static void iommu_poll_ga_log(struct amd_iommu *iommu)
+void iommu_poll_ga_log(struct amd_iommu *iommu)
 {
 	u32 head, tail, cnt = 0;
 
@@ -780,25 +780,23 @@ irqreturn_t amd_iommu_int_thread(int irq, void *data)
 		}
 
 #ifdef CONFIG_IRQ_REMAP
-		/*
-		 * The hard IRQ path disables GAInt when a GA Log interrupt
-		 * fires. It remains disabled while this threaded handler runs,
-		 * but must be re-enabled once the loop is completed, to avoid
-		 * leaving the interrupt masked permanently.
-		 */
-		if (status & MMIO_STATUS_GALOG_INT_MASK)
-			reenable_gaint = true;
-
 		if (status & (MMIO_STATUS_GALOG_INT_MASK |
 			      MMIO_STATUS_GALOG_OVERFLOW_MASK)) {
 			pr_devel("Processing IOMMU GA Log\n");
 			iommu_poll_ga_log(iommu);
+
+			/*
+			 * The hard IRQ path disables GAInt when a GA Log interrupt
+			 * fires. It remains disabled while this threaded handler runs,
+			 * but must be re-enabled once the loop is completed, to avoid
+			 * leaving the interrupt masked permanently.
+			 */
+			reenable_gaint = true;
 		}
 
 		if (status & MMIO_STATUS_GALOG_OVERFLOW_MASK) {
 			pr_info_ratelimited("IOMMU GA Log overflow\n");
 			amd_iommu_restart_ga_log(iommu);
-			iommu_poll_ga_log(iommu);
 		}
 #endif
 
@@ -836,8 +834,8 @@ irqreturn_t amd_iommu_int_handler(int irq, void *data)
 
 	status = readl(iommu->mmio_base + MMIO_STATUS_OFFSET);
 
-	/* Overflow handling already restarts the IRQ */
-	if (status & (MMIO_STATUS_GALOG_INT_MASK))
+	if (status & (MMIO_STATUS_GALOG_INT_MASK |
+		      MMIO_STATUS_GALOG_OVERFLOW_MASK))
 		iommu_feature_disable(iommu, CONTROL_GAINT_EN);
 
 	return IRQ_WAKE_THREAD;
