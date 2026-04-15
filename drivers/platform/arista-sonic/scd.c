@@ -125,6 +125,10 @@
  * the main Scd. interrupt_valid_val and interrupt_valid_mask specify the bit values
  * that indicate presence. An interrupt_valid_addr of 0, which is the default,
  * indicates that the interrupt is unconditionally valid.
+ *
+ * For PCI/I2C SCD, on watchdog interrupt, we panic by default. To modify that
+ * behavior, write 0 to /sys/class/scd/watchdog_panic_enabled. Writing 1 will
+ * re-enable the panic.
  */
 
 #include <linux/uio_driver.h>
@@ -321,6 +325,8 @@ static int debug = 0;
 static bool nmi_disabled = false;
 // 1 if panic, 0 if not panic on crc error
 static unsigned int crc_error_panic = 1;
+// 1 if panic on watchdog, 0 if log only
+static unsigned int watchdog_panic_enabled = 1;
 // linked list of scd_dev_privs
 static struct list_head scd_list;
 // mutex and not spinlock because of kmallocs and ardma callbacks
@@ -839,14 +845,20 @@ static irqreturn_t scd_pci_interrupt(int irq, void *dev_id)
       iowrite32(unmasked_interrupt_status, priv->mem +
                 priv->irq_info[irq_reg].interrupt_mask_set_offset);
 
-      /* see if this was a watchdog interrupt, if so we do a kernel panic
-         to ensure that we get a kdump */
-      if(unmasked_interrupt_status & 
+      /* see if this is a watchdog interrupt, if so depending on watchdog action,
+       * we either panic or just log it. */
+      if(unmasked_interrupt_status &
                priv->irq_info[irq_reg].interrupt_mask_watchdog) {
-         // the panic will generate backtrace and cause the kdump kernel to kick in
-         // which should provide us more data than if we did nothing before the 
-         // watchdog rebooted the system, we have 10 seconds before reboot
-         scd_timestamped_panic( "SCD watchdog detected, system will reboot.\n" );
+         if (watchdog_panic_enabled) {
+            // the panic will generate backtrace and cause the kdump kernel to kick
+            // in which should provide us more data than if we did nothing before
+            // the watchdog rebooted the system, we have 10 seconds before reboot
+            scd_timestamped_panic( "SCD watchdog detected, system will reboot.\n" );
+         } else {
+            printk(KERN_ALERT "SCD watchdog detected, but panic disabled.\n");
+            unmasked_interrupt_status &=
+               ~priv->irq_info[irq_reg].interrupt_mask_watchdog;
+         }
       }
 
       if (unmasked_interrupt_status &
@@ -1044,8 +1056,8 @@ static irqreturn_t scd_i2c_interrupt_th(int irq, void *dev_id)
 
 static irqreturn_t scd_wdt_interrupt(int irq, void *dev_id)
 {
-   if (nmi_disabled)
-      printk( KERN_ALERT "SCD NMI detected, but handler is disabled\n" );
+   if (nmi_disabled || !watchdog_panic_enabled)
+      printk( KERN_ALERT "SCD interrupt detected, but handler is disabled\n" );
    else
       scd_timestamped_panic( "SCD watchdog detected, system will reboot.\n" );
    return IRQ_HANDLED;
@@ -1154,8 +1166,9 @@ static int scd_nmi_notify(unsigned int cmd, struct pt_regs *regs)
    }
 
    /*
-    * Any of our NMIs are fatal (panic() is a __noreturn). We either
-    * terminate, or didn't identify our source.
+    * We should not reach here. Any of our NMIs are fatal
+    * (panic() is a __noreturn) and we return NMI_HANDLED
+    * when the handler is disabled.
     */
    return NMI_DONE;
 }
@@ -2872,18 +2885,58 @@ static ssize_t crc_error_panic_store(const struct class *cls,
    return count;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 4, 0)
+static ssize_t watchdog_panic_enabled_store(struct class *cls,
+                                     struct class_attribute *attr,
+                                     const char *buf,
+                                     size_t count)
+#else
+static ssize_t watchdog_panic_enabled_store(const struct class *cls,
+                                     const struct class_attribute *attr,
+                                     const char *buf,
+                                     size_t count)
+#endif
+{
+   int ret;
+
+   ret = kstrtoint(buf, 10, &watchdog_panic_enabled);
+   if (ret < 0) {
+      return ret;
+   }
+   if (watchdog_panic_enabled != 0) {
+      watchdog_panic_enabled = 1;
+   }
+   return count;
+}
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 4, 0)
+static ssize_t watchdog_panic_enabled_show(struct class *cls,
+                                    struct class_attribute *attr,
+                                    char *buf)
+#else
+static ssize_t watchdog_panic_enabled_show(const struct class *cls,
+                                    const struct class_attribute *attr,
+                                    char *buf)
+#endif
+{
+   return sprintf(buf, "%d\n", watchdog_panic_enabled);
+}
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0)
 static struct class_attribute scd_class_attrs[] = {
    __ATTR_WO(disable_nmi),
    __ATTR_WO(crc_error_panic),
+   __ATTR_RW(watchdog_panic_enabled),
    __ATTR_NULL
 };
 #else
 static CLASS_ATTR_WO(disable_nmi);
 static CLASS_ATTR_WO(crc_error_panic);
+static CLASS_ATTR_RW(watchdog_panic_enabled);
 static struct attribute *scd_class_attrs[] = {
    &class_attr_disable_nmi.attr,
    &class_attr_crc_error_panic.attr,
+   &class_attr_watchdog_panic_enabled.attr,
    NULL,
 };
 ATTRIBUTE_GROUPS(scd_class);
