@@ -1233,6 +1233,8 @@ int mlx5_init_one(struct mlx5_core_dev *dev)
 	mutex_lock(&dev->intf_state_mutex);
 	dev->state = MLX5_DEVICE_STATE_UP;
 
+	mlx5_devlink_set_dev(priv_to_devlink(dev), dev->device);
+
 	err = mlx5_function_setup(dev, true);
 	if (err)
 		goto err_function;

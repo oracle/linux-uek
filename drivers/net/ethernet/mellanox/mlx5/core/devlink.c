@@ -384,6 +384,14 @@ void mlx5_devlink_free(struct devlink *devlink)
 	devlink_free(devlink);
 }
 
+void mlx5_devlink_set_dev(struct devlink *devlink, struct device *dev)
+{
+	if (WARN_ON(devlink->dev && devlink->dev != dev))
+		return;
+	if (!devlink->dev)
+		devlink->dev = dev;
+}
+
 static int mlx5_devlink_fs_mode_validate(struct devlink *devlink, u32 id,
 					 union devlink_param_value val,
 					 struct netlink_ext_ack *extack)
