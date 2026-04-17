@@ -1129,8 +1129,11 @@ static void zenbleed_check(struct cpuinfo_x86 *c)
 	}
 }
 
-static void init_amd_zen(struct cpuinfo_x86 *c)
+/* This is Zen1 only on UEK6. */
+static void init_amd_zen(struct cpuinfo_x86 *c __always_unused)
 {
+	pr_notice_once("AMD Zen1 FPDSS bug detected, enabling mitigation.\n");
+	msr_set_bit(MSR_AMD64_FP_CFG, MSR_AMD64_FP_CFG_ZEN1_DENORM_FIX_BIT);
 }
 
 static void init_amd_zen2(struct cpuinfo_x86 *c)
@@ -1179,7 +1182,7 @@ static void init_amd(struct cpuinfo_x86 *c)
 	case 0x19: init_amd_zn(c); break;
 	}
 
-	if (boot_cpu_has(X86_FEATURE_ZEN))
+	if (boot_cpu_has(X86_FEATURE_ZEN))  /* This flag is Zen1 on UEK6. */
 		init_amd_zen(c);
 	else if (boot_cpu_has(X86_FEATURE_ZEN2))
 		init_amd_zen2(c);
