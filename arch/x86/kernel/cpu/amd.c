@@ -1024,6 +1024,10 @@ static void init_amd_zen2(struct cpuinfo_x86 *c)
 		clear_cpu_cap(c, X86_FEATURE_IBS);
 		pr_warn_once(FW_BUG "Erratum 1215 present, disabling IBS");
 	}
+
+	if (!cpu_has(c, X86_FEATURE_HYPERVISOR))
+		msr_set_bit(MSR_ZEN4_BP_CFG, MSR_ZEN2_BP_CFG_BUG_FIX_BIT);
+
 	/* Disable RDSEED on AMD Cyan Skillfish because of an error. */
 	if (c->x86_model == 0x47 && c->x86_stepping == 0x0) {
 		clear_cpu_cap(c, X86_FEATURE_RDSEED);
