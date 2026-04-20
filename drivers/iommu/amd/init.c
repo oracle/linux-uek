@@ -778,7 +778,10 @@ void amd_iommu_restart_event_logging(struct amd_iommu *iommu)
  */
 void amd_iommu_restart_ga_log(struct amd_iommu *iommu)
 {
-	pr_info_ratelimited("IOMMU GA Log restarting\n");
+	static DEFINE_RATELIMIT_STATE(ga_log_overflow_rs, 5 * HZ, 1);
+
+	if (__ratelimit(&ga_log_overflow_rs))
+		pr_info("IOMMU GA Log overflow\n");
 
 	iommu_feature_disable(iommu, CONTROL_GALOG_EN);
 
