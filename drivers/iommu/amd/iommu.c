@@ -29,6 +29,7 @@
 #include <linux/irq.h>
 #include <linux/msi.h>
 #include <linux/irqdomain.h>
+#include <linux/sched.h>
 #include <linux/percpu.h>
 #include <linux/io-pgtable.h>
 #include <linux/cc_platform.h>
@@ -696,9 +697,26 @@ EXPORT_SYMBOL(amd_iommu_register_ga_log_notifier);
 void iommu_poll_ga_log(struct amd_iommu *iommu)
 {
 	u32 head, tail, cnt = 0;
+	unsigned int wakeups = 0;
+	unsigned int resched_threshold;
+
+	might_sleep();
 
 	if (iommu->ga_log == NULL)
 		return;
+
+	/*
+	 * In scenarios where the GA Log contains a large number of entries, it
+	 * is possible for this thread to run for an extended period and starve
+	 * other kernel work. Avoid this by yielding periodically after a
+	 * certain number of wakeups have been issued.
+	 * Use num_possible_cpus() as the threshold, but enforce a range of
+	 * [512, GA_LOG_ENTRIES]. This preserves the behavior that has been
+	 * tested to work using a threshold of 512 with up to 384 CPUs, and
+	 * scales appropriately on larger systems.
+	 */
+	resched_threshold = clamp_val(num_possible_cpus(),
+				      512, GA_LOG_ENTRIES);
 
 	head = readl(iommu->mmio_base + MMIO_GA_HEAD_OFFSET);
 	tail = readl(iommu->mmio_base + MMIO_GA_TAIL_OFFSET);
@@ -729,6 +747,16 @@ void iommu_poll_ga_log(struct amd_iommu *iommu)
 
 			if (iommu_ga_log_notifier(GA_TAG(log_entry)) != 0)
 				pr_err("GA log notifier failed.\n");
+
+			/*
+			 * Heavy AVIC wakeup traffic can keep this threaded
+			 * interrupt running for long periods. Periodically
+			 * yield after a bounded batch of wakeups.
+			 */
+			if (++wakeups == resched_threshold && head != tail) {
+				wakeups = 0;
+				cond_resched();
+			}
 			break;
 		default:
 			break;
