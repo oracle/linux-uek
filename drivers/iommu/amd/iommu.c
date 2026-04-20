@@ -786,11 +786,13 @@ amd_iommu_set_pci_msi_domain(struct device *dev, struct amd_iommu *iommu) { }
 	 MMIO_STATUS_GALOG_OVERFLOW_MASK | \
 	 MMIO_STATUS_GALOG_INT_MASK)
 
+
 irqreturn_t amd_iommu_int_thread(int irq, void *data)
 {
 	struct amd_iommu *iommu = (struct amd_iommu *) data;
 	u32 status = readl(iommu->mmio_base + MMIO_STATUS_OFFSET);
 	bool reenable_gaint = false;
+	static DEFINE_RATELIMIT_STATE(ga_log_overflow_rs, 5 * HZ, 1);
 
 	while (status & AMD_IOMMU_INT_MASK) {
 		/* Enable interrupt sources again */
@@ -823,7 +825,8 @@ irqreturn_t amd_iommu_int_thread(int irq, void *data)
 		}
 
 		if (status & MMIO_STATUS_GALOG_OVERFLOW_MASK) {
-			pr_info_ratelimited("IOMMU GA Log overflow\n");
+			if (__ratelimit(&ga_log_overflow_rs))
+				pr_info("IOMMU GA Log overflow\n");
 			amd_iommu_restart_ga_log(iommu);
 		}
 #endif

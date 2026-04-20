@@ -703,8 +703,6 @@ void amd_iommu_restart_ga_log(struct amd_iommu *iommu)
 	if (status & MMIO_STATUS_GALOG_RUN_MASK)
 		return;
 
-	pr_info_ratelimited("IOMMU GA Log restarting\n");
-
 	iommu_feature_disable(iommu, CONTROL_GALOG_EN);
 
 	writel(MMIO_STATUS_GALOG_OVERFLOW_MASK,
