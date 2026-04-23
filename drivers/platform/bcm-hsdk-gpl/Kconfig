@@ -21,6 +21,7 @@ config BCM_HSDK_KNET
 	tristate "Broadcom HSDK KNET"
 	depends on NETDEVICES
 	depends on BCM_HSDK_BDE
+	depends on XDP_SOCKETS
 	help
 	  Build the Broadcom packet I/O network driver together with the
 	  BCMCNET DMA back end.

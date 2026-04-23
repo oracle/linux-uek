@@ -24,7 +24,7 @@ $(obj)/generated/include/bcmcnet/bcmcnet_buff.h: $(bcm_hsdk_root)/linux/knet/ngk
 ccflags-y += \
 	-UNGKNET_NETIF_MAX -DNGKNET_NETIF_MAX=1056 \
 	-UNGKNET_FILTER_MAX -DNGKNET_FILTER_MAX=1025 \
-	-DSAL_LINUX -DKPMD \
+	-DSAL_LINUX -DKPMD -DNGKNET_XDP_NATIVE \
 	-I$(obj)/generated/include \
 	-I$(bcm_hsdk_root)/shr/include \
 	-I$(bcm_hsdk_root)/sal/include \
@@ -98,7 +98,9 @@ linux_ngknet-y := $(bcm_hsdk_knet_chip_objs) \
 	$(bcm_hsdk_rel)linux/knet/ngknet_linux.o \
 	$(bcm_hsdk_rel)linux/knet/ngknet_main.o \
 	$(bcm_hsdk_rel)linux/knet/ngknet_procfs.o \
-	$(bcm_hsdk_rel)linux/knet/ngknet_ptp.o
+	$(bcm_hsdk_rel)linux/knet/ngknet_ptp.o \
+	$(bcm_hsdk_rel)linux/knet/ngknet_xsk.o \
+	$(bcm_hsdk_rel)linux/knet/ngknet_xdp.o
 
 obj-$(CONFIG_BCM_HSDK_KNETCB) += linux_ngknetcb.o
 linux_ngknetcb-y := $(bcm_hsdk_pmd_objs) \
