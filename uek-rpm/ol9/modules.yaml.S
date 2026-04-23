@@ -262,6 +262,7 @@ modules-core:
 - mlx4_ib
 - mlx5-vfio-pci
 - mlx5_core
+- mlx5_fwctl
 - mlx5_ib
 - mlx5_vdpa
 - mlxfw
@@ -394,6 +395,7 @@ modules-core:
 - pci-hyperv-intf
 - pcrypt
 - pds_core
+- pds_fwctl
 - pkcs8_key_parser
 - pktgen
 - pm80xx
@@ -552,6 +554,7 @@ modules-core:
 - crct10dif-ce
 - ffa-core
 - ffa-module
+- fwctl
 - ghash-ce
 - poly1305-neon
 - sbsa_gwdt
@@ -638,7 +641,6 @@ modules-core:
 - md-cluster
 - mei-me
 - mii
-- mlx5_fwctl
 - mptbase
 - mptctl
 - mptsas
@@ -652,7 +654,6 @@ modules-core:
 - ovmapi
 - pcc-cpufreq
 - pcspkr
-- pds_fwctl
 - poly1305-x86_64
 - power
 - ptp_kvm
