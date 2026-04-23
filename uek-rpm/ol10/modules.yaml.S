@@ -265,6 +265,7 @@ modules-core:
 - mlx4_ib
 - mlx5-vfio-pci
 - mlx5_core
+- mlx5_fwctl
 - mlx5_ib
 - mlx5_vdpa
 - mlxfw
@@ -396,6 +397,7 @@ modules-core:
 - pci-hyperv-intf
 - pcrypt
 - pds_core
+- pds_fwctl
 - pkcs8_key_parser
 - pktgen
 - pm80xx
@@ -550,6 +552,7 @@ modules-core:
 - cppc_cpufreq
 - ffa-core
 - ffa-module
+- fwctl
 - gf128mul
 - ghash-ce
 - i2c-designware-core
@@ -631,7 +634,6 @@ modules-core:
 - mce-inject
 - md-cluster
 - mei-me
-- mlx5_fwctl
 - mptbase
 - mptctl
 - mptsas
@@ -643,7 +645,6 @@ modules-core:
 - ovmapi
 - pcc-cpufreq
 - pcspkr
-- pds_fwctl
 - power
 - ptp_kvm
 - ptp_vmclock
