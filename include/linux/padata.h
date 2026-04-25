@@ -19,6 +19,7 @@
 #include <linux/list.h>
 #include <linux/kobject.h>
 #include <linux/lockdep.h>
+#include <linux/uek_kabi.h>
 
 #define PADATA_CPU_SERIAL   0x01
 #define PADATA_CPU_PARALLEL 0x02
@@ -92,7 +93,6 @@ struct padata_cpumask {
  * @cpu: Next CPU to be processed.
  * @cpumask: The cpumasks in use for parallel and serial workers.
  * @reorder_work: work struct for reordering.
- * @lock: Reorder lock.
  */
 struct parallel_data {
 	struct padata_shell		*ps;
@@ -103,8 +103,8 @@ struct parallel_data {
 	unsigned int			processed;
 	int				cpu;
 	struct padata_cpumask		cpumask;
-	struct work_struct		reorder_work;
-	spinlock_t                      ____cacheline_aligned lock;
+	UEK_KABI_DEPRECATE(struct work_struct, reorder_work)
+	UEK_KABI_DEPRECATE(spinlock_t ____cacheline_aligned, lock)
 };
 
 /**
