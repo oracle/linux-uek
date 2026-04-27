@@ -1,45 +1,124 @@
 [ol9_aarch64_whitelist]
 	__arch_copy_from_user
 	__arch_copy_to_user
+	__bitmap_weight
+	__blk_alloc_disk
+	__blk_mq_alloc_disk
+	__block_write_full_folio
 	__check_object_size
 	__cond_resched
 	__cpu_online_mask
+	__cpu_possible_mask
+	__cpu_present_mask
+	__cpuhp_remove_state
+	__cpuhp_setup_state
+	__folio_lock
+	__folio_put
 	__fortify_panic
+	__generic_file_write_iter
+	__init_rwsem
+	__init_swait_queue_head
 	__init_waitqueue_head
+	__insert_inode_hash
 	__kmalloc_cache_noprof
 	__kmalloc_large_node_noprof
 	__kmalloc_large_noprof
 	__kmalloc_noprof
+	__kmem_cache_create_args
 	__list_add_valid_or_report
 	__list_del_entry_valid_or_report
+	__mark_inode_dirty
 	__memcpy_fromio
 	__memcpy_toio
+	__mmap_lock_do_trace_acquire_returned
+	__mmap_lock_do_trace_released
+	__mmap_lock_do_trace_start_locking
+	__module_get
 	__msecs_to_jiffies
 	__mutex_init
 	__num_online_cpus
 	__pci_register_driver
 	__per_cpu_offset
+	__put_cred
+	__put_devmap_managed_folio_refs
+	__register_blkdev
+	__remove_inode_hash
 	__stack_chk_fail
+	__tracepoint_mmap_lock_acquire_returned
+	__tracepoint_mmap_lock_released
+	__tracepoint_mmap_lock_start_locking
+	__vmalloc_noprof
 	__wake_up
 	__warn_printk
 	_bin2bcd
 	_dev_err
 	_dev_info
 	_dev_warn
+	_find_first_bit
 	_find_next_bit
 	_printk
+	_totalram_pages
+	acfs_only_symbol
 	add_timer
+	aes_encrypt
+	aes_expandkey
 	alt_cb_patch_nops
 	arm64_use_ng_mappings
+	autoremove_wake_function
+	bdev_end_io_acct
+	bdev_file_open_by_dev
+	bdev_file_open_by_path
+	bdev_fput
+	bdev_start_io_acct
+	bio_add_page
+	bio_alloc_bioset
+	bio_endio
+	bio_put
+	blk_finish_plug
+	blk_mq_alloc_tag_set
+	blk_mq_complete_request
+	blk_mq_end_request
+	blk_mq_free_tag_set
+	blk_mq_kick_requeue_list
 	blk_mq_map_queues
 	blk_mq_pci_map_queues
+	blk_mq_start_request
+	blk_mq_start_stopped_hw_queues
 	blk_mq_unique_tag
+	blk_set_stacking_limits
+	blk_stack_limits
+	blk_start_plug
+	block_invalidate_folio
+	block_write_begin
+	block_write_end
 	bsg_job_done
+	call_usermodehelper
 	cancel_delayed_work_sync
 	capable
+	clear_inode
+	clear_page_dirty_for_io
 	complete
+	d_add
+	d_alloc
+	d_drop
+	d_find_alias
+	d_instantiate
+	d_invalidate
+	d_lookup
+	d_make_root
+	d_move
+	d_obtain_alias
+	d_path
+	d_prune_aliases
+	d_set_d_op
+	d_splice_alias
+	del_gendisk
 	delayed_work_timer_fn
 	dev_driver_string
+	device_add_disk
+	devmap_managed_key
+	dget_parent
+	disk_check_media_change
 	dma_alloc_attrs
 	dma_free_attrs
 	dma_map_page_attrs
@@ -48,36 +127,132 @@
 	dma_unmap_page_attrs
 	down
 	down_interruptible
+	down_read
+	down_read_trylock
+	down_write
+	down_write_trylock
+	dput
+	drop_nlink
+	dump_stack
 	emergency_restart
+	end_page_writeback
+	fdget
+	fget
+	fiemap_fill_next_extent
+	fiemap_prep
+	file_bdev
+	filemap_dirty_folio
+	filemap_fault
+	filemap_fdatawait_range
+	filemap_fdatawrite
+	filemap_fdatawrite_range
+	filemap_flush
+	filemap_get_folios_tag
+	filemap_splice_read
+	filemap_write_and_wait_range
+	filp_close
+	filp_open
+	find_vma
 	finish_wait
+	flush_dcache_page
+	flush_signals
+	folio_mark_dirty
+	folio_unlock
+	folio_wait_bit
+	fput
+	free_buffer_head
 	free_irq
 	free_percpu
+	from_kgid
+	from_kuid
+	fs_bio_set
+	fs_context_for_reconfigure
+	full_name_hash
+	generic_file_direct_write
+	generic_file_llseek
+	generic_file_open
+	generic_file_read_iter
+	generic_fillattr
+	generic_permission
+	generic_write_checks
+	get_random_bytes
+	get_user_pages
+	grab_cache_page_write_begin
+	igrab
+	in_group_p
+	inc_nlink
+	init_net
+	init_special_inode
+	init_task
 	init_timer_key
 	init_wait_entry
+	inode_init_once
+	inode_newsize_ok
+	invalidate_inode_buffers
+	invalidate_mapping_pages
 	ioremap_prot
 	iounmap
+	iov_iter_bvec
+	iov_iter_get_pages2
+	iov_iter_init
+	iov_iter_kvec
+	iov_iter_npages
+	iput
 	is_vmalloc_addr
+	iter_file_splice_write
 	jiffies
 	jiffies_to_msecs
+	kern_path
+	kernel_accept
+	kernel_read
+	kernel_recvmsg
+	kernel_sendmsg
+	kernel_write
 	kfree
+	kill_block_super
 	kmalloc_caches
+	kmem_cache_alloc_noprof
+	kmem_cache_destroy
+	kmem_cache_free
 	kstrtou8
+	kthread_complete_and_exit
+	kthread_create_on_node
+	ktime_get_coarse_real_ts64
+	ktime_get_coarse_ts64
 	ktime_get_real_seconds
+	ktime_get_real_ts64
+	lockref_get
+	locks_lock_inode_wait
+	make_kgid
+	make_kuid
+	match_token
 	memcmp
 	memcpy
+	memmove
 	memset
+	mntput
 	mod_timer
+	module_put
+	mount_bdev
+	mpage_read_folio
+	mpage_readahead
+	mpage_writepages
 	msleep
+	msleep_interruptible
 	mutex_is_locked
 	mutex_lock
 	mutex_trylock
 	mutex_unlock
+	new_inode
 	nr_cpu_ids
 	numa_node
+	override_creds
 	panic
 	param_ops_charp
 	param_ops_int
 	param_ops_uint
+	path_get
+	path_put
 	pci_alloc_irq_vectors
 	pci_disable_device
 	pci_enable_device
@@ -90,13 +265,28 @@
 	pci_unregister_driver
 	pcie_capability_clear_and_set_word_unlocked
 	pcpu_alloc_noprof
+	posix_lock_file
+	posix_test_lock
+	prepare_creds
+	prepare_kernel_cred
 	prepare_to_wait_event
+	prepare_to_wait_exclusive
+	proc_create
+	proc_mkdir
+	put_disk
+	put_fs_context
 	queue_delayed_work_on
 	queue_work_on
 	queued_spin_lock_slowpath
 	random_kmalloc_seed
+	read_cache_folio
+	redirty_page_for_writepage
+	register_filesystem
+	release_pages
+	remove_proc_entry
 	request_threaded_irq
 	reset_devices
+	revert_creds
 	sas_attach_transport
 	sas_end_device_alloc
 	sas_expander_alloc
@@ -112,7 +302,9 @@
 	sas_release_transport
 	sas_rphy_add
 	sas_rphy_free
+	sb_set_blocksize
 	schedule
+	schedule_timeout
 	scnprintf
 	scsi_add_device
 	scsi_add_host_with_dma
@@ -133,20 +325,76 @@
 	scsi_remove_host
 	scsi_rescan_device
 	scsi_unblock_requests
+	security_inode_init_security
+	send_sig
+	seq_printf
+	set_capacity
+	set_nlink
+	set_page_dirty
+	set_page_writeback
+	set_user_nice
+	setattr_prepare
 	sg_copy_from_buffer
 	sg_copy_to_buffer
 	sg_next
+	sha256
+	sigprocmask
+	simple_strtol
 	sized_strscpy
+	snprintf
+	sock_create_kern
+	sock_release
+	sock_setsockopt
+	sprintf
+	sscanf
+	strchr
 	strcmp
+	strcpy
 	strim
+	strlcat
+	strlen
+	strncmp
 	strncpy
 	strnlen
+	strrchr
+	strsep
+	strspn
+	strstr
+	submit_bio
+	sync_blockdev
 	sys_tz
 	system_state
 	system_wq
+	tag_pages_for_writeback
 	time64_to_tm
 	timer_delete_sync
+	truncate_inode_pages
+	truncate_inode_pages_final
+	truncate_inode_pages_range
+	truncate_pagecache
+	truncate_setsize
+	unlock_page
+	unmap_mapping_range
+	unregister_blkdev
+	unregister_filesystem
 	up
+	up_read
+	up_write
 	usleep_range_state
+	vfree
+	vfs_create_mount
+	vfs_fsync
+	vfs_iter_read
+	vfs_iter_write
+	vfs_llseek
+	vmalloc_to_page
+	vscnprintf
+	vsnprintf
+	vsprintf
 	wait_for_completion
 	wait_for_completion_io_timeout
+	wake_up_process
+	write_cache_pages
+	write_inode_now
+	xa_get_mark
+	xa_load
