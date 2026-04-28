@@ -28,6 +28,8 @@
 #include <linux/platform_device.h>
 #include <kunit/visibility.h>
 #include <uapi/linux/iommufd.h>
+#include <linux/dmi.h>
+#include <linux/kstrtox.h>
 
 #include "arm-smmu-v3.h"
 #include "../../dma-iommu.h"
@@ -4539,6 +4541,16 @@ static int acpi_smmu_iort_probe_model(struct acpi_iort_node *node,
 	return 0;
 }
 
+static const struct dmi_system_id httu_quirk[] __initconst = {
+	{
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Oracle Corporation"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "ORACLE SERVER A4"),
+		},
+	},
+	{}
+};
+
 static int arm_smmu_device_acpi_probe(struct platform_device *pdev,
 				      struct arm_smmu_device *smmu)
 {
@@ -4777,6 +4789,18 @@ static int arm_smmu_device_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(dev, "Failed to register iommu\n");
 		goto err_free_sysfs;
+	}
+
+	if (dmi_check_system(httu_quirk)) {
+		const char *version = dmi_get_system_info(DMI_BIOS_VERSION);
+		u64 version_id;
+
+		if (version &&
+		    !kstrtou64(version, 10, &version_id) &&
+		    version_id < 94003100) {
+			pr_warn(FW_BUG "Invalid IORT HTTU override settings\n");
+			smmu->features |= (ARM_SMMU_FEAT_HD | ARM_SMMU_FEAT_HA);
+		}
 	}
 
 	return 0;
