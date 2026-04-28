@@ -29,6 +29,8 @@
 #include <linux/platform_device.h>
 
 #include <linux/amba/bus.h>
+#include <linux/dmi.h>
+#include <linux/kstrtox.h>
 
 #include "arm-smmu-v3.h"
 #include "../../iommu-sva-lib.h"
@@ -3945,6 +3947,16 @@ static void acpi_smmu_get_options(u32 model, struct arm_smmu_device *smmu)
 	dev_notice(smmu->dev, "option mask 0x%x\n", smmu->options);
 }
 
+static const struct dmi_system_id httu_quirk[] __initconst = {
+	{
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Oracle Corporation"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "ORACLE SERVER A4"),
+		},
+	},
+	{}
+};
+
 static int arm_smmu_device_acpi_probe(struct platform_device *pdev,
 				      struct arm_smmu_device *smmu)
 {
@@ -3961,6 +3973,18 @@ static int arm_smmu_device_acpi_probe(struct platform_device *pdev,
 
 	if (iort_smmu->flags & ACPI_IORT_SMMU_V3_COHACC_OVERRIDE)
 		smmu->features |= ARM_SMMU_FEAT_COHERENCY;
+
+	if (dmi_check_system(httu_quirk)) {
+		const char *version = dmi_get_system_info(DMI_BIOS_VERSION);
+		u64 version_id;
+
+		if (version &&
+		    !kstrtou64(version, 10, &version_id) &&
+		    version_id < 94003100) {
+			pr_warn(FW_BUG "Invalid IORT HTTU override settings\n");
+			smmu->features |= (ARM_SMMU_FEAT_HD | ARM_SMMU_FEAT_HA);
+		}
+	}
 
 	switch (FIELD_GET(ACPI_IORT_SMMU_V3_HTTU_OVERRIDE, iort_smmu->flags)) {
 	case IDR0_HTTU_ACCESS_DIRTY:
