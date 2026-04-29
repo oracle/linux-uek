@@ -2078,10 +2078,10 @@ ssize_t tls_sw_splice_read(struct socket *sock,  loff_t *ppos,
 		ctx->recv_pkt = NULL;
 		__strp_unpause(&ctx->strp);
 	}
-	if (chunk < rxm->full_len) {
+	if (copied < rxm->full_len) {
 		__skb_queue_head(&ctx->rx_list, skb);
-		rxm->offset += len;
-		rxm->full_len -= len;
+		rxm->offset += copied;
+		rxm->full_len -= copied;
 	} else {
 		consume_skb(skb);
 	}
