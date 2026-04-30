@@ -365,8 +365,8 @@ static void __exit ghash_pclmulqdqni_mod_exit(void)
 	crypto_unregister_shash(&ghash_alg);
 }
 
-module_init(ghash_pclmulqdqni_mod_init);
-module_exit(ghash_pclmulqdqni_mod_exit);
+crypto_module_init(ghash_pclmulqdqni_mod_init);
+crypto_module_exit(ghash_pclmulqdqni_mod_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("GHASH hash function, accelerated by PCLMULQDQ-NI");
