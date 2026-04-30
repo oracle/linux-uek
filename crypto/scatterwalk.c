@@ -15,6 +15,11 @@
 #include <linux/module.h>
 #include <linux/scatterlist.h>
 
+#ifdef FIPS_MODULE
+#undef EXPORT_SYMBOL_GPL
+#define EXPORT_SYMBOL_GPL(sym)
+#endif
+
 static inline void memcpy_dir(void *buf, void *sgdata, size_t nbytes, int out)
 {
 	void *src = out ? buf : sgdata;

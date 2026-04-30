@@ -108,6 +108,7 @@ fips140-y += crypto/kpp.o
 fips140-y += crypto/cipher.o
 fips140-y += crypto/crypto_null.o
 fips140-y += crypto/akcipher.o
+fips140-y += crypto/scatterwalk.o
 fips140-y += crypto/skcipher.o
 fips140-y += crypto/lskcipher.o
 fips140-y += crypto/rng.o
