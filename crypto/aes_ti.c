@@ -9,6 +9,11 @@
 #include <crypto/algapi.h>
 #include <linux/module.h>
 
+#ifdef FIPS_MODULE
+#undef EXPORT_SYMBOL
+#define EXPORT_SYMBOL(x)
+#endif
+
 static int aesti_set_key(struct crypto_tfm *tfm, const u8 *in_key,
 			 unsigned int key_len)
 {
@@ -75,8 +80,8 @@ static void __exit aes_fini(void)
 	crypto_unregister_alg(&aes_alg);
 }
 
-module_init(aes_init);
-module_exit(aes_fini);
+crypto_module_init(aes_init);
+crypto_module_exit(aes_fini);
 
 MODULE_DESCRIPTION("Generic fixed time AES");
 MODULE_AUTHOR("Ard Biesheuvel <ard.biesheuvel@linaro.org>");
