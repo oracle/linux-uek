@@ -68,6 +68,7 @@ fips140-$(CONFIG_CRYPTO_KDF800108_CTR) += crypto/kdf_sp800108.o
 
 fips140-y += crypto/cmac.o
 fips140-y += crypto/aes_generic.o
+fips140-y += crypto/aes_ti.o
 fips140-y += crypto/cbc.o
 fips140-y += crypto/ccm.o
 fips140-y += crypto/cts.o
