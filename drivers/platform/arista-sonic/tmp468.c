@@ -211,7 +211,7 @@ static ssize_t show_temp(struct device *dev,
 	if (IS_ERR(data))
 		return PTR_ERR(data);
 
-	return sprintf(buf, "%d\n", tmp468_register_to_temp(data->temp[nr][index]));
+	return sysfs_emit(buf, "%d\n", tmp468_register_to_temp(data->temp[nr][index]));
 }
 
 static ssize_t show_temp_hyst(struct device *dev,
@@ -230,7 +230,7 @@ static ssize_t show_temp_hyst(struct device *dev,
 	temp -= tmp468_register_to_temp(data->temp_hyst);
 	mutex_unlock(&data->update_lock);
 
-	return sprintf(buf, "%d\n", temp);
+	return sysfs_emit(buf, "%d\n", temp);
 }
 
 static ssize_t show_status(struct device *dev,
@@ -243,7 +243,7 @@ static ssize_t show_status(struct device *dev,
 	if (IS_ERR(data))
 		return PTR_ERR(data);
 
-	return sprintf(buf, "%d\n", !!(data->status[nr] & mask));
+	return sysfs_emit(buf, "%d\n", !!(data->status[nr] & mask));
 }
 
 static ssize_t store_temp(struct device *dev, struct device_attribute *devattr,

@@ -141,7 +141,7 @@ static ssize_t show_fan_airflow(struct device *dev, struct device_attribute *att
                                 char *buf)
 {
    u8 id = get_fan_id(dev, attr);
-   return sprintf(buf, "%s\n", (id & 0x4) ? "reverse" : "forward");
+   return sysfs_emit(buf, "%s\n", (id & 0x4) ? "reverse" : "forward");
 }
 
 static int read_led(struct raven_pdata *pdata, int fan_id, u8 *value)

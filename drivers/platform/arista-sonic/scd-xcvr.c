@@ -52,7 +52,7 @@ static ssize_t attribute_xcvr_get(struct device *dev,
       res = gpio->clear_on_read_value | res;
       gpio->clear_on_read_value = 0;
    }
-   return sprintf(buf, "%u\n", res);
+   return sysfs_emit(buf, "%u\n", res);
 }
 
 static ssize_t attribute_xcvr_set(struct device *dev,

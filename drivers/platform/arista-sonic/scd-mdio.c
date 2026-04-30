@@ -247,7 +247,7 @@ static ssize_t mdio_id_show(struct device *dev, struct device_attribute *attr, c
 {
    struct mdio_device *mdio_dev = to_mdio_device(dev);
    struct scd_mdio_bus *bus = (struct scd_mdio_bus*)mdio_dev->bus->priv;
-   return sprintf(buf, "mdio%d_%d_%d\n", bus->master->id, bus->id, mdio_dev->addr);
+   return sysfs_emit(buf, "mdio%d_%d_%d\n", bus->master->id, bus->id, mdio_dev->addr);
 }
 static DEVICE_ATTR_RO(mdio_id);
 

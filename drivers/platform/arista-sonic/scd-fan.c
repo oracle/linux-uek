@@ -405,7 +405,7 @@ static ssize_t scd_fan_pwm_show(struct device *dev, struct device_attribute *da,
    u32 reg = scd_read_register(group->ctx->dev, address);
 
    reg &= group->platform->mask_pwm;
-   return sprintf(buf, "%u\n", reg);
+   return sysfs_emit(buf, "%u\n", reg);
 }
 
 static ssize_t scd_fan_pwm_store(struct device *dev, struct device_attribute *da,
@@ -434,9 +434,9 @@ static ssize_t scd_fan_present_show(struct device *dev,
    u32 reg = scd_read_register(group->ctx->dev, address);
 
    if (!FAN_HAS_REG(group, present)) {
-      return sprintf(buf, "1\n");
+      return sysfs_emit(buf, "1\n");
    }
-   return sprintf(buf, "%u\n", !!(reg & (1 << fan->index)));
+   return sysfs_emit(buf, "%u\n", !!(reg & (1 << fan->index)));
 }
 
 static u32 scd_fan_id_read(struct scd_fan_group *fan_group, u32 index)
@@ -456,7 +456,7 @@ static ssize_t scd_fan_id_show(struct device *dev, struct device_attribute *da,
    struct scd_fan *fan = to_scd_fan_attr(attr)->fan;
    u32 reg = scd_fan_id_read(group, fan->index);
 
-   return sprintf(buf, "%u\n", reg);
+   return sysfs_emit(buf, "%u\n", reg);
 }
 
 static u32 scd_fan_size_read(struct scd_fan_group *fan_group)
@@ -479,9 +479,9 @@ static ssize_t scd_fan_fault_show(struct device *dev, struct device_attribute *d
    // TODO: platforms without OK register should have alternate way of reporting
    // fault, e.g. if tach reading is invalid
    if (!FAN_HAS_REG(group, ok)) {
-      return sprintf(buf, "0\n");
+      return sysfs_emit(buf, "0\n");
    }
-   return sprintf(buf, "%u\n", !(reg & (1 << fan->index)));
+   return sysfs_emit(buf, "%u\n", !(reg & (1 << fan->index)));
 }
 
 static ssize_t scd_fan_input_show(struct device *dev, struct device_attribute *da,
@@ -505,7 +505,7 @@ static ssize_t scd_fan_input_show(struct device *dev, struct device_attribute *d
    else
       return -EDOM;
 
-   return sprintf(buf, "%u\n", val);
+   return sysfs_emit(buf, "%u\n", val);
 }
 
 static u32 scd_fan_led_read(struct scd_fan *fan) {
@@ -553,7 +553,7 @@ static ssize_t scd_fan_led_show(struct device *dev, struct device_attribute *da,
    struct scd_fan *fan = to_scd_fan_attr(attr)->fan;
    u32 val = scd_fan_led_read(fan);
 
-   return sprintf(buf, "%u\n", val);
+   return sysfs_emit(buf, "%u\n", val);
 }
 
 static ssize_t scd_fan_led_store(struct device *dev, struct device_attribute *da,
@@ -592,7 +592,7 @@ static ssize_t scd_fan_airflow_show(struct device *dev,
    struct sensor_device_attribute *attr = to_sensor_dev_attr(da);
    struct scd_fan *fan = to_scd_fan_attr(attr)->fan;
 
-   return sprintf(buf, "%s\n", (fan->info->forward) ? "forward" : "reverse");
+   return sysfs_emit(buf, "%s\n", (fan->info->forward) ? "forward" : "reverse");
 }
 
 static ssize_t scd_fan_slot_show(struct device *dev,
@@ -602,7 +602,7 @@ static ssize_t scd_fan_slot_show(struct device *dev,
    struct sensor_device_attribute *attr = to_sensor_dev_attr(da);
    struct scd_fan *fan = to_scd_fan_attr(attr)->fan;
 
-   return sprintf(buf, "%u\n", fan->index + 1);
+   return sysfs_emit(buf, "%u\n", fan->index + 1);
 }
 
 static ssize_t scd_fan_model_show(struct device *dev,
@@ -612,7 +612,7 @@ static ssize_t scd_fan_model_show(struct device *dev,
    struct sensor_device_attribute *attr = to_sensor_dev_attr(da);
    struct scd_fan *fan = to_scd_fan_attr(attr)->fan;
 
-   return sprintf(buf, "%s\n", fan->info->model);
+   return sysfs_emit(buf, "%s\n", fan->info->model);
 }
 
 /*

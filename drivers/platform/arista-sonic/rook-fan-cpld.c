@@ -559,7 +559,7 @@ static ssize_t cpld_fan_pwm_show(struct device *dev, struct device_attribute *da
    if (err)
       return err;
 
-   return sprintf(buf, "%hhu\n", fan->pwm);
+   return sysfs_emit(buf, "%hhu\n", fan->pwm);
 }
 
 static ssize_t cpld_fan_pwm_store(struct device *dev, struct device_attribute *da,
@@ -599,7 +599,7 @@ static ssize_t cpld_fan_present_show(struct device *dev,
          return err;
    }
 
-   return sprintf(buf, "%d\n", fan->present);
+   return sysfs_emit(buf, "%d\n", fan->present);
 }
 
 static ssize_t cpld_fan_id_show(struct device *dev, struct device_attribute *da,
@@ -618,7 +618,7 @@ static ssize_t cpld_fan_id_show(struct device *dev, struct device_attribute *da,
          return err;
    }
 
-   return sprintf(buf, "%hhu\n", fan->ident);
+   return sysfs_emit(buf, "%hhu\n", fan->ident);
 }
 
 static ssize_t cpld_fan_fault_show(struct device *dev, struct device_attribute *da,
@@ -637,7 +637,7 @@ static ssize_t cpld_fan_fault_show(struct device *dev, struct device_attribute *
          return err;
    }
 
-   return sprintf(buf, "%d\n", !fan->ok);
+   return sysfs_emit(buf, "%d\n", !fan->ok);
 }
 
 static ssize_t cpld_fan_tach_show(struct device *dev, struct device_attribute *da,
@@ -661,7 +661,7 @@ static ssize_t cpld_fan_tach_show(struct device *dev, struct device_attribute *d
 
    rpms = ((cpld->info->hz * 60) / fan->tach) / cpld->info->pulses;
 
-   return sprintf(buf, "%d\n", rpms);
+   return sysfs_emit(buf, "%d\n", rpms);
 }
 
 static ssize_t cpld_fan_led_show(struct device *dev, struct device_attribute *da,
@@ -676,7 +676,7 @@ static ssize_t cpld_fan_led_show(struct device *dev, struct device_attribute *da
    if (err)
       return err;
 
-   return sprintf(buf, "%hhu\n", val);
+   return sysfs_emit(buf, "%hhu\n", val);
 }
 
 static ssize_t cpld_fan_led_store(struct device *dev, struct device_attribute *da,
@@ -708,7 +708,7 @@ static ssize_t cpld_fan_airflow_show(struct device *dev,
 {
    struct sensor_device_attribute *attr = to_sensor_dev_attr(da);
    struct cpld_fan_data *fan = fan_from_dev(dev, attr->index);
-   return sprintf(buf, "%s\n", (fan->forward) ? "forward" : "reverse");
+   return sysfs_emit(buf, "%s\n", (fan->forward) ? "forward" : "reverse");
 }
 
 
@@ -772,7 +772,7 @@ static ssize_t cpld_revision_show(struct device *dev, struct device_attribute *a
                                   char *buf)
 {
    struct cpld_data *cpld = dev_get_drvdata(dev);
-   return sprintf(buf, "%02x.%02x\n", cpld->major, cpld->minor);
+   return sysfs_emit(buf, "%02x.%02x\n", cpld->major, cpld->minor);
 }
 
 DEVICE_ATTR(cpld_revision, S_IRUGO, cpld_revision_show, NULL);

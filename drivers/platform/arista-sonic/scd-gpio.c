@@ -29,7 +29,7 @@ static ssize_t attribute_gpio_get(struct device *dev,
    u32 reg = scd_read_register(gpio->ctx->dev, gpio->addr);
    u32 res = !!(reg & (1 << gpio->bit));
    res = (gpio->active_low) ? !res : res;
-   return sprintf(buf, "%u\n", res);
+   return sysfs_emit(buf, "%u\n", res);
 }
 
 static ssize_t attribute_gpio_set(struct device *dev,

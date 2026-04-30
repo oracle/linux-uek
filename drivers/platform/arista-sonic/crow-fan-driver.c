@@ -119,7 +119,7 @@ static s32 read_cpld_buf(struct device *dev, u8 reg, char *buf)
         return status;
     }
 
-    return sprintf(buf, "%hhu\n", data);
+    return sysfs_emit(buf, "%hhu\n", data);
 }
 
 static s32 write_cpld_buf(struct device *dev, u8 reg, const char *buf)
@@ -174,7 +174,7 @@ static s32 read_led_color_buf(struct device *dev, char *buf, int index)
     if (err)
         return err;
 
-    return sprintf(buf, "%d\n", val);
+    return sysfs_emit(buf, "%d\n", val);
 }
 
 static s32 write_led_color(struct device *dev, u8 value, int index)
@@ -280,7 +280,7 @@ static s32 read_tach_buf(struct device *dev, u8 tachHigh, u8 tachLow,
     if (err)
         return err;
 
-    return sprintf(buf, "%d\n", speed);
+    return sysfs_emit(buf, "%d\n", speed);
 }
 
 static s32 read_fan_present(struct device *dev, int index, u8 *present)
@@ -307,7 +307,7 @@ static s32 read_fan_present_buf(struct device *dev, char *buf, int index)
     if (err)
         return err;
 
-    return sprintf(buf, "%d\n", present);
+    return sysfs_emit(buf, "%d\n", present);
 }
 
 static s32 read_fan_airflow(struct device *dev, u8 reg, char *buf)
@@ -320,7 +320,7 @@ static s32 read_fan_airflow(struct device *dev, u8 reg, char *buf)
         return status;
     }
 
-    return sprintf(buf, "%s\n", (id & 0x4) ? "forward" : "reverse");
+    return sysfs_emit(buf, "%s\n", (id & 0x4) ? "forward" : "reverse");
 }
 
 #define GENERIC_FAN_READ(_name, _dev, _reg)                                         \

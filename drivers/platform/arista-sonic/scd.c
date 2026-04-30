@@ -1622,7 +1622,7 @@ static ssize_t show_attr(struct scd_dev_priv *priv, unsigned long *value, char *
     * and accessing through it has to be protected with scd_mutex.
     */
    scd_lock();
-   ret = sprintf(buf, "%lu\n", *value);
+   ret = sysfs_emit(buf, "%lu\n", *value);
    scd_unlock();
 
    return ret;
@@ -1953,7 +1953,7 @@ static ssize_t get_ptp_sample_timestamp(struct device *dev,
 
    const u64 timestamp_ns = nanoseconds + (seconds * NS_PER_SEC);
 
-   const ssize_t buf_len = sprintf(buf, "%llu\n", timestamp_ns);
+   const ssize_t buf_len = sysfs_emit(buf, "%llu\n", timestamp_ns);
    return buf_len;
 }
 
@@ -1977,7 +1977,7 @@ static ssize_t get_ptp_timestamp(struct device *dev, struct device_attribute *at
 
    const u64 timestamp_ns = nanoseconds + (seconds * NS_PER_SEC);
 
-   const ssize_t buf_len = sprintf(buf, "%llu\n", timestamp_ns);
+   const ssize_t buf_len = sysfs_emit(buf, "%llu\n", timestamp_ns);
 
    if (timestamp == 0) {
       printk(KERN_INFO "scd scd_ptp_timestamp returned zero\n");
@@ -1999,7 +1999,7 @@ static ssize_t get_ptp_gpio_sample_status(struct device *dev,
       ASSERT(priv->ptp_gpio_sample_status_offset != SCD_UNINITIALIZED );
       sample_status = ioread32(priv->mem + priv->ptp_gpio_sample_status_offset);
    }
-   buf_len = sprintf(buf, "%u\n", sample_status);
+   buf_len = sysfs_emit(buf, "%u\n", sample_status);
    return buf_len;
 }
 
@@ -2063,7 +2063,7 @@ static ssize_t get_power_loss(struct device *dev, struct device_attribute *attr,
    ssize_t ret;
    int power_loss = 0;
 
-   ret = sprintf(buf, "%d\n", power_loss);
+   ret = sysfs_emit(buf, "%d\n", power_loss);
 
    return ret;
 }
@@ -2919,7 +2919,7 @@ static ssize_t watchdog_panic_enabled_show(const struct class *cls,
                                     char *buf)
 #endif
 {
-   return sprintf(buf, "%d\n", watchdog_panic_enabled);
+   return sysfs_emit(buf, "%d\n", watchdog_panic_enabled);
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0)

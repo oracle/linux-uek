@@ -29,7 +29,7 @@ static ssize_t attribute_reset_get(struct device *dev,
    const struct scd_reset_attribute *reset = to_scd_reset_attr(devattr);
    u32 reg = scd_read_register(reset->ctx->dev, reset->addr);
    u32 res = !!(reg & (1 << reset->bit));
-   return sprintf(buf, "%u\n", res);
+   return sysfs_emit(buf, "%u\n", res);
 }
 
 // write 1 -> set, 0 -> clear
