@@ -252,6 +252,9 @@ arch-y += sha256-ssse3-asm.o sha256-avx-asm.o sha256-avx2-asm.o sha256_ssse3_glu
 arch-y += aesni-intel_asm.o aesni-intel_glue.o
 arch-y += aes_ctrby8_avx-x86_64.o aes-gcm-aesni-x86_64.o aes-xts-avx-x86_64.o aes-gcm-avx10-x86_64.o
 
+# ghash-clmulni-intel.ko
+arch-y += ghash-clmulni-intel_asm.o ghash-clmulni-intel_glue.o
+
 # sha1-ssse3.ko
 arch-y += sha1_avx2_x86_64_asm.o sha1_ssse3_asm.o sha1_ssse3_glue.o sha1_ni_asm.o
 
