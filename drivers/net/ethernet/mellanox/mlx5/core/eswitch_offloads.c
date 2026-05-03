@@ -3739,11 +3739,12 @@ free:
 }
 
 static int mlx5_esw_add_work(struct mlx5_eswitch *esw,
-			     void (*func)(struct mlx5_eswitch *esw))
+			     void (*func)(struct mlx5_eswitch *esw),
+			     gfp_t gfp)
 {
 	struct mlx5_host_work *host_work;
 
-	host_work = kzalloc(sizeof(*host_work), GFP_ATOMIC);
+	host_work = kzalloc(sizeof(*host_work), gfp);
 	if (!host_work)
 		return -ENOMEM;
 
@@ -3767,7 +3768,8 @@ int mlx5_esw_funcs_changed_handler(struct notifier_block *nb,
 	esw_funcs = mlx5_nb_cof(nb, struct mlx5_esw_functions, nb);
 	esw = container_of(esw_funcs, struct mlx5_eswitch, esw_funcs);
 
-	ret = mlx5_esw_add_work(esw, esw_vfs_changed_event_handler);
+	ret = mlx5_esw_add_work(esw, esw_vfs_changed_event_handler,
+				GFP_ATOMIC);
 	if (ret)
 		return NOTIFY_DONE;
 
