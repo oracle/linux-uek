@@ -2786,13 +2786,28 @@ void esw_offloads_cleanup(struct mlx5_eswitch *esw)
 }
 
 static int __esw_offloads_load_rep(struct mlx5_eswitch *esw,
-				   struct mlx5_eswitch_rep *rep, u8 rep_type)
+				   struct mlx5_eswitch_rep *rep,
+				   u8 rep_type, bool *newly_loaded)
 {
+	int err;
+
 	mlx5_esw_assert_reps_locked(esw);
 
+	if (newly_loaded)
+		*newly_loaded = false;
+
 	if (atomic_cmpxchg(&rep->rep_data[rep_type].state,
-			   REP_REGISTERED, REP_LOADED) == REP_REGISTERED)
-		return esw->offloads.rep_ops[rep_type]->load(esw->dev, rep);
+			   REP_REGISTERED, REP_LOADED) != REP_REGISTERED)
+		return 0;
+
+	err = esw->offloads.rep_ops[rep_type]->load(esw->dev, rep);
+	if (err) {
+		atomic_set(&rep->rep_data[rep_type].state, REP_REGISTERED);
+		return err;
+	}
+
+	if (newly_loaded)
+		*newly_loaded = true;
 
 	return 0;
 }
@@ -2825,22 +2840,27 @@ static void __unload_reps_all_vport(struct mlx5_eswitch *esw, u8 rep_type)
 static int mlx5_esw_offloads_rep_load(struct mlx5_eswitch *esw, u16 vport_num)
 {
 	struct mlx5_eswitch_rep *rep;
+	unsigned long loaded = 0;
+	bool newly_loaded;
 	int rep_type;
 	int err;
 
 	rep = mlx5_eswitch_get_rep(esw, vport_num);
 	for (rep_type = 0; rep_type < NUM_REP_TYPES; rep_type++) {
-		err = __esw_offloads_load_rep(esw, rep, rep_type);
+		err = __esw_offloads_load_rep(esw, rep, rep_type,
+					      &newly_loaded);
 		if (err)
 			goto err_reps;
+		if (newly_loaded)
+			loaded |= BIT(rep_type);
 	}
 
 	return 0;
 
 err_reps:
-	atomic_set(&rep->rep_data[rep_type].state, REP_REGISTERED);
-	for (--rep_type; rep_type >= 0; rep_type--)
-		__esw_offloads_unload_rep(esw, rep, rep_type);
+	while (--rep_type >= 0)
+		if (test_bit(rep_type, &loaded))
+			__esw_offloads_unload_rep(esw, rep, rep_type);
 	return err;
 }
 
@@ -3594,13 +3614,13 @@ int mlx5_eswitch_reload_ib_reps(struct mlx5_eswitch *esw)
 	if (atomic_read(&rep->rep_data[REP_ETH].state) != REP_LOADED)
 		return 0;
 
-	ret = __esw_offloads_load_rep(esw, rep, REP_IB);
+	ret = __esw_offloads_load_rep(esw, rep, REP_IB, NULL);
 	if (ret)
 		return ret;
 
 	mlx5_esw_for_each_rep(esw, i, rep) {
 		if (atomic_read(&rep->rep_data[REP_ETH].state) == REP_LOADED)
-			__esw_offloads_load_rep(esw, rep, REP_IB);
+			__esw_offloads_load_rep(esw, rep, REP_IB, NULL);
 	}
 
 	return 0;
