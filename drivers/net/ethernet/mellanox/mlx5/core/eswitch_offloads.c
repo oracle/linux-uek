@@ -4572,6 +4572,38 @@ mlx5_eswitch_register_vport_reps_blocked(struct mlx5_eswitch *esw,
 	}
 }
 
+static void mlx5_eswitch_reload_reps_blocked(struct mlx5_eswitch *esw)
+{
+	struct mlx5_vport *vport;
+	unsigned long i;
+
+	if (esw->mode != MLX5_ESWITCH_OFFLOADS)
+		return;
+
+	if (mlx5_esw_offloads_rep_load(esw, MLX5_VPORT_UPLINK))
+		return;
+
+	mlx5_esw_for_each_vport(esw, i, vport) {
+		if (!vport)
+			continue;
+		if (!vport->enabled)
+			continue;
+		if (vport->vport == MLX5_VPORT_UPLINK)
+			continue;
+		if (!mlx5_eswitch_vport_has_rep(esw, vport->vport))
+			continue;
+
+		mlx5_esw_offloads_rep_load(esw, vport->vport);
+	}
+}
+
+static void mlx5_eswitch_reload_reps(struct mlx5_eswitch *esw)
+{
+	mlx5_esw_reps_block(esw);
+	mlx5_eswitch_reload_reps_blocked(esw);
+	mlx5_esw_reps_unblock(esw);
+}
+
 static void
 mlx5_eswitch_register_vport_reps_locked(struct mlx5_eswitch *esw,
 					const struct mlx5_eswitch_rep_ops *ops,
@@ -4583,6 +4615,8 @@ mlx5_eswitch_register_vport_reps_locked(struct mlx5_eswitch *esw,
 		mlx5_esw_reps_block(esw);
 	mlx5_eswitch_register_vport_reps_blocked(esw, ops, rep_type);
 	mlx5_esw_reps_unblock(esw);
+
+	mlx5_esw_add_work(esw, mlx5_eswitch_reload_reps, GFP_KERNEL);
 }
 
 void mlx5_eswitch_register_vport_reps(struct mlx5_eswitch *esw,
