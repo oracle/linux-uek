@@ -36,6 +36,7 @@
 #include <linux/mlx5/mlx5_ifc.h>
 #include <linux/mlx5/vport.h>
 #include <linux/mlx5/fs.h>
+#include <linux/lockdep.h>
 #include "mlx5_core.h"
 #include "eswitch.h"
 #include "esw/indir_table.h"
@@ -2413,9 +2414,19 @@ out_free:
 	return err;
 }
 
+static void mlx5_esw_assert_reps_locked(struct mlx5_eswitch *esw)
+{
+	lockdep_assert_held(&esw->offloads.reps_lock);
+}
+
 void mlx5_esw_reps_block(struct mlx5_eswitch *esw)
 {
 	mutex_lock(&esw->offloads.reps_lock);
+}
+
+static void mlx5_esw_reps_block_nested(struct mlx5_eswitch *esw)
+{
+	mutex_lock_nested(&esw->offloads.reps_lock, SINGLE_DEPTH_NESTING);
 }
 
 void mlx5_esw_reps_unblock(struct mlx5_eswitch *esw)
@@ -2425,21 +2436,22 @@ void mlx5_esw_reps_unblock(struct mlx5_eswitch *esw)
 
 static void esw_mode_change(struct mlx5_eswitch *esw, u16 mode)
 {
+	mlx5_esw_reps_unblock(esw);
 	mlx5_devcom_comp_lock(esw->dev->priv.hca_devcom_comp);
 	if (esw->dev->priv.flags & MLX5_PRIV_FLAGS_DISABLE_IB_ADEV ||
 	    mlx5_core_mp_enabled(esw->dev)) {
 		esw->mode = mode;
-		mlx5_rescan_drivers_locked(esw->dev);
-		mlx5_devcom_comp_unlock(esw->dev->priv.hca_devcom_comp);
-		return;
+		goto out;
 	}
 
 	esw->dev->priv.flags |= MLX5_PRIV_FLAGS_DISABLE_IB_ADEV;
 	mlx5_rescan_drivers_locked(esw->dev);
 	esw->mode = mode;
 	esw->dev->priv.flags &= ~MLX5_PRIV_FLAGS_DISABLE_IB_ADEV;
+out:
 	mlx5_rescan_drivers_locked(esw->dev);
 	mlx5_devcom_comp_unlock(esw->dev->priv.hca_devcom_comp);
+	mlx5_esw_reps_block(esw);
 }
 
 static void mlx5_esw_fdb_drop_destroy(struct mlx5_eswitch *esw)
@@ -2776,6 +2788,8 @@ void esw_offloads_cleanup(struct mlx5_eswitch *esw)
 static int __esw_offloads_load_rep(struct mlx5_eswitch *esw,
 				   struct mlx5_eswitch_rep *rep, u8 rep_type)
 {
+	mlx5_esw_assert_reps_locked(esw);
+
 	if (atomic_cmpxchg(&rep->rep_data[rep_type].state,
 			   REP_REGISTERED, REP_LOADED) == REP_REGISTERED)
 		return esw->offloads.rep_ops[rep_type]->load(esw->dev, rep);
@@ -2786,6 +2800,8 @@ static int __esw_offloads_load_rep(struct mlx5_eswitch *esw,
 static void __esw_offloads_unload_rep(struct mlx5_eswitch *esw,
 				      struct mlx5_eswitch_rep *rep, u8 rep_type)
 {
+	mlx5_esw_assert_reps_locked(esw);
+
 	if (atomic_cmpxchg(&rep->rep_data[rep_type].state,
 			   REP_LOADED, REP_REGISTERED) == REP_LOADED) {
 		if (rep_type == REP_ETH)
@@ -3694,6 +3710,7 @@ static void esw_vfs_changed_event_handler(struct mlx5_eswitch *esw)
 	if (new_num_vfs == esw->esw_funcs.num_vfs || host_pf_disabled)
 		goto free;
 
+	mlx5_esw_reps_block(esw);
 	/* Number of VFs can only change from "0 to x" or "x to 0". */
 	if (esw->esw_funcs.num_vfs > 0) {
 		mlx5_eswitch_unload_vf_vports(esw, esw->esw_funcs.num_vfs);
@@ -3703,9 +3720,11 @@ static void esw_vfs_changed_event_handler(struct mlx5_eswitch *esw)
 		err = mlx5_eswitch_load_vf_vports(esw, new_num_vfs,
 						  MLX5_VPORT_UC_ADDR_CHANGE);
 		if (err)
-			goto free;
+			goto unblock;
 	}
 	esw->esw_funcs.num_vfs = new_num_vfs;
+unblock:
+	mlx5_esw_reps_unblock(esw);
 free:
 	kvfree(out);
 }
@@ -4197,8 +4216,13 @@ int mlx5_devlink_eswitch_mode_set(struct devlink *devlink, u16 mode,
 		goto unlock;
 	}
 
+	/* Keep mode_lock and reps_lock unnested. The operation flag excludes
+	 * mode users while mode_lock is dropped before taking reps_lock.
+	 */
 	esw->eswitch_operation_in_progress = true;
 	up_write(&esw->mode_lock);
+
+	mlx5_esw_reps_block(esw);
 
 	if (mlx5_mode == MLX5_ESWITCH_OFFLOADS &&
 	    !mlx5_devlink_netdev_netns_immutable_set(devlink, true)) {
@@ -4232,6 +4256,10 @@ int mlx5_devlink_eswitch_mode_set(struct devlink *devlink, u16 mode,
 skip:
 	if (mlx5_mode == MLX5_ESWITCH_OFFLOADS && err)
 		mlx5_devlink_netdev_netns_immutable_set(devlink, false);
+	/* Reconfiguration is done; drop reps_lock before taking mode_lock again
+	 * to clear the operation flag.
+	 */
+	mlx5_esw_reps_unblock(esw);
 	down_write(&esw->mode_lock);
 	esw->eswitch_operation_in_progress = false;
 unlock:
@@ -4505,9 +4533,10 @@ mlx5_eswitch_vport_has_rep(const struct mlx5_eswitch *esw, u16 vport_num)
 	return true;
 }
 
-void mlx5_eswitch_register_vport_reps(struct mlx5_eswitch *esw,
-				      const struct mlx5_eswitch_rep_ops *ops,
-				      u8 rep_type)
+static void
+mlx5_eswitch_register_vport_reps_blocked(struct mlx5_eswitch *esw,
+					 const struct mlx5_eswitch_rep_ops *ops,
+					 u8 rep_type)
 {
 	struct mlx5_eswitch_rep_data *rep_data;
 	struct mlx5_eswitch_rep *rep;
@@ -4522,20 +4551,76 @@ void mlx5_eswitch_register_vport_reps(struct mlx5_eswitch *esw,
 		}
 	}
 }
+
+static void
+mlx5_eswitch_register_vport_reps_locked(struct mlx5_eswitch *esw,
+					const struct mlx5_eswitch_rep_ops *ops,
+					u8 rep_type, bool nested)
+{
+	if (nested)
+		mlx5_esw_reps_block_nested(esw);
+	else
+		mlx5_esw_reps_block(esw);
+	mlx5_eswitch_register_vport_reps_blocked(esw, ops, rep_type);
+	mlx5_esw_reps_unblock(esw);
+}
+
+void mlx5_eswitch_register_vport_reps(struct mlx5_eswitch *esw,
+				      const struct mlx5_eswitch_rep_ops *ops,
+				      u8 rep_type)
+{
+	mlx5_eswitch_register_vport_reps_locked(esw, ops, rep_type, false);
+}
 EXPORT_SYMBOL(mlx5_eswitch_register_vport_reps);
 
-void mlx5_eswitch_unregister_vport_reps(struct mlx5_eswitch *esw, u8 rep_type)
+void
+mlx5_eswitch_register_vport_reps_nested(struct mlx5_eswitch *esw,
+					const struct mlx5_eswitch_rep_ops *ops,
+					u8 rep_type)
+{
+	mlx5_eswitch_register_vport_reps_locked(esw, ops, rep_type, true);
+}
+EXPORT_SYMBOL(mlx5_eswitch_register_vport_reps_nested);
+
+static void
+mlx5_eswitch_unregister_vport_reps_blocked(struct mlx5_eswitch *esw,
+					   u8 rep_type)
 {
 	struct mlx5_eswitch_rep *rep;
 	unsigned long i;
 
-	if (esw->mode == MLX5_ESWITCH_OFFLOADS)
-		__unload_reps_all_vport(esw, rep_type);
+	__unload_reps_all_vport(esw, rep_type);
 
 	mlx5_esw_for_each_rep(esw, i, rep)
 		atomic_set(&rep->rep_data[rep_type].state, REP_UNREGISTERED);
+
+	esw->offloads.rep_ops[rep_type] = NULL;
+}
+
+static void
+mlx5_eswitch_unregister_vport_reps_locked(struct mlx5_eswitch *esw,
+					  u8 rep_type, bool nested)
+{
+	if (nested)
+		mlx5_esw_reps_block_nested(esw);
+	else
+		mlx5_esw_reps_block(esw);
+	mlx5_eswitch_unregister_vport_reps_blocked(esw, rep_type);
+	mlx5_esw_reps_unblock(esw);
+}
+
+void mlx5_eswitch_unregister_vport_reps(struct mlx5_eswitch *esw, u8 rep_type)
+{
+	mlx5_eswitch_unregister_vport_reps_locked(esw, rep_type, false);
 }
 EXPORT_SYMBOL(mlx5_eswitch_unregister_vport_reps);
+
+void mlx5_eswitch_unregister_vport_reps_nested(struct mlx5_eswitch *esw,
+					       u8 rep_type)
+{
+	mlx5_eswitch_unregister_vport_reps_locked(esw, rep_type, true);
+}
+EXPORT_SYMBOL(mlx5_eswitch_unregister_vport_reps_nested);
 
 void *mlx5_eswitch_get_uplink_priv(struct mlx5_eswitch *esw, u8 rep_type)
 {
