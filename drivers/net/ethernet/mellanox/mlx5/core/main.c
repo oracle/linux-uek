@@ -1055,11 +1055,12 @@ static int mlx5_init_once(struct mlx5_core_dev *dev)
 		mlx5_core_err(dev, "Failed to init eswitch %d\n", err);
 		goto err_sriov_cleanup;
 	}
+	mlx5_pages_by_func_type_debugfs_init(dev);
 
 	err = mlx5_fpga_init(dev);
 	if (err) {
 		mlx5_core_err(dev, "Failed to init fpga device %d\n", err);
-		goto err_eswitch_cleanup;
+		goto err_page_debugfs_cleanup;
 	}
 
 	err = mlx5_vhca_event_init(dev);
@@ -1102,7 +1103,8 @@ err_sf_hw_table_cleanup:
 	mlx5_vhca_event_cleanup(dev);
 err_fpga_cleanup:
 	mlx5_fpga_cleanup(dev);
-err_eswitch_cleanup:
+err_page_debugfs_cleanup:
+	mlx5_pages_by_func_type_debugfs_cleanup(dev);
 	mlx5_eswitch_cleanup(dev->priv.eswitch);
 err_sriov_cleanup:
 	mlx5_sriov_cleanup(dev);
@@ -1140,6 +1142,7 @@ static void mlx5_cleanup_once(struct mlx5_core_dev *dev)
 	mlx5_sf_hw_table_cleanup(dev);
 	mlx5_vhca_event_cleanup(dev);
 	mlx5_fpga_cleanup(dev);
+	mlx5_pages_by_func_type_debugfs_cleanup(dev);
 	mlx5_eswitch_cleanup(dev->priv.eswitch);
 	mlx5_sriov_cleanup(dev);
 	mlx5_mpfs_cleanup(dev);
