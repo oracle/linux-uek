@@ -215,7 +215,6 @@ enum sort_type {
 	/* common sort keys */
 	SORT_PID,
 	SORT_COMM,
-	SORT_COMM_IGNORE_DIGIT,
 	SORT_DSO,
 	SORT_SYM,
 	SORT_PARENT,
