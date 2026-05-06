@@ -3044,7 +3044,7 @@ void exadata_override_default_sort_order(void)
 	if (size < sizeof(cmdline)) {
 		cmdline[size] = '\0';
 		if (strstr(cmdline, "uek=exadata"))
-			default_sort_order = "comm_ignore_digit,dso,symbol";
+			default_sort_order = "comm_nodigit,dso,symbol";
 	}
 	fclose(f);
 }
