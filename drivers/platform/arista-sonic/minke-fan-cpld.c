@@ -374,8 +374,10 @@ static s32 cpld_read_slot_id(struct cpld_slot *slot)
 
    if (!slot->fan_id->model) {
       slot->fan_id = &cpld->info->fan_ids[FAN_ID_UNKNOWN];
-      pali_warn(cpld, "Unknown fan id: 0x%02x for slot %d", slot->ident,
-                slot->index + 1);
+      if (slot->present) {
+         pali_warn(cpld, "Unknown fan id: 0x%02x for slot %d", slot->ident,
+                   slot->index + 1);
+      }
    }
 
    return 0;
