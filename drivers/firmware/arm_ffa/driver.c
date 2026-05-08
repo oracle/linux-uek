@@ -1557,7 +1557,7 @@ static int ffa_setup_host_partition(int vm_id)
 	int ret;
 
 	buf.id = vm_id;
-	ffa_dev = ffa_device_register(&buf, &ffa_drv_ops);
+	ffa_dev = ffa_device_register(&buf, &ffa_drv_ops, &ffa_pdev->dev);
 	if (!ffa_dev) {
 		pr_err("%s: failed to register host partition ID 0x%x\n",
 		       __func__, vm_id);
@@ -1632,7 +1632,8 @@ static int ffa_setup_partitions(void)
 		 * provides UUID here for each partition as part of the
 		 * discovery API and the same is passed.
 		 */
-		ffa_dev = ffa_device_register(tpbuf, &ffa_drv_ops);
+		ffa_dev = ffa_device_register(tpbuf, &ffa_drv_ops,
+					      &ffa_pdev->dev);
 		if (!ffa_dev) {
 			pr_err("%s: failed to register partition ID 0x%x\n",
 			       __func__, tpbuf->id);
