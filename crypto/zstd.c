@@ -277,4 +277,5 @@ MODULE_ALIAS_CRYPTO("zstd");
 #include <../lib/zstd/compress/huf_compress.c>
 #include <../lib/zstd/compress/hist.c>
 #include <../lib/zstd/compress/zstd_double_fast.c>
+#include <../lib/xxhash.c>
 #endif

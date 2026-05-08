@@ -121,3 +121,12 @@ MODULE_DESCRIPTION("T10 DIF CRC calculation.");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS_CRYPTO("crct10dif");
 MODULE_ALIAS_CRYPTO("crct10dif-generic");
+#ifdef FIPS_MODULE
+#undef EXPORT_SYMBOL
+#define EXPORT_SYMBOL(x)
+
+/*
+ * Keep the common T10 DIF CRC implementation private to the FIPS provider.
+ */
+#include <../crypto/crct10dif_common.c>
+#endif
