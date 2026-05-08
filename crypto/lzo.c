@@ -162,3 +162,17 @@ crypto_module_exit(lzo_mod_fini);
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("LZO Compression Algorithm");
 MODULE_ALIAS_CRYPTO("lzo");
+#ifdef FIPS_MODULE
+#undef EXPORT_SYMBOL_GPL
+#define EXPORT_SYMBOL_GPL(x)
+
+#include <../lib/lzo/lzo1x_compress_safe.c>
+#undef LZO_SAFE
+#undef HAVE_OP
+#undef NEED_OP
+#undef LZO_UNSAFE
+
+#define STATIC
+#include <../lib/lzo/lzo1x_decompress_safe.c>
+#undef STATIC
+#endif

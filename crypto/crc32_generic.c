@@ -131,3 +131,13 @@ MODULE_DESCRIPTION("CRC32 calculations wrapper for lib/crc32");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS_CRYPTO("crc32");
 MODULE_ALIAS_CRYPTO("crc32-generic");
+#ifdef FIPS_MODULE
+#undef EXPORT_SYMBOL
+#define EXPORT_SYMBOL(x)
+
+/*
+ * Keep lib/crc32 private to the FIPS CRC32 providers so crc32_le() and
+ * __crc32c_le() do not become vmlinux dependencies of fips140.ko.
+ */
+#include <../lib/crc32.c>
+#endif
