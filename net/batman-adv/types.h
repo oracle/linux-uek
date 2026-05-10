@@ -1403,6 +1403,9 @@ struct batadv_tp_vars {
 	/** @reason: reason for a stopped session */
 	enum batadv_tp_meter_reason reason;
 
+	/** @reason: reason for a stopped session */
+	enum batadv_tp_meter_reason reason;
+
 	/** @finish_work: work item for the finishing procedure */
 	struct delayed_work finish_work;
 
