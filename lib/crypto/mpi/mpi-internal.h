@@ -24,6 +24,21 @@
 #include <linux/mpi.h>
 #include <linux/errno.h>
 
+#ifdef FIPS_MODULE
+/*
+ * The FIPS module builds a private MPI copy through fips/lib/crypto/mpi.
+ * Do not export symbols or emit separate MPI module metadata from that copy.
+ */
+#undef EXPORT_SYMBOL
+#define EXPORT_SYMBOL(sym)
+#undef EXPORT_SYMBOL_GPL
+#define EXPORT_SYMBOL_GPL(sym)
+#undef MODULE_DESCRIPTION
+#define MODULE_DESCRIPTION(description)
+#undef MODULE_LICENSE
+#define MODULE_LICENSE(license)
+#endif
+
 #define log_debug printk
 #define log_bug printk
 

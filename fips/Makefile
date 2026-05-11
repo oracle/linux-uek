@@ -175,6 +175,33 @@ fips140-y += lib/crypto/memneq.o
 fips140-y += lib/crypto/utils.o
 fips140-y += lib/crypto/aesgcm.o
 
+#
+# lib/crypto/mpi/Makefile
+#
+
+fips140-y += $(addprefix lib/crypto/mpi/, \
+	generic_mpih-lshift.o \
+	generic_mpih-mul1.o \
+	generic_mpih-mul2.o \
+	generic_mpih-mul3.o \
+	generic_mpih-rshift.o \
+	generic_mpih-sub1.o \
+	generic_mpih-add1.o \
+	mpicoder.o \
+	mpi-add.o \
+	mpi-bit.o \
+	mpi-cmp.o \
+	mpi-sub-ui.o \
+	mpi-div.o \
+	mpi-mod.o \
+	mpi-mul.o \
+	mpih-cmp.o \
+	mpih-div.o \
+	mpih-mul.o \
+	mpi-pow.o \
+	mpiutil.o \
+)
+
 # collect arch-specific objects
 arch-y :=
 
