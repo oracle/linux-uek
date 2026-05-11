@@ -165,4 +165,7 @@ MODULE_ALIAS_CRYPTO("lz4");
 #define EXPORT_SYMBOL(x)
 
 #include <../lib/lz4/lz4_compress.c>
+#define STATIC
+#include <../lib/lz4/lz4_decompress.c>
+#undef STATIC
 #endif

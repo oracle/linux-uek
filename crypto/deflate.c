@@ -313,3 +313,12 @@ MODULE_DESCRIPTION("Deflate Compression Algorithm for IPCOMP");
 MODULE_AUTHOR("James Morris <jmorris@intercode.com.au>");
 MODULE_ALIAS_CRYPTO("deflate");
 MODULE_ALIAS_CRYPTO("deflate-generic");
+
+#ifdef FIPS_MODULE
+#include <../lib/zlib_deflate/deflate.c>
+#include <../lib/zlib_deflate/deftree.c>
+#include <../lib/zlib_inflate/inffast.c>
+#include <../lib/zlib_inflate/inflate.c>
+#include <../lib/zlib_inflate/infutil.c>
+#include <../lib/zlib_inflate/inftrees.c>
+#endif
