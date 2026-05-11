@@ -261,10 +261,27 @@ MODULE_ALIAS_CRYPTO("zstd");
 #ifdef FIPS_MODULE
 #undef EXPORT_SYMBOL
 #define EXPORT_SYMBOL(x)
+#undef EXPORT_SYMBOL_GPL
+#define EXPORT_SYMBOL_GPL(x)
+#undef MODULE_LICENSE
+#define MODULE_LICENSE(x)
+#undef MODULE_DESCRIPTION
+#define MODULE_DESCRIPTION(x)
 
 #undef current
 
 #include <../lib/zstd/zstd_compress_module.c>
+#include <../lib/zstd/zstd_decompress_module.c>
+#include <../lib/zstd/common/debug.c>
+#undef FSE_isError
+#undef HUF_isError
+#include <../lib/zstd/common/entropy_common.c>
+#include <../lib/zstd/common/error_private.c>
+#include <../lib/zstd/common/fse_decompress.c>
+#include <../lib/zstd/decompress/huf_decompress.c>
+#include <../lib/zstd/decompress/zstd_ddict.c>
+#include <../lib/zstd/decompress/zstd_decompress.c>
+#include <../lib/zstd/decompress/zstd_decompress_block.c>
 #include <../lib/zstd/compress/zstd_compress.c>
 #include <../lib/zstd/compress/zstd_compress_literals.c>
 #include <../lib/zstd/compress/zstd_compress_superblock.c>
@@ -277,5 +294,7 @@ MODULE_ALIAS_CRYPTO("zstd");
 #include <../lib/zstd/compress/huf_compress.c>
 #include <../lib/zstd/compress/hist.c>
 #include <../lib/zstd/compress/zstd_double_fast.c>
+#include <../lib/zstd/common/zstd_common.c>
+#include <../lib/zstd/zstd_common_module.c>
 #include <../lib/xxhash.c>
 #endif
