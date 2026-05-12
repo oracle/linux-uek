@@ -426,8 +426,8 @@ int rds_send_xmit(struct rds_conn_path *cp, enum rds_send_xmit_mode xmit_mode)
 
 			if (test_bit(RDS_MSG_FLUSH, &rm->m_flags) ||
 				(rm->rdma.op_active &&
-				test_bit(RDS_MSG_RETRANSMITTED,
-					&rm->m_flags))) {
+				 !test_bit(RDS_MSG_RDMA_SUCCEEDED, &rm->m_flags) &&
+				 test_bit(RDS_MSG_RETRANSMITTED, &rm->m_flags))) {
 				trace_rds_drop_egress(rm, rm->m_rs,
 						      conn, cp,
 						      &conn->c_laddr,
@@ -464,6 +464,16 @@ int rds_send_xmit(struct rds_conn_path *cp, enum rds_send_xmit_mode xmit_mode)
 			}
 
 			cp->cp_xmit_rm = rm;
+		}
+
+		if (rm->rdma.op_active && !cp->cp_xmit_rdma_sent &&
+		    test_bit(RDS_MSG_RDMA_SUCCEEDED, &rm->m_flags)) {
+			/* RDS_RDMA_SEND_SUCCESS already signaled to user-space.
+			 * This implies the RDMA portion of this message was sent
+			 * and likely the connection went down, clearing cp_xmit_rdma_sent.
+			 * We may still need to handle the bcopy-portion of this message.
+			 */
+			cp->cp_xmit_rdma_sent = 1;
 		}
 
 		/* The transport either sends the whole rdma or none of it */
@@ -731,6 +741,11 @@ void rds_rdma_send_complete(struct rds_message *rm, int status)
 		rs = rm->m_rs;
 		debug_sock_hold(rds_rs_to_sk(rs));
 
+		if (status == RDS_RDMA_SEND_SUCCESS)
+			rds_set_rm_flag_bit(rm, RDS_MSG_RDMA_SUCCEEDED);
+		else
+			rds_clear_rm_flag_bit(rm, RDS_MSG_RDMA_SUCCEEDED);
+
 		notifier->n_status = status;
 
 		if (!ro->op_remote_complete) {
@@ -770,6 +785,11 @@ __rds_send_complete(struct rds_sock *rs, struct rds_message *rm,
 
 	ro = &rm->rdma;
 	if (ro->op_active && ro->op_notify && ro->op_notifier) {
+		if (status == RDS_RDMA_SEND_SUCCESS)
+			rds_set_rm_flag_bit(rm, RDS_MSG_RDMA_SUCCEEDED);
+		else
+			rds_clear_rm_flag_bit(rm, RDS_MSG_RDMA_SUCCEEDED);
+
 		ro->op_notifier->n_status = status;
 		list_add_tail(&ro->op_notifier->n_list, &rs->rs_notify_queue);
 		ro->op_notifier = NULL;
