@@ -2466,7 +2466,7 @@ static int iommu_setup_intcapxt(struct amd_iommu *iommu)
 		 "AMD-Vi%d-GA", iommu->index);
 	ret = __iommu_setup_intcapxt(iommu, iommu->ga_irq_name,
 				     MMIO_INTCAPXT_GALOG_OFFSET,
-				     NULL,
+				     amd_iommu_int_handler,
 				     amd_iommu_int_thread_galog);
 #endif
 

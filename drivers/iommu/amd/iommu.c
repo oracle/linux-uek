@@ -1067,6 +1067,12 @@ static void iommu_poll_ga_log(struct amd_iommu *iommu)
 	}
 }
 
+static void amd_iommu_restart_ga_log_and_poll(struct amd_iommu *iommu)
+{
+	amd_iommu_restart_ga_log(iommu);
+	iommu_poll_ga_log(iommu);
+}
+
 static void
 amd_iommu_set_pci_msi_domain(struct device *dev, struct amd_iommu *iommu)
 {
@@ -1142,9 +1148,18 @@ irqreturn_t amd_iommu_int_thread_pprlog(int irq, void *data)
 irqreturn_t amd_iommu_int_thread_galog(int irq, void *data)
 {
 #ifdef CONFIG_IRQ_REMAP
+	struct amd_iommu *iommu = data;
+	u32 initial_status;
+
+	initial_status = readl(iommu->mmio_base + MMIO_STATUS_OFFSET);
+
 	amd_iommu_handle_irq(data, "GA", MMIO_STATUS_GALOG_INT_MASK,
 			     MMIO_STATUS_GALOG_OVERFLOW_MASK,
-			     iommu_poll_ga_log, amd_iommu_restart_ga_log);
+			     iommu_poll_ga_log,
+			     amd_iommu_restart_ga_log_and_poll);
+
+	if (initial_status & MMIO_STATUS_GALOG_INT_MASK)
+		iommu_feature_enable(iommu, CONTROL_GAINT_EN);
 #endif
 
 	return IRQ_HANDLED;
