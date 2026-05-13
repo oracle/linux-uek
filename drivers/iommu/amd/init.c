@@ -438,7 +438,7 @@ void iommu_feature_enable(struct amd_iommu *iommu, u8 bit)
 	iommu_feature_set(iommu, 1ULL, 1ULL, bit);
 }
 
-static void iommu_feature_disable(struct amd_iommu *iommu, u8 bit)
+void iommu_feature_disable(struct amd_iommu *iommu, u8 bit)
 {
 	iommu_feature_set(iommu, 0ULL, 1ULL, bit);
 }

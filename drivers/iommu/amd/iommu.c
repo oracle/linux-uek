@@ -1159,6 +1159,19 @@ irqreturn_t amd_iommu_int_thread(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+irqreturn_t amd_iommu_int_handler(int irq, void *data)
+{
+	struct amd_iommu *iommu = data;
+	u32 status;
+
+	status = readl(iommu->mmio_base + MMIO_STATUS_OFFSET);
+
+	if (status & MMIO_STATUS_GALOG_INT_MASK)
+		iommu_feature_disable(iommu, CONTROL_GAINT_EN);
+
+	return IRQ_WAKE_THREAD;
+}
+
 /****************************************************************************
  *
  * IOMMU command queuing functions
