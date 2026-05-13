@@ -778,9 +778,17 @@ void amd_iommu_restart_event_logging(struct amd_iommu *iommu)
  */
 void amd_iommu_restart_ga_log(struct amd_iommu *iommu)
 {
-	amd_iommu_restart_log(iommu, "GA", CONTROL_GAINT_EN,
-			      CONTROL_GALOG_EN, MMIO_STATUS_GALOG_RUN_MASK,
-			      MMIO_STATUS_GALOG_OVERFLOW_MASK);
+	pr_info_ratelimited("IOMMU GA Log restarting\n");
+
+	iommu_feature_disable(iommu, CONTROL_GALOG_EN);
+
+	writel(MMIO_STATUS_GALOG_OVERFLOW_MASK,
+	       iommu->mmio_base + MMIO_STATUS_OFFSET);
+
+#ifdef CONFIG_IRQ_REMAP
+	iommu_poll_ga_log(iommu);
+#endif
+	iommu_feature_enable(iommu, CONTROL_GALOG_EN);
 }
 
 /*

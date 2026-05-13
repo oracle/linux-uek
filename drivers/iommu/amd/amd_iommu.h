@@ -25,6 +25,9 @@ void amd_iommu_restart_ppr_log(struct amd_iommu *iommu);
 void amd_iommu_set_rlookup_table(struct amd_iommu *iommu, u16 devid);
 void iommu_feature_enable(struct amd_iommu *iommu, u8 bit);
 void iommu_feature_disable(struct amd_iommu *iommu, u8 bit);
+#ifdef CONFIG_IRQ_REMAP
+void iommu_poll_ga_log(struct amd_iommu *iommu);
+#endif
 void *__init iommu_alloc_4k_pages(struct amd_iommu *iommu,
 				  gfp_t gfp, size_t size);
 

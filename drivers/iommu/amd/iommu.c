@@ -1025,7 +1025,7 @@ int amd_iommu_register_ga_log_notifier(int (*notifier)(u32))
 }
 EXPORT_SYMBOL(amd_iommu_register_ga_log_notifier);
 
-static void iommu_poll_ga_log(struct amd_iommu *iommu)
+void iommu_poll_ga_log(struct amd_iommu *iommu)
 {
 	u32 head, tail;
 
@@ -1065,12 +1065,6 @@ static void iommu_poll_ga_log(struct amd_iommu *iommu)
 			break;
 		}
 	}
-}
-
-static void amd_iommu_restart_ga_log_and_poll(struct amd_iommu *iommu)
-{
-	amd_iommu_restart_ga_log(iommu);
-	iommu_poll_ga_log(iommu);
 }
 
 static void
@@ -1155,10 +1149,10 @@ irqreturn_t amd_iommu_int_thread_galog(int irq, void *data)
 
 	amd_iommu_handle_irq(data, "GA", MMIO_STATUS_GALOG_INT_MASK,
 			     MMIO_STATUS_GALOG_OVERFLOW_MASK,
-			     iommu_poll_ga_log,
-			     amd_iommu_restart_ga_log_and_poll);
+			     iommu_poll_ga_log, amd_iommu_restart_ga_log);
 
-	if (initial_status & MMIO_STATUS_GALOG_INT_MASK)
+	if (initial_status & (MMIO_STATUS_GALOG_INT_MASK |
+			      MMIO_STATUS_GALOG_OVERFLOW_MASK))
 		iommu_feature_enable(iommu, CONTROL_GAINT_EN);
 #endif
 
@@ -1181,7 +1175,8 @@ irqreturn_t amd_iommu_int_handler(int irq, void *data)
 
 	status = readl(iommu->mmio_base + MMIO_STATUS_OFFSET);
 
-	if (status & MMIO_STATUS_GALOG_INT_MASK)
+	if (status & (MMIO_STATUS_GALOG_INT_MASK |
+		      MMIO_STATUS_GALOG_OVERFLOW_MASK))
 		iommu_feature_disable(iommu, CONTROL_GAINT_EN);
 
 	return IRQ_WAKE_THREAD;
