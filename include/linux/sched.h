@@ -939,6 +939,9 @@ struct task_struct {
 	UEK_KABI_FILL_HOLE(unsigned reported_split_lock:1)
 #endif
 
+	/* Save user-dumpable when mm goes away. */
+	UEK_KABI_FILL_HOLE(unsigned user_dumpable:1)
+
 	unsigned long			atomic_flags; /* Flags requiring atomic access. */
 
 	struct restart_block		restart_block;
