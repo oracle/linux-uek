@@ -2405,7 +2405,8 @@ static struct irq_domain *iommu_get_irqdomain(void)
 }
 
 static int __iommu_setup_intcapxt(struct amd_iommu *iommu, const char *devname,
-				  int hwirq, irq_handler_t thread_fn)
+				  int hwirq, irq_handler_t handler,
+				  irq_handler_t thread_fn)
 {
 	struct irq_domain *domain;
 	struct irq_alloc_info info;
@@ -2427,8 +2428,8 @@ static int __iommu_setup_intcapxt(struct amd_iommu *iommu, const char *devname,
 		return irq;
 	}
 
-	ret = request_threaded_irq(irq, NULL, thread_fn, IRQF_ONESHOT, devname,
-				   iommu);
+	ret = request_threaded_irq(irq, handler, thread_fn, IRQF_ONESHOT,
+				   devname, iommu);
 	if (ret) {
 		irq_domain_free_irqs(irq, 1);
 		irq_domain_remove(domain);
@@ -2446,6 +2447,7 @@ static int iommu_setup_intcapxt(struct amd_iommu *iommu)
 		 "AMD-Vi%d-Evt", iommu->index);
 	ret = __iommu_setup_intcapxt(iommu, iommu->evt_irq_name,
 				     MMIO_INTCAPXT_EVT_OFFSET,
+				     NULL,
 				     amd_iommu_int_thread_evtlog);
 	if (ret)
 		return ret;
@@ -2454,6 +2456,7 @@ static int iommu_setup_intcapxt(struct amd_iommu *iommu)
 		 "AMD-Vi%d-PPR", iommu->index);
 	ret = __iommu_setup_intcapxt(iommu, iommu->ppr_irq_name,
 				     MMIO_INTCAPXT_PPR_OFFSET,
+				     NULL,
 				     amd_iommu_int_thread_pprlog);
 	if (ret)
 		return ret;
@@ -2463,6 +2466,7 @@ static int iommu_setup_intcapxt(struct amd_iommu *iommu)
 		 "AMD-Vi%d-GA", iommu->index);
 	ret = __iommu_setup_intcapxt(iommu, iommu->ga_irq_name,
 				     MMIO_INTCAPXT_GALOG_OFFSET,
+				     NULL,
 				     amd_iommu_int_thread_galog);
 #endif
 
