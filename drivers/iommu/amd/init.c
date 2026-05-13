@@ -2252,8 +2252,9 @@ static int iommu_setup_msi(struct amd_iommu *iommu)
 	if (r)
 		return r;
 
-	r = request_threaded_irq(iommu->dev->irq, NULL, amd_iommu_int_thread,
-				 IRQF_ONESHOT, "AMD-Vi", iommu);
+	r = request_threaded_irq(iommu->dev->irq, amd_iommu_int_handler,
+				 amd_iommu_int_thread, IRQF_ONESHOT, "AMD-Vi",
+				 iommu);
 	if (r) {
 		pci_disable_msi(iommu->dev);
 		return r;
