@@ -26,6 +26,10 @@ const char *const key_being_used_for[NR__KEY_BEING_USED_FOR] = {
 	[VERIFYING_KEY_SIGNATURE]		= "key sig",
 	[VERIFYING_KEY_SELF_SIGNATURE]		= "key self sig",
 	[VERIFYING_UNSPECIFIED_SIGNATURE]	= "unspec sig",
+	[VERIFYING_RESERVED_SIGNATURE_1]	= "reserved sig 1",
+	[VERIFYING_RESERVED_SIGNATURE_2]	= "reserved sig 2",
+	[VERIFYING_RESERVED_SIGNATURE_3]	= "reserved sig 3",
+	[VERIFYING_RESERVED_SIGNATURE_4]	= "reserved sig 4",
 };
 EXPORT_SYMBOL_GPL(key_being_used_for);
 
