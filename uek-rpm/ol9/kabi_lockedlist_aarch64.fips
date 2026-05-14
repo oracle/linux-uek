@@ -1,10 +1,4 @@
 [ol9_aarch64_whitelist]
-	FSE_readNCount
-	HUF_readStats
-	LZ4_decompress_safe
-	ZSTD_customCalloc
-	ZSTD_customFree
-	ZSTD_customMalloc
 	__SCK__crypto___crypto_alloc_tfm_key
 	__SCK__crypto___crypto_alloc_tfmgfp_key
 	__SCK__crypto___crypto_memneq_key
@@ -116,6 +110,8 @@
 	__SCK__crypto_crypto_init_akcipher_ops_sig_key
 	__SCK__crypto_crypto_init_queue_key
 	__SCK__crypto_crypto_inst_setname_key
+	__SCK__crypto_crypto_kdf108_ctr_generate_key
+	__SCK__crypto_crypto_kdf108_setkey_key
 	__SCK__crypto_crypto_larval_alloc_key
 	__SCK__crypto_crypto_lookup_template_key
 	__SCK__crypto_crypto_lskcipher_decrypt_key
@@ -270,19 +266,18 @@
 	__SCK__crypto_x509_free_certificate_key
 	__SCK__crypto_x509_load_certificate_list_key
 	___ratelimit
-	__alloc_skb
 	__bitmap_weight
 	__check_object_size
 	__cond_resched
 	__cpu_online_mask
 	__cpu_possible_mask
-	__crc32c_le
 	__do_once_done
 	__do_once_start
 	__dynamic_pr_debug
 	__fortify_panic
 	__init_swait_queue_head
 	__kmalloc_cache_noprof
+	__kmalloc_large_noprof
 	__kmalloc_node_noprof
 	__kmalloc_noprof
 	__kvmalloc_node_noprof
@@ -292,10 +287,6 @@
 	__module_get
 	__module_put_and_kthread_exit
 	__mutex_init
-	__netlink_dump_start
-	__netlink_kernel_create
-	__nla_parse
-	__nlmsg_put
 	__per_cpu_offset
 	__request_module
 	__seq_puts
@@ -320,12 +311,12 @@
 	complete
 	complete_all
 	cpu_have_feature
-	crc32_le
-	crc_t10dif_generic
+	crypto_alg_list
+	crypto_alg_sem
+	crypto_chain
 	crypto_comp_compress
 	crypto_comp_decompress
 	destroy_workqueue
-	do_trace_netlink_extack
 	down_read
 	down_write
 	fips_enabled
@@ -366,9 +357,6 @@
 	kvfree
 	kvfree_sensitive
 	look_up_OID
-	lzo1x_1_compress_safe
-	lzo1x_decompress_safe
-	lzorle1x_1_compress_safe
 	match_string
 	mem_alloc_profiling_key
 	memchr_inv
@@ -378,30 +366,9 @@
 	memset
 	mktime64
 	module_put
-	mpi_addm
-	mpi_alloc
-	mpi_cmp
-	mpi_cmp_ui
-	mpi_free
-	mpi_mul
-	mpi_mulm
-	mpi_powm
-	mpi_read_raw_data
-	mpi_read_raw_from_sgl
-	mpi_rshift
-	mpi_set_bit
-	mpi_sub
-	mpi_sub_ui
-	mpi_test_bit
-	mpi_write_to_sgl
 	mutex_lock
 	mutex_unlock
-	netlink_capable
-	netlink_kernel_release
-	netlink_rcv_skb
-	netlink_unicast
 	nla_put
-	nonfips_crypto_alg_list
 	nr_cpu_ids
 	numa_node
 	padata_alloc
@@ -426,15 +393,11 @@
 	random_kmalloc_seed
 	refcount_warn_saturate
 	register_key_type
-	register_pernet_subsys
 	register_sysctl_sz
 	remove_proc_entry
 	restrict_link_by_builtin_and_secondary_trusted
 	restrict_link_by_builtin_trusted
 	rng_is_initialized
-	scatterwalk_copychunks
-	scatterwalk_ffwd
-	scatterwalk_map_and_copy
 	seq_list_next
 	seq_list_start
 	seq_printf
@@ -444,6 +407,9 @@
 	sg_copy_to_buffer
 	sg_init_one
 	sg_init_table
+	sg_miter_next
+	sg_miter_start
+	sg_miter_stop
 	sg_nents
 	sg_nents_for_len
 	sg_next
@@ -451,8 +417,6 @@
 	sgl_alloc
 	sgl_free
 	sized_strscpy
-	sk_skb_reason_drop
-	skb_trim
 	snprintf
 	sprint_oid
 	sprintf
@@ -467,7 +431,6 @@
 	system_wq
 	try_module_get
 	unregister_key_type
-	unregister_pernet_subsys
 	up_read
 	up_write
 	user_describe
@@ -485,17 +448,3 @@
 	wait_for_completion_killable_timeout
 	wait_for_random_bytes
 	wake_up_process
-	zlib_deflate
-	zlib_deflateEnd
-	zlib_deflateInit2
-	zlib_deflateReset
-	zlib_deflate_workspacesize
-	zlib_inflate
-	zlib_inflateEnd
-	zlib_inflateInit2
-	zlib_inflateReset
-	zlib_inflate_workspacesize
-	zstd_dctx_workspace_bound
-	zstd_decompress_dctx
-	zstd_init_dctx
-	zstd_is_error
