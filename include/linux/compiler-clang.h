@@ -143,3 +143,9 @@
 #else
 #define __diag_clang_11(s)
 #endif
+
+#if CONFIG_CLANG_VERSION >= 230000
+#define __diag_clang_23(s)	__diag(s)
+#else
+#define __diag_clang_23(s)
+#endif
