@@ -477,6 +477,10 @@ static s32 sb_fan_probe(struct platform_device *pdev)
       goto fail_request_pm_region;
    }
    pdata->pm2_base = ioremap(SB800_PM2_BASE, SB800_PM2_SIZE );
+   if (!pdata->pm2_base) {
+      ret = -ENOMEM;
+      goto fail_request_gpio_region;
+   }
 
    if (!request_mem_region(SB800_GPIO_BASE, SB800_GPIO_SIZE, "SB800_GPIO")) {
       dev_err(&pdev->dev, "Failed request_mem_region in SB GPIO initialization");
@@ -484,6 +488,10 @@ static s32 sb_fan_probe(struct platform_device *pdev)
       goto fail_request_gpio_region;
    }
    pdata->gpio_base = ioremap(SB800_GPIO_BASE, SB800_GPIO_SIZE);
+   if (!pdata->gpio_base) {
+      ret = -ENOMEM;
+      goto fail_hwmon_register;
+   }
 
    pdata->hwmon_dev = hwmon_device_register_with_groups(&pdev->dev, "fans", NULL,
                                                         fan_groups);
