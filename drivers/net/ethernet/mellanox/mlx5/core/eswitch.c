@@ -969,7 +969,7 @@ int mlx5_esw_vport_enable(struct mlx5_eswitch *esw, struct mlx5_vport *vport,
 	/* Sync with current vport context */
 	vport->enabled_events = enabled_events;
 	vport->enabled = true;
-	if (vport->vport != MLX5_VPORT_HOST_PF &&
+	if (mlx5_eswitch_is_vf_vport(esw, vport_num) &&
 	    (vport->info.ipsec_crypto_enabled || vport->info.ipsec_packet_enabled))
 		esw->enabled_ipsec_vf_count++;
 
@@ -1034,7 +1034,7 @@ void mlx5_esw_vport_disable(struct mlx5_eswitch *esw, struct mlx5_vport *vport)
 		mlx5_esw_vport_vhca_id_unmap(esw, vport);
 	}
 
-	if (vport->vport != MLX5_VPORT_HOST_PF &&
+	if (mlx5_eswitch_is_vf_vport(esw, vport_num) &&
 	    (vport->info.ipsec_crypto_enabled || vport->info.ipsec_packet_enabled))
 		esw->enabled_ipsec_vf_count--;
 
