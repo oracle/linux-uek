@@ -4958,8 +4958,8 @@ int mlx5_devlink_port_fn_roce_set(struct devlink_port *port, bool enable,
 	hca_caps = MLX5_ADDR_OF(query_hca_cap_out, query_ctx, capability);
 	MLX5_SET(cmd_hca_cap, hca_caps, roce, enable);
 
-	err = mlx5_vport_set_other_func_cap(esw->dev, hca_caps, vport_num,
-					    MLX5_SET_HCA_CAP_OP_MOD_GENERAL_DEVICE);
+	err = mlx5_vport_set_other_func_general_cap(esw->dev, hca_caps,
+						    vport_num);
 	if (err) {
 		NL_SET_ERR_MSG_MOD(extack, "Failed setting HCA roce cap");
 		goto out_free;

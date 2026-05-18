@@ -457,6 +457,10 @@ int mlx5_vport_set_other_func_cap(struct mlx5_core_dev *dev, const void *hca_cap
 #define mlx5_vport_get_other_func_general_cap(dev, vport, out)		\
 	mlx5_vport_get_other_func_cap(dev, vport, out, MLX5_CAP_GENERAL)
 
+#define mlx5_vport_set_other_func_general_cap(dev, hca_cap, vport)	\
+	mlx5_vport_set_other_func_cap(dev, hca_cap, vport,		\
+				      MLX5_SET_HCA_CAP_OP_MOD_GENERAL_DEVICE)
+
 static inline u32 mlx5_sriov_get_vf_total_msix(struct pci_dev *pdev)
 {
 	struct mlx5_core_dev *dev = pci_get_drvdata(pdev);
