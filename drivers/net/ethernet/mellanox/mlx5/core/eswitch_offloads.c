@@ -3711,8 +3711,7 @@ static void esw_offloads_steering_cleanup(struct mlx5_eswitch *esw)
 
 static void esw_vfs_changed_event_handler(struct mlx5_eswitch *esw)
 {
-	bool host_pf_disabled;
-	void *host_params;
+	struct mlx5_esw_pf_info host_pf_info;
 	u16 new_num_vfs;
 	const u32 *out;
 
@@ -3720,14 +3719,10 @@ static void esw_vfs_changed_event_handler(struct mlx5_eswitch *esw)
 	if (IS_ERR(out))
 		return;
 
-	host_params = MLX5_ADDR_OF(query_esw_functions_out, out,
-				   net_function_params);
-	new_num_vfs = MLX5_GET(host_params_context, host_params,
-			       host_num_of_vfs);
-	host_pf_disabled = MLX5_GET(host_params_context, host_params,
-				    host_pf_disabled);
+	host_pf_info = mlx5_esw_get_host_pf_info(out);
+	new_num_vfs = host_pf_info.num_of_vfs;
 
-	if (new_num_vfs == esw->esw_funcs.num_vfs || host_pf_disabled)
+	if (new_num_vfs == esw->esw_funcs.num_vfs || host_pf_info.pf_disabled)
 		goto free;
 
 	mlx5_esw_reps_block(esw);
@@ -3829,8 +3824,8 @@ int mlx5_esw_funcs_changed_handler(struct notifier_block *nb,
 
 static int mlx5_esw_host_number_init(struct mlx5_eswitch *esw)
 {
+	struct mlx5_esw_pf_info host_pf_info;
 	const u32 *query_host_out;
-	void *host_params;
 
 	if (!mlx5_core_is_ecpf_esw_manager(esw->dev))
 		return 0;
@@ -3840,10 +3835,8 @@ static int mlx5_esw_host_number_init(struct mlx5_eswitch *esw)
 		return PTR_ERR(query_host_out);
 
 	/* Mark non local controller with non zero controller number. */
-	host_params = MLX5_ADDR_OF(query_esw_functions_out,
-				   query_host_out, net_function_params);
-	esw->offloads.host_number = MLX5_GET(host_params_context,
-					     host_params, host_number);
+	host_pf_info = mlx5_esw_get_host_pf_info(query_host_out);
+	esw->offloads.host_number = host_pf_info.host_number;
 	kvfree(query_host_out);
 	return 0;
 }
@@ -4987,9 +4980,8 @@ int mlx5_devlink_pf_port_fn_state_get(struct devlink_port *port,
 				      struct netlink_ext_ack *extack)
 {
 	struct mlx5_vport *vport = mlx5_devlink_port_vport_get(port);
+	struct mlx5_esw_pf_info host_pf_info;
 	const u32 *query_out;
-	void *host_params;
-	bool pf_disabled;
 
 	if (vport->vport != MLX5_VPORT_HOST_PF) {
 		NL_SET_ERR_MSG_MOD(extack, "State get is not supported for VF");
@@ -5003,13 +4995,11 @@ int mlx5_devlink_pf_port_fn_state_get(struct devlink_port *port,
 	if (IS_ERR(query_out))
 		return PTR_ERR(query_out);
 
-	host_params = MLX5_ADDR_OF(query_esw_functions_out, query_out,
-				   net_function_params);
-	pf_disabled = MLX5_GET(host_params_context, host_params,
-			       host_pf_disabled);
+	host_pf_info = mlx5_esw_get_host_pf_info(query_out);
 
-	*opstate = pf_disabled ? DEVLINK_PORT_FN_OPSTATE_DETACHED :
-				 DEVLINK_PORT_FN_OPSTATE_ATTACHED;
+	*opstate = host_pf_info.pf_disabled ?
+			DEVLINK_PORT_FN_OPSTATE_DETACHED :
+			DEVLINK_PORT_FN_OPSTATE_ATTACHED;
 
 	kvfree(query_out);
 	return 0;

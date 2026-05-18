@@ -71,6 +71,14 @@ struct mlx5_mapped_obj {
 	};
 };
 
+struct mlx5_esw_pf_info {
+	bool pf_not_exist;
+	bool pf_disabled;
+	u16 num_of_vfs;
+	u16 total_vfs;
+	u16 host_number;
+};
+
 #ifdef CONFIG_MLX5_ESWITCH
 
 #define ESW_OFFLOADS_DEFAULT_NUM_GROUPS 15
@@ -651,6 +659,7 @@ bool mlx5_esw_multipath_prereq(struct mlx5_core_dev *dev0,
 			       struct mlx5_core_dev *dev1);
 
 const u32 *mlx5_esw_query_functions(struct mlx5_core_dev *dev);
+struct mlx5_esw_pf_info mlx5_esw_get_host_pf_info(const u32 *out);
 int mlx5_esw_host_pf_enable_hca(struct mlx5_core_dev *dev);
 int mlx5_esw_host_pf_disable_hca(struct mlx5_core_dev *dev);
 
@@ -976,6 +985,12 @@ int mlx5_eswitch_set_vport_state(struct mlx5_eswitch *esw, u16 vport, int link_s
 static inline const u32 *mlx5_esw_query_functions(struct mlx5_core_dev *dev)
 {
 	return ERR_PTR(-EOPNOTSUPP);
+}
+
+static inline struct mlx5_esw_pf_info
+mlx5_esw_get_host_pf_info(const u32 *out)
+{
+	return (struct mlx5_esw_pf_info) {};
 }
 
 static inline struct mlx5_flow_handle *

@@ -1103,10 +1103,36 @@ const u32 *mlx5_esw_query_functions(struct mlx5_core_dev *dev)
 	return ERR_PTR(err);
 }
 
+static struct mlx5_esw_pf_info
+mlx5_esw_host_pf_from_host_params(const void *entry)
+{
+	return (struct mlx5_esw_pf_info) {
+		.pf_not_exist = MLX5_GET(host_params_context, entry,
+					 host_pf_not_exist),
+		.pf_disabled = MLX5_GET(host_params_context, entry,
+					host_pf_disabled),
+		.num_of_vfs = MLX5_GET(host_params_context, entry,
+				       host_num_of_vfs),
+		.total_vfs = MLX5_GET(host_params_context, entry,
+				      host_total_vfs),
+		.host_number = MLX5_GET(host_params_context, entry,
+					host_number),
+	};
+}
+
+struct mlx5_esw_pf_info mlx5_esw_get_host_pf_info(const u32 *out)
+{
+	const void *entry;
+
+	entry = MLX5_ADDR_OF(query_esw_functions_out, out, net_function_params);
+
+	return mlx5_esw_host_pf_from_host_params(entry);
+}
+
 static int mlx5_esw_host_functions_enabled_query(struct mlx5_eswitch *esw)
 {
+	struct mlx5_esw_pf_info host_pf_info;
 	const u32 *query_host_out;
-	void *host_params;
 
 	if (!mlx5_core_is_ecpf_esw_manager(esw->dev))
 		return 0;
@@ -1115,11 +1141,8 @@ static int mlx5_esw_host_functions_enabled_query(struct mlx5_eswitch *esw)
 	if (IS_ERR(query_host_out))
 		return PTR_ERR(query_host_out);
 
-	host_params = MLX5_ADDR_OF(query_esw_functions_out,
-				   query_host_out, net_function_params);
-	esw->esw_funcs.host_funcs_disabled =
-		MLX5_GET(host_params_context, host_params,
-			 host_pf_not_exist);
+	host_pf_info = mlx5_esw_get_host_pf_info(query_host_out);
+	esw->esw_funcs.host_funcs_disabled = host_pf_info.pf_not_exist;
 
 	kvfree(query_host_out);
 	return 0;
@@ -1543,7 +1566,7 @@ static void mlx5_eswitch_get_devlink_param(struct mlx5_eswitch *esw)
 static void
 mlx5_eswitch_update_num_of_vfs(struct mlx5_eswitch *esw, int num_vfs)
 {
-	void *host_params;
+	struct mlx5_esw_pf_info host_pf_info;
 	const u32 *out;
 
 	if (num_vfs < 0)
@@ -1558,10 +1581,8 @@ mlx5_eswitch_update_num_of_vfs(struct mlx5_eswitch *esw, int num_vfs)
 	if (IS_ERR(out))
 		return;
 
-	host_params = MLX5_ADDR_OF(query_esw_functions_out, out,
-				   net_function_params);
-	esw->esw_funcs.num_vfs = MLX5_GET(host_params_context, host_params,
-					  host_num_of_vfs);
+	host_pf_info = mlx5_esw_get_host_pf_info(out);
+	esw->esw_funcs.num_vfs = host_pf_info.num_of_vfs;
 	if (mlx5_core_ec_sriov_enabled(esw->dev))
 		esw->esw_funcs.num_ec_vfs = num_vfs;
 
