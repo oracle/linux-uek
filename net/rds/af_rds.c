@@ -656,8 +656,8 @@ static int rds6_user_reset_or_reap(struct rds_sock *rs, int optname,
 		for_each_conn_hash_bucket(rs->rs_rns, head) {
 			hlist_for_each_entry_rcu(conn, head, c_hash_node) {
 				if (ipv6_addr_equal(&conn->c_laddr, &reset.src) &&
-				    ipv6_addr_any(&reset.dst) ? 1 :
-				    ipv6_addr_equal(&conn->c_faddr, &reset.dst)) {
+				    (ipv6_addr_any(&reset.dst) ? 1 :
+				     ipv6_addr_equal(&conn->c_faddr, &reset.dst))) {
 					if (optname == RDS6_CONN_RESET) {
 						rds_user_conn_paths_drop(conn);
 					} else if (optname == RDS6_CONN_REAP) {
