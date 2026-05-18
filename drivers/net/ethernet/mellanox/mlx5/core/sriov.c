@@ -285,7 +285,7 @@ static u16 mlx5_get_max_vfs(struct mlx5_core_dev *dev)
 		 */
 		if (IS_ERR(out))
 			goto done;
-		host_pf_info = mlx5_esw_get_host_pf_info(out);
+		host_pf_info = mlx5_esw_get_host_pf_info(dev, out);
 		host_total_vfs = host_pf_info.total_vfs;
 		kvfree(out);
 		return host_total_vfs;

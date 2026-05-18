@@ -3719,7 +3719,7 @@ static void esw_vfs_changed_event_handler(struct mlx5_eswitch *esw)
 	if (IS_ERR(out))
 		return;
 
-	host_pf_info = mlx5_esw_get_host_pf_info(out);
+	host_pf_info = mlx5_esw_get_host_pf_info(esw->dev, out);
 	new_num_vfs = host_pf_info.num_of_vfs;
 
 	if (new_num_vfs == esw->esw_funcs.num_vfs || host_pf_info.pf_disabled)
@@ -3835,7 +3835,7 @@ static int mlx5_esw_host_number_init(struct mlx5_eswitch *esw)
 		return PTR_ERR(query_host_out);
 
 	/* Mark non local controller with non zero controller number. */
-	host_pf_info = mlx5_esw_get_host_pf_info(query_host_out);
+	host_pf_info = mlx5_esw_get_host_pf_info(esw->dev, query_host_out);
 	esw->offloads.host_number = host_pf_info.host_number;
 	kvfree(query_host_out);
 	return 0;
@@ -4995,7 +4995,7 @@ int mlx5_devlink_pf_port_fn_state_get(struct devlink_port *port,
 	if (IS_ERR(query_out))
 		return PTR_ERR(query_out);
 
-	host_pf_info = mlx5_esw_get_host_pf_info(query_out);
+	host_pf_info = mlx5_esw_get_host_pf_info(vport->dev, query_out);
 
 	*opstate = host_pf_info.pf_disabled ?
 			DEVLINK_PORT_FN_OPSTATE_DETACHED :
