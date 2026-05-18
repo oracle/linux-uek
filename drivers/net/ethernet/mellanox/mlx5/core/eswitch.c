@@ -1472,7 +1472,7 @@ vf_err:
 	return err;
 }
 
-int mlx5_esw_host_pf_enable_hca(struct mlx5_core_dev *dev)
+static int mlx5_esw_pf_enable_hca(struct mlx5_core_dev *dev, u16 vport_num)
 {
 	struct mlx5_eswitch *esw = dev->priv.eswitch;
 	struct mlx5_vport *vport;
@@ -1481,15 +1481,15 @@ int mlx5_esw_host_pf_enable_hca(struct mlx5_core_dev *dev)
 	if (!mlx5_core_is_ecpf(dev) || !mlx5_esw_allowed(esw))
 		return 0;
 
-	vport = mlx5_eswitch_get_vport(esw, MLX5_VPORT_HOST_PF);
+	vport = mlx5_eswitch_get_vport(esw, vport_num);
 	if (IS_ERR(vport))
 		return PTR_ERR(vport);
 
-	/* Once vport and representor are ready, take out the external host PF
-	 * out of initializing state. Enabling HCA clears the iser->initializing
-	 * bit and host PF driver loading can progress.
+	/* Once vport and representor are ready, take the PF out of
+	 * initializing state. Enabling HCA clears the iser->initializing
+	 * bit and PF driver loading can progress.
 	 */
-	err = mlx5_cmd_host_pf_enable_hca(dev);
+	err = mlx5_cmd_pf_enable_hca(dev, vport_num);
 	if (err)
 		return err;
 
@@ -1498,7 +1498,7 @@ int mlx5_esw_host_pf_enable_hca(struct mlx5_core_dev *dev)
 	return 0;
 }
 
-int mlx5_esw_host_pf_disable_hca(struct mlx5_core_dev *dev)
+static int mlx5_esw_pf_disable_hca(struct mlx5_core_dev *dev, u16 vport_num)
 {
 	struct mlx5_eswitch *esw = dev->priv.eswitch;
 	struct mlx5_vport *vport;
@@ -1507,17 +1507,27 @@ int mlx5_esw_host_pf_disable_hca(struct mlx5_core_dev *dev)
 	if (!mlx5_core_is_ecpf(dev) || !mlx5_esw_allowed(esw))
 		return 0;
 
-	vport = mlx5_eswitch_get_vport(esw, MLX5_VPORT_HOST_PF);
+	vport = mlx5_eswitch_get_vport(esw, vport_num);
 	if (IS_ERR(vport))
 		return PTR_ERR(vport);
 
-	err = mlx5_cmd_host_pf_disable_hca(dev);
+	err = mlx5_cmd_pf_disable_hca(dev, vport_num);
 	if (err)
 		return err;
 
 	vport->pf_activated = false;
 
 	return 0;
+}
+
+int mlx5_esw_host_pf_enable_hca(struct mlx5_core_dev *dev)
+{
+	return mlx5_esw_pf_enable_hca(dev, MLX5_VPORT_HOST_PF);
+}
+
+int mlx5_esw_host_pf_disable_hca(struct mlx5_core_dev *dev)
+{
+	return mlx5_esw_pf_disable_hca(dev, MLX5_VPORT_HOST_PF);
 }
 
 /* mlx5_eswitch_enable_pf_vf_vports() enables vports of PF, ECPF and VFs
