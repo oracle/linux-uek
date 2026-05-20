@@ -206,6 +206,16 @@ struct rseq {
 	 * kernel and user space.
 	 */
 	struct rseq_slice_ctrl slice_ctrl;
+	/*
+	 * Before rseq became extensible, its original size was 32 bytes even
+	 * though the active rseq area was only 20 bytes.
+	 * Exposing a 32 bytes feature size would make life needlessly painful
+	 * for userspace. Therefore, add a reserved byte after byte 32
+	 * to bump the rseq feature size from 32 to 33.
+	 * The next field to be added to the rseq area will be larger
+	 * than one byte, and will replace this reserved byte.
+	 */
+	__u8 __reserved;
 #endif
 } __attribute__((aligned(4 * sizeof(__u64))));
 
