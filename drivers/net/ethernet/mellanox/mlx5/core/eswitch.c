@@ -2671,10 +2671,29 @@ bool mlx5_eswitch_is_vf_vport(struct mlx5_eswitch *esw, u16 vport_num)
 	return mlx5_esw_check_port_type(esw, vport_num, MLX5_ESW_VPT_VF);
 }
 
+int mlx5_esw_spf_vport_to_idx(struct mlx5_eswitch *esw, u16 vport_num)
+{
+	struct mlx5_esw_functions *esw_funcs = &esw->esw_funcs;
+	int i;
+
+	for (i = 0; i < esw_funcs->num_spfs; i++) {
+		if (esw_funcs->spfs[i].vport_num == vport_num)
+			return i;
+	}
+
+	return -ENOENT;
+}
+
+bool mlx5_esw_is_spf_vport(struct mlx5_eswitch *esw, u16 vport_num)
+{
+	return mlx5_esw_spf_vport_to_idx(esw, vport_num) >= 0;
+}
+
 bool mlx5_eswitch_is_pf_vf_vport(struct mlx5_eswitch *esw, u16 vport_num)
 {
 	return vport_num == MLX5_VPORT_HOST_PF ||
-		mlx5_eswitch_is_vf_vport(esw, vport_num);
+		mlx5_eswitch_is_vf_vport(esw, vport_num) ||
+		mlx5_esw_is_spf_vport(esw, vport_num);
 }
 
 bool mlx5_esw_is_sf_vport(struct mlx5_eswitch *esw, u16 vport_num)

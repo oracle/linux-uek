@@ -800,6 +800,8 @@ struct mlx5_vport *__must_check
 mlx5_eswitch_get_vport(struct mlx5_eswitch *esw, u16 vport_num);
 
 bool mlx5_eswitch_is_vf_vport(struct mlx5_eswitch *esw, u16 vport_num);
+int mlx5_esw_spf_vport_to_idx(struct mlx5_eswitch *esw, u16 vport_num);
+bool mlx5_esw_is_spf_vport(struct mlx5_eswitch *esw, u16 vport_num);
 bool mlx5_eswitch_is_pf_vf_vport(struct mlx5_eswitch *esw, u16 vport_num);
 bool mlx5_esw_is_sf_vport(struct mlx5_eswitch *esw, u16 vport_num);
 
