@@ -4968,10 +4968,11 @@ int mlx5_devlink_pf_port_fn_state_get(struct devlink_port *port,
 				      struct netlink_ext_ack *extack)
 {
 	struct mlx5_vport *vport = mlx5_devlink_port_vport_get(port);
-	struct mlx5_esw_pf_info host_pf_info;
+	struct mlx5_eswitch *esw = vport->dev->priv.eswitch;
 	const u32 *query_out;
+	bool pf_disabled;
 
-	if (vport->vport != MLX5_VPORT_HOST_PF) {
+	if (mlx5_eswitch_is_vf_vport(esw, vport->vport)) {
 		NL_SET_ERR_MSG_MOD(extack, "State get is not supported for VF");
 		return -EOPNOTSUPP;
 	}
@@ -4983,11 +4984,19 @@ int mlx5_devlink_pf_port_fn_state_get(struct devlink_port *port,
 	if (IS_ERR(query_out))
 		return PTR_ERR(query_out);
 
-	host_pf_info = mlx5_esw_get_host_pf_info(vport->dev, query_out);
+	if (vport->vport == MLX5_VPORT_HOST_PF) {
+		struct mlx5_esw_pf_info host_pf_info;
 
-	*opstate = host_pf_info.pf_disabled ?
-			DEVLINK_PORT_FN_OPSTATE_DETACHED :
-			DEVLINK_PORT_FN_OPSTATE_ATTACHED;
+		host_pf_info = mlx5_esw_get_host_pf_info(vport->dev,
+							 query_out);
+		pf_disabled = host_pf_info.pf_disabled;
+	} else {
+		pf_disabled = mlx5_esw_get_spf_disabled(vport->dev, query_out,
+							vport->vhca_id);
+	}
+
+	*opstate = pf_disabled ? DEVLINK_PORT_FN_OPSTATE_DETACHED :
+				 DEVLINK_PORT_FN_OPSTATE_ATTACHED;
 
 	kvfree(query_out);
 	return 0;
@@ -4998,9 +5007,10 @@ int mlx5_devlink_pf_port_fn_state_set(struct devlink_port *port,
 				      struct netlink_ext_ack *extack)
 {
 	struct mlx5_vport *vport = mlx5_devlink_port_vport_get(port);
+	struct mlx5_eswitch *esw = vport->dev->priv.eswitch;
 	struct mlx5_core_dev *dev;
 
-	if (vport->vport != MLX5_VPORT_HOST_PF) {
+	if (mlx5_eswitch_is_vf_vport(esw, vport->vport)) {
 		NL_SET_ERR_MSG_MOD(extack, "State set is not supported for VF");
 		return -EOPNOTSUPP;
 	}
@@ -5009,9 +5019,9 @@ int mlx5_devlink_pf_port_fn_state_set(struct devlink_port *port,
 
 	switch (state) {
 	case DEVLINK_PORT_FN_STATE_ACTIVE:
-		return mlx5_esw_host_pf_enable_hca(dev);
+		return mlx5_esw_pf_enable_hca(dev, vport->vport);
 	case DEVLINK_PORT_FN_STATE_INACTIVE:
-		return mlx5_esw_host_pf_disable_hca(dev);
+		return mlx5_esw_pf_disable_hca(dev, vport->vport);
 	default:
 		return -EOPNOTSUPP;
 	}

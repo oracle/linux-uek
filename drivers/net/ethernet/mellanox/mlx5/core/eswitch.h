@@ -673,6 +673,10 @@ bool mlx5_esw_multipath_prereq(struct mlx5_core_dev *dev0,
 const u32 *mlx5_esw_query_functions(struct mlx5_core_dev *dev);
 struct mlx5_esw_pf_info mlx5_esw_get_host_pf_info(struct mlx5_core_dev *dev,
 						  const u32 *out);
+bool mlx5_esw_get_spf_disabled(struct mlx5_core_dev *dev, const u32 *out,
+			       u16 vhca_id);
+int mlx5_esw_pf_enable_hca(struct mlx5_core_dev *dev, u16 vport_num);
+int mlx5_esw_pf_disable_hca(struct mlx5_core_dev *dev, u16 vport_num);
 int mlx5_esw_host_pf_enable_hca(struct mlx5_core_dev *dev);
 int mlx5_esw_host_pf_disable_hca(struct mlx5_core_dev *dev);
 
