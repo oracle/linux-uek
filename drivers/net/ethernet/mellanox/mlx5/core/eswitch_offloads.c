@@ -3822,25 +3822,6 @@ int mlx5_esw_funcs_changed_handler(struct notifier_block *nb,
 	return NOTIFY_OK;
 }
 
-static int mlx5_esw_host_number_init(struct mlx5_eswitch *esw)
-{
-	struct mlx5_esw_pf_info host_pf_info;
-	const u32 *query_host_out;
-
-	if (!mlx5_core_is_ecpf_esw_manager(esw->dev))
-		return 0;
-
-	query_host_out = mlx5_esw_query_functions(esw->dev);
-	if (IS_ERR(query_host_out))
-		return PTR_ERR(query_host_out);
-
-	/* Mark non local controller with non zero controller number. */
-	host_pf_info = mlx5_esw_get_host_pf_info(esw->dev, query_host_out);
-	esw->offloads.host_number = host_pf_info.host_number;
-	kvfree(query_host_out);
-	return 0;
-}
-
 bool mlx5_esw_offloads_controller_valid(const struct mlx5_eswitch *esw, u32 controller)
 {
 	/* Local controller is always valid */
@@ -3851,7 +3832,7 @@ bool mlx5_esw_offloads_controller_valid(const struct mlx5_eswitch *esw, u32 cont
 		return false;
 
 	/* External host number starts with zero in device */
-	return (controller == esw->offloads.host_number + 1);
+	return (controller == mlx5_esw_get_hpf_host_number(esw->dev) + 1);
 }
 
 int esw_offloads_enable(struct mlx5_eswitch *esw)
@@ -3869,10 +3850,6 @@ int esw_offloads_enable(struct mlx5_eswitch *esw)
 	err = mlx5_rdma_enable_roce(esw->dev);
 	if (err)
 		goto err_roce;
-
-	err = mlx5_esw_host_number_init(esw);
-	if (err)
-		goto err_metadata;
 
 	err = esw_offloads_metadata_init(esw);
 	if (err)

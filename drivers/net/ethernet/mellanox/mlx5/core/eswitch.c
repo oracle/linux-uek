@@ -2082,6 +2082,35 @@ int mlx5_esw_sf_max_hpf_functions(struct mlx5_core_dev *dev, u16 *max_sfs,
 					    sf_base_id);
 }
 
+u16 mlx5_esw_get_hpf_host_number(struct mlx5_core_dev *dev)
+{
+	struct mlx5_eswitch *esw = dev->priv.eswitch;
+
+	if (!mlx5_esw_allowed(esw))
+		return 0;
+
+	return esw->esw_funcs.hpf_host_number;
+}
+
+static int mlx5_esw_hpf_host_number_init(struct mlx5_eswitch *esw)
+{
+	struct mlx5_esw_pf_info host_pf_info;
+	const u32 *query_host_out;
+
+	if (!mlx5_core_is_ecpf_esw_manager(esw->dev))
+		return 0;
+
+	query_host_out = mlx5_esw_query_functions(esw->dev);
+	if (IS_ERR(query_host_out))
+		return PTR_ERR(query_host_out);
+
+	/* Mark non local controller with non zero controller number. */
+	host_pf_info = mlx5_esw_get_host_pf_info(esw->dev, query_host_out);
+	esw->esw_funcs.hpf_host_number = host_pf_info.host_number;
+	kvfree(query_host_out);
+	return 0;
+}
+
 int mlx5_esw_vport_alloc(struct mlx5_eswitch *esw, int index, u16 vport_num)
 {
 	struct mlx5_vport *vport;
@@ -2230,6 +2259,10 @@ static int mlx5_esw_vports_init(struct mlx5_eswitch *esw)
 	int i;
 
 	xa_init(&esw->vports);
+
+	err = mlx5_esw_hpf_host_number_init(esw);
+	if (err)
+		goto err;
 
 	if (mlx5_esw_host_functions_enabled(dev)) {
 		err = mlx5_esw_vport_alloc(esw, idx, MLX5_VPORT_HOST_PF);

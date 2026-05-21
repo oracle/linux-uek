@@ -54,7 +54,7 @@ static void mlx5_esw_offloads_pf_vf_devlink_port_attrs_set(struct mlx5_eswitch *
 	pfnum = PCI_FUNC(dev->pdev->devfn);
 	external = mlx5_core_is_ecpf_esw_manager(dev);
 	if (external)
-		controller_num = dev->priv.eswitch->offloads.host_number + 1;
+		controller_num = mlx5_esw_get_hpf_host_number(dev) + 1;
 
 	if (vport_num == MLX5_VPORT_HOST_PF) {
 		memcpy(dl_port->attrs.switch_id.id, ppid.id, ppid.id_len);

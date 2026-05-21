@@ -334,7 +334,6 @@ struct mlx5_esw_offload {
 	u64 num_block_mode;
 	enum devlink_eswitch_encap_mode encap;
 	struct ida vport_metadata_ida;
-	unsigned int host_number; /* ECPF supports one external host */
 };
 
 /* E-Switch MC FDB table hash node */
@@ -361,6 +360,7 @@ struct mlx5_esw_functions {
 	bool			host_funcs_disabled;
 	u16			num_vfs;
 	u16			num_ec_vfs;
+	u16			hpf_host_number;
 	struct mlx5_esw_spf	*spfs;
 	int			num_spfs;
 };
@@ -880,6 +880,8 @@ void mlx5_esw_offloads_devlink_port_unregister(struct mlx5_vport *vport);
 struct devlink_port *mlx5_esw_offloads_devlink_port(struct mlx5_eswitch *esw, u16 vport_num);
 
 int mlx5_esw_sf_max_hpf_functions(struct mlx5_core_dev *dev, u16 *max_sfs, u16 *sf_base_id);
+
+u16 mlx5_esw_get_hpf_host_number(struct mlx5_core_dev *dev);
 
 int mlx5_esw_vport_vhca_id_map(struct mlx5_eswitch *esw,
 			       struct mlx5_vport *vport);
