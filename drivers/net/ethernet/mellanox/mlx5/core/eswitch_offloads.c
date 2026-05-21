@@ -1231,6 +1231,19 @@ static int esw_add_fdb_peer_miss_rules(struct mlx5_eswitch *esw,
 		flows[peer_vport->index] = flow;
 	}
 
+	mlx5_esw_for_each_spf_vport(peer_esw, i, peer_vport) {
+		esw_set_peer_miss_rule_source_port(esw, peer_esw, spec,
+						   peer_vport->vport);
+
+		flow = mlx5_add_flow_rules(mlx5_eswitch_get_slow_fdb(esw),
+					   spec, &flow_act, &dest, 1);
+		if (IS_ERR(flow)) {
+			err = PTR_ERR(flow);
+			goto add_ecpf_flow_err;
+		}
+		flows[peer_vport->index] = flow;
+	}
+
 	if (mlx5_ecpf_vport_exists(peer_dev)) {
 		peer_vport = mlx5_eswitch_get_vport(peer_esw, MLX5_VPORT_ECPF);
 		MLX5_SET(fte_match_set_misc, misc, source_port, MLX5_VPORT_ECPF);
@@ -1299,7 +1312,11 @@ add_vf_flow_err:
 		mlx5_del_flow_rules(flows[peer_vport->index]);
 	}
 add_ecpf_flow_err:
-
+	mlx5_esw_for_each_spf_vport(peer_esw, i, peer_vport) {
+		if (!flows[peer_vport->index])
+			continue;
+		mlx5_del_flow_rules(flows[peer_vport->index]);
+	}
 	if (mlx5_core_is_ecpf_esw_manager(peer_dev) &&
 	    mlx5_esw_host_functions_enabled(peer_dev)) {
 		peer_vport = mlx5_eswitch_get_vport(peer_esw,
@@ -1342,6 +1359,9 @@ static void esw_del_fdb_peer_miss_rules(struct mlx5_eswitch *esw,
 		peer_vport = mlx5_eswitch_get_vport(peer_esw, MLX5_VPORT_ECPF);
 		mlx5_del_flow_rules(flows[peer_vport->index]);
 	}
+
+	mlx5_esw_for_each_spf_vport(peer_esw, i, peer_vport)
+		mlx5_del_flow_rules(flows[peer_vport->index]);
 
 	if (mlx5_core_is_ecpf_esw_manager(peer_dev) &&
 	    mlx5_esw_host_functions_enabled(peer_dev)) {

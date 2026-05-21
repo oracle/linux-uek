@@ -792,6 +792,16 @@ void mlx5e_tc_clean_fdb_peer_flows(struct mlx5_eswitch *esw);
 			  MLX5_CAP_GEN_2((esw->dev), ec_vf_vport_base) +\
 			  (last) - 1)
 
+/* SPF vport numbers are not contiguous, iterate via the spfs array
+ * and look up each vport in the xarray.
+ */
+#define mlx5_esw_for_each_spf_vport(esw, index, vport)			\
+	for ((index) = 0;						\
+	     (index) < (esw)->esw_funcs.num_spfs &&			\
+	     ((vport) = xa_load(&(esw)->vports,				\
+		(esw)->esw_funcs.spfs[(index)].vport_num));		\
+	     (index)++)
+
 #define mlx5_esw_for_each_rep(esw, i, rep) \
 	xa_for_each(&((esw)->offloads.vport_reps), i, rep)
 
