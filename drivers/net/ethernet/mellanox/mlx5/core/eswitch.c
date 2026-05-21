@@ -856,6 +856,8 @@ esw_vport_to_func_type(struct mlx5_eswitch *esw, struct mlx5_vport *vport)
 		return MLX5_SF;
 	if (xa_get_mark(&esw->vports, vport_num, MLX5_ESW_VPT_VF))
 		return MLX5_VF;
+	if (mlx5_esw_is_spf_vport(esw, vport_num))
+		return MLX5_SPF;
 	return MLX5_EC_VF;
 }
 
