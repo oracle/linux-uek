@@ -85,6 +85,7 @@ static char *rds_ib_stat_names[] = {
 	"ib_yield_accepting",
 	"ib_yield_success",
 	"ib_cm_watchdog_triggered",
+	"ib_last_wqe_watchdog_triggered",
 	"ib_frwr_registrations",
 	"ib_frwr_invalidates",
 	"ib_frwr_conn_qp_timeout",

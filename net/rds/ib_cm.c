@@ -985,6 +985,50 @@ static void rds_ib_cm_watchdog_handler(struct work_struct *work)
 	rds_ib_stats_inc(s_ib_cm_watchdog_triggered);
 }
 
+static void rds_ib_arm_last_wqe_watchdog(struct rds_ib_connection *ic)
+{
+	unsigned last_wqe_watchdog_ms = rds_ib_sysctl_last_wqe_watchdog_ms;
+
+	if (!last_wqe_watchdog_ms)
+		return;
+
+	trace_rds_ib_queue_work(ic->rds_ibdev, rds_aux_wq,
+				&ic->i_last_wqe_watchdog_w.work,
+				msecs_to_jiffies(last_wqe_watchdog_ms),
+				"arm last-wqe watchdog");
+
+	queue_delayed_work(rds_aux_wq, &ic->i_last_wqe_watchdog_w,
+			   msecs_to_jiffies(last_wqe_watchdog_ms));
+}
+
+static void rds_ib_cancel_last_wqe_watchdog(struct rds_ib_connection *ic, char *reason)
+{
+	trace_rds_ib_queue_cancel_work(ic->rds_ibdev, rds_aux_wq,
+				       &ic->i_last_wqe_watchdog_w.work, 0, reason);
+
+	cancel_delayed_work(&ic->i_last_wqe_watchdog_w);
+}
+
+static void rds_ib_last_wqe_watchdog_handler(struct work_struct *work)
+{
+	struct rds_ib_connection *ic = container_of(work,
+						    struct rds_ib_connection,
+						    i_last_wqe_watchdog_w.work);
+	struct rds_connection *conn = ic->conn;
+
+	if (!test_bit(RDS_IB_SRQ_IN_USE, &ic->i_flags))
+		return;
+
+	pr_warn("RDS/IB: last-wqe missing watchdog triggered on connection <%pI6c,%pI6c,%d>\n",
+		&conn->c_laddr, &conn->c_faddr, conn->c_tos);
+
+	clear_bit_mb(RDS_IB_SRQ_IN_USE, &ic->i_flags);
+	if (test_bit(RDS_SHUTDOWN_WAITING, &conn->c_path->cp_flags))
+		mod_delayed_work(conn->c_path->cp_wq, &conn->c_path->cp_down_wait_w, 0);
+
+	rds_ib_stats_inc(s_ib_last_wqe_watchdog_triggered);
+}
+
 static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 {
 	struct rds_connection *conn = data;
@@ -2533,6 +2577,9 @@ void rds_ib_conn_path_shutdown_prepare(struct rds_conn_path *cp)
 
 	rds_ib_cancel_cm_watchdog(ic, "conn path shutdown prepare");
 
+	if (test_bit(RDS_IB_SRQ_IN_USE, &ic->i_flags))
+		rds_ib_arm_last_wqe_watchdog(ic);
+
 	if (ic->i_cm_id) {
 		int err;
 		err = rdma_disconnect(ic->i_cm_id);
@@ -2586,6 +2633,8 @@ void rds_ib_conn_path_shutdown_final(struct rds_conn_path *cp)
 	struct rds_connection *conn = cp->cp_conn;
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rdma_cm_id *cm_id;
+
+	rds_ib_cancel_last_wqe_watchdog(ic, "final shutdown");
 
 	if (test_and_clear_bit(RDS_USER_RESET, &cp->cp_flags))
 		set_ib_conn_flag(RDS_IB_CQ_DESTROY, ic);
@@ -2796,6 +2845,7 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	ic->i_preferred_recv_cpu = WORK_CPU_UNBOUND;
 
 	INIT_DELAYED_WORK(&ic->i_cm_watchdog_w, rds_ib_cm_watchdog_handler);
+	INIT_DELAYED_WORK(&ic->i_last_wqe_watchdog_w, rds_ib_last_wqe_watchdog_handler);
 	INIT_DELAYED_WORK(&ic->i_cq_follow_send_affinity_w, rds_ib_cq_follow_send_affinity);
 	INIT_DELAYED_WORK(&ic->i_cq_follow_recv_affinity_w, rds_ib_cq_follow_recv_affinity);
 
