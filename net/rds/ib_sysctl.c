@@ -102,6 +102,7 @@ u32 rds_dev_free_wait_ms = 10000;
 unsigned rds_ib_sysctl_yield_after_ms = 2000;
 
 unsigned rds_ib_sysctl_cm_watchdog_ms = 0;
+unsigned rds_ib_sysctl_last_wqe_watchdog_ms = 0;
 
 int rds_ib_sysctl_check_conn_addrs = 1;
 
@@ -222,6 +223,13 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.procname       = "cm_watchdog_ms",
 		.data           = &rds_ib_sysctl_cm_watchdog_ms,
 		.maxlen         = sizeof(rds_ib_sysctl_cm_watchdog_ms),
+		.mode           = 0644,
+		.proc_handler   = proc_douintvec,
+	},
+	{
+		.procname       = "last_wqe_watchdog_ms",
+		.data           = &rds_ib_sysctl_last_wqe_watchdog_ms,
+		.maxlen         = sizeof(rds_ib_sysctl_last_wqe_watchdog_ms),
 		.mode           = 0644,
 		.proc_handler   = proc_douintvec,
 	},

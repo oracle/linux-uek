@@ -403,6 +403,7 @@ struct rds_ib_connection {
 	/* track irq miss */
 	unsigned long		i_irq_miss_ts;
 	struct delayed_work	i_cm_watchdog_w;
+	struct delayed_work	i_last_wqe_watchdog_w;
 	atomic64_t		i_r_read_bytes;
 	atomic64_t		i_r_write_bytes;
 	u64			i_tx_poll_ts;
@@ -616,6 +617,7 @@ struct rds_ib_statistics {
 	uint64_t	s_ib_yield_accepting;
 	uint64_t	s_ib_yield_success;
 	uint64_t	s_ib_cm_watchdog_triggered;
+	uint64_t	s_ib_last_wqe_watchdog_triggered;
 	uint64_t        s_ib_frwr_registrations;
 	uint64_t        s_ib_frwr_invalidates;
 	uint64_t	s_ib_frwr_conn_qp_timeout;
@@ -918,6 +920,7 @@ extern u32 rds_frwr_ibmr_gc_time;
 extern u32 rds_frwr_ibmr_qrtn_time;
 extern unsigned rds_ib_sysctl_yield_after_ms;
 extern unsigned rds_ib_sysctl_cm_watchdog_ms;
+extern unsigned rds_ib_sysctl_last_wqe_watchdog_ms;
 extern int rds_ib_sysctl_check_conn_addrs;
 extern unsigned int rds_ib_sysctl_frwr_poll_tmout_secs;
 
