@@ -1177,6 +1177,8 @@ mlx5_esw_host_pf_from_net_func_params(const u8 *entry, int num_entries)
 					      entry, pci_total_vfs),
 			.host_number = MLX5_GET(network_function_params,
 						entry, host_number),
+			.pf_num = MLX5_GET(network_function_params, entry,
+					   pci_device_function),
 		};
 	}
 
@@ -2123,7 +2125,6 @@ int mlx5_esw_spf_get_host_number(struct mlx5_core_dev *dev, int spf_idx,
 		return -EINVAL;
 
 	*host_number = esw->esw_funcs.spfs[spf_idx].host_number;
-
 	return 0;
 }
 
@@ -2137,6 +2138,17 @@ u16 mlx5_esw_get_hpf_host_number(struct mlx5_core_dev *dev)
 	return esw->esw_funcs.hpf_host_number;
 }
 
+u16 mlx5_esw_get_hpf_pf_num(struct mlx5_core_dev *dev)
+{
+	struct mlx5_eswitch *esw = dev->priv.eswitch;
+
+	if (mlx5_core_is_ecpf_esw_manager(dev) &&
+	    MLX5_CAP_GEN(dev, query_host_net_function_v1))
+		return esw->esw_funcs.hpf_pf_num;
+
+	return PCI_FUNC(dev->pdev->devfn);
+}
+
 bool mlx5_esw_has_spf_sfs(struct mlx5_core_dev *dev)
 {
 	struct mlx5_eswitch *esw = dev->priv.eswitch;
@@ -2147,7 +2159,7 @@ bool mlx5_esw_has_spf_sfs(struct mlx5_core_dev *dev)
 	return esw->esw_funcs.has_spf_sfs;
 }
 
-static int mlx5_esw_hpf_host_number_init(struct mlx5_eswitch *esw)
+static int mlx5_esw_hpf_info_init(struct mlx5_eswitch *esw)
 {
 	struct mlx5_esw_pf_info host_pf_info;
 	const u32 *query_host_out;
@@ -2162,6 +2174,7 @@ static int mlx5_esw_hpf_host_number_init(struct mlx5_eswitch *esw)
 	/* Mark non local controller with non zero controller number. */
 	host_pf_info = mlx5_esw_get_host_pf_info(esw->dev, query_host_out);
 	esw->esw_funcs.hpf_host_number = host_pf_info.host_number;
+	esw->esw_funcs.hpf_pf_num = host_pf_info.pf_num;
 	kvfree(query_host_out);
 	return 0;
 }
@@ -2275,6 +2288,9 @@ static int mlx5_esw_spfs_init(struct mlx5_eswitch *esw)
 		esw_funcs->spfs[esw_funcs->num_spfs].vhca_id = vhca_id;
 		esw_funcs->spfs[esw_funcs->num_spfs].host_number =
 			MLX5_GET(network_function_params, entry, host_number);
+		esw_funcs->spfs[esw_funcs->num_spfs].pf_num =
+			MLX5_GET(network_function_params, entry,
+				 pci_device_function);
 		esw_funcs->num_spfs++;
 
 		entry += MLX5_UN_SZ_BYTES(net_function_params);
@@ -2317,7 +2333,7 @@ static int mlx5_esw_vports_init(struct mlx5_eswitch *esw)
 
 	xa_init(&esw->vports);
 
-	err = mlx5_esw_hpf_host_number_init(esw);
+	err = mlx5_esw_hpf_info_init(esw);
 	if (err)
 		goto err;
 

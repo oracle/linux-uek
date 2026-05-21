@@ -77,6 +77,7 @@ struct mlx5_esw_pf_info {
 	u16 num_of_vfs;
 	u16 total_vfs;
 	u16 host_number;
+	u16 pf_num;
 };
 
 #ifdef CONFIG_MLX5_ESWITCH
@@ -354,6 +355,7 @@ struct mlx5_esw_spf {
 	u16 vport_num;
 	u16 vhca_id;
 	u16 host_number;
+	u16 pf_num;
 };
 
 struct mlx5_esw_functions {
@@ -362,6 +364,7 @@ struct mlx5_esw_functions {
 	u16			num_vfs;
 	u16			num_ec_vfs;
 	u16			hpf_host_number;
+	u16			hpf_pf_num;
 	bool			has_spf_sfs;
 	struct mlx5_esw_spf	*spfs;
 	int			num_spfs;
@@ -889,6 +892,7 @@ int mlx5_esw_get_num_spfs(struct mlx5_core_dev *dev);
 int mlx5_esw_spf_get_host_number(struct mlx5_core_dev *dev, int spf_idx,
 				 u16 *host_number);
 u16 mlx5_esw_get_hpf_host_number(struct mlx5_core_dev *dev);
+u16 mlx5_esw_get_hpf_pf_num(struct mlx5_core_dev *dev);
 bool mlx5_esw_has_spf_sfs(struct mlx5_core_dev *dev);
 
 int mlx5_esw_vport_vhca_id_map(struct mlx5_eswitch *esw,
