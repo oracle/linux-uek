@@ -2082,6 +2082,51 @@ int mlx5_esw_sf_max_hpf_functions(struct mlx5_core_dev *dev, u16 *max_sfs,
 					    sf_base_id);
 }
 
+int mlx5_esw_sf_max_spf_functions(struct mlx5_core_dev *dev, int spf_idx,
+				  u16 *max_sfs, u16 *sf_base_id)
+{
+	struct mlx5_eswitch *esw = dev->priv.eswitch;
+	u16 vport_num;
+
+	if (!mlx5_esw_allowed(esw)) {
+		*max_sfs = 0;
+		return 0;
+	}
+
+	if (spf_idx >= esw->esw_funcs.num_spfs)
+		return -EINVAL;
+
+	vport_num = esw->esw_funcs.spfs[spf_idx].vport_num;
+	return mlx5_esw_sf_max_pf_functions(dev, vport_num, max_sfs,
+					    sf_base_id);
+}
+
+int mlx5_esw_get_num_spfs(struct mlx5_core_dev *dev)
+{
+	struct mlx5_eswitch *esw = dev->priv.eswitch;
+
+	if (!mlx5_esw_allowed(esw))
+		return 0;
+
+	return esw->esw_funcs.num_spfs;
+}
+
+int mlx5_esw_spf_get_host_number(struct mlx5_core_dev *dev, int spf_idx,
+				 u16 *host_number)
+{
+	struct mlx5_eswitch *esw = dev->priv.eswitch;
+
+	if (!mlx5_esw_allowed(esw))
+		return -EPERM;
+
+	if (spf_idx >= esw->esw_funcs.num_spfs)
+		return -EINVAL;
+
+	*host_number = esw->esw_funcs.spfs[spf_idx].host_number;
+
+	return 0;
+}
+
 u16 mlx5_esw_get_hpf_host_number(struct mlx5_core_dev *dev)
 {
 	struct mlx5_eswitch *esw = dev->priv.eswitch;
@@ -2090,6 +2135,16 @@ u16 mlx5_esw_get_hpf_host_number(struct mlx5_core_dev *dev)
 		return 0;
 
 	return esw->esw_funcs.hpf_host_number;
+}
+
+bool mlx5_esw_has_spf_sfs(struct mlx5_core_dev *dev)
+{
+	struct mlx5_eswitch *esw = dev->priv.eswitch;
+
+	if (!mlx5_esw_allowed(esw))
+		return false;
+
+	return esw->esw_funcs.has_spf_sfs;
 }
 
 static int mlx5_esw_hpf_host_number_init(struct mlx5_eswitch *esw)
@@ -2218,6 +2273,8 @@ static int mlx5_esw_spfs_init(struct mlx5_eswitch *esw)
 
 		esw_funcs->spfs[esw_funcs->num_spfs].vport_num = vport_num;
 		esw_funcs->spfs[esw_funcs->num_spfs].vhca_id = vhca_id;
+		esw_funcs->spfs[esw_funcs->num_spfs].host_number =
+			MLX5_GET(network_function_params, entry, host_number);
 		esw_funcs->num_spfs++;
 
 		entry += MLX5_UN_SZ_BYTES(net_function_params);
@@ -2244,6 +2301,7 @@ static void mlx5_esw_vports_cleanup(struct mlx5_eswitch *esw)
 	unsigned long i;
 
 	mlx5_esw_spfs_cleanup(esw);
+	esw->esw_funcs.has_spf_sfs = false;
 	mlx5_esw_for_each_vport(esw, i, vport)
 		mlx5_esw_vport_free(esw, vport);
 	xa_destroy(&esw->vports);
@@ -2252,8 +2310,7 @@ static void mlx5_esw_vports_cleanup(struct mlx5_eswitch *esw)
 static int mlx5_esw_vports_init(struct mlx5_eswitch *esw)
 {
 	struct mlx5_core_dev *dev = esw->dev;
-	u16 max_host_pf_sfs;
-	u16 base_sf_num;
+	u16 max_sfs, base_sf_num;
 	int idx = 0;
 	int err;
 	int i;
@@ -2290,10 +2347,10 @@ static int mlx5_esw_vports_init(struct mlx5_eswitch *esw)
 		idx++;
 	}
 
-	err = mlx5_esw_sf_max_hpf_functions(dev, &max_host_pf_sfs, &base_sf_num);
+	err = mlx5_esw_sf_max_hpf_functions(dev, &max_sfs, &base_sf_num);
 	if (err)
 		goto err;
-	for (i = 0; i < max_host_pf_sfs; i++) {
+	for (i = 0; i < max_sfs; i++) {
 		err = mlx5_esw_vport_alloc(esw, idx, base_sf_num + i);
 		if (err)
 			goto err;
@@ -2315,6 +2372,22 @@ static int mlx5_esw_vports_init(struct mlx5_eswitch *esw)
 			goto err;
 		vport = mlx5_eswitch_get_vport(esw, vport_num);
 		vport->vhca_id = esw->esw_funcs.spfs[i].vhca_id;
+
+		err = mlx5_esw_sf_max_spf_functions(dev, i,
+						    &max_sfs, &base_sf_num);
+		if (err)
+			goto err;
+		if (max_sfs)
+			esw->esw_funcs.has_spf_sfs = true;
+		for (int j = 0; j < max_sfs; j++) {
+			err = mlx5_esw_vport_alloc(esw, idx,
+						   base_sf_num + j);
+			if (err)
+				goto err;
+			xa_set_mark(&esw->vports, base_sf_num + j,
+				    MLX5_ESW_VPT_SF);
+			idx++;
+		}
 	}
 
 	if (mlx5_core_ec_sriov_enabled(esw->dev)) {

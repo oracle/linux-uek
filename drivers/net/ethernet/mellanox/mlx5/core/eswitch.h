@@ -353,6 +353,7 @@ struct mlx5_host_work {
 struct mlx5_esw_spf {
 	u16 vport_num;
 	u16 vhca_id;
+	u16 host_number;
 };
 
 struct mlx5_esw_functions {
@@ -361,6 +362,7 @@ struct mlx5_esw_functions {
 	u16			num_vfs;
 	u16			num_ec_vfs;
 	u16			hpf_host_number;
+	bool			has_spf_sfs;
 	struct mlx5_esw_spf	*spfs;
 	int			num_spfs;
 };
@@ -880,8 +882,14 @@ void mlx5_esw_offloads_devlink_port_unregister(struct mlx5_vport *vport);
 struct devlink_port *mlx5_esw_offloads_devlink_port(struct mlx5_eswitch *esw, u16 vport_num);
 
 int mlx5_esw_sf_max_hpf_functions(struct mlx5_core_dev *dev, u16 *max_sfs, u16 *sf_base_id);
+int mlx5_esw_sf_max_spf_functions(struct mlx5_core_dev *dev, int spf_idx,
+				  u16 *max_sfs, u16 *sf_base_id);
 
+int mlx5_esw_get_num_spfs(struct mlx5_core_dev *dev);
+int mlx5_esw_spf_get_host_number(struct mlx5_core_dev *dev, int spf_idx,
+				 u16 *host_number);
 u16 mlx5_esw_get_hpf_host_number(struct mlx5_core_dev *dev);
+bool mlx5_esw_has_spf_sfs(struct mlx5_core_dev *dev);
 
 int mlx5_esw_vport_vhca_id_map(struct mlx5_eswitch *esw,
 			       struct mlx5_vport *vport);

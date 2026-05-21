@@ -3824,6 +3824,9 @@ int mlx5_esw_funcs_changed_handler(struct notifier_block *nb,
 
 bool mlx5_esw_offloads_controller_valid(const struct mlx5_eswitch *esw, u32 controller)
 {
+	const struct mlx5_esw_functions *esw_funcs;
+	int i;
+
 	/* Local controller is always valid */
 	if (controller == 0)
 		return true;
@@ -3832,7 +3835,15 @@ bool mlx5_esw_offloads_controller_valid(const struct mlx5_eswitch *esw, u32 cont
 		return false;
 
 	/* External host number starts with zero in device */
-	return (controller == mlx5_esw_get_hpf_host_number(esw->dev) + 1);
+	if (controller == mlx5_esw_get_hpf_host_number(esw->dev) + 1)
+		return true;
+
+	esw_funcs = &esw->esw_funcs;
+	for (i = 0; i < esw_funcs->num_spfs; i++) {
+		if (controller == esw_funcs->spfs[i].host_number + 1)
+			return true;
+	}
+	return false;
 }
 
 int esw_offloads_enable(struct mlx5_eswitch *esw)
