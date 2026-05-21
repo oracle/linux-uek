@@ -1537,8 +1537,11 @@ int
 mlx5_eswitch_enable_pf_vf_vports(struct mlx5_eswitch *esw,
 				 enum mlx5_eswitch_vport_event enabled_events)
 {
+	struct mlx5_esw_functions *esw_funcs = &esw->esw_funcs;
 	bool pf_needed;
+	u16 vport_num;
 	int ret;
+	int i;
 
 	pf_needed = mlx5_core_is_ecpf_esw_manager(esw->dev) ||
 		    esw->mode == MLX5_ESWITCH_LEGACY;
@@ -1568,14 +1571,14 @@ mlx5_eswitch_enable_pf_vf_vports(struct mlx5_eswitch *esw,
 	/* Enable ECVF vports */
 	if (mlx5_core_ec_sriov_enabled(esw->dev)) {
 		ret = mlx5_eswitch_load_ec_vf_vports(esw,
-						     esw->esw_funcs.num_ec_vfs,
+						     esw_funcs->num_ec_vfs,
 						     enabled_events);
 		if (ret)
 			goto ec_vf_err;
 	}
 
 	/* Enable VF vports */
-	ret = mlx5_eswitch_load_vf_vports(esw, esw->esw_funcs.num_vfs,
+	ret = mlx5_eswitch_load_vf_vports(esw, esw_funcs->num_vfs,
 					  enabled_events);
 	if (ret)
 		goto vf_err;
@@ -1585,13 +1588,36 @@ mlx5_eswitch_enable_pf_vf_vports(struct mlx5_eswitch *esw,
 	if (ret)
 		goto unload_vf_vports;
 
+	/* Enable satellite PF vports */
+	for (i = 0; i < esw_funcs->num_spfs; i++) {
+		vport_num = esw_funcs->spfs[i].vport_num;
+
+		ret = mlx5_eswitch_load_pf_vf_vport(esw, vport_num,
+						    enabled_events);
+		if (ret)
+			goto spf_err;
+
+		ret = mlx5_esw_pf_enable_hca(esw->dev, vport_num);
+		if (ret) {
+			mlx5_eswitch_unload_pf_vf_vport(esw, vport_num);
+			goto spf_err;
+		}
+	}
+
 	return 0;
 
+spf_err:
+	while (i-- > 0) {
+		vport_num = esw_funcs->spfs[i].vport_num;
+		mlx5_esw_pf_disable_hca(esw->dev, vport_num);
+		mlx5_eswitch_unload_pf_vf_vport(esw, vport_num);
+	}
+	mlx5_eswitch_unload_adj_vf_vports(esw);
 unload_vf_vports:
-	mlx5_eswitch_unload_vf_vports(esw, esw->esw_funcs.num_vfs);
+	mlx5_eswitch_unload_vf_vports(esw, esw_funcs->num_vfs);
 vf_err:
 	if (mlx5_core_ec_sriov_enabled(esw->dev))
-		mlx5_eswitch_unload_ec_vf_vports(esw, esw->esw_funcs.num_ec_vfs);
+		mlx5_eswitch_unload_ec_vf_vports(esw, esw_funcs->num_ec_vfs);
 ec_vf_err:
 	if (mlx5_ecpf_vport_exists(esw->dev))
 		mlx5_eswitch_unload_pf_vf_vport(esw, MLX5_VPORT_ECPF);
@@ -1609,13 +1635,22 @@ pf_hca_err:
  */
 void mlx5_eswitch_disable_pf_vf_vports(struct mlx5_eswitch *esw)
 {
+	struct mlx5_esw_functions *esw_funcs = &esw->esw_funcs;
+	u16 vport_num;
+	int i;
+
+	for (i = 0; i < esw_funcs->num_spfs; i++) {
+		vport_num = esw_funcs->spfs[i].vport_num;
+		mlx5_esw_pf_disable_hca(esw->dev, vport_num);
+		mlx5_eswitch_unload_pf_vf_vport(esw, vport_num);
+	}
+
 	mlx5_eswitch_unload_adj_vf_vports(esw);
 
-	mlx5_eswitch_unload_vf_vports(esw, esw->esw_funcs.num_vfs);
+	mlx5_eswitch_unload_vf_vports(esw, esw_funcs->num_vfs);
 
 	if (mlx5_core_ec_sriov_enabled(esw->dev))
-		mlx5_eswitch_unload_ec_vf_vports(esw,
-						 esw->esw_funcs.num_ec_vfs);
+		mlx5_eswitch_unload_ec_vf_vports(esw, esw_funcs->num_ec_vfs);
 
 	if (mlx5_ecpf_vport_exists(esw->dev)) {
 		mlx5_eswitch_unload_pf_vf_vport(esw, MLX5_VPORT_ECPF);
@@ -2085,11 +2120,105 @@ void mlx5_esw_vport_free(struct mlx5_eswitch *esw, struct mlx5_vport *vport)
 	kfree(vport);
 }
 
+static void mlx5_esw_spfs_cleanup(struct mlx5_eswitch *esw)
+{
+	struct mlx5_esw_functions *esw_funcs = &esw->esw_funcs;
+	int i;
+
+	for (i = 0; i < esw_funcs->num_spfs; i++)
+		mlx5_esw_destroy_esw_vport(esw->dev,
+					   esw_funcs->spfs[i].vport_num);
+
+	kfree(esw_funcs->spfs);
+	esw_funcs->spfs = NULL;
+	esw_funcs->num_spfs = 0;
+}
+
+static int mlx5_esw_spfs_init(struct mlx5_eswitch *esw)
+{
+	struct mlx5_esw_functions *esw_funcs = &esw->esw_funcs;
+	struct mlx5_core_dev *dev = esw->dev;
+	int num_entries;
+	const u8 *entry;
+	const u32 *out;
+	int err = 0;
+	int pf_type;
+	u16 vhca_id;
+	int i;
+
+	if (!MLX5_CAP_GEN(dev, query_host_net_function_v1))
+		return 0;
+
+	out = mlx5_esw_query_functions(dev);
+	if (IS_ERR(out))
+		return PTR_ERR(out);
+
+	num_entries = MLX5_GET(query_esw_functions_out, out, net_function_num);
+	if (!num_entries)
+		goto out_free;
+
+	esw_funcs->spfs = kcalloc(num_entries, sizeof(*esw_funcs->spfs),
+				  GFP_KERNEL);
+	if (!esw_funcs->spfs) {
+		err = -ENOMEM;
+		goto out_free;
+	}
+
+	entry = MLX5_ADDR_OF(query_esw_functions_out, out, net_function_params);
+
+	for (i = 0; i < num_entries; i++) {
+		u16 vport_num;
+
+		pf_type = MLX5_GET(network_function_params, entry, pci_pf_type);
+		if (pf_type != MLX5_PCI_PF_TYPE_SATELLITE_PF) {
+			entry += MLX5_UN_SZ_BYTES(net_function_params);
+			continue;
+		}
+
+		if (!MLX5_GET(network_function_params, entry,
+			      esw_vport_manual)) {
+			esw_warn(dev, "Satellite PF without esw_vport_manual is not supported\n");
+			entry += MLX5_UN_SZ_BYTES(net_function_params);
+			continue;
+		}
+
+		vhca_id = MLX5_GET(network_function_params, entry, vhca_id);
+
+		err = mlx5_esw_create_esw_vport(dev, vhca_id, &vport_num);
+		if (err) {
+			esw_warn(dev, "Failed to create satellite PF vport for vhca_id 0x%x, err %d\n",
+				 vhca_id, err);
+			goto spfs_cleanup;
+		}
+
+		esw_funcs->spfs[esw_funcs->num_spfs].vport_num = vport_num;
+		esw_funcs->spfs[esw_funcs->num_spfs].vhca_id = vhca_id;
+		esw_funcs->num_spfs++;
+
+		entry += MLX5_UN_SZ_BYTES(net_function_params);
+	}
+
+	if (!esw_funcs->num_spfs) {
+		kfree(esw_funcs->spfs);
+		esw_funcs->spfs = NULL;
+	}
+
+	kvfree(out);
+	return 0;
+
+spfs_cleanup:
+	mlx5_esw_spfs_cleanup(esw);
+out_free:
+	kvfree(out);
+	return err;
+}
+
 static void mlx5_esw_vports_cleanup(struct mlx5_eswitch *esw)
 {
 	struct mlx5_vport *vport;
 	unsigned long i;
 
+	mlx5_esw_spfs_cleanup(esw);
 	mlx5_esw_for_each_vport(esw, i, vport)
 		mlx5_esw_vport_free(esw, vport);
 	xa_destroy(&esw->vports);
@@ -2141,6 +2270,22 @@ static int mlx5_esw_vports_init(struct mlx5_eswitch *esw)
 			goto err;
 		xa_set_mark(&esw->vports, base_sf_num + i, MLX5_ESW_VPT_SF);
 		idx++;
+	}
+
+	err = mlx5_esw_spfs_init(esw);
+	if (err)
+		goto err;
+
+	for (i = 0; i < esw->esw_funcs.num_spfs; i++) {
+		struct mlx5_vport *vport;
+		u16 vport_num;
+
+		vport_num = esw->esw_funcs.spfs[i].vport_num;
+		err = mlx5_esw_vport_alloc(esw, idx++, vport_num);
+		if (err)
+			goto err;
+		vport = mlx5_eswitch_get_vport(esw, vport_num);
+		vport->vhca_id = esw->esw_funcs.spfs[i].vhca_id;
 	}
 
 	if (mlx5_core_ec_sriov_enabled(esw->dev)) {

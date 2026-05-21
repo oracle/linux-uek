@@ -351,11 +351,18 @@ struct mlx5_host_work {
 	void (*func)(struct mlx5_eswitch *esw);
 };
 
+struct mlx5_esw_spf {
+	u16 vport_num;
+	u16 vhca_id;
+};
+
 struct mlx5_esw_functions {
 	struct mlx5_nb		nb;
 	bool			host_funcs_disabled;
 	u16			num_vfs;
 	u16			num_ec_vfs;
+	struct mlx5_esw_spf	*spfs;
+	int			num_spfs;
 };
 
 enum {
@@ -668,6 +675,9 @@ void mlx5_esw_adjacent_vhcas_setup(struct mlx5_eswitch *esw);
 void mlx5_esw_adjacent_vhcas_cleanup(struct mlx5_eswitch *esw);
 int mlx5_esw_adj_vport_modify(struct mlx5_core_dev *dev, u16 vport,
 			      bool connect);
+int mlx5_esw_create_esw_vport(struct mlx5_core_dev *dev, u16 vhca_id,
+			      u16 *vport_num);
+void mlx5_esw_destroy_esw_vport(struct mlx5_core_dev *dev, u16 vport);
 
 #define MLX5_DEBUG_ESWITCH_MASK BIT(3)
 

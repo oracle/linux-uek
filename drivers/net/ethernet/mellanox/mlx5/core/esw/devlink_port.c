@@ -290,5 +290,10 @@ struct devlink_port *mlx5_esw_offloads_devlink_port(struct mlx5_eswitch *esw, u1
 	struct mlx5_vport *vport;
 
 	vport = mlx5_eswitch_get_vport(esw, vport_num);
-	return IS_ERR(vport) ? ERR_CAST(vport) : &vport->dl_port->dl_port;
+	if (IS_ERR(vport))
+		return ERR_CAST(vport);
+	if (!vport->dl_port)
+		return ERR_PTR(-ENODEV);
+
+	return &vport->dl_port->dl_port;
 }
