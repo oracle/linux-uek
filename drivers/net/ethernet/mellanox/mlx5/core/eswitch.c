@@ -2043,37 +2043,20 @@ void mlx5_eswitch_disable(struct mlx5_eswitch *esw)
 	mlx5_lag_enable_change(esw->dev);
 }
 
-static int mlx5_query_hca_cap_host_pf(struct mlx5_core_dev *dev, void *out)
-{
-	u16 opmod = (MLX5_CAP_GENERAL << 1) | (HCA_CAP_OPMOD_GET_MAX & 0x01);
-	u8 in[MLX5_ST_SZ_BYTES(query_hca_cap_in)] = {};
-
-	MLX5_SET(query_hca_cap_in, in, opcode, MLX5_CMD_OP_QUERY_HCA_CAP);
-	MLX5_SET(query_hca_cap_in, in, op_mod, opmod);
-	MLX5_SET(query_hca_cap_in, in, function_id, MLX5_VPORT_HOST_PF);
-	MLX5_SET(query_hca_cap_in, in, other_function, true);
-	return mlx5_cmd_exec_inout(dev, query_hca_cap, in, out);
-}
-
-int mlx5_esw_sf_max_hpf_functions(struct mlx5_core_dev *dev, u16 *max_sfs, u16 *sf_base_id)
-
+static int mlx5_esw_sf_max_pf_functions(struct mlx5_core_dev *dev,
+					u16 vport_num, u16 *max_sfs,
+					u16 *sf_base_id)
 {
 	int query_out_sz = MLX5_ST_SZ_BYTES(query_hca_cap_out);
 	void *query_ctx;
 	void *hca_caps;
 	int err;
 
-	if (!mlx5_core_is_ecpf(dev) ||
-	    !mlx5_esw_host_functions_enabled(dev)) {
-		*max_sfs = 0;
-		return 0;
-	}
-
 	query_ctx = kzalloc(query_out_sz, GFP_KERNEL);
 	if (!query_ctx)
 		return -ENOMEM;
 
-	err = mlx5_query_hca_cap_host_pf(dev, query_ctx);
+	err = mlx5_vport_get_other_func_general_cap(dev, vport_num, query_ctx);
 	if (err)
 		goto out_free;
 
@@ -2084,6 +2067,19 @@ int mlx5_esw_sf_max_hpf_functions(struct mlx5_core_dev *dev, u16 *max_sfs, u16 *
 out_free:
 	kfree(query_ctx);
 	return err;
+}
+
+int mlx5_esw_sf_max_hpf_functions(struct mlx5_core_dev *dev, u16 *max_sfs,
+				  u16 *sf_base_id)
+{
+	if (!mlx5_core_is_ecpf(dev) ||
+	    !mlx5_esw_host_functions_enabled(dev)) {
+		*max_sfs = 0;
+		return 0;
+	}
+
+	return mlx5_esw_sf_max_pf_functions(dev, MLX5_VPORT_HOST_PF, max_sfs,
+					    sf_base_id);
 }
 
 int mlx5_esw_vport_alloc(struct mlx5_eswitch *esw, int index, u16 vport_num)
