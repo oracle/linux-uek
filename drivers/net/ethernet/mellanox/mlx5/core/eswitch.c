@@ -2149,6 +2149,23 @@ u16 mlx5_esw_get_hpf_pf_num(struct mlx5_core_dev *dev)
 	return PCI_FUNC(dev->pdev->devfn);
 }
 
+u16 mlx5_esw_sf_controller_to_pfnum(struct mlx5_core_dev *dev, u32 controller)
+{
+	struct mlx5_eswitch *esw = dev->priv.eswitch;
+	struct mlx5_esw_functions *esw_funcs;
+	int i;
+
+	if (!controller)
+		return PCI_FUNC(dev->pdev->devfn);
+
+	esw_funcs = &esw->esw_funcs;
+	for (i = 0; i < esw_funcs->num_spfs; i++)
+		if (controller == esw_funcs->spfs[i].host_number + 1)
+			return esw_funcs->spfs[i].pf_num;
+
+	return mlx5_esw_get_hpf_pf_num(dev);
+}
+
 bool mlx5_esw_has_spf_sfs(struct mlx5_core_dev *dev)
 {
 	struct mlx5_eswitch *esw = dev->priv.eswitch;

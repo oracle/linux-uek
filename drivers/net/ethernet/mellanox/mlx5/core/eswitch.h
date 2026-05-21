@@ -893,6 +893,7 @@ int mlx5_esw_spf_get_host_number(struct mlx5_core_dev *dev, int spf_idx,
 				 u16 *host_number);
 u16 mlx5_esw_get_hpf_host_number(struct mlx5_core_dev *dev);
 u16 mlx5_esw_get_hpf_pf_num(struct mlx5_core_dev *dev);
+u16 mlx5_esw_sf_controller_to_pfnum(struct mlx5_core_dev *dev, u32 controller);
 bool mlx5_esw_has_spf_sfs(struct mlx5_core_dev *dev);
 
 int mlx5_esw_vport_vhca_id_map(struct mlx5_eswitch *esw,

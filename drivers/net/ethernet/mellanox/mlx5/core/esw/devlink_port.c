@@ -145,7 +145,7 @@ static void mlx5_esw_offloads_sf_devlink_port_attrs_set(struct mlx5_eswitch *esw
 	struct netdev_phys_item_id ppid = {};
 	u16 pfnum;
 
-	pfnum = PCI_FUNC(dev->pdev->devfn);
+	pfnum = mlx5_esw_sf_controller_to_pfnum(dev, controller);
 	mlx5_esw_get_port_parent_id(dev, &ppid);
 	memcpy(dl_port->attrs.switch_id.id, &ppid.id[0], ppid.id_len);
 	dl_port->attrs.switch_id.id_len = ppid.id_len;
