@@ -196,14 +196,28 @@ static const struct devlink_port_ops mlx5_esw_dl_sf_port_ops = {
 };
 
 static int mlx5_esw_devlink_port_res_register(struct mlx5_eswitch *esw,
-					      struct devlink_port *dl_port)
+					      struct devlink_port *dl_port,
+					      u16 vport_num)
 {
 	struct devlink_resource_size_params size_params;
 	struct mlx5_core_dev *dev = esw->dev;
 	u16 max_sfs, sf_base_id;
 	int err;
 
-	err = mlx5_esw_sf_max_hpf_functions(dev, &max_sfs, &sf_base_id);
+	if (vport_num != MLX5_VPORT_HOST_PF &&
+	    !mlx5_esw_is_spf_vport(esw, vport_num))
+		return 0;
+
+	if (vport_num == MLX5_VPORT_HOST_PF) {
+		err = mlx5_esw_sf_max_hpf_functions(dev, &max_sfs,
+						    &sf_base_id);
+	} else {
+		int spf_idx = mlx5_esw_spf_vport_to_idx(esw, vport_num);
+
+		err = mlx5_esw_sf_max_spf_functions(dev, spf_idx, &max_sfs,
+						    &sf_base_id);
+	}
+
 	if (err)
 		return err;
 
@@ -253,14 +267,11 @@ int mlx5_esw_offloads_devlink_port_register(struct mlx5_eswitch *esw, struct mlx
 	if (err)
 		goto rate_err;
 
-	if (vport_num == MLX5_VPORT_HOST_PF) {
-		err = mlx5_esw_devlink_port_res_register(esw,
-							 &dl_port->dl_port);
-		if (err)
-			mlx5_core_dbg(dev,
-				      "Failed to register port resources: %d\n",
-				       err);
-	}
+	err = mlx5_esw_devlink_port_res_register(esw, &dl_port->dl_port,
+						 vport_num);
+	if (err)
+		mlx5_core_dbg(dev, "Failed to register port resources: %d\n",
+			      err);
 
 	reporter = devl_port_health_reporter_create(
 		&dl_port->dl_port, &mlx5_esw_rep_vnic_reporter_ops,
