@@ -370,6 +370,8 @@ static int tb_xdp_properties_request(struct tb_ctl *ctl, u64 route,
 			}
 		}
 
+		if (req.offset + len > data_len)
+			len = data_len - req.offset;
 		memcpy(data + req.offset, res->data, len * 4);
 		req.offset += len;
 	} while (!data_len || req.offset < data_len);
