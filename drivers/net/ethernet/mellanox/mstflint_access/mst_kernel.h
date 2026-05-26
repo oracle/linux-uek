@@ -64,6 +64,12 @@
 #define MST_CONF_ADDR_REG 88
 #define MST_CONF_DATA_REG 92
 
+#define FUNCTIONAL_VSC 0
+#define RECOVERY_VSC 2
+#define RECOVERY_VSC_OFFSET_IN_CONFIG_SPACE 0x54 // Agreed with FW to keep the VSC offset always in 0x54 in recovery mode(LF/Late LF in CX8,QTM3 and above)
+
+#define ADDRESS_OUT_OF_RANGE 0x3 // syndrome_code value
+
 #define MST_VPD_DEFAULT_TOUT 2000 /* milli seconds */
 
 #define mst_err(format, arg...) pr_err("%s: %s %d: " format, MST_PREFIX, __func__, __LINE__, ##arg)
@@ -73,6 +79,23 @@
     mst_info("Device 0x%x (%x:%x:%x.%x) doesn't support %s capability.\n", dev->pci_dev->device,         \
              pci_domain_nr(dev->pci_dev->bus), dev->pci_dev->bus->number, PCI_SLOT(dev->pci_dev->devfn), \
              PCI_FUNC(dev->pci_dev->devfn), #capability);
+
+#define CHECK_PCI_READ_ERROR(error, address) \
+        if (error) { \
+                printk(KERN_ERR "Failed to read from address: %x\n", address); \
+                goto ReturnOnFinished; \
+        }
+
+#define CHECK_PCI_WRITE_ERROR(error, address, data) \
+        if (error) { \
+                printk(KERN_ERR "Failed to write to address: %x, data: %x\n", address, data); \
+                goto ReturnOnFinished; \
+        }
+
+#define CHECK_ERROR(error) \
+    if (error) { \
+            goto ReturnOnFinished; \
+    }
 
 /****************************************************/
 /* new types */
@@ -110,9 +133,11 @@ struct mst_dev_data
 
     unsigned char connectx_wa_slots; /* wa for pci bug */
                                      /* Vendor specific capability address */
-    int vendor_specific_cap;
-    /* status on VSEC supported spaces*/
+    int functional_vsc_offset;
+    unsigned int recovery_vsc_offset; // For LF and Late LF in CX8, QTM3 and above
+    /* status on FUNCTIONAL VSC supported spaces*/
     int spaces_support_status;
+    int pci_vsec_space_fully_supported; /* For pciconf interface in CX8 and above, where PCI and CORE have different VSC spaces.*/
 
     // Allocated pages for the user space.
     struct dma_page dma_page;
