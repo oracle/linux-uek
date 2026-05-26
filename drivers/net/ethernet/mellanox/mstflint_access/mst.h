@@ -63,7 +63,7 @@ struct mst_params
     unsigned int vendor;
     unsigned int subsystem_device;
     unsigned int subsystem_vendor;
-    unsigned int vendor_specific_cap;
+    unsigned int functional_vsc_offset;
 };
 
 typedef uint32_t u32;
