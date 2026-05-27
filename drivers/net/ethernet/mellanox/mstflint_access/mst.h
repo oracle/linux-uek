@@ -222,4 +222,21 @@ struct read_dword_from_config_space
     unsigned int data;
 };
 
+#define PCICONF_HOT_RESET _IOR(MST_PCICONF_MAGIC, 16, struct hot_reset_pcie_switch)
+
+struct dbdf
+{
+    int domain;
+    int bus;
+    int device;
+    int function;
+};
+
+struct hot_reset_pcie_switch
+{
+    struct dbdf device_1;
+    struct dbdf device_2;
+    bool in_parallel;
+};
+
 #endif /* _MST_H_ */
