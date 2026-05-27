@@ -107,7 +107,11 @@ LIST_HEAD(mst_devices);
 #define BLUEFIELD_DPU_AUX_PCI_ID 49873
 #define BLUEFIELD3_PCI_ID 41692
 #define BLUEFIELD3_RMA_PCI_ID 541
-#define BLUEFIELD4_PCI_ID 41694
+#define BLUEFIELD4_CRYPTO_ENABLED_PCI_ID     41693
+#define BLUEFIELD4_CRYPTO_DISABLED_PCI_ID    41694
+#define BLUEFIELD4_NETWORK_CONTROLLER_PCI_ID 41695
+#define BLUEFIELD4_MANAGMENT_INTERFACE_PCI_ID 49878
+#define BLUEFIELD4_PCI_ID 41695
 #define SWITCHIB_PCI_ID 52000
 #define SWITCHIB2_PCI_ID 53000
 #define QUANTUM_PCI_ID 54000
@@ -115,7 +119,8 @@ LIST_HEAD(mst_devices);
 #define QUANTUM2_RMA_PCI_ID 600
 #define QUANTUM3_PCI_ID 54004
 #define QUANTUM3_RMA_PCI_ID 604
-#define NVLINK6_SWITCH_ASIC_PCI_ID 54008
+#define NVLINK6_SWITCH_PCI_ID 54008
+#define NVLINK6_SWITCH_RMA_PCI_ID 633
 #define SPECTRUM_PCI_ID 52100
 #define SPECTRUM2_PCI_ID 53100
 #define SPECTRUM3_PCI_ID 53104
@@ -144,7 +149,7 @@ LIST_HEAD(mst_devices);
 #define LF_QUANTUM_PCI_ID 0x24d
 #define LF_QUANTUM2_PCI_ID 0x257
 #define LF_QUANTUM3_PCI_ID 0x25b
-#define LF_NVLINK6_SWITCH_ASIC_PCI_ID 0x278
+#define LF_NVLINK6_SWITCH_PCI_ID 0x278
 #define LF_SPECTRUM2_PCI_ID 0x24e
 #define LF_SPECTRUM3_PCI_ID 0x250
 #define LF_SPECTRUM4_PCI_ID 0x254
@@ -173,7 +178,7 @@ static struct pci_device_id mst_livefish_pci_table[] = {{PCI_DEVICE(MST_MELLANOX
                                                         {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, LF_QUANTUM_PCI_ID)},
                                                         {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, LF_QUANTUM2_PCI_ID)},
                                                         {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, LF_QUANTUM3_PCI_ID)},
-                                                        {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, LF_NVLINK6_SWITCH_ASIC_PCI_ID)},
+                                                        {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, LF_NVLINK6_SWITCH_PCI_ID)},
                                                         {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, LF_SPECTRUM2_PCI_ID)},
                                                         {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, LF_SPECTRUM3_PCI_ID)},
                                                         {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, LF_SPECTRUM4_PCI_ID)},
@@ -217,7 +222,10 @@ static struct pci_device_id supported_pci_devices[] = {{PCI_DEVICE(MST_MELLANOX_
                                                        {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, BLUEFIELD_DPU_AUX_PCI_ID)},
                                                        {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, BLUEFIELD3_PCI_ID)},
                                                        {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, BLUEFIELD3_RMA_PCI_ID)},
-                                                       {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, BLUEFIELD4_PCI_ID)},
+                                                       {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, BLUEFIELD4_CRYPTO_ENABLED_PCI_ID)},
+                                                       {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, BLUEFIELD4_CRYPTO_DISABLED_PCI_ID)},
+                                                       {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, BLUEFIELD4_NETWORK_CONTROLLER_PCI_ID)},
+                                                       {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, BLUEFIELD4_MANAGMENT_INTERFACE_PCI_ID)},
                                                        {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, SWITCHIB_PCI_ID)},
                                                        {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, SWITCHIB2_PCI_ID)},
                                                        {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, QUANTUM_PCI_ID)},
@@ -225,7 +233,8 @@ static struct pci_device_id supported_pci_devices[] = {{PCI_DEVICE(MST_MELLANOX_
                                                        {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, QUANTUM2_RMA_PCI_ID)},
                                                        {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, QUANTUM3_PCI_ID)},
                                                        {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, QUANTUM3_RMA_PCI_ID)},
-                                                       {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, NVLINK6_SWITCH_ASIC_PCI_ID)},
+                                                       {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, NVLINK6_SWITCH_PCI_ID)},
+                                                       {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, NVLINK6_SWITCH_RMA_PCI_ID)},
                                                        {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, SPECTRUM_PCI_ID)},
                                                        {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, SPECTRUM2_PCI_ID)},
                                                        {PCI_DEVICE(MST_MELLANOX_PCI_VENDOR, SPECTRUM3_PCI_ID)},
