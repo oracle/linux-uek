@@ -363,12 +363,21 @@ static void rose_destroy_timer(struct timer_list *t)
  */
 void rose_destroy_socket(struct sock *sk)
 {
+	struct rose_sock *rose = rose_sk(sk);
 	struct sk_buff *skb;
 
 	rose_remove_socket(sk);
 	rose_stop_heartbeat(sk);
 	rose_stop_idletimer(sk);
 	rose_stop_timer(sk);
+
+	/* Drop any device reference not already released by rose_kill_by_device()
+	 * or rose_release() -- e.g. incoming sockets that were never accepted.
+	 */
+	if (rose->device) {
+		netdev_put(rose->device, &rose->dev_tracker);
+		rose->device = NULL;
+	}
 
 	rose_clear_queues(sk);		/* Flush the queues */
 
