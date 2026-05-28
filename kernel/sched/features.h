@@ -123,6 +123,7 @@ SCHED_FEAT(WA_IDLE, true)
 SCHED_FEAT(WA_WEIGHT, true)
 SCHED_FEAT(WA_BIAS, true)
 SCHED_FEAT(WA_RUNNABLE, false)
+SCHED_FEAT(WA_NUMA, true)
 
 /*
  * UtilEstimation. Use estimated CPU utilization.
