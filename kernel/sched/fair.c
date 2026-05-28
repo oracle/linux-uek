@@ -7220,6 +7220,7 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int wake_flags)
 		 * cpu is a valid SD_WAKE_AFFINE target.
 		 */
 		if (want_affine && (tmp->flags & SD_WAKE_AFFINE) &&
+		    (sched_feat(WA_NUMA) || !(tmp->flags & SD_NUMA)) &&
 		    cpumask_test_cpu(prev_cpu, sched_domain_span(tmp))) {
 			if (cpu != prev_cpu)
 				new_cpu = wake_affine(tmp, p, cpu, prev_cpu, sync);

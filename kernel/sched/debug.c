@@ -337,6 +337,17 @@ static __init int sched_init_debug(void)
 
 	debugfs_create_file("debug", 0444, debugfs_sched, NULL, &sched_debug_fops);
 
+	/*
+	 * Prevent affine wakeups at NUMA domain levels on Exadata where some
+	 * IRQs are bound to a subset of nodes since such wakeups tend to
+	 * concentrate tasks on IRQ-heavy nodes.
+	 *
+	 * This call to sched_feat_set() happens before userspace is up, so
+	 * no need to synchronize with accesses to the "features" file.
+	 */
+	if (static_branch_unlikely(&on_exadata))
+		sched_feat_set("NO_WA_NUMA");
+
 	return 0;
 }
 late_initcall(sched_init_debug);
