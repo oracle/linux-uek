@@ -1966,7 +1966,8 @@ struct mlx5_ifc_cmd_hca_cap_bits {
 	u8         basic_cyclic_rcv_wqe[0x1];
 	u8         reserved_at_381[0x2];
 	u8         log_max_rmp[0x5];
-	u8         reserved_at_388[0x3];
+	u8         sd_group_size[0x1];
+	u8         reserved_at_389[0x2];
 	u8         log_max_rqt[0x5];
 	u8         reserved_at_390[0x3];
 	u8         log_max_rqt_size[0x5];
@@ -4448,7 +4449,9 @@ struct mlx5_ifc_nic_vport_context_bits {
 
 	u8	   reserved_at_100[0x1];
 	u8         sd_group[0x3];
-	u8	   reserved_at_104[0x1c];
+	u8	   reserved_at_104[0x4];
+	u8	   sd_group_size[0x8];
+	u8	   reserved_at_110[0x10];
 
 	u8	   reserved_at_120[0x10];
 	u8         mtu[0x10];
