@@ -5252,7 +5252,7 @@ static int io_recvmsg(struct io_kiocb *req, unsigned int issue_flags)
 			return PTR_ERR(kbuf);
 		kmsg->fast_iov[0].iov_base = u64_to_user_ptr(kbuf->addr);
 		kmsg->fast_iov[0].iov_len = req->sr_msg.len;
-		iov_iter_init(&kmsg->msg.msg_iter, READ, kmsg->fast_iov,
+		iov_iter_init(&kmsg->msg.msg_iter, ITER_DEST, kmsg->fast_iov,
 				1, req->sr_msg.len);
 	}
 

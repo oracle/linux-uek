@@ -27,6 +27,9 @@ enum iter_type {
 	ITER_DISCARD,
 };
 
+#define ITER_SOURCE	1	// == WRITE
+#define ITER_DEST	0	// == READ
+
 struct iov_iter_state {
 	size_t iov_offset;
 	size_t count;

@@ -305,7 +305,7 @@ static void afs_req_issue_op(struct netfs_read_subrequest *subreq)
 	fsreq->vnode	= vnode;
 	fsreq->iter	= &fsreq->def_iter;
 
-	iov_iter_xarray(&fsreq->def_iter, READ,
+	iov_iter_xarray(&fsreq->def_iter, ITER_DEST,
 			&fsreq->vnode->vfs_inode.i_mapping->i_pages,
 			fsreq->pos, fsreq->len);
 
@@ -327,7 +327,7 @@ static int afs_symlink_readpage(struct page *page)
 	fsreq->len	= PAGE_SIZE;
 	fsreq->vnode	= vnode;
 	fsreq->iter	= &fsreq->def_iter;
-	iov_iter_xarray(&fsreq->def_iter, READ, &page->mapping->i_pages,
+	iov_iter_xarray(&fsreq->def_iter, ITER_DEST, &page->mapping->i_pages,
 			fsreq->pos, fsreq->len);
 
 	ret = afs_fetch_data(fsreq->vnode, fsreq);

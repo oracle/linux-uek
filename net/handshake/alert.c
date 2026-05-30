@@ -59,7 +59,7 @@ int tls_alert_send(struct socket *sock, u8 level, u8 description)
 	cmsg->cmsg_len = CMSG_LEN(sizeof(record_type));
 	memcpy(CMSG_DATA(cmsg), &record_type, sizeof(record_type));
 
-	iov_iter_kvec(&msg.msg_iter, WRITE, &iov, 1, iov.iov_len);
+	iov_iter_kvec(&msg.msg_iter, ITER_SOURCE, &iov, 1, iov.iov_len);
 	ret = sock_sendmsg(sock, &msg);
 	return ret < 0 ? ret : 0;
 }
