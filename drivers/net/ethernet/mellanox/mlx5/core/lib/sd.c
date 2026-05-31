@@ -115,7 +115,28 @@ static bool ft_create_alias_supported(struct mlx5_core_dev *dev)
 	return true;
 }
 
-static bool mlx5_sd_is_supported(struct mlx5_core_dev *dev, u8 host_buses)
+static int mlx5_query_sd(struct mlx5_core_dev *dev, bool *sdm,
+			 u8 *host_buses)
+{
+	u32 out[MLX5_ST_SZ_DW(mpir_reg)];
+	int err;
+
+	err = mlx5_query_mpir_reg(dev, out);
+	if (err)
+		return err;
+
+	*sdm = MLX5_GET(mpir_reg, out, sdm);
+	*host_buses = MLX5_GET(mpir_reg, out, host_buses);
+
+	return 0;
+}
+
+static u32 mlx5_sd_group_id(struct mlx5_core_dev *dev, u8 sd_group)
+{
+	return (u32)((MLX5_CAP_GEN(dev, native_port_num) << 8) | sd_group);
+}
+
+static bool mlx5_sd_caps_supported(struct mlx5_core_dev *dev, u8 host_buses)
 {
 	/* Honor the SW implementation limit */
 	if (host_buses > MLX5_SD_MAX_GROUP_SZ)
@@ -142,25 +163,32 @@ static bool mlx5_sd_is_supported(struct mlx5_core_dev *dev, u8 host_buses)
 	return true;
 }
 
-static int mlx5_query_sd(struct mlx5_core_dev *dev, bool *sdm,
-			 u8 *host_buses)
+bool mlx5_sd_is_supported(struct mlx5_core_dev *dev)
 {
-	u32 out[MLX5_ST_SZ_DW(mpir_reg)];
+	u8 host_buses, sd_group;
+	bool sdm;
 	int err;
 
-	err = mlx5_query_mpir_reg(dev, out);
-	if (err)
-		return err;
+	/* Feature is currently implemented for PFs only */
+	if (!mlx5_core_is_pf(dev))
+		return false;
 
-	*sdm = MLX5_GET(mpir_reg, out, sdm);
-	*host_buses = MLX5_GET(mpir_reg, out, host_buses);
+	/* Block on embedded CPU PFs */
+	if (mlx5_core_is_ecpf(dev))
+		return false;
 
-	return 0;
-}
+	err = mlx5_query_nic_vport_sd_group(dev, &sd_group);
+	if (err || !sd_group)
+		return false;
 
-static u32 mlx5_sd_group_id(struct mlx5_core_dev *dev, u8 sd_group)
-{
-	return (u32)((MLX5_CAP_GEN(dev, native_port_num) << 8) | sd_group);
+	if (!MLX5_CAP_MCAM_REG(dev, mpir))
+		return false;
+
+	err = mlx5_query_sd(dev, &sdm, &host_buses);
+	if (err || !sdm)
+		return false;
+
+	return mlx5_sd_caps_supported(dev, host_buses);
 }
 
 static int sd_init(struct mlx5_core_dev *dev)
@@ -198,8 +226,8 @@ static int sd_init(struct mlx5_core_dev *dev)
 
 	group_id = mlx5_sd_group_id(dev, sd_group);
 
-	if (!mlx5_sd_is_supported(dev, host_buses)) {
-		sd_warn(dev, "can't support requested netdev combining for group id 0x%x), skipping\n",
+	if (!mlx5_sd_caps_supported(dev, host_buses)) {
+		sd_warn(dev, "can't support requested netdev combining for group id 0x%x, skipping\n",
 			group_id);
 		return 0;
 	}

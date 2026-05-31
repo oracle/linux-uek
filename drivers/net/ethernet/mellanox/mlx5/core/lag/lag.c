@@ -293,11 +293,14 @@ static struct mlx5_lag *mlx5_lag_dev_alloc(struct mlx5_core_dev *dev)
 	INIT_DELAYED_WORK(&ldev->bond_work, mlx5_do_bond_work);
 	INIT_WORK(&ldev->speed_update_work, mlx5_mpesw_speed_update_work);
 
-	ldev->nb.notifier_call = mlx5_lag_netdev_event;
-	write_pnet(&ldev->net, mlx5_core_net(dev));
-	if (register_netdevice_notifier_net(read_pnet(&ldev->net), &ldev->nb)) {
-		ldev->nb.notifier_call = NULL;
-		mlx5_core_err(dev, "Failed to register LAG netdev notifier\n");
+	if (!mlx5_sd_is_supported(dev)) {
+		ldev->nb.notifier_call = mlx5_lag_netdev_event;
+		write_pnet(&ldev->net, mlx5_core_net(dev));
+		if (register_netdevice_notifier_net(read_pnet(&ldev->net),
+						    &ldev->nb)) {
+			ldev->nb.notifier_call = NULL;
+			mlx5_core_err(dev, "Failed to register LAG netdev notifier\n");
+		}
 	}
 	ldev->mode = MLX5_LAG_MODE_NONE;
 
