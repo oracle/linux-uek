@@ -3869,6 +3869,7 @@ bool mlx5_esw_offloads_controller_valid(const struct mlx5_eswitch *esw, u32 cont
 int esw_offloads_enable(struct mlx5_eswitch *esw)
 {
 	u8 mapping_id[MLX5_SW_IMAGE_GUID_MAX_BYTES];
+	struct mlx5_devcom_match_attr attr = {};
 	struct mapping_ctx *reg_c0_obj_pool;
 	struct mlx5_vport *vport;
 	unsigned long i;
@@ -3933,6 +3934,10 @@ int esw_offloads_enable(struct mlx5_eswitch *esw)
 	if (err)
 		goto err_vports;
 
+	memcpy(attr.key.buf, mapping_id, id_len);
+	attr.flags = MLX5_DEVCOM_MATCH_FLAGS_NS;
+	attr.net = mlx5_core_net(esw->dev);
+	mlx5_esw_offloads_devcom_init(esw, &attr);
 	return 0;
 
 err_vports:
@@ -3977,6 +3982,7 @@ static int esw_offloads_stop(struct mlx5_eswitch *esw,
 
 void esw_offloads_disable(struct mlx5_eswitch *esw)
 {
+	mlx5_esw_offloads_devcom_cleanup(esw);
 	mlx5_eswitch_disable_pf_vf_vports(esw);
 	mlx5_esw_offloads_rep_unload(esw, MLX5_VPORT_UPLINK);
 	esw_set_passing_vport_metadata(esw, false);
