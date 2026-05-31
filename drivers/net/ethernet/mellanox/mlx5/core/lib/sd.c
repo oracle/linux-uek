@@ -49,12 +49,15 @@ static int mlx5_sd_get_host_buses(struct mlx5_core_dev *dev)
 	return sd->host_buses;
 }
 
-static struct mlx5_core_dev *mlx5_sd_get_primary(struct mlx5_core_dev *dev)
+struct mlx5_core_dev *mlx5_sd_get_primary(struct mlx5_core_dev *dev)
 {
 	struct mlx5_sd *sd = mlx5_get_sd(dev);
 
 	if (!sd)
 		return dev;
+
+	if (!mlx5_devcom_comp_is_ready(sd->devcom))
+		return NULL;
 
 	return sd->primary ? dev : sd->primary_dev;
 }
@@ -67,6 +70,16 @@ struct mlx5_devcom_comp_dev *mlx5_sd_get_devcom(struct mlx5_core_dev *dev)
 		return NULL;
 
 	return sd->devcom;
+}
+
+bool mlx5_sd_is_primary(struct mlx5_core_dev *dev)
+{
+	struct mlx5_sd *sd = mlx5_get_sd(dev);
+
+	if (!sd)
+		return true;
+
+	return sd->primary;
 }
 
 struct mlx5_core_dev *

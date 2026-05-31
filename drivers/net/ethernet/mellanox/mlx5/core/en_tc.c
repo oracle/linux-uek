@@ -72,6 +72,7 @@
 #include <asm/div64.h>
 #include "lag/lag.h"
 #include "lag/mp.h"
+#include "lib/sd.h"
 
 #define MLX5E_TC_TABLE_NUM_GROUPS 4
 #define MLX5E_TC_TABLE_MAX_GROUP_SIZE BIT(18)
@@ -2133,7 +2134,7 @@ static void mlx5e_tc_del_fdb_peer_flow(struct mlx5e_tc_flow *flow,
 	mutex_unlock(&esw->offloads.peer_mutex);
 
 	list_for_each_entry_safe(peer_flow, tmp, &flow->peer_flows, peer_flows) {
-		if (peer_index != mlx5_lag_get_dev_seq(peer_flow->priv->mdev))
+		if (peer_index != peer_flow->peer_index)
 			continue;
 
 		list_del(&peer_flow->peer_flows);
@@ -4198,15 +4199,35 @@ static bool is_lag_dev(struct mlx5e_priv *priv,
 		 same_hw_reps(priv, peer_netdev));
 }
 
+static bool is_sd_eligible(struct mlx5e_priv *priv,
+			   struct net_device *peer_netdev)
+{
+	struct mlx5e_priv *peer_priv;
+
+	peer_priv = netdev_priv(peer_netdev);
+	return same_hw_reps(priv, peer_netdev) &&
+		mlx5_lag_is_sd(priv->mdev) &&
+		(mlx5_sd_get_primary(priv->mdev) ==
+		 mlx5_sd_get_primary(peer_priv->mdev));
+}
+
 static bool is_multiport_eligible(struct mlx5e_priv *priv, struct net_device *out_dev)
 {
-	return same_hw_reps(priv, out_dev) && mlx5_lag_is_mpesw(priv->mdev);
+	struct mlx5_core_dev *primary = mlx5_sd_get_primary(priv->mdev);
+
+	if (!primary)
+		return false;
+
+	return same_hw_reps(priv, out_dev) && mlx5_lag_is_mpesw(primary);
 }
 
 bool mlx5e_is_valid_eswitch_fwd_dev(struct mlx5e_priv *priv,
 				    struct net_device *out_dev)
 {
 	if (is_merged_eswitch_vfs(priv, out_dev))
+		return true;
+
+	if (is_sd_eligible(priv, out_dev))
 		return true;
 
 	if (is_multiport_eligible(priv, out_dev))
@@ -4353,7 +4374,7 @@ static struct rhashtable *get_tc_ht(struct mlx5e_priv *priv,
 		return &tc->ht;
 }
 
-static bool is_peer_flow_needed(struct mlx5e_tc_flow *flow)
+static bool is_peer_flow_needed(struct mlx5e_tc_flow *flow, bool *is_sd)
 {
 	struct mlx5_esw_flow_attr *esw_attr = flow->attr->esw_attr;
 	struct mlx5_flow_attr *attr = flow->attr;
@@ -4373,6 +4394,13 @@ static bool is_peer_flow_needed(struct mlx5e_tc_flow *flow)
 
 	if (mlx5_lag_is_mpesw(esw_attr->in_mdev))
 		return true;
+
+	if (mlx5_lag_is_sd(esw_attr->in_mdev) &&
+	    !mlx5_sd_is_primary(esw_attr->in_mdev)) {
+		if (!mlx5_lag_is_mpesw(mlx5_sd_get_primary(esw_attr->in_mdev)))
+			*is_sd = true;
+		return true;
+	}
 
 	return false;
 }
@@ -4612,6 +4640,7 @@ static int mlx5e_tc_add_fdb_peer_flow(struct flow_cls_offload *f,
 		goto out;
 	}
 
+	peer_flow->peer_index = i;
 	list_add_tail(&peer_flow->peer_flows, &flow->peer_flows);
 	flow_flag_set(flow, DUP);
 	mutex_lock(&esw->offloads.peer_mutex);
@@ -4631,11 +4660,13 @@ mlx5e_add_fdb_flow(struct mlx5e_priv *priv,
 		   struct mlx5e_tc_flow **__flow)
 {
 	struct mlx5_devcom_comp_dev *devcom = priv->mdev->priv.eswitch->devcom, *pos;
+	struct netlink_ext_ack *extack = f->common.extack;
 	struct mlx5e_rep_priv *rpriv = priv->ppriv;
 	struct mlx5_eswitch_rep *in_rep;
 	struct mlx5_core_dev *in_mdev = priv->mdev;
 	struct mlx5_eswitch *peer_esw;
 	struct mlx5e_tc_flow *flow;
+	bool is_sd = false;
 	int err;
 
 	if (!rpriv)
@@ -4644,10 +4675,15 @@ mlx5e_add_fdb_flow(struct mlx5e_priv *priv,
 
 	flow = __mlx5e_add_fdb_flow(priv, f, flow_flags, filter_dev, in_rep,
 				    in_mdev);
+	if (mlx5_lag_is_sd(in_mdev) && !mlx5_lag_is_active(in_mdev)) {
+		NL_SET_ERR_MSG_MOD(extack, "SD shared FDB not yet active");
+		return -EOPNOTSUPP;
+	}
+
 	if (IS_ERR(flow))
 		return PTR_ERR(flow);
 
-	if (!is_peer_flow_needed(flow)) {
+	if (!is_peer_flow_needed(flow, &is_sd)) {
 		*__flow = flow;
 		return 0;
 	}
@@ -4658,6 +4694,15 @@ mlx5e_add_fdb_flow(struct mlx5e_priv *priv,
 	}
 
 	mlx5_devcom_for_each_peer_entry(devcom, peer_esw, pos) {
+		if (is_sd) {
+			/* SD shared FDB: only the matching SD primary. */
+			if (mlx5_sd_get_primary(in_mdev) !=
+			    mlx5_sd_get_primary(peer_esw->dev))
+				continue;
+		} else {
+			if (!mlx5_sd_is_primary(peer_esw->dev))
+				continue;
+		}
 		err = mlx5e_tc_add_fdb_peer_flow(f, flow, flow_flags, peer_esw);
 		if (err)
 			goto peer_clean;

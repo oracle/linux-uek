@@ -4697,8 +4697,11 @@ EXPORT_SYMBOL(mlx5_eswitch_unregister_vport_reps_nested);
 
 void *mlx5_eswitch_get_uplink_priv(struct mlx5_eswitch *esw, u8 rep_type)
 {
+	struct mlx5_core_dev *primary = mlx5_sd_get_primary(esw->dev);
 	struct mlx5_eswitch_rep *rep;
 
+	if (primary)
+		esw = primary->priv.eswitch;
 	rep = mlx5_eswitch_get_rep(esw, MLX5_VPORT_UPLINK);
 	return rep->rep_data[rep_type].priv;
 }
@@ -4720,6 +4723,11 @@ EXPORT_SYMBOL(mlx5_eswitch_get_proto_dev);
 
 void *mlx5_eswitch_uplink_get_proto_dev(struct mlx5_eswitch *esw, u8 rep_type)
 {
+	struct mlx5_core_dev *primary = mlx5_sd_get_primary(esw->dev);
+
+	if (primary)
+		esw = primary->priv.eswitch;
+
 	return mlx5_eswitch_get_proto_dev(esw, MLX5_VPORT_UPLINK, rep_type);
 }
 EXPORT_SYMBOL(mlx5_eswitch_uplink_get_proto_dev);

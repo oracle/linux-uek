@@ -105,6 +105,10 @@ struct mlx5e_tc_flow {
 				   * due to missing route)
 				   */
 	struct list_head peer_flows; /* flows on peer */
+	int peer_index; /* peer-flow index pinned at add time, used at del
+			 * time so removal is independent of LAG state
+			 * changes between add and del.
+			 */
 	struct net_device *orig_dev; /* netdev adding flow first */
 	int tmp_entry_index;
 	struct list_head tmp_list; /* temporary flow list used by neigh update */
