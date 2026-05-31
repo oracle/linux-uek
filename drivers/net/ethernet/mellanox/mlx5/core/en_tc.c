@@ -2129,6 +2129,7 @@ static void mlx5e_tc_del_fdb_peer_flow(struct mlx5e_tc_flow *flow,
 
 	mutex_lock(&esw->offloads.peer_mutex);
 	list_del(&flow->peer[peer_index]);
+	clear_bit(peer_index, flow->peer_used);
 	mutex_unlock(&esw->offloads.peer_mutex);
 
 	list_for_each_entry_safe(peer_flow, tmp, &flow->peer_flows, peer_flows) {
@@ -2148,16 +2149,10 @@ static void mlx5e_tc_del_fdb_peer_flow(struct mlx5e_tc_flow *flow,
 
 static void mlx5e_tc_del_fdb_peers_flow(struct mlx5e_tc_flow *flow)
 {
-	struct mlx5_devcom_comp_dev *devcom;
-	struct mlx5_devcom_comp_dev *pos;
-	struct mlx5_eswitch *peer_esw;
 	int i;
 
-	devcom = flow->priv->mdev->priv.eswitch->devcom;
-	mlx5_devcom_for_each_peer_entry(devcom, peer_esw, pos) {
-		i = mlx5_lag_get_dev_seq(peer_esw->dev);
+	for_each_set_bit(i, flow->peer_used, MLX5_MAX_PORTS)
 		mlx5e_tc_del_fdb_peer_flow(flow, i);
-	}
 }
 
 static void mlx5e_tc_del_flow(struct mlx5e_priv *priv,
@@ -4621,6 +4616,7 @@ static int mlx5e_tc_add_fdb_peer_flow(struct flow_cls_offload *f,
 	flow_flag_set(flow, DUP);
 	mutex_lock(&esw->offloads.peer_mutex);
 	list_add_tail(&flow->peer[i], &esw->offloads.peer_flows[i]);
+	set_bit(i, flow->peer_used);
 	mutex_unlock(&esw->offloads.peer_mutex);
 
 out:

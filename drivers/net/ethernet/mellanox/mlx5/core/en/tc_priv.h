@@ -98,6 +98,9 @@ struct mlx5e_tc_flow {
 	struct mlx5e_hairpin_entry *hpe; /* attached hairpin instance */
 	struct list_head hairpin; /* flows sharing the same hairpin */
 	struct list_head peer[MLX5_MAX_PORTS];    /* flows with peer flow */
+	DECLARE_BITMAP(peer_used, MLX5_MAX_PORTS); /* tracks populated peer
+						    * slots
+						    */
 	struct list_head unready; /* flows not ready to be offloaded (e.g
 				   * due to missing route)
 				   */
