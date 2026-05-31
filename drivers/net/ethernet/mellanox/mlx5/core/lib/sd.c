@@ -2,6 +2,7 @@
 /* Copyright (c) 2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved. */
 
 #include "lib/sd.h"
+#include "../lag/lag.h"
 #include "mlx5_core.h"
 #include "lib/mlx5.h"
 #include "fs_cmd.h"
@@ -221,6 +222,108 @@ static void sd_cleanup(struct mlx5_core_dev *dev)
 
 	mlx5_set_sd(dev, NULL);
 	kfree(sd);
+}
+
+static int sd_lag_state_show(struct seq_file *file, void *priv)
+{
+	struct mlx5_core_dev *dev = file->private;
+	struct mlx5_lag *ldev;
+	struct lag_func *pf;
+	bool active = false;
+	int i;
+
+	ldev = mlx5_lag_dev(dev);
+	if (!ldev)
+		return -EINVAL;
+
+	mutex_lock(&ldev->lock);
+	mlx5_ldev_for_each(i, 0, ldev) {
+		pf = mlx5_lag_pf(ldev, i);
+		if (pf->dev == dev) {
+			active = pf->sd_fdb_active;
+			break;
+		}
+	}
+	mutex_unlock(&ldev->lock);
+
+	seq_printf(file, "%s\n", active ? "active" : "disabled");
+	return 0;
+}
+
+DEFINE_SHOW_ATTRIBUTE(sd_lag_state);
+
+/* SD LAG integration is optional. If LAG isn't available on this device
+ * (e.g. lag caps are off), or registering secondaries fails, just warn
+ * and continue - SD can operate without the LAG-side bookkeeping.
+ */
+static void sd_lag_init(struct mlx5_core_dev *dev)
+{
+	struct mlx5_core_dev *primary = mlx5_sd_get_primary(dev);
+	struct mlx5_sd *sd = mlx5_get_sd(primary);
+	struct mlx5_core_dev *pos, *to;
+	struct mlx5_lag *ldev;
+	struct lag_func *pf;
+	int err;
+	int i;
+
+	ldev = mlx5_lag_dev(primary);
+	if (!ldev) {
+		sd_warn(primary, "%s: no ldev (LAG caps off?), skipping\n",
+			__func__);
+		return;
+	}
+
+	mutex_lock(&ldev->lock);
+	pf = mlx5_lag_pf_by_dev(ldev, primary);
+	if (!pf) {
+		sd_warn(primary, "%s: primary not registered in ldev, skipping\n",
+			__func__);
+		goto out;
+	}
+
+	pf->group_id = sd->group_id;
+
+	mlx5_sd_for_each_secondary(i, primary, pos) {
+		err = mlx5_ldev_add_mdev(ldev, pos, sd->group_id);
+		if (err) {
+			sd_warn(primary, "%s: failed to add secondary %s to ldev: %d\n",
+				__func__, dev_name(pos->device), err);
+			goto err;
+		}
+	}
+
+out:
+	mutex_unlock(&ldev->lock);
+	return;
+
+err:
+	to = pos;
+	mlx5_sd_for_each_secondary_to(i, primary, to, pos)
+		mlx5_ldev_remove_mdev(ldev, pos);
+	pf->group_id = 0;
+	mutex_unlock(&ldev->lock);
+}
+
+static void sd_lag_cleanup(struct mlx5_core_dev *dev)
+{
+	struct mlx5_core_dev *primary = mlx5_sd_get_primary(dev);
+	struct mlx5_core_dev *pos;
+	struct mlx5_lag *ldev;
+	struct lag_func *pf;
+	int i;
+
+	ldev = mlx5_lag_dev(primary);
+	if (!ldev)
+		return;
+
+	mutex_lock(&ldev->lock);
+	mlx5_sd_for_each_secondary(i, primary, pos)
+		mlx5_ldev_remove_mdev(ldev, pos);
+
+	pf = mlx5_lag_pf_by_dev(ldev, primary);
+	if (pf)
+		pf->group_id = 0;
+	mutex_unlock(&ldev->lock);
 }
 
 static int sd_register(struct mlx5_core_dev *dev)
@@ -473,26 +576,31 @@ int mlx5_sd_init(struct mlx5_core_dev *dev)
 	if (err)
 		goto err_sd_unregister;
 
-	primary_sd->dfs =
-		debugfs_create_dir("multi-pf",
-				   mlx5_debugfs_get_dev_root(primary));
-	debugfs_create_x32("group_id", 0400, primary_sd->dfs,
-			   &primary_sd->group_id);
-	debugfs_create_file("primary", 0400, primary_sd->dfs, primary,
-			    &dev_fops);
-
 	mlx5_sd_for_each_secondary(i, primary, pos) {
-		char name[32];
-
 		err = sd_cmd_set_secondary(pos, primary, alias_key);
 		if (err)
 			goto err_unset_secondaries;
+	}
+
+	sd_lag_init(primary);
+
+	primary_sd->dfs =
+		debugfs_create_dir("multi-pf",
+				   mlx5_debugfs_get_dev_root(primary));
+	mlx5_sd_for_each_secondary(i, primary, pos) {
+		char name[32];
 
 		snprintf(name, sizeof(name), "secondary_%d", i - 1);
 		debugfs_create_file(name, 0400, primary_sd->dfs, pos,
 				    &dev_fops);
-
 	}
+
+	debugfs_create_file("sd_lag_state", 0400, primary_sd->dfs, primary,
+			    &sd_lag_state_fops);
+	debugfs_create_x32("group_id", 0400, primary_sd->dfs,
+			   &primary_sd->group_id);
+	debugfs_create_file("primary", 0400, primary_sd->dfs, primary,
+			    &dev_fops);
 
 	sd_info(primary, "group id %#x, size %d, combined\n",
 		sd->group_id, mlx5_devcom_comp_get_size(sd->devcom));
@@ -508,8 +616,6 @@ err_unset_secondaries:
 	mlx5_sd_for_each_secondary_to(i, primary, to, pos)
 		sd_cmd_unset_secondary(pos);
 	sd_cmd_unset_primary(primary);
-	debugfs_remove_recursive(primary_sd->dfs);
-	primary_sd->dfs = NULL;
 err_sd_unregister:
 	mlx5_sd_for_each_secondary(i, primary, pos) {
 		struct mlx5_sd *peer_sd = mlx5_get_sd(pos);
@@ -548,11 +654,12 @@ void mlx5_sd_cleanup(struct mlx5_core_dev *dev)
 	if (primary_sd->state != MLX5_SD_STATE_UP)
 		goto out_clear_peers;
 
+	debugfs_remove_recursive(primary_sd->dfs);
+	primary_sd->dfs = NULL;
+	sd_lag_cleanup(primary);
 	mlx5_sd_for_each_secondary(i, primary, pos)
 		sd_cmd_unset_secondary(pos);
 	sd_cmd_unset_primary(primary);
-	debugfs_remove_recursive(primary_sd->dfs);
-	primary_sd->dfs = NULL;
 
 	sd_info(primary, "group id %#x, uncombined\n", sd->group_id);
 	primary_sd->state = MLX5_SD_STATE_DOWN;
