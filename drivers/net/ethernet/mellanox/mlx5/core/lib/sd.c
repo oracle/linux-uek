@@ -6,6 +6,7 @@
 #include "mlx5_core.h"
 #include "lib/mlx5.h"
 #include "fs_cmd.h"
+#include <linux/mlx5/eswitch.h>
 #include <linux/mlx5/vport.h>
 #include <linux/debugfs.h>
 
@@ -85,11 +86,17 @@ mlx5_sd_primary_get_peer(struct mlx5_core_dev *primary, int idx)
 
 int mlx5_sd_ch_ix_get_dev_ix(struct mlx5_core_dev *dev, int ch_ix)
 {
+	if (is_mdev_switchdev_mode(dev))
+		return 0;
+
 	return ch_ix % mlx5_sd_get_host_buses(dev);
 }
 
 int mlx5_sd_ch_ix_get_vec_ix(struct mlx5_core_dev *dev, int ch_ix)
 {
+	if (is_mdev_switchdev_mode(dev))
+		return ch_ix;
+
 	return ch_ix / mlx5_sd_get_host_buses(dev);
 }
 
