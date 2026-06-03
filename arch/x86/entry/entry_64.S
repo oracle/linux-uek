@@ -1267,6 +1267,8 @@ ENTRY(paranoid_entry)
 	 */
 	FENCE_SWAPGS_KERNEL_ENTRY
 
+	HANDLE_INTR_SAFERET 8(%rsp)
+
 	RET
 END(paranoid_entry)
 
@@ -1343,7 +1345,6 @@ ENTRY(error_entry)
 .Lerror_entry_done_lfence:
 	FENCE_SWAPGS_KERNEL_ENTRY
 .Lerror_entry_done:
-	ANNOTATE_UNRET_END
 	RET
 
 	/*
@@ -1359,6 +1360,11 @@ ENTRY(error_entry)
 	movl	%ecx, %eax			/* zero extend */
 	cmpq	%rax, RIP+8(%rsp)
 	je	.Lbstep_iret
+
+	ANNOTATE_UNRET_END
+
+	HANDLE_INTR_SAFERET 8(%rsp)
+
 	cmpq	$.Lgs_change, RIP+8(%rsp)
 	jne	.Lerror_entry_done_lfence
 
