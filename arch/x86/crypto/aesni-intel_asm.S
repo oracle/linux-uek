@@ -27,7 +27,6 @@
 
 #include <linux/linkage.h>
 #include <asm/frame.h>
-#include <asm/nospec-branch.h>
 
 /*
  * The following macros are used to move an (un)aligned 16 byte value to/from
