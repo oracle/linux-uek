@@ -24,11 +24,3 @@
 #include "elba-flash-parts.dtsi"
 #include "elba-asic-memory.dtsi"
 #include "elba-mdev.dtsi"
-
-/ {
-	firmware {
-		penfw {
-			compatible = "pensando,penfw";
-		};
-	};
-};
