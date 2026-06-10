@@ -317,13 +317,13 @@ static struct dma_fence *rocket_job_run(struct drm_sched_job *sched_job)
 		dma_fence_put(job->done_fence);
 	job->done_fence = dma_fence_get(fence);
 
-	ret = pm_runtime_get_sync(core->dev);
+	ret = pm_runtime_resume_and_get(core->dev);
 	if (ret < 0)
-		return fence;
+		goto err_put_fences;
 
 	ret = iommu_attach_group(job->domain->domain, core->iommu_group);
 	if (ret < 0)
-		return fence;
+		goto err_put_pm;
 
 	scoped_guard(mutex, &core->job_lock) {
 		core->in_flight_job = job;
@@ -331,6 +331,14 @@ static struct dma_fence *rocket_job_run(struct drm_sched_job *sched_job)
 	}
 
 	return fence;
+
+err_put_pm:
+	pm_runtime_put(core->dev);
+err_put_fences:
+	dma_fence_put(job->done_fence);
+	job->done_fence = NULL;
+	dma_fence_put(fence);
+	return ERR_PTR(ret);
 }
 
 static void rocket_job_handle_irq(struct rocket_core *core)
