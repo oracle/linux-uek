@@ -232,10 +232,12 @@ static inline void __invalidate_icache_guest_page(void *va, size_t size)
 	 * invalidation range exceeds our arbitrary limit on invadations by
 	 * cache line.
 	 */
-	if (icache_is_aliasing() || size > __invalidate_icache_max_range())
+	if (icache_is_aliasing() || size > __invalidate_icache_max_range()) {
 		icache_inval_all_pou();
-	else
+	} else {
+		/* PIPT */
 		icache_inval_pou((unsigned long)va, (unsigned long)va + size);
+	}
 }
 
 void kvm_set_way_flush(struct kvm_vcpu *vcpu);
