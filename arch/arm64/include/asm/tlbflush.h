@@ -30,18 +30,10 @@
  */
 #define __TLBI_0(op, arg) asm (ARM64_ASM_PREAMBLE			       \
 			       "tlbi " #op "\n"				       \
-		   ALTERNATIVE("nop\n			nop",		       \
-			       "dsb ish\n		tlbi " #op,	       \
-			       ARM64_WORKAROUND_REPEAT_TLBI,		       \
-			       CONFIG_ARM64_WORKAROUND_REPEAT_TLBI)	       \
 			    : : )
 
 #define __TLBI_1(op, arg) asm (ARM64_ASM_PREAMBLE			       \
 			       "tlbi " #op ", %x0\n"			       \
-		   ALTERNATIVE("nop\n			nop",		       \
-			       "dsb ish\n		tlbi " #op ", %x0",    \
-			       ARM64_WORKAROUND_REPEAT_TLBI,		       \
-			       CONFIG_ARM64_WORKAROUND_REPEAT_TLBI)	       \
 			    : : "rZ" (arg))
 
 #define __TLBI_N(op, arg, n, ...) __TLBI_##n(op, arg)
@@ -158,20 +150,31 @@ static inline unsigned long get_trans_granule(void)
 #define __TLBI_RANGE_NUM(pages, scale)	\
 	((((pages) >> (5 * (scale) + 1)) & TLBI_RANGE_MASK) - 1)
 
-#define __repeat_tlbi_sync(op, arg...)						\
+#define __repeat_tlbi_sync(op, arg)						\
 do {										\
-	if (!cpus_have_const_cap(ARM64_WORKAROUND_REPEAT_TLBI_SYNC))		\
-		break;								\
-	__tlbi(op, ##arg);							\
-	dsb(ish);								\
+	asm volatile(								\
+	ALTERNATIVE("nop\n			nop",				\
+		    "tlbi " #op ", %x0\n	dsb ish",			\
+		    ARM64_WORKAROUND_REPEAT_TLBI,				\
+		    CONFIG_ARM64_WORKAROUND_REPEAT_TLBI)			\
+	:									\
+	: "rZ" (arg));								\
 } while (0)
 
+/*
+ * Complete broadcast TLB maintenance issued by the host which invalidates
+ * stage 1 information in the host's own translation regime.
+ */
 static inline void __tlbi_sync_s1ish(void)
 {
 	dsb(ish);
 	__repeat_tlbi_sync(vale1is, 0);
 }
 
+/*
+ * Complete broadcast TLB maintenance issued by hyp code which invalidates
+ * stage 1 translation information in any translation regime.
+ */
 static inline void __tlbi_sync_s1ish_hyp(void)
 {
 	dsb(ish);

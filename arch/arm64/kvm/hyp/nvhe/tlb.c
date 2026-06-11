@@ -122,6 +122,5 @@ void __kvm_flush_vm_context(void)
 {
 	dsb(ishst);
 	__tlbi(alle1is);
-
 	__tlbi_sync_s1ish_hyp();
 }
