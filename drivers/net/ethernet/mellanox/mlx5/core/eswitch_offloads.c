@@ -3646,11 +3646,19 @@ int mlx5_eswitch_reload_ib_reps(struct mlx5_eswitch *esw)
 	if (atomic_read(&rep->rep_data[REP_ETH].state) != REP_LOADED)
 		return 0;
 
-	ret = __esw_offloads_load_rep(esw, rep, REP_IB, NULL);
-	if (ret)
-		return ret;
+	/* SD secondary devices share the primary's uplink and do not
+	 * have their own uplink representor. Only load VF/SF vports.
+	 */
+	if (mlx5_sd_is_primary(esw->dev)) {
+		ret = __esw_offloads_load_rep(esw, rep, REP_IB, NULL);
+		if (ret)
+			return ret;
+	}
 
 	mlx5_esw_for_each_rep(esw, i, rep) {
+		if (!mlx5_sd_is_primary(esw->dev) &&
+		    rep->vport == MLX5_VPORT_UPLINK)
+			continue;
 		if (atomic_read(&rep->rep_data[REP_ETH].state) == REP_LOADED)
 			__esw_offloads_load_rep(esw, rep, REP_IB, NULL);
 	}
@@ -4593,14 +4601,23 @@ mlx5_eswitch_register_vport_reps_blocked(struct mlx5_eswitch *esw,
 
 static void mlx5_eswitch_reload_reps_blocked(struct mlx5_eswitch *esw)
 {
+	struct mlx5_eswitch_rep *uplink;
 	struct mlx5_vport *vport;
+	bool newly_loaded;
 	unsigned long i;
 
 	if (esw->mode != MLX5_ESWITCH_OFFLOADS)
 		return;
 
-	if (mlx5_esw_offloads_rep_load(esw, MLX5_VPORT_UPLINK))
+	uplink = mlx5_eswitch_get_rep(esw, MLX5_VPORT_UPLINK);
+	if (__esw_offloads_load_rep(esw, uplink, REP_ETH, &newly_loaded))
 		return;
+	if (mlx5_sd_is_primary(esw->dev) &&
+	    __esw_offloads_load_rep(esw, uplink, REP_IB, NULL)) {
+		if (newly_loaded)
+			__esw_offloads_unload_rep(esw, uplink, REP_ETH);
+		return;
+	}
 
 	mlx5_esw_for_each_vport(esw, i, vport) {
 		if (!vport)
