@@ -175,6 +175,8 @@ int mlx5_lag_shared_fdb_create(struct mlx5_lag *ldev,
 			       enum mlx5_lag_mode mode,
 			       u32 group_id);
 void mlx5_lag_shared_fdb_destroy(struct mlx5_lag *ldev, u32 group_id);
+int mlx5_lag_create_vport_lag(struct mlx5_lag *ldev, u32 group_id);
+int mlx5_lag_destroy_vport_lag(struct mlx5_lag *ldev, u32 group_id);
 int mlx5_lag_create_single_fdb(struct mlx5_lag *ldev);
 void mlx5_lag_destroy_single_fdb(struct mlx5_lag *ldev);
 bool mlx5_lag_shared_fdb_supported(struct mlx5_lag *ldev);
@@ -190,6 +192,18 @@ static inline int mlx5_lag_shared_fdb_create(struct mlx5_lag *ldev,
 
 static inline void mlx5_lag_shared_fdb_destroy(struct mlx5_lag *ldev,
 					       u32 group_id) {}
+
+static inline int mlx5_lag_create_vport_lag(struct mlx5_lag *ldev,
+					    u32 group_id)
+{
+	return -EOPNOTSUPP;
+}
+
+static inline int mlx5_lag_destroy_vport_lag(struct mlx5_lag *ldev,
+					     u32 group_id)
+{
+	return -EOPNOTSUPP;
+}
 
 static inline int mlx5_lag_create_single_fdb(struct mlx5_lag *ldev)
 {
