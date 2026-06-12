@@ -78,6 +78,7 @@
 #include <linux/sched/sysctl.h>
 #include <linux/pgalloc.h>
 #include <linux/uaccess.h>
+#include <linux/padata.h>
 
 #include <trace/events/kmem.h>
 
@@ -2131,6 +2132,122 @@ static inline unsigned long zap_p4d_range(struct mmu_gather *tlb,
 	return addr;
 }
 
+static void ___zap_vma_range(struct mmu_gather *tlb, struct vm_area_struct *vma,
+		unsigned long start, unsigned long end,
+		struct zap_details *details)
+{
+
+	unsigned long next, addr = start;
+	pgd_t *pgd;
+
+	tlb_start_vma(tlb, vma);
+	pgd = pgd_offset(vma->vm_mm, addr);
+	do {
+		next = pgd_addr_end(addr, end);
+		if (pgd_none_or_clear_bad(pgd))
+			continue;
+		next = zap_p4d_range(tlb, vma, pgd, addr, next, details);
+	} while (pgd++, addr = next, addr != end);
+	tlb_end_vma(tlb, vma);
+}
+
+#ifdef CONFIG_PADATA
+
+struct zap_vma_chunk_args {
+	struct mmu_gather *tlb;
+	struct vm_area_struct *vma;
+	struct zap_details *details;
+	unsigned long start;
+	unsigned long end;
+};
+
+static int ___zap_vma_chunk(unsigned long addr, unsigned long end,
+				  void *arg)
+{
+	struct zap_vma_chunk_args *args = arg;
+	struct mmu_gather *tlb = args->tlb;
+	struct vm_area_struct *vma = args->vma;
+	struct zap_details *details = args->details;
+	struct mm_struct *mm = tlb->mm;
+	struct mmu_gather local_tlb;
+	bool use_local_gather = false;
+
+	/*
+	 * The mmu gather API is not designed to operate on a single
+	 * mmu_gather in parallel. Use a local mmu_gather when multi-
+	 * threaded and avoid the additional overhead when not.
+	 */
+	if (addr != args->start || end != args->end) {
+		tlb = &local_tlb;
+		use_local_gather = true;
+	}
+
+	if (use_local_gather)
+		tlb_gather_mmu_fullmm(tlb, mm);
+
+	___zap_vma_range(tlb, vma, addr, end, details);
+
+	if (use_local_gather)
+		tlb_finish_mmu(tlb);
+
+	return 0;
+}
+
+static void ___zap_vma_range_mt(struct mmu_gather *tlb,
+			 struct vm_area_struct *vma,
+			 unsigned long addr, unsigned long end,
+			 struct zap_details *details)
+{
+	struct zap_vma_chunk_args args = { tlb, vma, details, addr, end };
+	const unsigned long total_sz = end - addr;
+	const unsigned long min_chunk_sz = max(1ul << 27, PMD_SIZE);
+	struct padata_mt_job job = {
+		.thread_fn   = ___zap_vma_chunk,
+		.fn_arg      = &args,
+		.start       = addr,
+		.size        = total_sz,
+		.align       = PMD_SIZE,
+		.min_chunk   = min_chunk_sz,
+		.max_threads = 8,
+	};
+
+	BUG_ON(addr >= end);
+
+	/*
+	 * Assumptions made below about VM_EXEC_KEEP VMAs only hold true
+	 * if the entire address space is being unmapped.
+	 */
+	if (!tlb->fullmm) {
+		___zap_vma_range(tlb, vma, addr, end, details);
+		return;
+	}
+
+	/*
+	 * Pages in VMAs being preserved will have an additional reference
+	 * due to the mappings having been copied prior to unmapping the full
+	 * address space. Since lock contention due to freeing pages will not
+	 * be an issue, use additional threads to unmap them.
+	 * Otherwise for sufficiently large, private anon VMAs, reduce the
+	 * number of threads used lock contention in the swap subsystem if it
+	 * is probable that a significant portion is swapped out. Since the
+	 * number of swapped pages is tracked per MM and not per VMA, err on the
+	 * side of caution and assume the number applies to the VMA.
+	 */
+	if (vma_test_single_mask(vma, VMA_EXEC_KEEP)) {
+		job.max_threads = 16;
+	} else if (!vma_test(vma, VMA_SHARED_BIT) && total_sz >= min_chunk_sz * 3) {
+		unsigned long swapped_sz;
+
+		swapped_sz = get_mm_counter_sum(tlb->mm, MM_SWAPENTS) << PAGE_SHIFT;
+		if (swapped_sz >= max(min_chunk_sz * 3, total_sz / 4))
+			job.max_threads = 4;
+	}
+
+	padata_do_multithreaded(&job);
+}
+
+#endif /* CONFIG_PADATA */
+
 static void __zap_vma_range(struct mmu_gather *tlb, struct vm_area_struct *vma,
 		unsigned long start, unsigned long end,
 		struct zap_details *details)
@@ -2155,6 +2272,14 @@ static void __zap_vma_range(struct mmu_gather *tlb, struct vm_area_struct *vma,
 		if (!vma->vm_file)
 			return;
 		__unmap_hugepage_range(tlb, vma, start, end, NULL, zap_flags);
+#ifdef CONFIG_PADATA
+	/*
+	 * Only use padata for unmapping anonymous or shmem memory when the
+	 * entire address space is being unmapped.
+	 */
+	} else if (tlb->fullmm && (vma_is_anonymous(vma) || vma_is_shmem(vma))) {
+		___zap_vma_range_mt(tlb, vma, start, end, details);
+#endif
 	} else {
 		unsigned long next, addr = start;
 		pgd_t *pgd;
