@@ -309,8 +309,13 @@ int mlx5_devcom_locked_send_event(struct mlx5_devcom_comp_dev *devcom,
 
 		if (pos != devcom && data) {
 			err = comp->handler(event, data, event_data);
-			if (err)
+			if (err && rollback_event != DEVCOM_CANT_FAIL) {
 				goto rollback;
+			} else if (err && rollback_event == DEVCOM_CANT_FAIL) {
+				WARN_ONCE(1, "devcom component %d event %d failed: %d\n",
+					  comp->id, event, err);
+				return err;
+			}
 		}
 	}
 
