@@ -26,6 +26,8 @@ struct mlx5_sd {
 		struct { /* primary */
 			struct mlx5_core_dev *secondaries[MLX5_SD_MAX_GROUP_SZ - 1];
 			struct mlx5_flow_table *tx_ft;
+			/* Next index for secondary registration */
+			u8 next_secondary_idx;
 		};
 		struct { /* secondary */
 			struct mlx5_core_dev *primary_dev;
@@ -374,62 +376,128 @@ static void sd_lag_cleanup(struct mlx5_core_dev *dev)
 	mutex_unlock(&ldev->lock);
 }
 
+enum {
+	SD_PRIMARY_SET,
+	SD_SECONDARIES_SET,
+};
+
+static void sd_handle_primary_set(struct mlx5_core_dev *dev,
+				  struct mlx5_core_dev *peer)
+{
+	struct mlx5_sd *peer_sd = mlx5_get_sd(peer);
+	struct mlx5_sd *sd = mlx5_get_sd(dev);
+	struct mlx5_core_dev *candidate;
+	struct mlx5_sd *candidate_sd;
+
+	/* Peer is the device that being sent to all the other devices in the
+	 * group. Hence, use peer to get the candidate device.
+	 */
+	candidate = peer_sd->primary ? peer : peer_sd->primary_dev;
+
+	if (dev->pdev->bus->number >= candidate->pdev->bus->number)
+		return;
+
+	candidate_sd = mlx5_get_sd(candidate);
+
+	sd->primary = true;
+	candidate_sd->primary = false;
+	candidate_sd->primary_dev = dev;
+	peer_sd->primary = false;
+	peer_sd->primary_dev = dev;
+}
+
+static void sd_handle_secondaries_set(struct mlx5_core_dev *dev,
+				      struct mlx5_core_dev *peer)
+{
+	struct mlx5_sd *peer_sd = mlx5_get_sd(peer);
+	struct mlx5_sd *sd = mlx5_get_sd(dev);
+	u8 idx;
+
+	/* Primary has nothing to register with itself. */
+	if (sd->primary)
+		return;
+
+	/* dev is a secondary device, peer is the primary device.
+	 * Secondary registers itself with the primary.
+	 */
+	idx = peer_sd->next_secondary_idx++;
+	peer_sd->secondaries[idx] = dev;
+	sd->primary_dev = peer;
+}
+
+static int mlx5_sd_devcom_event(int event, void *my_data, void *event_data)
+{
+	struct mlx5_core_dev *peer = event_data;
+	struct mlx5_core_dev *dev = my_data;
+
+	switch (event) {
+	case SD_PRIMARY_SET:
+		sd_handle_primary_set(dev, peer);
+		break;
+	case SD_SECONDARIES_SET:
+		sd_handle_secondaries_set(dev, peer);
+		break;
+	}
+
+	return 0;
+}
+
 static int sd_register(struct mlx5_core_dev *dev)
 {
-	struct mlx5_devcom_comp_dev *devcom, *pos;
 	struct mlx5_devcom_match_attr attr = {};
-	struct mlx5_core_dev *peer, *primary;
-	struct mlx5_sd *sd, *primary_sd;
-	int err, i;
+	struct mlx5_devcom_comp_dev *devcom;
+	struct mlx5_core_dev *primary;
+	struct mlx5_sd *primary_sd;
+	struct mlx5_sd *sd;
+	int err;
 
 	sd = mlx5_get_sd(dev);
 	attr.key.val = sd->group_id;
 	attr.flags = MLX5_DEVCOM_MATCH_FLAGS_NS;
 	attr.net = mlx5_core_net(dev);
-	devcom = mlx5_devcom_register_component(dev->priv.devc, MLX5_DEVCOM_SD_GROUP,
-						&attr, NULL, dev);
+	devcom = mlx5_devcom_register_component(dev->priv.devc,
+						MLX5_DEVCOM_SD_GROUP,
+						&attr, mlx5_sd_devcom_event,
+						dev);
 	if (!devcom)
 		return -EINVAL;
 
 	sd->devcom = devcom;
 
-	if (mlx5_devcom_comp_get_size(devcom) != sd->host_buses)
-		return 0;
-
 	mlx5_devcom_comp_lock(devcom);
-	mlx5_devcom_comp_set_ready(devcom, true);
-	mlx5_devcom_comp_unlock(devcom);
+	if (mlx5_devcom_comp_get_size(devcom) != sd->host_buses ||
+	    mlx5_devcom_comp_is_ready(devcom))
+		goto out;
 
-	if (!mlx5_devcom_for_each_peer_begin(devcom)) {
-		err = -ENODEV;
+	/* Send SD_PRIMARY_SET event with this device.
+	 * All peers will receive this event and compare to this device.
+	 * The one with lowest bus number will be marked as primary.
+	 */
+	sd->primary = true;
+	err = mlx5_devcom_locked_send_event(devcom, SD_PRIMARY_SET,
+					    SD_PRIMARY_SET, dev);
+	if (err)
 		goto err_devcom_unreg;
-	}
 
-	primary = dev;
-	mlx5_devcom_for_each_peer_entry(devcom, peer, pos)
-		if (peer->pdev->bus->number < primary->pdev->bus->number)
-			primary = peer;
+	/* Broadcast SD_SECONDARIES_SET. Each non-sender peer's handler runs;
+	 * the primary's handler returns early so only secondaries register.
+	 */
+	primary = sd->primary ? dev : sd->primary_dev;
+	if (!sd->primary)
+		sd_handle_secondaries_set(dev, primary);
+	mlx5_devcom_locked_send_event(devcom, SD_SECONDARIES_SET,
+				      DEVCOM_CANT_FAIL, primary);
 
 	primary_sd = mlx5_get_sd(primary);
-	primary_sd->primary = true;
-	i = 0;
-	/* loop the secondaries */
-	mlx5_devcom_for_each_peer_entry(primary_sd->devcom, peer, pos) {
-		struct mlx5_sd *peer_sd = mlx5_get_sd(peer);
-
-		primary_sd->secondaries[i++] = peer;
-		peer_sd->primary = false;
-		peer_sd->primary_dev = primary;
-	}
-
-	mlx5_devcom_for_each_peer_end(devcom);
+	if (primary_sd->next_secondary_idx + 1 == sd->host_buses)
+		mlx5_devcom_comp_set_ready(devcom, true);
+out:
+	mlx5_devcom_comp_unlock(devcom);
 	return 0;
 
 err_devcom_unreg:
-	mlx5_devcom_comp_lock(sd->devcom);
-	mlx5_devcom_comp_set_ready(sd->devcom, false);
-	mlx5_devcom_comp_unlock(sd->devcom);
-	mlx5_devcom_unregister_component(sd->devcom);
+	mlx5_devcom_comp_unlock(devcom);
+	mlx5_devcom_unregister_component(devcom);
 	return err;
 }
 
@@ -672,6 +740,7 @@ err_sd_unregister:
 		peer_sd->primary_dev = NULL;
 	}
 	primary_sd->primary = false;
+	primary_sd->next_secondary_idx = 0;
 	mlx5_devcom_comp_set_ready(sd->devcom, false);
 	mlx5_devcom_comp_unlock(sd->devcom);
 	sd_unregister(dev);
@@ -719,6 +788,7 @@ out_clear_peers:
 		peer_sd->primary_dev = NULL;
 	}
 	primary_sd->primary = false;
+	primary_sd->next_secondary_idx = 0;
 out_ready_false:
 	mlx5_devcom_comp_set_ready(sd->devcom, false);
 out_unlock:
