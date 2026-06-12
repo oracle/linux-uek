@@ -1398,6 +1398,21 @@ static int madvise_vma_behavior(struct madvise_behavior *madv_behavior)
 			return -EINVAL;
 		new_flags &= ~VM_WIPEONFORK;
 		break;
+	case MADV_DOEXEC:
+		if (!vma_supports_exec_keep(vma)) {
+			error = -EINVAL;
+			goto out;
+		}
+		new_flags = (new_flags & ~VM_MAYEXEC) | VM_EXEC_KEEP;
+		break;
+	case MADV_DONTEXEC:
+		if (!vma_supports_exec_keep(vma)) {
+			error = -EINVAL;
+			goto out;
+		}
+		if (new_flags & VM_EXEC_KEEP)
+			new_flags = (new_flags & ~VM_EXEC_KEEP) | VM_MAYEXEC;
+		break;
 	case MADV_DONTDUMP:
 		new_flags |= VM_DONTDUMP;
 		break;
@@ -1552,6 +1567,8 @@ madvise_behavior_valid(int behavior)
 	case MADV_SOFT_OFFLINE:
 	case MADV_HWPOISON:
 #endif
+	case MADV_DOEXEC:
+	case MADV_DONTEXEC:
 		return true;
 
 	default:
@@ -1988,6 +2005,9 @@ static int madvise_do_behavior(unsigned long start, size_t len_in,
  *		triggering read faults if required
  *  MADV_POPULATE_WRITE - populate (prefault) page tables writable by
  *		triggering write faults if required
+ *  MADV_DOEXEC - On exec, preserve and duplicate this area in the new process
+ *		if the new process allows it.
+ *  MADV_DONTEXEC - Undo the effect of MADV_DOEXEC.
  *
  * return values:
  *  zero    - success
