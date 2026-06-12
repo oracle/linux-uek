@@ -46,6 +46,7 @@
 #include "fs_core.h"
 #include "lib/mlx5.h"
 #include "lib/devcom.h"
+#include "lib/sd.h"
 #include "lib/eq.h"
 #include "lib/fs_chains.h"
 #include "en_tc.h"
@@ -3167,6 +3168,9 @@ static void esw_unset_master_egress_rule(struct mlx5_core_dev *dev,
 	vport = mlx5_eswitch_get_vport(dev->priv.eswitch,
 				       dev->priv.eswitch->manager_vport);
 
+	if (!vport->egress.acl)
+		return;
+
 	esw_acl_egress_ofld_bounce_rule_destroy(vport, MLX5_CAP_GEN(slave_dev, vhca_id));
 
 	if (xa_empty(&vport->egress.offloads.bounce_rules)) {
@@ -3184,6 +3188,9 @@ int mlx5_eswitch_offloads_single_fdb_add_one(struct mlx5_eswitch *master_esw,
 				     slave_esw->dev);
 	if (err)
 		return err;
+
+	if (!mlx5_sd_is_primary(slave_esw->dev))
+		return 0;
 
 	err = esw_set_master_egress_rule(master_esw->dev,
 					 slave_esw->dev, max_slaves);
@@ -3404,7 +3411,7 @@ void mlx5_esw_offloads_devcom_init(struct mlx5_eswitch *esw,
 		return;
 
 	if ((MLX5_VPORT_MANAGER(esw->dev) || mlx5_core_is_ecpf_esw_manager(esw->dev)) &&
-	    !mlx5_lag_is_supported(esw->dev))
+	    (!mlx5_lag_is_supported(esw->dev) && !mlx5_get_sd(esw->dev)))
 		return;
 
 	xa_init(&esw->paired);
@@ -4313,6 +4320,9 @@ unlock:
 	mlx5_esw_unlock(esw);
 enable_lag:
 	mlx5_lag_enable_change(esw->dev);
+	/* Shared FDB activation is creating LAG which is changing reps. */
+	if (!err)
+		mlx5_sd_eswitch_mode_set(esw->dev, mlx5_mode);
 	return err;
 }
 

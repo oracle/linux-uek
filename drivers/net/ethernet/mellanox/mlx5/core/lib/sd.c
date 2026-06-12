@@ -5,6 +5,8 @@
 #include "../lag/lag.h"
 #include "mlx5_core.h"
 #include "lib/mlx5.h"
+#include "devlink.h"
+#include "eswitch.h"
 #include "fs_cmd.h"
 #include <linux/mlx5/eswitch.h>
 #include <linux/mlx5/vport.h>
@@ -33,6 +35,8 @@ struct mlx5_sd {
 		struct { /* secondary */
 			struct mlx5_core_dev *primary_dev;
 			u32 alias_obj_id;
+			/* TX flow table root in switchdev (silent) config */
+			bool tx_root_silent;
 		};
 	};
 };
@@ -672,6 +676,29 @@ static void sd_secondary_destroy_alias_ft(struct mlx5_core_dev *secondary)
 				   MLX5_GENERAL_OBJECT_TYPES_FLOW_TABLE_ALIAS);
 }
 
+static int mlx5_sd_secondary_conf_tx_root(struct mlx5_core_dev *secondary,
+					  bool disconnect)
+{
+	struct mlx5_sd *sd = mlx5_get_sd(secondary);
+	int err;
+
+	/* Idempotent: skip if TX root is already in the requested state. */
+	if (sd->tx_root_silent == disconnect)
+		return 0;
+
+	if (disconnect)
+		err = mlx5_fs_cmd_set_tx_flow_table_root(secondary, 0, true);
+	else
+		err = mlx5_fs_cmd_set_tx_flow_table_root(secondary,
+							 sd->alias_obj_id,
+							 false);
+	if (err)
+		return err;
+
+	sd->tx_root_silent = disconnect;
+	return 0;
+}
+
 static int sd_cmd_set_secondary(struct mlx5_core_dev *secondary,
 				struct mlx5_core_dev *primary,
 				u8 *alias_key)
@@ -691,9 +718,11 @@ static int sd_cmd_set_secondary(struct mlx5_core_dev *secondary,
 	if (err)
 		goto err_unset_silent;
 
-	err = mlx5_fs_cmd_set_tx_flow_table_root(secondary, sd->alias_obj_id, false);
+	err = mlx5_fs_cmd_set_tx_flow_table_root(secondary, sd->alias_obj_id,
+						 false);
 	if (err)
 		goto err_destroy_alias_ft;
+	sd->tx_root_silent = false;
 
 	return 0;
 
@@ -710,7 +739,7 @@ static void sd_cmd_unset_secondary(struct mlx5_core_dev *secondary)
 	struct mlx5_sd *primary_sd;
 
 	primary_sd = mlx5_get_sd(mlx5_sd_get_primary(secondary));
-	mlx5_fs_cmd_set_tx_flow_table_root(secondary, 0, true);
+	mlx5_sd_secondary_conf_tx_root(secondary, true);
 	sd_secondary_destroy_alias_ft(secondary);
 	if (!primary_sd->fw_silents_secondaries)
 		mlx5_fs_cmd_set_l2table_entry_silent(secondary, 0);
@@ -938,6 +967,111 @@ struct auxiliary_device *mlx5_sd_get_adev(struct mlx5_core_dev *dev,
 	}
 	return &primary_adev->adev;
 }
+
+#ifdef CONFIG_MLX5_ESWITCH
+/* All SD members must have completed esw_offloads_enable (i.e., reached
+ * mlx5_esw_offloads_devcom_init) and become eswitch-peers of the primary.
+ * Until then, mlx5_eswitch_is_peer() returns false for the not-yet-paired
+ * member and shared_fdb_supported_filter would reject. When all PFs transition
+ * in parallel, only the last one to finish satisfies this gate; the earlier
+ * ones return 0 silently here.
+ */
+static bool mlx5_sd_all_paired(struct mlx5_core_dev *primary)
+{
+	struct mlx5_eswitch *primary_esw = primary->priv.eswitch;
+	struct mlx5_core_dev *pos;
+	int i;
+
+	mlx5_sd_for_each_secondary(i, primary, pos) {
+		if (!mlx5_eswitch_is_peer(primary_esw, pos->priv.eswitch))
+			return false;
+	}
+	return true;
+}
+
+static void mlx5_sd_activate_shared_fdb(struct mlx5_core_dev *primary)
+{
+	struct mlx5_sd *sd = mlx5_get_sd(primary);
+	struct mlx5_lag *ldev;
+	struct lag_func *pf;
+	int err;
+	int i;
+
+	ldev = mlx5_lag_dev(primary);
+	if (!ldev) {
+		sd_warn(primary, "Shared FDB MUST have ldev\n");
+		return;
+	}
+
+	mutex_lock(&ldev->lock);
+
+	if (ldev->mode_changes_in_progress)
+		goto unlock;
+
+	if (!mlx5_sd_all_paired(primary))
+		goto unlock;
+
+	/* Check if SD FDB is already active for this group */
+	mlx5_lag_for_each(i, 0, ldev, sd->group_id) {
+		pf = mlx5_lag_pf(ldev, i);
+		if (pf->sd_fdb_active)
+			goto unlock;
+		break;
+	}
+
+	if (!mlx5_lag_shared_fdb_supported_filter(ldev, sd->group_id)) {
+		sd_warn(primary, "Shared FDB not supported\n");
+		goto unlock;
+	}
+
+	err = mlx5_lag_shared_fdb_create(ldev, NULL, 0, sd->group_id);
+	if (err)
+		sd_warn(primary, "Failed to create shared FDB: %d\n", err);
+	else
+		sd_info(primary, "Shared FDB created\n");
+
+unlock:
+	mutex_unlock(&ldev->lock);
+}
+
+void mlx5_sd_eswitch_mode_set(struct mlx5_core_dev *dev, u16 mlx5_mode)
+{
+	struct mlx5_core_dev *primary;
+	struct mlx5_sd *sd;
+	int err;
+
+	sd = mlx5_get_sd(dev);
+	if (!sd || !mlx5_devcom_comp_is_ready(sd->devcom))
+		return;
+
+	mlx5_devcom_comp_lock(sd->devcom);
+	if (!mlx5_devcom_comp_is_ready(sd->devcom))
+		goto unlock;
+
+	primary = mlx5_sd_get_primary(dev);
+
+	/* Secondary devices need TX root reconfiguration */
+	if (dev != primary) {
+		bool disconnect = (mlx5_mode == MLX5_ESWITCH_OFFLOADS);
+
+		err = mlx5_sd_secondary_conf_tx_root(dev, disconnect);
+		if (err) {
+			sd_warn(dev, "Failed to set TX root: %d\n", err);
+			goto unlock;
+		}
+	}
+
+	/* Try to activate shared FDB when all devices are in switchdev.
+	 * Shared FDB is optional - failure here doesn't fail the transition.
+	 */
+	if (mlx5_mode == MLX5_ESWITCH_OFFLOADS)
+		mlx5_sd_activate_shared_fdb(primary);
+
+unlock:
+	mlx5_devcom_comp_unlock(sd->devcom);
+}
+
+#endif /* CONFIG_MLX5_ESWITCH */
 
 void mlx5_sd_put_adev(struct auxiliary_device *actual_adev,
 		      struct auxiliary_device *adev)
