@@ -222,10 +222,6 @@ bool mlx5_sd_is_supported(struct mlx5_core_dev *dev)
 	if (!mlx5_core_is_pf(dev))
 		return false;
 
-	/* Block on embedded CPU PFs */
-	if (mlx5_core_is_ecpf(dev))
-		return false;
-
 	err = mlx5_query_nic_vport_sd_group(dev, &sd_group);
 	if (err || !sd_group)
 		return false;
@@ -250,10 +246,6 @@ static int sd_init(struct mlx5_core_dev *dev)
 
 	/* Feature is currently implemented for PFs only */
 	if (!mlx5_core_is_pf(dev))
-		return 0;
-
-	/* Block on embedded CPU PFs */
-	if (mlx5_core_is_ecpf(dev))
 		return 0;
 
 	err = mlx5_query_nic_vport_sd_group(dev, &sd_group);
