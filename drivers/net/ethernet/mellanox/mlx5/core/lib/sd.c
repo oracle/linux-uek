@@ -85,6 +85,27 @@ bool mlx5_sd_is_primary(struct mlx5_core_dev *dev)
 	return sd->primary;
 }
 
+int mlx5_sd_pf_num_get(struct mlx5_core_dev *dev)
+{
+	struct mlx5_sd *sd = mlx5_get_sd(dev);
+	int pf_num = mlx5_get_dev_index(dev);
+	struct mlx5_core_dev *pos;
+	int i;
+
+	if (!sd)
+		return pf_num;
+
+	mlx5_devcom_comp_assert_locked(sd->devcom);
+	if (!mlx5_devcom_comp_is_ready(sd->devcom))
+		return -ENODEV;
+
+	mlx5_sd_for_each_dev(i, mlx5_sd_get_primary(dev), pos)
+		if (pos == dev)
+			break;
+
+	return pf_num * sd->host_buses + i;
+}
+
 struct mlx5_core_dev *
 mlx5_sd_primary_get_peer(struct mlx5_core_dev *primary, int idx)
 {

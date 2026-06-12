@@ -3475,12 +3475,12 @@ u32 mlx5_esw_match_metadata_alloc(struct mlx5_eswitch *esw)
 	u32 vport_end_ida = (1 << ESW_VPORT_BITS) - 1;
 	/* Reserve 0xf for internal port offload */
 	u32 max_pf_num = (1 << ESW_PFNUM_BITS) - 2;
-	u32 pf_num;
+	int pf_num;
 	int id;
 
 	/* Only 4 bits of pf_num */
-	pf_num = mlx5_get_dev_index(esw->dev);
-	if (pf_num > max_pf_num)
+	pf_num = mlx5_sd_pf_num_get(esw->dev);
+	if (pf_num < 0 || pf_num > max_pf_num)
 		return 0;
 
 	/* Metadata is 4 bits of PFNUM and 12 bits of unique id */
