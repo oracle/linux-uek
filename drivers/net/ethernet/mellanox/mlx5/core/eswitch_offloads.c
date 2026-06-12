@@ -2866,6 +2866,10 @@ static int mlx5_esw_offloads_rep_load(struct mlx5_eswitch *esw, u16 vport_num)
 	int rep_type;
 	int err;
 
+	if (vport_num != MLX5_VPORT_UPLINK &&
+	    mlx5_get_sd(esw->dev) && !mlx5_lag_is_active(esw->dev))
+		return 0;
+
 	rep = mlx5_eswitch_get_rep(esw, vport_num);
 	for (rep_type = 0; rep_type < NUM_REP_TYPES; rep_type++) {
 		err = __esw_offloads_load_rep(esw, rep, rep_type,
@@ -3782,6 +3786,21 @@ static void esw_destroy_offloads_acl_tables(struct mlx5_eswitch *esw)
 		esw_vport_destroy_offloads_acl_tables(esw, vport);
 }
 
+void mlx5_eswitch_unload_reps(struct mlx5_eswitch *esw)
+{
+	struct mlx5_eswitch_rep *rep;
+	unsigned long i;
+
+	if (!esw || esw->mode != MLX5_ESWITCH_OFFLOADS)
+		return;
+
+	mlx5_esw_for_each_rep(esw, i, rep) {
+		if (rep->vport == MLX5_VPORT_UPLINK)
+			continue;
+		mlx5_esw_offloads_rep_unload(esw, rep->vport);
+	}
+}
+
 int mlx5_eswitch_reload_ib_reps(struct mlx5_eswitch *esw)
 {
 	struct mlx5_eswitch_rep *rep;
@@ -3808,6 +3827,10 @@ int mlx5_eswitch_reload_ib_reps(struct mlx5_eswitch *esw)
 		if (!mlx5_sd_is_primary(esw->dev) &&
 		    rep->vport == MLX5_VPORT_UPLINK)
 			continue;
+		if (rep->vport != MLX5_VPORT_UPLINK &&
+		    mlx5_get_sd(esw->dev) && !mlx5_lag_is_active(esw->dev))
+			continue;
+
 		if (atomic_read(&rep->rep_data[REP_ETH].state) == REP_LOADED)
 			__esw_offloads_load_rep(esw, rep, REP_IB, NULL);
 	}
@@ -4770,6 +4793,9 @@ static void mlx5_eswitch_reload_reps_blocked(struct mlx5_eswitch *esw)
 			__esw_offloads_unload_rep(esw, uplink, REP_ETH);
 		return;
 	}
+
+	if (mlx5_get_sd(esw->dev) && !mlx5_lag_is_active(esw->dev))
+		return;
 
 	mlx5_esw_for_each_vport(esw, i, vport) {
 		if (!vport)

@@ -1312,6 +1312,32 @@ int mlx5_lag_reload_ib_reps_from_locked(struct mlx5_lag *ldev, u32 flags,
 	return mlx5_lag_reload_ib_reps(ldev, flags, filter, cont_on_fail);
 }
 
+static void mlx5_lag_unload_reps_unlocked(struct mlx5_lag *ldev, u32 filter)
+{
+	struct lag_func *pf;
+	int i;
+
+	mlx5_lag_for_each(i, 0, ldev, filter) {
+		struct mlx5_eswitch *esw;
+
+		pf = mlx5_lag_pf(ldev, i);
+		esw = pf->dev->priv.eswitch;
+		mlx5_esw_reps_block(esw);
+		mlx5_eswitch_unload_reps(esw);
+		mlx5_esw_reps_unblock(esw);
+	}
+}
+
+void mlx5_lag_unload_reps_from_locked(struct mlx5_lag *ldev, u32 filter)
+{
+	/* Same lock dance as mlx5_lag_reload_ib_reps: drop ldev->lock around
+	 * the per-eswitch reps_lock to keep the reps_lock -> ldev->lock order.
+	 */
+	mlx5_lag_drop_lock_for_reps(ldev, filter);
+	mlx5_lag_unload_reps_unlocked(ldev, filter);
+	mlx5_lag_retake_lock_after_reps(ldev);
+}
+
 void mlx5_disable_lag(struct mlx5_lag *ldev)
 {
 	bool shared_fdb = test_bit(MLX5_LAG_MODE_FLAG_SHARED_FDB, &ldev->mode_flags);

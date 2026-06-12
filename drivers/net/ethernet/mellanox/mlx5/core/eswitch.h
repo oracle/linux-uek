@@ -960,6 +960,7 @@ int mlx5_eswitch_offloads_single_fdb_add_one(struct mlx5_eswitch *master_esw,
 void mlx5_eswitch_offloads_single_fdb_del_one(struct mlx5_eswitch *master_esw,
 					      struct mlx5_eswitch *slave_esw);
 int mlx5_eswitch_reload_ib_reps(struct mlx5_eswitch *esw);
+void mlx5_eswitch_unload_reps(struct mlx5_eswitch *esw);
 bool mlx5_eswitch_is_peer(struct mlx5_eswitch *esw,
 			  struct mlx5_eswitch *peer_esw);
 
@@ -1063,6 +1064,9 @@ mlx5_eswitch_reload_ib_reps(struct mlx5_eswitch *esw)
 {
 	return 0;
 }
+
+static inline void
+mlx5_eswitch_unload_reps(struct mlx5_eswitch *esw) {}
 
 static inline bool
 mlx5_eswitch_block_encap(struct mlx5_core_dev *dev, bool from_fdb)
