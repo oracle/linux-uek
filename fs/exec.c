@@ -834,6 +834,25 @@ ssize_t read_code(struct file *file, unsigned long addr, loff_t pos, size_t len)
 EXPORT_SYMBOL(read_code);
 #endif
 
+static int vma_dup_some(struct mm_struct *old_mm, struct mm_struct *new_mm)
+{
+	struct vm_area_struct *vma;
+	VMA_ITERATOR(vmi, old_mm, 0);
+	int ret = 0;
+
+	mmap_write_lock_nested(new_mm, SINGLE_DEPTH_NESTING);
+	for_each_vma(vmi, vma) {
+		if (vma_test_single_mask(vma, VMA_EXEC_KEEP)) {
+			ret = vma_dup(vma, new_mm);
+			if (ret)
+				break;
+		}
+	}
+
+	mmap_write_unlock(new_mm);
+	return ret;
+}
+
 /*
  * Maps the mm_struct mm into the current task struct.
  * On success, this function returns with exec_update_lock
@@ -847,6 +866,7 @@ static int exec_mmap(struct linux_binprm *bprm)
 	struct task_struct *tsk;
 	struct mm_struct *old_mm, *active_mm;
 	int ret;
+	bool accepts_preserved_mem = false;
 
 	exec_state = alloc_task_exec_state(bprm->user_ns);
 	if (!exec_state)
@@ -871,6 +891,33 @@ static int exec_mmap(struct linux_binprm *bprm)
 		if (ret) {
 			up_write(&tsk->signal->exec_update_lock);
 			return ret;
+		}
+		/*
+		 * Only accept memory marked for preservation if the
+		 * incoming binary has opted to accept it and if old_mm
+		 * does not have an elevated mm_users indicating it may
+		 * not be going away (e.g. the mm is shared with another
+		 * process via CLONE_VM/CLONE_VFORK).
+		 */
+		if (unlikely(bprm->accepts_preserved_mem) &&
+				atomic_read(&old_mm->mm_users) == 1) {
+			accepts_preserved_mem = true;
+			/*
+			 * Acquire the write lock to avoid changes to page
+			 * table entries while they are copied.
+			 */
+			mmap_read_unlock(old_mm);
+			ret = mmap_write_lock_killable(old_mm);
+			if (ret) {
+				up_write(&tsk->signal->exec_update_lock);
+				return ret;
+			}
+			ret = vma_dup_some(old_mm, mm);
+			if (ret) {
+				mmap_write_unlock(old_mm);
+				up_write(&tsk->signal->exec_update_lock);
+				return ret;
+			}
 		}
 	}
 
@@ -899,7 +946,10 @@ static int exec_mmap(struct linux_binprm *bprm)
 	task_unlock(tsk);
 	lru_gen_use_mm(mm);
 	if (old_mm) {
-		mmap_read_unlock(old_mm);
+		if (unlikely(accepts_preserved_mem))
+			mmap_write_unlock(old_mm);
+		else
+			mmap_read_unlock(old_mm);
 		BUG_ON(active_mm != old_mm);
 		/* Defer teardown to setup_new_exec(), outside the exec locks. */
 		bprm->old_mm = old_mm;
