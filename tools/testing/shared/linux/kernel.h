@@ -18,6 +18,7 @@
 #define pr_info printk
 #define pr_debug printk
 #define pr_cont printk
+#define pr_warn printk
 #define schedule()
 #define PAGE_SHIFT	12
 
