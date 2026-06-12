@@ -22,6 +22,7 @@ struct mlx5_sd {
 	struct dentry *dfs;
 	u8 state;
 	bool primary;
+	bool fw_silents_secondaries;
 	union {
 		struct { /* primary */
 			struct mlx5_core_dev *secondaries[MLX5_SD_MAX_GROUP_SZ - 1];
@@ -167,7 +168,8 @@ static bool mlx5_sd_caps_supported(struct mlx5_core_dev *dev, u8 host_buses)
 	/* Disconnect secondaries from the network */
 	if (!MLX5_CAP_GEN(dev, eswitch_manager))
 		return false;
-	if (!MLX5_CAP_GEN(dev, silent_mode_set))
+	if (!MLX5_CAP_GEN(dev, silent_mode_set) &&
+	    !MLX5_CAP_GEN(dev, silent_mode_query))
 		return false;
 
 	/* RX steering from primary to secondaries */
@@ -379,23 +381,77 @@ static void sd_lag_cleanup(struct mlx5_core_dev *dev)
 enum {
 	SD_PRIMARY_SET,
 	SD_SECONDARIES_SET,
+	SD_FW_SILENT_CHECK,
 };
 
-static void sd_handle_primary_set(struct mlx5_core_dev *dev,
-				  struct mlx5_core_dev *peer)
+static int sd_handle_fw_silent_check(struct mlx5_core_dev *dev,
+				     struct mlx5_core_dev *peer)
+{
+	struct mlx5_sd *peer_sd = mlx5_get_sd(peer);
+	struct mlx5_sd *sd = mlx5_get_sd(dev);
+	u8 dev_silent = 0, peer_silent = 0;
+	int err;
+
+	if (peer_sd->fw_silents_secondaries) {
+		sd->fw_silents_secondaries = true;
+		return 0;
+	}
+
+	err = mlx5_fs_cmd_query_l2table_silent(dev, &dev_silent);
+	if (err) {
+		sd_warn(dev, "Failed to query silent mode for dev: %d\n", err);
+		return err;
+	}
+
+	err = mlx5_fs_cmd_query_l2table_silent(peer, &peer_silent);
+	if (err) {
+		sd_warn(dev, "Failed to query silent mode for peer: %d\n", err);
+		return err;
+	}
+
+	if (dev_silent || peer_silent) {
+		sd->fw_silents_secondaries = true;
+		peer_sd->fw_silents_secondaries = true;
+		sd_info(dev, "FW indicates at least one device is silent\n");
+	}
+	return 0;
+}
+
+static int sd_handle_primary_set(struct mlx5_core_dev *dev,
+				 struct mlx5_core_dev *peer)
 {
 	struct mlx5_sd *peer_sd = mlx5_get_sd(peer);
 	struct mlx5_sd *sd = mlx5_get_sd(dev);
 	struct mlx5_core_dev *candidate;
 	struct mlx5_sd *candidate_sd;
+	bool dev_should_be_primary;
 
 	/* Peer is the device that being sent to all the other devices in the
 	 * group. Hence, use peer to get the candidate device.
 	 */
 	candidate = peer_sd->primary ? peer : peer_sd->primary_dev;
 
-	if (dev->pdev->bus->number >= candidate->pdev->bus->number)
-		return;
+	if (sd->fw_silents_secondaries) {
+		u8 candidate_silent = 0;
+		int err;
+
+		err = mlx5_fs_cmd_query_l2table_silent(candidate,
+						       &candidate_silent);
+		if (err) {
+			sd_warn(candidate, "Failed to query silent mode for dev: %d\n",
+				err);
+			return err;
+		}
+		/* Candidate is silent, dev should be primary */
+		dev_should_be_primary = candidate_silent;
+	} else {
+		/* No FW silent mode, use bus number */
+		dev_should_be_primary =
+			dev->pdev->bus->number < candidate->pdev->bus->number;
+	}
+
+	if (!dev_should_be_primary)
+		return 0;
 
 	candidate_sd = mlx5_get_sd(candidate);
 
@@ -404,6 +460,7 @@ static void sd_handle_primary_set(struct mlx5_core_dev *dev,
 	candidate_sd->primary_dev = dev;
 	peer_sd->primary = false;
 	peer_sd->primary_dev = dev;
+	return 0;
 }
 
 static void sd_handle_secondaries_set(struct mlx5_core_dev *dev,
@@ -431,12 +488,13 @@ static int mlx5_sd_devcom_event(int event, void *my_data, void *event_data)
 	struct mlx5_core_dev *dev = my_data;
 
 	switch (event) {
+	case SD_FW_SILENT_CHECK:
+		return sd_handle_fw_silent_check(dev, peer);
 	case SD_PRIMARY_SET:
-		sd_handle_primary_set(dev, peer);
-		break;
+		return sd_handle_primary_set(dev, peer);
 	case SD_SECONDARIES_SET:
 		sd_handle_secondaries_set(dev, peer);
-		break;
+		return 0;
 	}
 
 	return 0;
@@ -469,9 +527,21 @@ static int sd_register(struct mlx5_core_dev *dev)
 	    mlx5_devcom_comp_is_ready(devcom))
 		goto out;
 
+	/* If silent mode query is supported, ask each device whether it is
+	 * silent and propagate the result to the whole group. In each group
+	 * only one device is not silent
+	 */
+	if (MLX5_CAP_GEN(dev, silent_mode_query)) {
+		err = mlx5_devcom_locked_send_event(devcom, SD_FW_SILENT_CHECK,
+						    SD_FW_SILENT_CHECK, dev);
+		if (err)
+			goto err_devcom_unreg;
+	}
+
 	/* Send SD_PRIMARY_SET event with this device.
 	 * All peers will receive this event and compare to this device.
-	 * The one with lowest bus number will be marked as primary.
+	 * If fw_silents_secondaries is set, choose non-silent device.
+	 * Otherwise use bus number.
 	 */
 	sd->primary = true;
 	err = mlx5_devcom_locked_send_event(devcom, SD_PRIMARY_SET,
@@ -589,9 +659,11 @@ static int sd_cmd_set_secondary(struct mlx5_core_dev *secondary,
 	struct mlx5_sd *sd = mlx5_get_sd(secondary);
 	int err;
 
-	err = mlx5_fs_cmd_set_l2table_entry_silent(secondary, 1);
-	if (err)
-		return err;
+	if (!primary_sd->fw_silents_secondaries) {
+		err = mlx5_fs_cmd_set_l2table_entry_silent(secondary, 1);
+		if (err)
+			return err;
+	}
 
 	err = sd_secondary_create_alias_ft(secondary, primary, primary_sd->tx_ft,
 					   &sd->alias_obj_id, alias_key);
@@ -607,15 +679,20 @@ static int sd_cmd_set_secondary(struct mlx5_core_dev *secondary,
 err_destroy_alias_ft:
 	sd_secondary_destroy_alias_ft(secondary);
 err_unset_silent:
-	mlx5_fs_cmd_set_l2table_entry_silent(secondary, 0);
+	if (!primary_sd->fw_silents_secondaries)
+		mlx5_fs_cmd_set_l2table_entry_silent(secondary, 0);
 	return err;
 }
 
 static void sd_cmd_unset_secondary(struct mlx5_core_dev *secondary)
 {
+	struct mlx5_sd *primary_sd;
+
+	primary_sd = mlx5_get_sd(mlx5_sd_get_primary(secondary));
 	mlx5_fs_cmd_set_tx_flow_table_root(secondary, 0, true);
 	sd_secondary_destroy_alias_ft(secondary);
-	mlx5_fs_cmd_set_l2table_entry_silent(secondary, 0);
+	if (!primary_sd->fw_silents_secondaries)
+		mlx5_fs_cmd_set_l2table_entry_silent(secondary, 0);
 }
 
 static void sd_print_group(struct mlx5_core_dev *primary)
