@@ -1306,6 +1306,25 @@ static inline bool vma_supports_mlock(const struct vm_area_struct *vma)
 	return vma != get_gate_vma(current->mm);
 }
 
+/*
+ * Setting VM_EXEC_KEEP is only supported on private, non-file-backed,
+ * non-executable, non-stack anonymous memory when the flag is available.
+ */
+static inline bool vma_supports_exec_keep(struct vm_area_struct *vma)
+{
+	if (!VM_EXEC_KEEP)
+		return false;
+	if (vma->vm_file)
+		return false;
+	if (!vma_is_anonymous(vma))
+		return false;
+	if (!is_cow_mapping(vma->vm_flags))
+		return false;
+	if (vma_test_any(vma, VMA_EXEC_BIT, VMA_STACK_BIT))
+		return false;
+	return true;
+}
+
 #else /* !CONFIG_MMU */
 static inline void unmap_mapping_folio(struct folio *folio) { }
 static inline void mlock_new_folio(struct folio *folio) { }

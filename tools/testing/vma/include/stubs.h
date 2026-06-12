@@ -433,3 +433,22 @@ static inline bool vma_supports_mlock(const struct vm_area_struct *vma)
 {
 	return false;
 }
+
+static inline bool vma_supports_exec_keep(struct vm_area_struct *vma)
+{
+	return false;
+}
+
+#define NULL_VM_UFFD_CTX ((struct vm_userfaultfd_ctx) {})
+
+static inline int anon_vma_fork(struct vm_area_struct *vma,
+				struct vm_area_struct *pvma)
+{
+	return 0;
+}
+
+static inline int copy_page_range_exec(struct vm_area_struct *dst_vma,
+				       struct vm_area_struct *src_vma)
+{
+	return 0;
+}
