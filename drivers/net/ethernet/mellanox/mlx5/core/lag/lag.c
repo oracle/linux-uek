@@ -2547,6 +2547,7 @@ void mlx5_lag_disable_change(struct mlx5_core_dev *dev)
 	struct mlx5_core_dev *primary = dev;
 	struct mlx5_lag *ldev;
 	struct lag_func *pf;
+	bool mpesw;
 	int i;
 
 	ldev = mlx5_lag_dev(dev);
@@ -2559,6 +2560,9 @@ void mlx5_lag_disable_change(struct mlx5_core_dev *dev)
 		mlx5_devcom_comp_unlock(sd_devcom);
 	}
 	mlx5_devcom_comp_lock(primary->priv.hca_devcom_comp);
+	mpesw = ldev->mode == MLX5_LAG_MODE_MPESW;
+	if (mpesw)
+		mlx5_mpesw_sd_devcoms_lock(ldev);
 	mutex_lock(&ldev->lock);
 
 	ldev->mode_changes_in_progress++;
@@ -2570,6 +2574,8 @@ void mlx5_lag_disable_change(struct mlx5_core_dev *dev)
 	}
 
 	mutex_unlock(&ldev->lock);
+	if (mpesw)
+		mlx5_mpesw_sd_devcoms_unlock(ldev);
 	mlx5_devcom_comp_unlock(primary->priv.hca_devcom_comp);
 
 	if (!sd_devcom)
