@@ -3678,6 +3678,7 @@ static void esw_offloads_vport_metadata_cleanup(struct mlx5_eswitch *esw,
 
 	WARN_ON(vport->metadata != vport->default_metadata);
 	mlx5_esw_match_metadata_free(esw, vport->default_metadata);
+	vport->default_metadata = 0;
 }
 
 static void esw_offloads_metadata_uninit(struct mlx5_eswitch *esw)
@@ -3711,6 +3712,73 @@ static int esw_offloads_metadata_init(struct mlx5_eswitch *esw)
 
 metadata_err:
 	esw_offloads_metadata_uninit(esw);
+	return err;
+}
+
+/* Deferred metadata init for SD devices: allocate vport metadata and
+ * refresh the ingress ACL for every vport whose ACL was created with
+ * metadata=0 in esw_create_offloads_acl_tables() / esw_vport_setup().
+ *
+ * No Rep is loaded at this point ==> no Rep net-dev exists, so no need
+ * to take rtnl lock.
+ *
+ * Safe to call multiple times - subsequent calls are no-ops.
+ */
+int mlx5_esw_offloads_init_deferred_metadata(struct mlx5_eswitch *esw)
+{
+	struct mlx5_vport *manager, *vport;
+	unsigned long i;
+	int err;
+
+	if (!mlx5_eswitch_vport_match_metadata_enabled(esw))
+		return 0;
+
+	manager = mlx5_eswitch_get_vport(esw, esw->manager_vport);
+	if (IS_ERR(manager))
+		return PTR_ERR(manager);
+
+	/* Sanity check: skip if metadata was already initialized */
+	if (manager->default_metadata)
+		return 0;
+
+	err = esw_offloads_metadata_init(esw);
+	if (err)
+		return err;
+
+	mutex_lock(&esw->state_lock);
+	/* Manager vport doesn't have a rep/netdev loaded but its ingress ACL
+	 * was programmed with metadata=0 - refresh it explicitly.
+	 */
+	err = mlx5_esw_acl_ingress_vport_metadata_update(esw,
+							 esw->manager_vport,
+							 0);
+	if (err)
+		goto err_acl;
+
+	/* UPLINK is never marked enabled but its ACL is programmed in
+	 * esw_create_offloads_acl_tables(); refresh it explicitly.
+	 */
+	err = mlx5_esw_acl_ingress_vport_metadata_update(esw, MLX5_VPORT_UPLINK,
+							 0);
+	if (err)
+		goto err_acl;
+
+	mlx5_esw_for_each_vport(esw, i, vport) {
+		if (!vport || !vport->enabled)
+			continue;
+		err = mlx5_esw_acl_ingress_vport_metadata_update(esw,
+								 vport->vport,
+								 0);
+		if (err)
+			goto err_acl;
+	}
+
+	mutex_unlock(&esw->state_lock);
+	return 0;
+
+err_acl:
+	esw_offloads_metadata_uninit(esw);
+	mutex_unlock(&esw->state_lock);
 	return err;
 }
 
@@ -4075,9 +4143,14 @@ int esw_offloads_enable(struct mlx5_eswitch *esw)
 	if (err)
 		goto err_roce;
 
-	err = esw_offloads_metadata_init(esw);
-	if (err)
-		goto err_metadata;
+	/* SD devices defer metadata init until SD is ready and
+	 * mlx5_sd_pf_num_get() can return the correct pf_num.
+	 */
+	if (!mlx5_get_sd(esw->dev)) {
+		err = esw_offloads_metadata_init(esw);
+		if (err)
+			goto err_metadata;
+	}
 
 	err = esw_set_passing_vport_metadata(esw, true);
 	if (err)
