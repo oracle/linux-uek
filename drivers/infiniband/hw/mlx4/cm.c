@@ -315,14 +315,20 @@ int mlx4_ib_multiplex_cm_handler(struct ib_device *ibdev, int port, int slave_id
 		id = id_map_get(ibdev, &pv_cm_id, slave_id, sl_cm_id);
 		if (id)
 			goto cont;
+		if (mad->mad_hdr.attr_id == CM_REJ_ATTR_ID)
+			return 0;
 		id = id_map_alloc(ibdev, slave_id, sl_cm_id);
 		if (IS_ERR(id)) {
 			mlx4_ib_warn(ibdev, "%s: id{slave: %d, sl_cm_id: 0x%x} Failed to id_map_alloc\n",
 				__func__, slave_id, sl_cm_id);
 			return PTR_ERR(id);
 		}
-	} else if (mad->mad_hdr.attr_id == CM_REJ_ATTR_ID ||
-		   mad->mad_hdr.attr_id == CM_SIDR_REP_ATTR_ID) {
+	} else if (mad->mad_hdr.attr_id == CM_REJ_ATTR_ID) {
+		sl_cm_id = get_local_comm_id(mad);
+		id = id_map_get(ibdev, &pv_cm_id, slave_id, sl_cm_id);
+		if (!id)
+			return 0;
+	} else if (mad->mad_hdr.attr_id == CM_SIDR_REP_ATTR_ID) {
 		return 0;
 	} else {
 		sl_cm_id = get_local_comm_id(mad);
@@ -338,7 +344,8 @@ int mlx4_ib_multiplex_cm_handler(struct ib_device *ibdev, int port, int slave_id
 cont:
 	set_local_comm_id(mad, id->pv_cm_id);
 
-	if (mad->mad_hdr.attr_id == CM_DREQ_ATTR_ID)
+	if (mad->mad_hdr.attr_id == CM_DREQ_ATTR_ID ||
+	    mad->mad_hdr.attr_id == CM_REJ_ATTR_ID)
 		schedule_delayed(ibdev, id);
 	return 0;
 }
