@@ -486,7 +486,7 @@ int rds_send_xmit(struct rds_conn_path *cp, enum rds_send_xmit_mode xmit_mode)
 				cp->cp_xmit_data_sent = 0;
 				spin_unlock_irqrestore(&cp->cp_lock, flags);
 				rds_message_put(rm);
-				break;
+				continue;
 			}
 			rds_set_rm_flag_bit(rm, RDS_MSG_MAPPED);
 			spin_unlock_irqrestore(&cp->cp_lock, flags);
@@ -517,7 +517,7 @@ int rds_send_xmit(struct rds_conn_path *cp, enum rds_send_xmit_mode xmit_mode)
 				cp->cp_xmit_data_sent = 0;
 				spin_unlock_irqrestore(&cp->cp_lock, flags);
 				rds_message_put(rm);
-				break;
+				continue;
 			}
 			rds_set_rm_flag_bit(rm, RDS_MSG_MAPPED);
 			spin_unlock_irqrestore(&cp->cp_lock, flags);
