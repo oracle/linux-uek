@@ -50,6 +50,7 @@ struct mlx5_eq_comp {
 	struct list_head        list;
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 	int			index;
+	struct irq_affinity_notify notify;
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 };
 

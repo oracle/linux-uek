@@ -802,6 +802,11 @@ static void destroy_comp_eqs(struct mlx5_core_dev *dev)
 	struct mlx5_eq_comp *eq, *n;
 
 	list_for_each_entry_safe(eq, n, &table->comp_eqs_list, list) {
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		if (irq_set_affinity_notifier(eq->core.irqn, NULL))
+			mlx5_core_warn(dev, "failed to unset EQ 0x%x to irq 0x%x affinity\n",
+				       eq->core.eqn, eq->core.irqn);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 		list_del(&eq->list);
 		mlx5_eq_disable(dev, &eq->core, &eq->irq_nb);
 		if (destroy_unmap_eq(dev, &eq->core))
@@ -820,6 +825,7 @@ static int create_comp_eqs(struct mlx5_core_dev *dev)
 	int nent;
 	int err;
 	int i;
+	int ret;
 
 	INIT_LIST_HEAD(&table->comp_eqs_list);
 	ncomp_eqs = table->num_comp_eqs;
@@ -865,6 +871,15 @@ static int create_comp_eqs(struct mlx5_core_dev *dev)
 		mlx5_core_dbg(dev, "allocated completion EQN %d\n", eq->core.eqn);
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 		eq->index = i;
+		eq->notify.notify = mlx5_eq_reap_irq_notify;
+		eq->notify.release = mlx5_eq_reap_irq_release;
+		ret = irq_set_affinity_notifier(eq->core.irqn, &eq->notify);
+		if (ret)
+			mlx5_core_warn(dev, "mlx5_eq_reap_irq_notifier: EQ 0x%x irqn = 0x%x irq_set_affinity_notifier failed: %d\n",
+				       eq->core.eqn, eq->core.irqn, ret);
+		else
+			mlx5_core_dbg(dev, "mlx5_eq_reap_irq_notifier: EQ 0x%x irqn = 0x%x irq_set_affinity_notifier set.\n",
+				      eq->core.eqn, eq->core.irqn);
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 		/* add tail, to keep the list ordered, for mlx5_vector2eqn to work */
 		list_add_tail(&eq->list, &table->comp_eqs_list);
