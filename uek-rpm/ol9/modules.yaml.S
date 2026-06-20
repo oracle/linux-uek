@@ -978,6 +978,7 @@ modules:
 - keyspan_remote
 - kheaders
 - kvaser_usb
+- lan743x
 - lan78xx
 - lcd
 - leds-blinkm
@@ -2108,7 +2109,6 @@ modules:
 - it87_wdt
 - jedec_probe
 - k8temp
-- lan743x
 - leds-mlxcpld
 - leds-ss4200
 - lp
