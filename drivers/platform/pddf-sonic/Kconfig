@@ -1,0 +1,135 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+menu "SONiC PDDF drivers"
+
+config PDDF_CLIENT
+	tristate "PDDF generic client support"
+	depends on I2C
+	depends on HWMON
+	help
+	  Enable the generic PDDF client support module used by SONiC
+	  platform-specific PDDF drivers.
+
+config PDDF_CPLD
+	tristate "PDDF CPLD support"
+	depends on PDDF_CLIENT
+	help
+	  Enable PDDF CPLD platform data and I2C driver support.
+
+config PDDF_CPLDMUX
+	tristate "PDDF CPLD I2C mux support"
+	depends on PDDF_CLIENT
+	depends on I2C_MUX
+	depends on PCI
+	help
+	  Enable PDDF CPLD-backed I2C mux platform data and driver support.
+
+config PDDF_FPGAI2C
+	tristate "PDDF FPGA I2C support"
+	depends on PDDF_CLIENT
+	help
+	  Enable PDDF FPGA I2C platform data and I2C driver support.
+
+config PDDF_FPGAPCI
+	tristate "PDDF FPGA PCI support"
+	depends on PDDF_CLIENT
+	depends on PCI
+	help
+	  Enable PDDF PCI FPGA platform data, driver, and bundled Xilinx
+	  device 7021 I2C-bus algorithm support.
+
+config PDDF_MULTIFPGAPCI
+	tristate "PDDF multi-FPGA PCI support"
+	depends on PDDF_CLIENT
+	depends on PCI
+	help
+	  Enable the core PDDF support for systems with multiple PCI FPGAs.
+
+config PDDF_MULTIFPGAPCI_GPIO
+	tristate "PDDF multi-FPGA PCI GPIO support"
+	depends on PDDF_MULTIFPGAPCI
+	depends on GPIOLIB
+	help
+	  Enable PDDF GPIO support for multi-FPGA PCI platforms.
+
+config PDDF_MULTIFPGAPCI_I2C
+	tristate "PDDF multi-FPGA PCI I2C support"
+	depends on PDDF_MULTIFPGAPCI
+	help
+	  Enable PDDF I2C adapter support for multi-FPGA PCI platforms.
+
+config PDDF_MULTIFPGAPCI_I2C_XIIC
+	tristate "PDDF multi-FPGA PCI Xilinx I2C support"
+	depends on PDDF_MULTIFPGAPCI
+	depends on I2C_XILINX
+	help
+	  Enable PDDF Xilinx XIIC adapter support for multi-FPGA PCI platforms.
+
+config PDDF_MULTIFPGAPCI_MDIO
+	tristate "PDDF multi-FPGA PCI MDIO support"
+	depends on PDDF_MULTIFPGAPCI
+	depends on NETDEVICES
+	depends on PHYLIB
+	help
+	  Enable PDDF MDIO bus support for multi-FPGA PCI platforms.
+
+config PDDF_MULTIFPGAPCI_SPI
+	tristate "PDDF multi-FPGA PCI SPI support"
+	depends on PDDF_MULTIFPGAPCI
+	depends on SPI_MASTER
+	depends on SPI_XILINX
+	help
+	  Enable PDDF SPI controller support for multi-FPGA PCI platforms.
+
+config PDDF_XCVR
+	tristate "PDDF transceiver support"
+	depends on PDDF_CLIENT
+	help
+	  Enable PDDF transceiver platform data and driver support.
+
+config PDDF_MUX
+	tristate "PDDF I2C mux client support"
+	depends on PDDF_CLIENT
+	help
+	  Enable PDDF I2C mux client platform data support.
+
+config PDDF_GPIO
+	tristate "PDDF GPIO expander client support"
+	depends on PDDF_CLIENT
+	depends on GPIOLIB
+	help
+	  Enable PDDF GPIO expander client platform data support.
+
+config PDDF_PSU
+	tristate "PDDF PSU support"
+	depends on PDDF_CLIENT
+	help
+	  Enable PDDF PSU platform data and driver support.
+
+config PDDF_FAN
+	tristate "PDDF fan support"
+	depends on PDDF_CLIENT
+	help
+	  Enable PDDF fan platform data and driver support.
+
+config PDDF_LED
+	tristate "PDDF LED support"
+	depends on PDDF_CLIENT
+	depends on LEDS_CLASS
+	help
+	  Enable PDDF LED support.
+
+config PDDF_SYSSTATUS
+	tristate "PDDF system status support"
+	depends on PDDF_CLIENT
+	help
+	  Enable PDDF system status platform data support.
+
+config PDDF_SPI
+	tristate "PDDF SPI device support"
+	depends on PDDF_CLIENT
+	depends on SPI_MASTER
+	help
+	  Enable PDDF support for creating and deleting SPI devices.
+
+endmenu

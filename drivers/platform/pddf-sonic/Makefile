@@ -1,0 +1,14 @@
+obj-$(CONFIG_PDDF_CLIENT) += client/
+obj-$(CONFIG_PDDF_CPLD) += cpld/
+obj-$(CONFIG_PDDF_CPLDMUX) += cpldmux/
+obj-$(CONFIG_PDDF_FPGAI2C) += fpgai2c/
+obj-$(CONFIG_PDDF_FPGAPCI) += fpgapci/
+obj-$(CONFIG_PDDF_MULTIFPGAPCI) += multifpgapci/
+obj-$(CONFIG_PDDF_XCVR) += xcvr/
+obj-$(CONFIG_PDDF_MUX) += mux/
+obj-$(CONFIG_PDDF_GPIO) += gpio/
+obj-$(CONFIG_PDDF_PSU) += psu/
+obj-$(CONFIG_PDDF_FAN) += fan/
+obj-$(CONFIG_PDDF_LED) += led/
+obj-$(CONFIG_PDDF_SYSSTATUS) += sysstatus/
+obj-$(CONFIG_PDDF_SPI) += spi/
