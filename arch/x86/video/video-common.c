@@ -43,11 +43,9 @@ bool video_is_primary_device(struct device *dev)
 	if (!pci_is_display(pdev))
 		return false;
 
-	if (pdev == vga_default_device())
-		return true;
-
 #ifdef CONFIG_SCREEN_INFO
 	numres = screen_info_resources(si, res, ARRAY_SIZE(res));
+	if (numres > 0) {
 	for (i = 0; i < numres; ++i) {
 		if (!(res[i].flags & IORESOURCE_MEM))
 			continue;
@@ -55,9 +53,16 @@ bool video_is_primary_device(struct device *dev)
 		if (pci_find_resource(pdev, &res[i]))
 			return true;
 	}
-#endif
 
 	return false;
+}
+#endif
+
+	/*
+	 * No framebuffer was set up by the firmware/bootloader, so fall back
+	 * to the default VGA device.
+	 */
+	return pdev == vga_default_device();
 }
 EXPORT_SYMBOL(video_is_primary_device);
 
