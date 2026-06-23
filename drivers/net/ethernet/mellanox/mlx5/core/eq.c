@@ -979,7 +979,7 @@ static void destroy_comp_eq(struct mlx5_core_dev *dev, struct mlx5_eq_comp *eq, 
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
 	if (irq_set_affinity_notifier(eq->core.irqn, NULL))
-		mlx5_core_warn(dev, "failed to unset EQ 0x%x to irq 0x%x affinty\n",
+		mlx5_core_warn(dev, "failed to unset EQ 0x%x to irq 0x%x affinity\n",
 			      eq->core.eqn, eq->core.irqn);
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
@@ -1069,12 +1069,12 @@ static int create_comp_eq(struct mlx5_core_dev *dev, u16 vecidx)
 	eq->notify.notify = mlx5_eq_reap_irq_notify;
 	eq->notify.release = mlx5_eq_reap_irq_release;
 	ret = irq_set_affinity_notifier(eq->core.irqn, &eq->notify);
-	if (ret) {
-		mlx5_core_warn(dev, "mlx5_eq_reap_irq_nofifier: EQ 0x%x irqn = 0x%x irq_set_affinity_notifier failed: %d\n",
-			      eq->core.eqn, eq->core.irqn, ret);
-	}
-	mlx5_core_dbg(dev, "mlx5_eq_reap_irq_nofifier: EQ 0x%x irqn = 0x%x irq_set_affinity_notifier set.\n",
-		     eq->core.eqn, eq->core.irqn);
+	if (ret)
+		mlx5_core_warn(dev, "mlx5_eq_reap_irq_notifier: EQ 0x%x irqn = 0x%x irq_set_affinity_notifier failed: %d\n",
+			       eq->core.eqn, eq->core.irqn, ret);
+	else
+		mlx5_core_dbg(dev, "mlx5_eq_reap_irq_notifier: EQ 0x%x irqn = 0x%x irq_set_affinity_notifier set.\n",
+			      eq->core.eqn, eq->core.irqn);
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	table->curr_comp_eqs++;
