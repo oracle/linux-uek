@@ -844,6 +844,21 @@ int trace_set_clr_event(const char *system, const char *event, int set)
 	if (!tr)
 		return -ENODEV;
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	/*
+	 * Keep in-kernel event enabling consistent with tracefs event
+	 * enabling: once an event is being enabled, expand the boot-minimum
+	 * ring buffer to the configured default size before records arrive.
+	 */
+	if (set) {
+		int ret;
+
+		ret = tracing_update_buffers();
+		if (ret < 0)
+			return ret;
+	}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	return __ftrace_set_clr_event(tr, NULL, system, event, set);
 }
 EXPORT_SYMBOL_GPL(trace_set_clr_event);
