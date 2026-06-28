@@ -21,7 +21,8 @@ use crate::{
     sync::{
         aref::ARef,
         rcu,
-        Arc, //
+        Arc,
+        Completion, //
     },
     types::{
         ForeignOwnable,
@@ -37,6 +38,8 @@ struct Inner<T> {
     node: Opaque<bindings::devres_node>,
     #[pin]
     data: Revocable<T>,
+    #[pin]
+    revocation: Completion,
 }
 
 /// This abstraction is meant to be used by subsystems to containerize [`Device`] bound resources to
@@ -52,6 +55,10 @@ struct Inner<T> {
 ///
 /// After the [`Devres`] has been unbound it is not possible to access the encapsulated resource
 /// anymore.
+///
+/// When a [`Devres`] is dropped, it is guaranteed that `T` has been fully dropped by the time
+/// [`Devres::drop`] returns, even if a concurrent revocation through the release callback is in
+/// progress.
 ///
 /// [`Devres`] users should make sure to simply free the corresponding backing resource in `T`'s
 /// [`Drop`] implementation.
@@ -218,6 +225,7 @@ impl<T: Send + 'static> Devres<T> {
                     };
                 }),
                 data <- Revocable::new(data),
+                revocation <- Completion::new(),
             }),
             GFP_KERNEL,
         )?;
@@ -255,7 +263,9 @@ impl<T: Send + 'static> Devres<T> {
         // SAFETY: `inner` is a valid `Inner<T>` pointer.
         let inner = unsafe { &*inner };
 
-        inner.data.revoke();
+        if inner.data.revoke() {
+            inner.revocation.complete_all();
+        }
     }
 
     #[allow(clippy::missing_safety_doc)]
@@ -362,6 +372,10 @@ impl<T: Send + 'static> Drop for Devres<T> {
                 // this additional reference count.
                 drop(unsafe { Arc::from_raw(Arc::as_ptr(&self.inner)) });
             }
+        } else {
+            // The release callback is concurrently revoking; wait for it to finish
+            // `drop_in_place()` of the wrapped object before returning.
+            self.inner.revocation.wait_for_completion();
         }
     }
 }
