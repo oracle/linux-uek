@@ -539,6 +539,7 @@ modules-core:
 - xt_owner
 - zstd
 - zstd_compress
+- mstflint_access
 
 /* modules-core: */
 #ifdef Arch_aarch64
@@ -638,7 +639,6 @@ modules-core:
 - mptctl
 - mptsas
 - mptscsih
-- mstflint_access
 - mxm-wmi
 - nd_e820
 - opbmc
