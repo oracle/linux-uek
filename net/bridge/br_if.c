@@ -380,6 +380,17 @@ void br_dev_delete(struct net_device *dev, struct list_head *head)
 	br_recalculate_neigh_suppress_enabled(br);
 
 	br_fdb_delete_by_port(br, NULL, 0, 1);
+	/*
+	 * timer_shutdown_sync(&br->hello_timer);
+	 * timer_shutdown_sync(&br->topology_change_timer);
+	 * timer_shutdown_sync(&br->tcn_timer);
+	*/
+	del_timer_sync(&br->hello_timer);
+	del_timer(&br->hello_timer);
+	del_timer_sync(&br->topology_change_timer);
+	del_timer(&br->topology_change_timer);
+	del_timer_sync(&br->tcn_timer);
+	del_timer(&br->tcn_timer);
 
 	cancel_delayed_work_sync(&br->gc_work);
 
