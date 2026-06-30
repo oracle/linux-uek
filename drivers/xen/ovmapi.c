@@ -41,6 +41,7 @@
 #include <linux/slab.h>
 #include <linux/sched.h>
 #include <linux/syscore_ops.h>
+#include <linux/uaccess.h>
 #include <xen/xen.h>
 #include <xen/xenbus.h>
 #include <xen/interface/io/protocols.h>
@@ -487,8 +488,7 @@ static int ovmapi_get_next_event(struct ovmapi_information *p_ovmapi_info,
 				 void __user *user_buffer)
 {
 	struct ovmapi_event_list *event = NULL;
-	struct ovmapi_event *user_mem_event =
-				(struct ovmapi_event *)user_buffer;
+	struct ovmapi_event __user *user_mem_event = user_buffer;
 	int ret;
 
 	mutex_lock(&p_ovmapi_info->apps_list_mutex);
@@ -501,12 +501,17 @@ static int ovmapi_get_next_event(struct ovmapi_information *p_ovmapi_info,
 			mutex_unlock(&p_ovmapi_info->apps_list_mutex);
 			return ret;
 		}
-		if (user_mem_event->header.type ==
-			OVMAPI_EVT_MORE_PROCESSING) {
-			struct ovmapi_event_more_processing *emp =
-				(struct ovmapi_event_more_processing *)
-				user_mem_event;
-			emp->event_mask = app->event_mask;
+		if (event->event_entry.header.type == OVMAPI_EVT_MORE_PROCESSING) {
+			unsigned long __user *event_mask =
+				(unsigned long __user *)
+				((char __user *)user_buffer +
+				 offsetof(struct ovmapi_event_more_processing,
+					  event_mask));
+
+			if (put_user(app->event_mask, event_mask)) {
+				mutex_unlock(&p_ovmapi_info->apps_list_mutex);
+				return -EFAULT;
+			}
 		}
 		list_del(&event->list);
 		kmem_cache_free(event_cache, event);
