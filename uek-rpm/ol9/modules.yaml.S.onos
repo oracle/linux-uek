@@ -998,6 +998,7 @@ modules-core:
 - i2c-gpio
 - i2c-hid
 - i2c-hid-acpi
+- i2c-hid-acpi-prp0001
 - i2c-i801
 - i2c-isch
 - i2c-ismt

@@ -955,6 +955,7 @@ modules:
 - i2c-gpio
 - i2c-hid
 - i2c-hid-acpi
+- i2c-hid-acpi-prp0001
 - i2c-ljca
 - i2c-mux
 - i2c-mux-mlxcpld
