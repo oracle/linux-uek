@@ -1505,6 +1505,7 @@ BuildKernel() {
     export BPFBOOTSTRAP_LDFLAGS=$(echo "%{__global_ldflags}" | sed -r "s/\-specs=[^\ ]+\/redhat-annobin-cc1//")
 
     CFLAGS="" LDFLAGS="" make \
+      HOST_EXTRACFLAGS="${BPFBOOTSTRAP_CFLAGS}" \
 	  EXTRA_CFLAGS="${BPFBOOTSTRAP_CFLAGS}" \
 	  EXTRA_CXXFLAGS="${BPFBOOTSTRAP_CFLAGS}" \
 	  EXTRA_LDFLAGS="${BPFBOOTSTRAP_LDFLAGS}" \
