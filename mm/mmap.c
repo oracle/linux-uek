@@ -1742,8 +1742,10 @@ static const struct vm_operations_struct rsvd_va_mapping_vmops = {
 #define VA_RSVD_RETAIN	0
 #endif
 
-int install_rsvd_mapping(struct mm_struct *mm, struct vm_area_struct *prev,
-			 unsigned long addr, unsigned long len)
+static int __install_rsvd_mapping(struct mm_struct *mm,
+				  struct vm_area_struct *prev,
+				  unsigned long addr, unsigned long len,
+				  bool enforce_limit)
 {
 #if VM_RSVD_VA
 	int ret;
@@ -1756,6 +1758,9 @@ int install_rsvd_mapping(struct mm_struct *mm, struct vm_area_struct *prev,
 		if (vma != NULL)
 			return 0;
 	}
+
+	if (enforce_limit && mm->map_count >= sysctl_max_map_count)
+		return -ENOMEM;
 
 	vma = vm_area_alloc(mm);
 	if (unlikely(vma == NULL))
@@ -1785,6 +1790,19 @@ out:
 #else
 	return 0;
 #endif
+}
+
+int install_rsvd_mapping(struct mm_struct *mm, struct vm_area_struct *prev,
+			 unsigned long addr, unsigned long len)
+{
+	return __install_rsvd_mapping(mm, prev, addr, len, true);
+}
+
+static int restore_rsvd_mapping(struct mm_struct *mm,
+				struct vm_area_struct *prev,
+				unsigned long addr, unsigned long len)
+{
+	return __install_rsvd_mapping(mm, prev, addr, len, false);
 }
 
 /*
@@ -1859,7 +1877,7 @@ static inline void fixup_rsvd_va(struct mm_struct *mm,
 		addr = vma->vm_start;
 		len = vma->vm_end - addr;
 		find_vma_prev(mm, addr, &prev);
-		install_rsvd_mapping(mm, prev, addr, len);
+		restore_rsvd_mapping(mm, prev, addr, len);
         }
 #endif
 }
@@ -1925,7 +1943,7 @@ static unsigned long __mmap_region(struct file *file, unsigned long addr,
 			 */
 			if (rsvd_va) {
 				find_vma_prev(mm, addr, &prev);
-				install_rsvd_mapping(mm, prev, addr, len);
+				restore_rsvd_mapping(mm, prev, addr, len);
 			}
 			return -ENOMEM;
 		}
@@ -2065,7 +2083,7 @@ unacct_error:
 	/* reinstall reserved VA mapping if this was one originally */
 	if (rsvd_va) {
 		find_vma_prev(mm, addr, &prev);
-		install_rsvd_mapping(mm, prev, addr, len);
+		restore_rsvd_mapping(mm, prev, addr, len);
 	}
 	return error;
 }
