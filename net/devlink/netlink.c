@@ -234,18 +234,18 @@ static int __devlink_nl_pre_doit(struct sk_buff *skb, struct genl_info *info,
 	if (IS_ERR(devlink))
 		return PTR_ERR(devlink);
 
-	info->user_ptr[0] = devlink;
+	devlink_nl_ctx(info)->devlink = devlink;
 	if (flags & DEVLINK_NL_FLAG_NEED_PORT) {
 		devlink_port = devlink_port_get_from_info(devlink, info);
 		if (IS_ERR(devlink_port)) {
 			err = PTR_ERR(devlink_port);
 			goto unlock;
 		}
-		info->user_ptr[1] = devlink_port;
+		devlink_nl_ctx(info)->devlink_port = devlink_port;
 	} else if (flags & DEVLINK_NL_FLAG_NEED_DEVLINK_OR_PORT) {
 		devlink_port = devlink_port_get_from_info(devlink, info);
 		if (!IS_ERR(devlink_port))
-			info->user_ptr[1] = devlink_port;
+			devlink_nl_ctx(info)->devlink_port = devlink_port;
 	}
 	return 0;
 
@@ -286,7 +286,7 @@ static void __devlink_nl_post_doit(struct sk_buff *skb, struct genl_info *info,
 	bool dev_lock = flags & DEVLINK_NL_FLAG_NEED_DEV_LOCK;
 	struct devlink *devlink;
 
-	devlink = info->user_ptr[0];
+	devlink = devlink_nl_ctx(info)->devlink;
 	devl_dev_unlock(devlink, dev_lock);
 	devlink_put(devlink);
 }

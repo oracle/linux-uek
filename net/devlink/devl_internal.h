@@ -146,6 +146,19 @@ int devlink_rel_devlink_handle_put(struct sk_buff *msg, struct devlink *devlink,
 				   bool *msg_updated);
 
 /* Netlink */
+struct devlink_nl_ctx {
+	struct devlink *devlink;
+	struct devlink_port *devlink_port;
+};
+
+static inline struct devlink_nl_ctx *
+devlink_nl_ctx(struct genl_info *info)
+{
+	BUILD_BUG_ON(sizeof(struct devlink_nl_ctx) >
+		     sizeof_field(struct genl_info, ctx));
+	return (struct devlink_nl_ctx *)info->ctx;
+}
+
 enum devlink_multicast_groups {
 	DEVLINK_MCGRP_CONFIG,
 };

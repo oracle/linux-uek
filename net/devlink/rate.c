@@ -239,7 +239,7 @@ int devlink_nl_rate_get_dumpit(struct sk_buff *skb, struct netlink_callback *cb)
 
 int devlink_nl_rate_get_doit(struct sk_buff *skb, struct genl_info *info)
 {
-	struct devlink *devlink = info->user_ptr[0];
+	struct devlink *devlink = devlink_nl_ctx(info)->devlink;
 	struct devlink_rate *devlink_rate;
 	struct sk_buff *msg;
 	int err;
@@ -585,7 +585,7 @@ static bool devlink_rate_set_ops_supported(const struct devlink_ops *ops,
 
 int devlink_nl_rate_set_doit(struct sk_buff *skb, struct genl_info *info)
 {
-	struct devlink *devlink = info->user_ptr[0];
+	struct devlink *devlink = devlink_nl_ctx(info)->devlink;
 	struct devlink_rate *devlink_rate;
 	const struct devlink_ops *ops;
 	int err;
@@ -607,7 +607,7 @@ int devlink_nl_rate_set_doit(struct sk_buff *skb, struct genl_info *info)
 
 int devlink_nl_rate_new_doit(struct sk_buff *skb, struct genl_info *info)
 {
-	struct devlink *devlink = info->user_ptr[0];
+	struct devlink *devlink = devlink_nl_ctx(info)->devlink;
 	struct devlink_rate *rate_node;
 	const struct devlink_ops *ops;
 	int err;
@@ -663,7 +663,7 @@ err_strdup:
 
 int devlink_nl_rate_del_doit(struct sk_buff *skb, struct genl_info *info)
 {
-	struct devlink *devlink = info->user_ptr[0];
+	struct devlink *devlink = devlink_nl_ctx(info)->devlink;
 	struct devlink_rate *rate_node;
 	int err;
 
