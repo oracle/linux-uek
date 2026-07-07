@@ -98,6 +98,7 @@
 #include <linux/scs.h>
 #include <linux/io_uring.h>
 #include <linux/bpf.h>
+#include <linux/string.h>
 #ifndef __GENKSYMS__
 #include <linux/tick.h>
 #endif
@@ -731,6 +732,8 @@ static void mmdrop_async(struct mm_struct *mm)
 
 static inline void free_signal_struct(struct signal_struct *sig)
 {
+	wake_up_pollfree(&sig->wait_chldexit);
+
 	taskstats_tgid_free(sig);
 	sched_autogroup_exit(sig);
 	/*
@@ -1659,10 +1662,18 @@ static int copy_signal(unsigned long clone_flags, struct task_struct *tsk)
 	if (clone_flags & CLONE_THREAD)
 		return 0;
 
-	sig = kmem_cache_zalloc(signal_cachep, GFP_KERNEL);
-	tsk->signal = sig;
+	sig = kmem_cache_alloc(signal_cachep, GFP_KERNEL);
 	if (!sig)
 		return -ENOMEM;
+
+	/*
+	 * signal_cachep is SLAB_TYPESAFE_BY_RCU, so wait_chldexit must remain
+	 * initialized by signal_ctor() across object reuse.
+	 */
+	memset(sig, 0, offsetof(struct signal_struct, wait_chldexit));
+	memset_after(sig, 0, wait_chldexit);
+
+	tsk->signal = sig;
 
 	sig->nr_threads = 1;
 	atomic_set(&sig->live, 1);
@@ -1672,7 +1683,6 @@ static int copy_signal(unsigned long clone_flags, struct task_struct *tsk)
 	sig->thread_head = (struct list_head)LIST_HEAD_INIT(tsk->thread_node);
 	tsk->thread_node = (struct list_head)LIST_HEAD_INIT(sig->thread_head);
 
-	init_waitqueue_head(&sig->wait_chldexit);
 	sig->curr_target = tsk;
 	init_sigpending(&sig->shared_pending);
 	INIT_HLIST_HEAD(&sig->multiprocess);
@@ -3011,6 +3021,13 @@ static void sighand_ctor(void *data)
 	init_waitqueue_head(&sighand->signalfd_wqh);
 }
 
+static void signal_ctor(void *data)
+{
+	struct signal_struct *sig = data;
+
+	init_waitqueue_head(&sig->wait_chldexit);
+}
+
 void __init mm_cache_init(void)
 {
 	unsigned int mm_size;
@@ -3038,8 +3055,8 @@ void __init proc_caches_init(void)
 			SLAB_ACCOUNT, sighand_ctor);
 	signal_cachep = kmem_cache_create("signal_cache",
 			sizeof(struct signal_struct), 0,
-			SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_ACCOUNT,
-			NULL);
+			SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_ACCOUNT|
+			SLAB_TYPESAFE_BY_RCU, signal_ctor);
 	files_cachep = kmem_cache_create("files_cache",
 			sizeof(struct files_struct), 0,
 			SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_ACCOUNT,
