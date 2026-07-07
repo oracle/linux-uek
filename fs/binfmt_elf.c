@@ -757,78 +757,106 @@ static int check_preserved_mem_ok(struct linux_binprm *bprm, const char *data, c
 #define MAX_RSVD_VA_RANGES	64
 #define RSVD_VA_STRING		"Reserved VA"
 #define SZ_RSVD_VA_STRING	sizeof(RSVD_VA_STRING)
+#define NT_RSVD_VA		0x07c10001
 
-static int reserve_va_range(const char *note_seg, const size_t note_size)
+static int reserve_va_range(const char *note_seg, const size_t note_seg_size)
 {
+	const char *note_seg_end;
 	struct elf_note *note;
 	int retval = 0;
+	int nr_total_ranges = 0;
 
+	if (!note_seg || !note_seg_size)
+		return 0;
+
+	note_seg_end = note_seg + note_seg_size;
 	note = (struct elf_note *)note_seg;
-	while ((char *)note + sizeof(struct elf_note) <
-	       (char *)(note_seg + note_size)) {
-		char *name;
+	while (((char *)note + sizeof(struct elf_note)) < note_seg_end) {
+		char *note_end, *name;
 		unsigned long *val;
 		unsigned long nentry, i;
+		int nr_ranges;
 
-		if (note->n_type != 0x07c10001)
+		note_end = ((char *)note + sizeof(struct elf_note) +
+				roundup((unsigned long)note->n_namesz, 4) +
+				roundup((unsigned long)note->n_descsz, 4));
+
+		/*
+		 * The ELF spec says that both name and type must be
+		 * recognized before assuming the format of note descriptor
+		 * data. Ignore notes where either value does not or
+		 * cannot be matched.
+		 */
+		if (note->n_type != NT_RSVD_VA)
 			goto cont_loop;
 
-		/* Sanity check for malformed note entry */
-		if (note->n_namesz > SZ_RSVD_VA_STRING) {
+		if (note->n_namesz != SZ_RSVD_VA_STRING)
+			goto cont_loop;
+
+		name = (char *)note + sizeof(struct elf_note);
+		if (name + SZ_RSVD_VA_STRING > note_seg_end)
+			goto cont_loop;
+
+		if (strncmp(name, RSVD_VA_STRING, SZ_RSVD_VA_STRING) != 0)
+			goto cont_loop;
+
+		/*
+		 * Does the ELF note header plus the advertised sizes for
+		 * the name and data associated with it fit within the note
+		 * segment?
+		 */
+		if (note_end > note_seg_end) {
 			retval = -ENOEXEC;
 			goto out;
 		}
 
-		name = (char *)note + sizeof(struct elf_note);
-		if (strncmp(name, RSVD_VA_STRING, SZ_RSVD_VA_STRING) == 0) {
-			nentry = note->n_descsz/sizeof(void *);
-			val = (unsigned long *)(name +
-						roundup(note->n_namesz, 4));
-			/*
-			 * Check if right number of address
-			 * entries exist in note section
-			 */
-			if (((nentry % 2) != 0) ||
-				((nentry / 2) > MAX_RSVD_VA_RANGES)) {
+		/*
+		 * The descriptor data is expected to contain pairs of
+		 * native-word addresses, with each pair representing the
+		 * start and end addresses of a VA range to reserve.
+		 */
+		if (!IS_ALIGNED(note->n_descsz, sizeof(void *) * 2)) {
+			retval = -ENOEXEC;
+			goto out;
+		}
+
+		nentry = note->n_descsz / sizeof(void *);
+		nr_ranges = nentry / 2;
+		if (nr_total_ranges + nr_ranges > MAX_RSVD_VA_RANGES) {
+			retval = -ENOEXEC;
+			goto out;
+		}
+
+		val = (unsigned long *)(name + roundup(note->n_namesz, 4));
+		for (i = 0 ; i < nentry; i += 2) {
+			unsigned long range1, range2, size;
+			struct mm_struct *mm = current->mm;
+
+			range1 = PAGE_ALIGN((*val++) - PAGE_SIZE + 1);
+			range2 = PAGE_ALIGN(*val++);
+			size = range2 - range1;
+
+			/* Validate the address range being reserved */
+			if (range2 <= range1 ||
+			    !access_ok((void *)range1, size)) {
 				retval = -ENOEXEC;
 				goto out;
 			}
-			for (i = 0 ; i < nentry; i += 2) {
-				unsigned long range1, range2;
-				struct mm_struct *mm = current->mm;
 
-				/*
-				 * Ensure we can access two address entries
-				 * in this note segment safely
-				 */
-				if ((char *)(val + 1) >=
-					((char *)note_seg + note_size)) {
-					retval = -ENOEXEC;
-					goto out;
-				}
-				range1 = PAGE_ALIGN((*val++) - PAGE_SIZE + 1);
-				range2 = PAGE_ALIGN(*val++);
+			/*
+			 * install_rsvd_mapping() requires the mmap
+			 * write lock be held by the caller.
+			 */
+			down_write(&mm->mmap_sem);
+			retval = install_rsvd_mapping(mm, NULL, range1, size);
+			up_write(&mm->mmap_sem);
 
-				/* Validate the address range being reserved */
-				if ((range2 <= range1) ||
-					(range2 > user_addr_max())) {
-					retval = -ENOEXEC;
-					goto out;
-				}
-
-				down_write(&mm->mmap_sem);
-				retval = install_rsvd_mapping(mm, NULL, range1,
-							      (range2-range1));
-				up_write(&mm->mmap_sem);
-				if (retval < 0)
-					goto out;
-			}
+			if (retval < 0)
+				goto out;
 		}
+		nr_total_ranges += nr_ranges;
 cont_loop:
-		note = (struct elf_note *)((char *)note +
-						sizeof(struct elf_note) +
-						roundup(note->n_namesz, 4) +
-						roundup(note->n_descsz, 4));
+		note = (struct elf_note *)note_end;
 	}
 
 out:
