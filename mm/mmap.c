@@ -74,8 +74,8 @@ static bool ignore_rlimit_data;
 core_param(ignore_rlimit_data, ignore_rlimit_data, bool, 0644);
 
 static void unmap_region(struct mm_struct *mm,
-		struct vm_area_struct *vma, struct vm_area_struct *prev,
-		unsigned long start, unsigned long end);
+		struct vm_area_struct *vma, unsigned long start,
+		unsigned long end, unsigned long floor, unsigned long ceiling);
 
 /* description of effects of mapping type and prot in current implementation.
  * this is due to the limited x86 page protection hardware.  The expected
@@ -1872,7 +1872,7 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 		struct list_head *uf)
 {
 	struct mm_struct *mm = current->mm;
-	struct vm_area_struct *vma, *prev;
+	struct vm_area_struct *vma, *prev, *next;
 	bool writable_file_mapping = false;
 	int error;
 	bool rsvd_va = false;
@@ -2048,7 +2048,10 @@ unmap_and_free_vma:
 	fput(file);
 
 	/* Undo any partial mapping done by a device driver. */
-	unmap_region(mm, vma, prev, vma->vm_start, vma->vm_end);
+	next = prev ? prev->vm_next : mm->mmap;
+	unmap_region(mm, vma, vma->vm_start, vma->vm_end,
+		     prev ? prev->vm_end : FIRST_USER_ADDRESS,
+		     next ? next->vm_start : USER_PGTABLES_CEILING);
 	if (writable_file_mapping)
 		mapping_unmap_writable(file->f_mapping);
 	if (vm_flags & VM_DENYWRITE)
@@ -2789,10 +2792,9 @@ static void remove_vma_list(struct mm_struct *mm, struct vm_area_struct *vma)
  * Called with the mm semaphore held.
  */
 static void unmap_region(struct mm_struct *mm,
-		struct vm_area_struct *vma, struct vm_area_struct *prev,
-		unsigned long start, unsigned long end)
+		struct vm_area_struct *vma, unsigned long start,
+		unsigned long end, unsigned long floor, unsigned long ceiling)
 {
-	struct vm_area_struct *next = prev ? prev->vm_next : mm->mmap;
 	struct mmu_gather tlb;
 	struct vm_area_struct *cur_vma;
 
@@ -2816,8 +2818,7 @@ static void unmap_region(struct mm_struct *mm,
 		}
 	}
 
-	free_pgtables(&tlb, vma, prev ? prev->vm_end : FIRST_USER_ADDRESS,
-				 next ? next->vm_start : USER_PGTABLES_CEILING);
+	free_pgtables(&tlb, vma, floor, ceiling);
 	tlb_finish_mmu(&tlb, start, end);
 }
 
@@ -2953,8 +2954,8 @@ int split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 		struct list_head *uf, bool downgrade)
 {
-	unsigned long end;
-	struct vm_area_struct *vma, *prev, *last;
+	unsigned long end, floor, ceiling;
+	struct vm_area_struct *vma, *prev, *last, *next;
 	bool rsvd_va_norelink = false;
 
 	if ((offset_in_page(start)) || start > TASK_SIZE || len > TASK_SIZE-start)
@@ -3064,13 +3065,17 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	if (!detach_vmas_to_be_unmapped(mm, vma, prev, end))
 		downgrade = false;
 
+	next = prev ? prev->vm_next : mm->mmap;
+	floor = prev ? prev->vm_end : FIRST_USER_ADDRESS;
+	ceiling = next ? next->vm_start : USER_PGTABLES_CEILING;
+
 	if (!rsvd_va_norelink)
 		fixup_rsvd_va(mm, vma);
 
 	if (downgrade)
 		downgrade_write(&mm->mmap_sem);
 
-	unmap_region(mm, vma, prev, start, end);
+	unmap_region(mm, vma, start, end, floor, ceiling);
 
 	/* Fix up all other VM information */
 	remove_vma_list(mm, vma);
