@@ -115,6 +115,7 @@ modules-core:
 - drm_kms_helper
 - drm_shmem_helper
 - drm_ttm_helper
+- drm_client_lib
 - drm_vram_helper
 - dummy
 - ebtable_broute
@@ -140,12 +141,12 @@ modules-core:
 - fuse
 - garp
 - geneve
+- gf128mul
 - gnss
 - grace
 - gre
 - gve
 - hid-hyperv
-- hkdf
 - hv_balloon
 - hv_netvsc
 - hv_sock
@@ -257,7 +258,6 @@ modules-core:
 - megaraid_sas
 - mgag200
 - mhi
-- michael_mic
 - mii
 - mip6
 - mlx4_core
@@ -450,6 +450,7 @@ modules-core:
 - serpent_generic
 - ses
 - sit
+- smbdirect
 - squashfs
 - st
 - sunrpc
@@ -553,10 +554,10 @@ modules-core:
 - ffa-core
 - ffa-module
 - fwctl
-- gf128mul
 - ghash-ce
 - i2c-designware-core
 - i2c-designware-platform
+- libgf128hash
 - sbsa_gwdt
 - scsi_dh_alua
 - scsi_dh_emc
@@ -570,7 +571,6 @@ modules-core:
 - tpm_tis
 - tpm_tis_core
 - xgene-hwmon
-- xor-neon
 #endif /* Arch_aarch64 */
 
 /* modules-core: */
@@ -595,7 +595,6 @@ modules-core:
 - dax_hmem
 - dax_pmem
 - dca
-- des3_ede-x86_64
 - device_dax
 - dm-mod
 - dm-zoned
@@ -603,7 +602,8 @@ modules-core:
 - edac_mce_amd
 - erst-dbg
 - ext4
-- ghash-clmulni-intel
+- fixed_phy
+- fsdev_dax
 - i10nm_edac
 - i2c-i801
 - i2c-piix4
@@ -698,7 +698,6 @@ modules:
 - aacraid
 - ac97_bus
 - acard-ahci
-- acenic
 - acpi_power_meter
 - ad7414
 - ad7418
@@ -846,7 +845,6 @@ modules:
 - gen_probe
 - genet
 - gfs2
-- ghash-generic
 - gl518sm
 - gl520sm
 - gl620a
@@ -1568,6 +1566,7 @@ modules:
 - at25
 - at86rf230
 - atusb
+- aux-hpd-bridge
 - axp20x-regulator
 - axp20x-rsb
 - b53_common
@@ -1656,7 +1655,6 @@ modules:
 - gpio_backlight
 - gpio_wdt
 - gtp
-- hamachi
 - hdma
 - hdma_mgmt
 - hi6220-mailbox
@@ -1754,7 +1752,6 @@ modules:
 - mtk-ge
 - mtk-phy-lib
 - mux-adg792a
-- mux-core
 - mux-gpio
 - mux-mmio
 - mvneta
@@ -1908,7 +1905,6 @@ modules:
 - xillybus_class
 - xillybus_core
 - xillybus_pcie
-- yellowfin
 #endif /* Arch_aarch64 */
 
 /* modules: */
@@ -2165,7 +2161,6 @@ modules:
 - nvidia-wmi-ec-backlight
 - nvidiafb
 - of_xilinx_wdt
-- opa_vnic
 - p4-clockmod
 - padlock-aes
 - padlock-sha
@@ -2212,7 +2207,6 @@ modules:
 - pinctrl-lewisburg
 - pinctrl-sunrisepoint
 - pinctrl-tigerlake
-- platform_profile
 - platform_temperature_control
 - pmc551
 - pmt_class
@@ -2390,7 +2384,6 @@ modules-extra:
 - c_can_platform
 - ch_ipsec
 - ch_ktls
-- clip
 - cls_basic
 - cls_route
 - dm-historical-service-time
@@ -2423,7 +2416,6 @@ modules-extra:
 - l2tp_ip6
 - l2tp_netlink
 - l2tp_ppp
-- lec
 - leds-lt3593
 - mcp251xfd
 - megaraid_mbox
@@ -2801,7 +2793,6 @@ modules-deprecated:
 /* modules-deprecated: */
 #ifdef Arch_x86_64
 - adm8211
-- atmtcp
 - b2c2-flexcop-usb
 - parport_pc
 - parport_serial
@@ -3657,7 +3648,6 @@ modules-desktop:
 - snd-pci-ps
 - snd-ps-pdm-dma
 - snd-ps-sdw-dma
-- snd-rpl-pci-acp6x
 - snd-soc-acp6x-mach
 - snd-soc-acpi
 - snd-soc-acpi-amd-match
