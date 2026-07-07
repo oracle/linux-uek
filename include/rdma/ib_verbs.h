@@ -1548,6 +1548,8 @@ struct ib_shpd {
 	struct ib_device       *device;
 	int			ref_count; /* count procs sharing the pd*/
 	u64			share_key;
+	struct user_namespace	*user_ns;
+	kuid_t			owner;
 };
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
