@@ -824,7 +824,8 @@ static int ovmapi_send_dom0_message(struct ovmapi_information *p_ovmapi_info,
 
 	xenbus_write(XBT_NIL, pathname, "", name);
 
-	for (n = 0; n <= (value_len / OVMM_MAX_CHARS_PER_SEQUENCE); n++) {
+	for (n = 0; n < DIV_ROUND_UP(value_len,
+				      OVMM_MAX_CHARS_PER_SEQUENCE); n++) {
 		snprintf(number, sizeof(number), "%ld", n);
 		save = '\0';
 		if (value_len > ((n + 1) * OVMM_MAX_CHARS_PER_SEQUENCE)) {
@@ -1028,7 +1029,7 @@ static long ovmapi_ioctl(struct file *file, unsigned int cmd,
 		name  = kmem_cache_alloc(name_cache,  GFP_KERNEL);
 		if (!name)
 			return -ENOMEM;
-		value = kmalloc(message.value_size, GFP_KERNEL);
+		value = kzalloc(message.value_size + 1, GFP_KERNEL);
 		if (!value) {
 			status = -ENOMEM;
 			goto out;
