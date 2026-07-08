@@ -3028,12 +3028,16 @@ static struct file *do_async_mmap_readahead(struct vm_fault *vmf,
 }
 
 /*
- * Check if given vma at offset is eligible for THP.
- * Only candidates are vmas of regular files mapped executable.
- * To avoid contention that can occur when there are large  number of
+ * check_vma_thp_eligible - Check if given 'vma' at 'offset' is eligible
+ * for THP. An eligible vma must be of a regular file mapped executable.
+ *
+ * Note, to avoid contention that can occur when there are large number of
  * processes executing from the same executable, check page mapcount on
  * the small page found, and abort THP creation if it exceeds max_pte_shared
  * threshold.
+ *
+ * Return true if vma is eligible and set 'thpoff' to the starting index;
+ * otherwise, return false.
  */
 static inline bool check_vma_thp_eligible(struct vm_area_struct *vma,
 		struct page *page, pgoff_t offset, pgoff_t *thpoff)
@@ -3049,9 +3053,7 @@ static inline bool check_vma_thp_eligible(struct vm_area_struct *vma,
 #else
 	return false;
 #endif
-	/* check if current page is already THP */
-	if (page != NULL && PageTransCompound(page))
-		return false;
+
 	if (!vma->vm_file)
 		return false;
 	if (shmem_file(vma->vm_file))
@@ -3107,30 +3109,32 @@ vm_fault_t filemap_fault(struct vm_fault *vmf)
 	struct page *page;
 	vm_fault_t ret = 0;
 	bool mapping_locked = false;
-	bool triedhuge = false;
 
 	max_off = DIV_ROUND_UP(i_size_read(inode), PAGE_SIZE);
 	if (unlikely(offset >= max_off))
 		return VM_FAULT_SIGBUS;
 
-retry_getpage:
 	/*
 	 * Do we have something in the page cache already?
 	 */
 	page = find_get_page(mapping, offset);
 
 	/* Try to create a THP page if applicable */
-	if (!triedhuge && !(vmf->flags & FAULT_FLAG_TRIED) &&
-		check_vma_thp_eligible(vmf->vma, page, offset, &thpoff) &&
-		(fpin = maybe_unlock_mmap_for_io(vmf, fpin)) != NULL) {
+	if (fault_flag_allow_retry_first(vmf->flags) &&
+		((page == NULL) || !PageTransCompound(page)) &&
+		check_vma_thp_eligible(vmf->vma, page, offset, &thpoff)) {
+		/* caching 'mm' before possibly dropping the mmap_lock */
+		struct mm_struct *mm = vmf->vma->vm_mm;
 
-		if (likely(page))
-			put_page(page);
-
-		hugepage_scan_file(vmf, file, thpoff);
-		triedhuge = true;
-		goto retry_getpage;
-        }
+		fpin = maybe_unlock_mmap_for_io(vmf, fpin);
+		if (fpin != NULL) {
+			if (page)
+				put_page(page);
+			hugepage_scan_file(mm, file, thpoff);
+			fput(fpin);
+			return VM_FAULT_RETRY;
+		}
+	}
 
 	if (likely(page)) {
 		/*
@@ -3384,8 +3388,8 @@ vm_fault_t filemap_map_pages(struct vm_fault *vmf,
 	}
 
 	/* Attempt to create THP if eligible */
-	if (!(vmf->flags & FAULT_FLAG_TRIED) &&
-		 check_vma_thp_eligible(vma, head, vmf->pgoff, NULL)) {
+	if (!(vmf->flags & FAULT_FLAG_TRIED) && !PageTransCompound(head) &&
+	    check_vma_thp_eligible(vma, head, vmf->pgoff, NULL)) {
 		unlock_page(head);
 		put_page(head);
 		goto out;

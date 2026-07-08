@@ -2174,15 +2174,15 @@ static void khugepaged_scan_file(struct mm_struct *mm,
 	/* TODO: tracepoints */
 }
 
-void hugepage_scan_file(struct vm_fault *vmf, struct file *file, pgoff_t thpoff)
+void hugepage_scan_file(struct mm_struct *mm, struct file *file, pgoff_t thpoff)
 {
 	struct page *hpage = NULL;
-	khugepaged_scan_file(vmf->vma->vm_mm, file, thpoff, &hpage, false);
+	khugepaged_scan_file(mm, file, thpoff, &hpage, false);
 	if (!IS_ERR_OR_NULL(hpage))
 		put_page(hpage);
 }
 #else
-void hugepage_scan_file(struct vm_fault *vmf, struct file *file, pgoff_t thpoff)
+void hugepage_scan_file(struct mm_struct *mm, struct file *file, pgoff_t thpoff)
 {
 }
 static void khugepaged_scan_file(struct mm_struct *mm,
