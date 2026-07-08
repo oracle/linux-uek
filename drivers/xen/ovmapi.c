@@ -138,6 +138,10 @@ static int ovmapi_register_app(struct ovmapi_information *p_ovmapi_info,
 			       struct ovmapi_app_entry *app)
 {
 	mutex_lock(&p_ovmapi_info->apps_list_mutex);
+	if (app->registered) {
+		mutex_unlock(&p_ovmapi_info->apps_list_mutex);
+		return -EALREADY;
+	}
 	app->registered = true;
 	list_add_tail(&app->list, &p_ovmapi_info->registered_apps_list);
 	mutex_unlock(&p_ovmapi_info->apps_list_mutex);
@@ -151,7 +155,10 @@ static int ovmapi_unregister_app(struct ovmapi_information *p_ovmapi_info,
 	struct ovmapi_event_list *event, *next;
 
 	mutex_lock(&p_ovmapi_info->apps_list_mutex);
-	app->registered = false;
+	if (app->registered) {
+		app->registered = false;
+		list_del_init(&app->list);
+	}
 	list_for_each_entry_safe(event, next, &app->events_list, list) {
 		list_del(&event->list);
 		kmem_cache_free(event_cache, event);
