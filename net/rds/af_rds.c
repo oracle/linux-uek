@@ -39,6 +39,8 @@
 #include <linux/poll.h>
 #include <linux/version.h>
 #include <linux/random.h>
+#include <linux/mutex.h>
+#include <linux/trace.h>
 #include <asm/ioctls.h>
 #include <linux/sockios.h>
 #include <net/sock.h>
@@ -75,6 +77,53 @@ module_param_cb(rds_rt_debug_bitmap, &rt_debug_bitmap_ops,
 		&kernel_rds_rt_debug_bitmap, 0644);
 MODULE_PARM_DESC(rds_rt_debug_bitmap,
 		 "RDS Runtime Debug Message Enabling Bitmap [default 0x488B]");
+
+static struct trace_array *rds_trace_array;
+static DEFINE_MUTEX(rds_trace_mutex);
+static bool rds_trace_exiting;
+
+static int rds_trace_set_clr_event_locked(const char *event, bool enable)
+{
+	if (rds_trace_exiting)
+		return -ENODEV;
+
+	if (rds_trace_array)
+		return trace_array_set_clr_event(rds_trace_array, "rds", event,
+						 enable);
+
+	return trace_set_clr_event("rds", event, enable ? 1 : 0);
+}
+
+static void rds_trace_init(void)
+{
+	mutex_lock(&rds_trace_mutex);
+	rds_trace_exiting = false;
+	rds_trace_array = trace_array_get_by_name("rds", "rds");
+	mutex_unlock(&rds_trace_mutex);
+
+	if (!rds_trace_array)
+		pr_warn("RDS: Unable to create rds trace instance, using global trace buffer\n");
+}
+
+static void rds_trace_exit(void)
+{
+	struct trace_array *tr;
+	int ret;
+
+	mutex_lock(&rds_trace_mutex);
+	rds_trace_exiting = true;
+	tr = rds_trace_array;
+	rds_trace_array = NULL;
+
+	if (tr) {
+		trace_array_put(tr);
+		ret = trace_array_destroy(tr);
+		if (ret && ret != -ENODEV)
+			pr_warn("RDS: Unable to destroy rds trace instance: %d\n",
+				ret);
+	}
+	mutex_unlock(&rds_trace_mutex);
+}
 
 struct rt_debug_tp {
 	int flag;
@@ -123,19 +172,23 @@ void rds_rt_debug_tp_enable(void)
 {
 	int enable, i, j;
 
+	mutex_lock(&rds_trace_mutex);
+	rds_trace_set_clr_event_locked(NULL, false);
 	if (kernel_rds_rt_debug_bitmap & RDS_RTD_ALL) {
-		trace_set_clr_event("rds", NULL, 1);
+		rds_trace_set_clr_event_locked(NULL, true);
+		mutex_unlock(&rds_trace_mutex);
 		return;
 	}
 
-	trace_set_clr_event("rds", NULL, 0);
 	for (i = 0; i < ARRAY_SIZE(rt_debug_tp_map); i++) {
 		enable = (kernel_rds_rt_debug_bitmap &
 			  rt_debug_tp_map[i].flag) != 0;
 		for (j = 0; rt_debug_tp_map[i].tps[j] != NULL; j++)
-			trace_set_clr_event("rds",
-					    rt_debug_tp_map[i].tps[j], enable);
+			rds_trace_set_clr_event_locked(rt_debug_tp_map[i].tps[j],
+						       enable);
 	}
+
+	mutex_unlock(&rds_trace_mutex);
 }
 EXPORT_SYMBOL_GPL(rds_rt_debug_tp_enable);
 
@@ -1501,6 +1554,7 @@ static void rds_qos_threshold_init(void)
 
 static void __exit rds_exit(void)
 {
+	rds_trace_exit();
 	sock_unregister(rds_family_ops.family);
 	proto_unregister(&rds_proto);
 	rds_unreg_pernet();
@@ -1528,13 +1582,16 @@ static int __init rds_init(void)
 	for (i = 0; i < RDS_NMBR_WAITQ; ++i)
 		init_waitqueue_head(rds_poll_waitq + i);
 
+	rds_trace_init();
 	rds_rt_debug_tp_enable();
 
 	rds_rs_buf_info_slab = kmem_cache_create("rds_rs_buf_info",
 						 sizeof(struct rs_buf_info),
 						 0, SLAB_HWCACHE_ALIGN, NULL);
-	if (!rds_rs_buf_info_slab)
-		return -ENOMEM;
+	if (!rds_rs_buf_info_slab) {
+		ret = -ENOMEM;
+		goto out_trace;
+	}
 
 	ret = rds_reg_pernet();
 	if (ret)
@@ -1582,6 +1639,9 @@ out_net:
 
 out_slab:
 	kmem_cache_destroy(rds_rs_buf_info_slab);
+
+out_trace:
+	rds_trace_exit();
 
 out:
 	return ret;
