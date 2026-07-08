@@ -72,6 +72,16 @@ module_param(debug_level, int, S_IRUGO|S_IWUSR);
 
 #define OVMLOG(lvl, msg, args...) ovmapi_debug_out(lvl, msg, ## args);
 
+static void ovmapi_free_events(struct ovmapi_app_entry *app)
+{
+	struct ovmapi_event_list *event, *next;
+
+	list_for_each_entry_safe(event, next, &app->events_list, list) {
+		list_del(&event->list);
+		kmem_cache_free(event_cache, event);
+	}
+}
+
 static int ovmapi_open(struct inode *inode, struct file *file)
 {
 	struct ovmapi_app_entry *app;
@@ -98,7 +108,11 @@ static int ovmapi_release(struct inode *inode, struct file *file)
 	struct ovmapi_app_entry *app = file->private_data;
 
 	mutex_lock(&ovmapi_info.apps_list_mutex);
-	list_del(&app->list);
+	if (app->registered) {
+		app->registered = false;
+		list_del_init(&app->list);
+	}
+	ovmapi_free_events(app);
 	mutex_unlock(&ovmapi_info.apps_list_mutex);
 	kfree(app);
 
@@ -152,17 +166,12 @@ static int ovmapi_register_app(struct ovmapi_information *p_ovmapi_info,
 static int ovmapi_unregister_app(struct ovmapi_information *p_ovmapi_info,
 				 struct ovmapi_app_entry *app)
 {
-	struct ovmapi_event_list *event, *next;
-
 	mutex_lock(&p_ovmapi_info->apps_list_mutex);
 	if (app->registered) {
 		app->registered = false;
 		list_del_init(&app->list);
 	}
-	list_for_each_entry_safe(event, next, &app->events_list, list) {
-		list_del(&event->list);
-		kmem_cache_free(event_cache, event);
-	}
+	ovmapi_free_events(app);
 	mutex_unlock(&p_ovmapi_info->apps_list_mutex);
 	wake_up(&app->event_waitqueue);
 	if (app->async_queue)
