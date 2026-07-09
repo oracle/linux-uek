@@ -1852,7 +1852,7 @@ static void deallocate_hiq_sdma_mqd(struct kfd_dev *dev,
 {
 	WARN(!mqd, "No hiq sdma mqd trunk to free");
 
-	amdgpu_amdkfd_free_gtt_mem(dev->kgd, &mqd->gtt_mem);
+	amdgpu_amdkfd_free_gtt_mem(dev->kgd, mqd->gtt_mem);
 }
 
 struct device_queue_manager *device_queue_manager_init(struct kfd_dev *dev)
