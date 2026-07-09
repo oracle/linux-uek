@@ -356,6 +356,7 @@ xfs_reflink_allocate_cow(
 	xfs_fileoff_t		offset_fsb = imap->br_startoff;
 	xfs_filblks_t		count_fsb = imap->br_blockcount;
 	struct xfs_trans	*tp;
+	unsigned int		seq_before = READ_ONCE(ip->i_df.if_seq);
 	int			nimaps, error = 0;
 	bool			found;
 	xfs_filblks_t		resaligned;
@@ -388,6 +389,22 @@ xfs_reflink_allocate_cow(
 	error = xfs_qm_dqattach_locked(ip, false);
 	if (error)
 		goto out_trans_cancel;
+
+	/*
+	 * The data fork mapping may have changed while we dropped the ILOCK
+	 * (a racing O_DIRECT writer under IOLOCK_SHARED can complete a full
+	 * CoW cycle including xfs_reflink_end_cow(), which remaps this offset
+	 * and drops the refcount of the old shared block).  Re-read it so the
+	 * shared-status recheck below and the caller's in-place iomap both
+	 * operate on the current mapping rather than a stale physical block.
+	 */
+	if (seq_before != READ_ONCE(ip->i_df.if_seq)) {
+		nimaps = 1;
+		error = xfs_bmapi_read(ip, imap->br_startoff,
+				imap->br_blockcount, imap, &nimaps, 0);
+		if (error)
+			goto out_trans_cancel;
+	}
 
 	/*
 	 * Check for an overlapping extent again now that we dropped the ilock.
