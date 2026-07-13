@@ -123,8 +123,7 @@ static u8 get_fan_id(struct device *dev, struct device_attribute *attr)
    u8 *reg_id = pdata->gpio_base + FAN_ID_BASE_ADDR + FAN_ID_ADDR_OFFSET * fan_id;
    u8 res = 0;
    for(num_id = 0; num_id < NUM_FAN_ID_PINS; num_id++) {
-      reg_id += num_id;
-      res |= ((ioread8(reg_id) >> 7) & 0x1) << num_id;
+      res |= ((ioread8(reg_id + num_id) >> 7) & 0x1) << num_id;
    }
    return res;
 }
