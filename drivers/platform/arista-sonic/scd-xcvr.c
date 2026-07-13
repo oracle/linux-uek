@@ -187,8 +187,17 @@ static int scd_xcvr_add(struct scd_context *ctx, const char *prefix,
    return 0;
 
 fail:
-   if (xcvr)
+   if (xcvr) {
+      /*
+       * scd_xcvr_register() may have created some sysfs files before
+       * failing; each embeds a pointer back into xcvr. Remove them
+       * before freeing xcvr so no dangling attribute survives.
+       * scd_xcvr_unregister() only touches slots whose back-pointer was
+       * set, so it is safe even when nothing was registered.
+       */
+      scd_xcvr_unregister(ctx, xcvr);
       kfree(xcvr);
+   }
 
    return err;
 }
