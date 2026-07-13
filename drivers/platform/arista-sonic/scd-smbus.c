@@ -691,6 +691,17 @@ int scd_smbus_master_add(struct scd_context *ctx, u32 addr, u32 id, u32 bus_coun
       }
    }
 
+   /*
+    * The parse layer only bounds the base addr against res_size; the
+    * derived register offsets (req/cs/resp) are computed here and must
+    * also stay within the mapped resource.  Reject any addr whose
+    * highest derived offset would reach res_size (the register
+    * accessors require offset < mem_len == res_size).
+    */
+   if ((size_t)addr + SMBUS_RESPONSE_OFFSET >= ctx->res_size) {
+      return -EINVAL;
+   }
+
    master = kzalloc(sizeof(*master), GFP_KERNEL);
    if (!master) {
       return -ENOMEM;

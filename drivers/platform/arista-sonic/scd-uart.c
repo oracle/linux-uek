@@ -486,6 +486,18 @@ int scd_uart_add(struct scd_context *ctx, u32 addr, u32 id)
 
    dev_dbg(get_scd_dev(ctx), "adding uart port %u at addr %#x\n", id, addr);
 
+   /*
+    * The parse layer only bounds the base addr against res_size; the
+    * derived rx/tx register offsets are computed here and must also stay
+    * within the mapped resource.  The highest access is on the tx block
+    * (SCD_UART_TX_ADDR_OFFSET) at its last sub-register
+    * (SCD_UART_TX_SM_RES_OFFSET).  The register accessors require
+    * offset < mem_len == res_size.
+    */
+   if ((size_t)addr + SCD_UART_TX_ADDR_OFFSET + SCD_UART_TX_SM_RES_OFFSET >=
+       ctx->res_size)
+      return -EINVAL;
+
    port = kzalloc(sizeof(*port), GFP_KERNEL);
    if (!port)
       return -ENOMEM;

@@ -249,6 +249,16 @@ int scd_spi_controller_add(struct scd_context *ctx, u32 addr, u32 reg_stride,
    dev_dbg(dev, "adding spi controller %d at addr %#x\n",
            bus, addr);
 
+   /*
+    * The parse layer only bounds the base addr and reg_stride against
+    * res_size individually; the actual register accesses are at
+    * csr_addr + {0, reg_stride, 2 * reg_stride}, so the highest derived
+    * offset must also stay within the mapped resource.  The register
+    * accessors require offset < mem_len == res_size.
+    */
+   if ((size_t)addr + 2 * (size_t)reg_stride >= ctx->res_size)
+      return -EINVAL;
+
    controller = spi_alloc_master(dev, sizeof(struct scd_spi_controller));
    if (!controller) {
       return -ENOMEM;
