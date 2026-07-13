@@ -2969,7 +2969,7 @@ static const struct proc_ops scd_dump_file_ops = {
 };
 
 static struct proc_dir_entry *scd_procfs_create(void) {
-   return proc_create(SCD_MODULE_NAME, 0, NULL, &scd_dump_file_ops);
+   return proc_create(SCD_MODULE_NAME, 0400, NULL, &scd_dump_file_ops);
 }
 
 static void scd_procfs_remove(void) {
