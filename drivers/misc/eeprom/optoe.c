@@ -1180,6 +1180,14 @@ static int optoe_probe(struct i2c_client *client)
 		}
 	}
 
+	/*
+	 * Wire up the client's private data before publishing any sysfs
+	 * files.  optoe is fully initialised at this point, and the bin/attr
+	 * handlers dereference i2c_get_clientdata() without a NULL check, so
+	 * this must happen before the files become openable.
+	 */
+	i2c_set_clientdata(client, optoe);
+
 	/* create the sysfs eeprom file */
 	err = sysfs_create_bin_file(&client->dev.kobj, &optoe->bin);
 	if (err)
@@ -1202,8 +1210,6 @@ static int optoe_probe(struct i2c_client *client)
 		goto err_sysfs_cleanup;
 	}
 #endif
-
-	i2c_set_clientdata(client, optoe);
 
 	dev_info(&client->dev, "%zu byte %s EEPROM, %s\n",
 		optoe->bin.size, client->name,
@@ -1236,6 +1242,7 @@ err_struct:
 
 	kfree(optoe->writebuf);
 exit_kfree:
+	i2c_set_clientdata(client, NULL);
 	kfree(optoe);
 exit:
 	dev_dbg(&client->dev, "probe error %d\n", err);
