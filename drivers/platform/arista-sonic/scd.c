@@ -2070,7 +2070,10 @@ static ssize_t get_power_loss(struct device *dev, struct device_attribute *attr,
 
 static ssize_t scd_set_debug(struct device *dev, struct device_attribute *attr,
                              const char *buf, size_t count) {
-    sscanf( buf, "%d", &debug );
+    int rc = kstrtoint(buf, 10, &debug);
+
+    if (rc)
+        return rc;
     return count;
 }
 
