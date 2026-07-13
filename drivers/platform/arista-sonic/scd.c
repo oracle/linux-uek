@@ -132,6 +132,7 @@
  */
 
 #include <linux/uio_driver.h>
+#include <linux/overflow.h>
 #include <linux/pci.h>
 #include <linux/i2c.h>
 #include <linux/gpio.h>
@@ -3253,18 +3254,27 @@ scd_lpc_mmap_resource(struct file *filp, struct kobject *kobj,
 {
    struct pci_dev *pdev = to_pci_dev(container_of(kobj,
                                                   struct device, kobj));
+   unsigned long len_pages = (vma->vm_end - vma->vm_start) >> PAGE_SHIFT;
+   unsigned long end_pgoff;
+   unsigned long phys_pgoff;
    unsigned long prot;
    int rc;
 
-   // validate range of mapping
-   if ((vma->vm_pgoff + ((vma->vm_end - vma->vm_start) >> PAGE_SHIFT)) > 
-       (attr->size >> PAGE_SHIFT)) {
-      dev_err(&pdev->dev, "invalid vm region addr 0x%lx-0x%lx offset pages %lu\n", 
+   // validate range of mapping (overflow-safe)
+   if (check_add_overflow(vma->vm_pgoff, len_pages, &end_pgoff) ||
+       end_pgoff > (attr->size >> PAGE_SHIFT)) {
+      dev_err(&pdev->dev, "invalid vm region addr 0x%lx-0x%lx offset pages %lu\n",
               vma->vm_start, vma->vm_end, vma->vm_pgoff);
       return -EINVAL;
    }
 
-   vma->vm_pgoff += lpc_res_addr >> PAGE_SHIFT;
+   // translate to the physical page offset, guarding the addition too
+   if (check_add_overflow(vma->vm_pgoff, lpc_res_addr >> PAGE_SHIFT,
+                          &phys_pgoff)) {
+      dev_err(&pdev->dev, "vm region page offset overflow\n");
+      return -EINVAL;
+   }
+   vma->vm_pgoff = phys_pgoff;
    prot = pgprot_val(vma->vm_page_prot);
 #ifdef CONFIG_X86
    prot |= cachemode2protval(_PAGE_CACHE_MODE_UC);
