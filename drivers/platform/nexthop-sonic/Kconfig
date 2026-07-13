@@ -1,0 +1,32 @@
+config NEXTHOP_SONIC_DRIVERS
+	tristate "Nexthop SONiC platform drivers"
+	depends on X86_64 || COMPILE_TEST
+	depends on I2C
+	depends on HWMON
+	depends on GPIOLIB
+	depends on NVMEM
+	select REGMAP_I2C
+	select CRC8
+	help
+	  Enable platform-specific hardware monitoring drivers used by
+	  Nexthop SONiC switches. This includes Nexthop's PMBus core and
+	  drivers for ADM1266, Renesas ISL68137-family, Infineon TDA38740-
+	  family, and TI TMP464-family devices.
+
+	  Say M to build each driver as a separate module.
+
+config NEXTHOP_SONIC_FPGA_ALGO
+	tristate "Nexthop SONiC custom FPGA I2C algorithm"
+	depends on PDDF_MULTIFPGAPCI_I2C
+	default NEXTHOP_SONIC_DRIVERS
+	help
+	  Enable the Nexthop AXI IIC algorithm used by the PDDF multi-FPGA
+	  PCI I2C adapter driver.
+
+config NEXTHOP_SONIC_MDIO_ALGO
+	tristate "Nexthop SONiC custom FPGA MDIO algorithm"
+	depends on PDDF_MULTIFPGAPCI_MDIO
+	default NEXTHOP_SONIC_DRIVERS
+	help
+	  Enable the Nexthop Clause 45 MDIO algorithm used by the PDDF
+	  multi-FPGA PCI MDIO driver.

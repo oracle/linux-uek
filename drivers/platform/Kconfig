@@ -28,3 +28,5 @@ source "drivers/platform/arista-sonic/Kconfig"
 source "drivers/platform/bcm-hsdk-gpl/Kconfig"
 
 source "drivers/platform/pddf-sonic/Kconfig"
+
+source "drivers/platform/nexthop-sonic/Kconfig"
