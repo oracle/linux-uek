@@ -296,6 +296,13 @@ int scd_spi_controller_add(struct scd_context *ctx, u32 addr, u32 reg_stride,
    }
 
    spi->controller = controller;
+   /*
+    * scd_spi_controller (spi) is devdata embedded in the controller
+    * allocation. Hold an extra reference so spi_unregister_controller()
+    * at remove time does not drop the last ref and free the struct out
+    * from under us; the matching put is in scd_spi_controller_remove_all.
+    */
+   spi_controller_get(controller);
    list_add_tail(&spi->list, &ctx->spi_controller_list);
    spi_notice(spi, "controller created\n");
    return 0;
@@ -328,9 +335,16 @@ void scd_spi_controller_remove_all(struct scd_context *ctx)
    struct scd_spi_controller *tmp_spi;
 
    list_for_each_entry_safe(spi, tmp_spi, &ctx->spi_controller_list, list) {
+      struct spi_controller *controller = spi->controller;
+
       scd_spi_controller_remove(spi);
       list_del(&spi->list);
-      kfree(spi);
+      /*
+       * spi is devdata inside the controller allocation; releasing the
+       * extra reference taken at add time frees both. Do not kfree(spi):
+       * it is not a separate slab object.
+       */
+      spi_controller_put(controller);
    }
 }
 
