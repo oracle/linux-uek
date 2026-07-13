@@ -811,6 +811,17 @@ int scd_fan_group_add(struct scd_context *ctx, u32 addr, u32 platform_id,
       return -EINVAL;
    }
 
+   /*
+    * fan_count indexes the fixed-size speed_*_steps[] arrays in the
+    * platform descriptor (see FAN_SPEED_ADDR); an unbounded value reads
+    * past those arrays and yields a wild MMIO offset multiplier.
+    */
+   if (fan_count >= ARRAY_SIZE(platform->speed_pwm_steps)) {
+      dev_warn(get_scd_dev(ctx), "the fan fan_count argument is larger than %zu",
+               ARRAY_SIZE(platform->speed_pwm_steps));
+      return -EINVAL;
+   }
+
    fan_group = kzalloc(sizeof(*fan_group), GFP_KERNEL);
    if (!fan_group) {
       return -ENOMEM;
