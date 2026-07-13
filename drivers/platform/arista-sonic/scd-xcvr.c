@@ -120,7 +120,12 @@ static int scd_xcvr_register(struct scd_xcvr *xcvr, const struct gpio_cfg *cfgs,
    for (i = 0; i < gpio_count; i++) {
       gpio = cfgs[i];
       name_size = strlen(xcvr->name) + strlen(gpio.name) + 2;
-      BUG_ON(name_size > GPIO_NAME_MAX_SZ);
+      if (name_size > GPIO_NAME_MAX_SZ) {
+         dev_err(get_scd_dev(xcvr->ctx),
+                 "xcvr attribute name too long for %s_%s",
+                 xcvr->name, gpio.name);
+         return -ENAMETOOLONG;
+      }
       snprintf(name, name_size, "%s_%s", xcvr->name, gpio.name);
       if (gpio.read_only) {
          SCD_RO_XCVR_ATTR(xcvr->attr[gpio.bitpos], name, name_size, xcvr,

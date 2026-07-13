@@ -284,6 +284,10 @@ static ssize_t parse_new_object_xcvr(struct scd_context *ctx, enum xcvr_type typ
    PARSE_INT_OR_RETURN(&buf, tmp, u32, &id);
    PARSE_END_OR_RETURN(&buf, tmp);
 
+   /* The id becomes part of a fixed-size sysfs attribute name. */
+   if (id > 9999)
+      return -EINVAL;
+
    if (type == XCVR_TYPE_SFP)
       res = scd_xcvr_sfp_add(ctx, addr, id);
    else if (type == XCVR_TYPE_QSFP)
