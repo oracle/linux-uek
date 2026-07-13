@@ -326,6 +326,26 @@ static int ovmapi_delete_events(struct ovmapi_information *p_ovmapi_info,
 	return 0;
 }
 
+static int ovmapi_copy_event_to_user(void __user *user_event,
+				     const struct ovmapi_event_list *event)
+{
+	size_t size;
+
+	if (event->event_entry.header.size > OVMAPI_EVENT_DATA_MAXSIZE)
+		return -EINVAL;
+
+	if (event->event_entry.header.type == OVMAPI_EVT_MORE_PROCESSING &&
+		       event->event_entry.header.size < sizeof(unsigned long))
+		return -EINVAL;
+
+	size = sizeof(struct ovmapi_event_header) +
+	       event->event_entry.header.size;
+	if (copy_to_user(user_event, &event->event_entry, size))
+		return -EFAULT;
+
+	return 0;
+}
+
 static int ovmapi_post_event(struct ovmapi_information *p_ovmapi_info,
 			     struct ovmapi_app_entry *source_app,
 			     void __user *user_buffer)
@@ -353,6 +373,12 @@ static int ovmapi_post_event(struct ovmapi_information *p_ovmapi_info,
 			mutex_unlock(&p_ovmapi_info->apps_list_mutex);
 			return -EFAULT;
 		}
+		if (add_event->event_entry.header.size > OVMAPI_EVENT_DATA_MAXSIZE) {
+			kmem_cache_free(event_cache, add_event);
+			mutex_unlock(&p_ovmapi_info->apps_list_mutex);
+			return -EINVAL;
+		}
+
 		if (!(app->event_mask & add_event->event_entry.header.type)) {
 			kmem_cache_free(event_cache, add_event);
 			continue;
@@ -429,6 +455,7 @@ static int ovmapi_get_event(struct ovmapi_information *p_ovmapi_info,
 	struct ovmapi_event_header kernel_mem_event;
 	struct ovmapi_event *user_mem_event =
 				(struct ovmapi_event *)user_buffer;
+	int ret;
 
 	/* We should only have a valid header from the user. */
 	if (copy_from_user(&kernel_mem_event, user_mem_event,
@@ -439,11 +466,10 @@ static int ovmapi_get_event(struct ovmapi_information *p_ovmapi_info,
 	list_for_each_entry_safe(event, tmp, &app->events_list, list) {
 		if (kernel_mem_event.event_id ==
 			event->event_entry.header.event_id) {
-			if (copy_to_user(user_mem_event, &event->event_entry,
-					 (sizeof(struct ovmapi_event_header) +
-					 event->event_entry.header.size))) {
+			ret = ovmapi_copy_event_to_user(user_mem_event, event);
+			if (ret) {
 				mutex_unlock(&p_ovmapi_info->apps_list_mutex);
-				return -EFAULT;
+				return ret;
 			}
 			list_del(&event->list);
 			kmem_cache_free(event_cache, event);
@@ -463,17 +489,17 @@ static int ovmapi_get_next_event(struct ovmapi_information *p_ovmapi_info,
 	struct ovmapi_event_list *event = NULL;
 	struct ovmapi_event *user_mem_event =
 				(struct ovmapi_event *)user_buffer;
+	int ret;
 
 	mutex_lock(&p_ovmapi_info->apps_list_mutex);
 	if (!list_empty(&app->events_list)) {
 		event = list_entry(app->events_list.next,
 				   struct ovmapi_event_list,
 				   list);
-		if (copy_to_user(user_mem_event, &event->event_entry,
-				 (sizeof(struct ovmapi_event_header) +
-				 event->event_entry.header.size))){
+		ret = ovmapi_copy_event_to_user(user_mem_event, event);
+		if (ret) {
 			mutex_unlock(&p_ovmapi_info->apps_list_mutex);
-			return -EFAULT;
+			return ret;
 		}
 		if (user_mem_event->header.type ==
 			OVMAPI_EVT_MORE_PROCESSING) {
