@@ -522,6 +522,7 @@ int scd_mdio_master_add(struct scd_context *ctx, u32 addr, u16 id, u16 bus_count
    master->cs = addr + MDIO_CONTROL_STATUS_OFFSET;
    master->resp = addr + MDIO_RESPONSE_OFFSET;
    master->speed = speed;
+   INIT_LIST_HEAD(&master->list);
    INIT_LIST_HEAD(&master->bus_list);
 
    for (i = 0; i < bus_count; ++i) {
