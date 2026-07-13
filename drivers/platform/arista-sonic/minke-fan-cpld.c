@@ -1192,7 +1192,7 @@ cpld_remove(struct i2c_client *client)
    cancel_delayed_work_sync(&cpld->dwork);
    mutex_unlock(&cpld->lock);
 
-   cpld_leds_unregister(cpld, cpld->info->fan_count);
+   cpld_leds_unregister(cpld, cpld->info->slot_count);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 0, 0)
    return 0;
