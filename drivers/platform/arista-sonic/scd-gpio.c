@@ -109,7 +109,7 @@ int scd_gpio_add(struct scd_context *ctx, const char *name,
       return -ENOMEM;
    }
 
-   snprintf(gpio->name, sizeof_field(typeof(*gpio), name), name);
+   snprintf(gpio->name, sizeof_field(typeof(*gpio), name), "%s", name);
    if (read_only)
       gpio->attr = (struct scd_gpio_attribute)SCD_RO_GPIO_ATTR(
                            gpio->name, ctx, addr, bitpos, active_low);

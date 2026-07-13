@@ -101,7 +101,7 @@ int scd_reset_add(struct scd_context *ctx, const char *name, u32 addr, u32 bitpo
       return -ENOMEM;
    }
 
-   snprintf(reset->name, sizeof_field(typeof(*reset), name), name);
+   snprintf(reset->name, sizeof_field(typeof(*reset), name), "%s", name);
    reset->attr = (struct scd_reset_attribute)SCD_RESET_ATTR(
                                                 reset->name, ctx, addr, bitpos);
 
