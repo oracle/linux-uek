@@ -1212,7 +1212,7 @@ static int cpld_probe(struct i2c_client *client
    int i;
 
    if (!i2c_check_functionality(client->adapter, I2C_FUNC_SMBUS_BYTE_DATA)) {
-      pali_err(cpld, "adapter doesn't support byte transactions\n");
+      dev_err(&client->dev, "adapter doesn't support byte transactions\n");
       return -ENODEV;
    }
 
