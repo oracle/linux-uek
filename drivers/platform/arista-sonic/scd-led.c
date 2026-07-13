@@ -358,7 +358,10 @@ int scd_led_add(struct scd_context *ctx, const char *name, u32 addr,
    led->ctx = ctx;
    led->addr = addr;
    led->kind = kind;
-   strncpy(led->name, name, sizeof_field(typeof(*led), name));
+   if (strscpy(led->name, name, sizeof(led->name)) < 0) {
+      kfree(led);
+      return -EINVAL;
+   }
    led->cdev.name = led->name;
    INIT_LIST_HEAD(&led->list);
 
