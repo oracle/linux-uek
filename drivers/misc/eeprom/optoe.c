@@ -1152,8 +1152,13 @@ static int optoe_probe(struct i2c_client *client)
 			write_max = I2C_SMBUS_BLOCK_MAX;
 		optoe->write_max = write_max;
 
-		/* buffer (data + address at the beginning) */
-		optoe->writebuf = kmalloc(write_max + 2, GFP_KERNEL);
+		/*
+		 * Buffer (data + address at the beginning).  Size it for the
+		 * legal maximum of write_max (OPTOE_PAGE_SIZE), since
+		 * write_max is mutable at runtime via sysfs and must never
+		 * be allowed to outgrow this allocation.
+		 */
+		optoe->writebuf = kmalloc(OPTOE_PAGE_SIZE + 2, GFP_KERNEL);
 		if (!optoe->writebuf) {
 			err = -ENOMEM;
 			goto exit_kfree;
