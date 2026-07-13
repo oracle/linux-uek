@@ -892,9 +892,13 @@ cpld_remove(struct i2c_client *client)
 {
    struct cpld_data *cpld = i2c_get_clientdata(client);
 
-   mutex_lock(&cpld->lock);
+   /*
+    * Do not hold cpld->lock across cancel_delayed_work_sync():
+    * cpld_work_fn() takes the same lock, so cancelling a running work
+    * item while holding it would self-deadlock. The sync guarantees no
+    * work runs afterwards, so the following teardown needs no lock.
+    */
    cancel_delayed_work_sync(&cpld->dwork);
-   mutex_unlock(&cpld->lock);
 
    cpld_leds_unregister(cpld, cpld->info->fan_count);
 
