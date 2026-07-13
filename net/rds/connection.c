@@ -950,8 +950,8 @@ static int rds_conn_info_visitor(struct rds_conn_path *cp, void *buffer)
 	cinfo->laddr = conn->c_laddr.s6_addr32[3];
 	cinfo->faddr = conn->c_faddr.s6_addr32[3];
 	cinfo->tos = conn->c_tos;
-	strncpy(cinfo->transport, conn->c_trans->t_name,
-		sizeof(cinfo->transport));
+	strscpy_pad(cinfo->transport, conn->c_trans->t_name,
+		    sizeof(cinfo->transport));
 	cinfo->flags = 0;
 
 	rds_conn_info_set(cinfo->flags, test_bit(RDS_IN_XMIT, &cp->cp_flags),
@@ -979,8 +979,8 @@ static void fill_path_info(struct rds_connection *conn, void *buffer)
 	cinfo->local_addr = conn->c_laddr;
 	cinfo->peer_addr = conn->c_faddr;
 	cinfo->tos = conn->c_tos;
-	strncpy(cinfo->transport, conn->c_trans->t_name,
-		sizeof(cinfo->transport));
+	strscpy_pad(cinfo->transport, conn->c_trans->t_name,
+		    sizeof(cinfo->transport));
 	cinfo->npaths = conn->c_npaths;
 	do {
 		struct rds_conn_path *cp = &conn->c_path[i];
@@ -1027,8 +1027,8 @@ static int rds6_conn_info_visitor(struct rds_conn_path *cp, void *buffer)
 	cinfo6->laddr = conn->c_laddr;
 	cinfo6->faddr = conn->c_faddr;
 	cinfo6->tos = conn->c_tos;
-	strncpy(cinfo6->transport, conn->c_trans->t_name,
-		sizeof(cinfo6->transport));
+	strscpy_pad(cinfo6->transport, conn->c_trans->t_name,
+		    sizeof(cinfo6->transport));
 	cinfo6->flags = 0;
 
 	rds_conn_info_set(cinfo6->flags, test_bit(RDS_IN_XMIT, &cp->cp_flags),
