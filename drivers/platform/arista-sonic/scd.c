@@ -1834,18 +1834,17 @@ scd_read_register(struct device *dev, u32 offset)
    struct scd_dev_priv *priv;
    
    priv = dev_get_drvdata(dev);
-   ASSERT( priv );
-   ASSERT( offset < priv->mem_len );
-   if (priv) {
+   if (WARN_ON_ONCE(!priv))
+      return 0;
+   if (WARN_ON_ONCE(offset >= priv->mem_len))
+      return 0;
 #ifdef CONFIG_OF
-      if (dev->bus == &i2c_bus_type) {
-         return priv->read_register(to_i2c_client(dev), offset);
-      }
-#endif /* CONFIG_OF */
-      reg = priv->mem + offset;
-      return ioread32(reg);
+   if (dev->bus == &i2c_bus_type) {
+      return priv->read_register(to_i2c_client(dev), offset);
    }
-   return 0;
+#endif /* CONFIG_OF */
+   reg = priv->mem + offset;
+   return ioread32(reg);
 }
 EXPORT_SYMBOL(scd_read_register);
 
@@ -1859,20 +1858,20 @@ scd_write_register(struct device *dev, u32 offset, u32 val)
 #endif
 
    priv = dev_get_drvdata(dev);
-   ASSERT( priv );
-   ASSERT( offset < priv->mem_len );
-   if (priv) {
+   if (WARN_ON_ONCE(!priv))
+      return;
+   if (WARN_ON_ONCE(offset >= priv->mem_len))
+      return;
 #ifdef CONFIG_OF
-      if (dev->bus == &i2c_bus_type) {
-         err = priv->write_register(to_i2c_client(dev),
-                                    offset, val);
-         ASSERT( err == 0 );
-         return;
-      }
-#endif /* CONFIG_OF */
-      reg = priv->mem + offset;
-      iowrite32(val, reg);
+   if (dev->bus == &i2c_bus_type) {
+      err = priv->write_register(to_i2c_client(dev),
+                                 offset, val);
+      ASSERT( err == 0 );
+      return;
    }
+#endif /* CONFIG_OF */
+   reg = priv->mem + offset;
+   iowrite32(val, reg);
 }
 EXPORT_SYMBOL(scd_write_register);
 
