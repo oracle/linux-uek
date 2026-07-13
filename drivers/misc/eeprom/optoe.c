@@ -1190,7 +1190,7 @@ static int optoe_probe(struct i2c_client *client)
 	err = sysfs_create_group(&client->dev.kobj, &optoe->attr_group);
 	if (err) {
 		dev_err(&client->dev, "failed to create sysfs attribute group.\n");
-		goto err_struct;
+		goto err_bin_cleanup;
 	}
 
 #ifdef EEPROM_CLASS
@@ -1221,8 +1221,10 @@ static int optoe_probe(struct i2c_client *client)
 #ifdef EEPROM_CLASS
 err_sysfs_cleanup:
 	sysfs_remove_group(&client->dev.kobj, &optoe->attr_group);
-	sysfs_remove_bin_file(&client->dev.kobj, &optoe->bin);
 #endif
+
+err_bin_cleanup:
+	sysfs_remove_bin_file(&client->dev.kobj, &optoe->bin);
 
 err_struct:
 	if (num_addresses == 2) {
