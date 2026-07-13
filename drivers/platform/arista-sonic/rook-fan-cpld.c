@@ -112,6 +112,7 @@ static struct cpld_info cpld_infos[] = {
 
 struct cpld_fan_data {
    struct led_classdev cdev;
+   bool led_registered;
    bool ok;
    bool present;
    bool forward;
@@ -525,13 +526,20 @@ static enum led_brightness brightness_get(struct led_classdev *led_cdev)
 static int led_init(struct cpld_fan_data *fan, struct i2c_client *client,
                     int fan_index)
 {
+   int err;
+
    fan->index = fan_index;
    fan->cdev.brightness_set = brightness_set;
    fan->cdev.brightness_get = brightness_get;
    scnprintf(fan->led_name, LED_NAME_MAX_SZ, "fan%d", fan->index + 1);
    fan->cdev.name = fan->led_name;
 
-   return led_classdev_register(&client->dev, &fan->cdev);
+   err = led_classdev_register(&client->dev, &fan->cdev);
+   if (err)
+      return err;
+
+   fan->led_registered = true;
+   return 0;
 }
 
 static void cpld_leds_unregister(struct cpld_data *cpld, int num_leds)
@@ -541,7 +549,10 @@ static void cpld_leds_unregister(struct cpld_data *cpld, int num_leds)
 
    for (i = 0; i < num_leds; i++) {
       fan = fan_from_cpld(cpld, i);
-      led_classdev_unregister(&fan->cdev);
+      if (fan->led_registered) {
+         led_classdev_unregister(&fan->cdev);
+         fan->led_registered = false;
+      }
    }
 }
 
