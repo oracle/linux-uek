@@ -454,6 +454,7 @@ static int tmp468_probe(struct i2c_client *client
 			)
 {
 	static const char * const names[] = {
+		"TMP464",
 		"TMP468"
 	};
 	struct device *dev = &client->dev;
