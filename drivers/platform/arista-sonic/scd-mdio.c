@@ -433,7 +433,13 @@ static int scd_mdio_bus_add(struct scd_mdio_master *master, int id)
    return 0;
 
 fail:
-   mdiobus_free(scd_mdio_bus->mii_bus);
+   /*
+    * Reached only from the mdiobus_register() failure above, before
+    * scd_mdio_bus->mii_bus is assigned; free the local mii_bus, which is
+    * the allocated (and now unregistered) bus. Using scd_mdio_bus->mii_bus
+    * here would be mdiobus_free(NULL) and would also leak mii_bus.
+    */
+   mdiobus_free(mii_bus);
    kfree(scd_mdio_bus);
    return err;
 }
