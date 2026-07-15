@@ -3947,7 +3947,7 @@ static void acpi_smmu_get_options(u32 model, struct arm_smmu_device *smmu)
 	dev_notice(smmu->dev, "option mask 0x%x\n", smmu->options);
 }
 
-static const struct dmi_system_id httu_quirk[] __initconst = {
+static const struct dmi_system_id httu_quirk[] = {
 	{
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "Oracle Corporation"),
