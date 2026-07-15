@@ -5242,7 +5242,7 @@ static int acpi_smmu_iort_probe_model(struct acpi_iort_node *node,
 	return 0;
 }
 
-static const struct dmi_system_id httu_quirk[] __initconst = {
+static const struct dmi_system_id httu_quirk[] = {
 	{
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "Oracle Corporation"),
