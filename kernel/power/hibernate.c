@@ -690,7 +690,7 @@ static int load_image_and_restore(void)
 	unsigned int flags;
 	fmode_t mode = FMODE_READ;
 
-	if (snapshot_test)
+	if (!snapshot_test)
 		mode |= FMODE_EXCL;
 
 	pm_pr_dbg("Loading hibernation image.\n");

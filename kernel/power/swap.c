@@ -1524,7 +1524,7 @@ int swsusp_check(void)
 	void *holder;
 	fmode_t mode = FMODE_READ;
 
-	if (snapshot_test)
+	if (!snapshot_test)
 		mode |= FMODE_EXCL;
 
 	hib_resume_bdev = blkdev_get_by_dev(swsusp_resume_device,
