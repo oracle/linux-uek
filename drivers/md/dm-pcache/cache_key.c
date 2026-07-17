@@ -779,7 +779,7 @@ int cache_replay(struct pcache_cache *cache)
 	__set_bit(pos->cache_seg->cache_seg_id, cache->seg_map);
 
 	while (true) {
-		to_copy = min(PCACHE_KSET_ONMEDIA_SIZE_MAX, PCACHE_SEG_SIZE - pos->seg_off);
+		to_copy = min(PCACHE_KSET_ONMEDIA_SIZE_MAX, cache_seg_remain(pos));
 		ret = copy_mc_to_kernel(kset_onmedia, cache_pos_addr(pos), to_copy);
 		if (ret) {
 			ret = -EIO;

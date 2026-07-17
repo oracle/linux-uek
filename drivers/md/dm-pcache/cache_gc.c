@@ -37,7 +37,7 @@ static bool need_gc(struct pcache_cache *cache, struct pcache_cache_pos *dirty_t
 
 	kset_onmedia = (struct pcache_cache_kset_onmedia *)cache->gc_kset_onmedia_buf;
 
-	to_copy = min(PCACHE_KSET_ONMEDIA_SIZE_MAX, PCACHE_SEG_SIZE - key_tail->seg_off);
+	to_copy = min(PCACHE_KSET_ONMEDIA_SIZE_MAX, cache_seg_remain(key_tail));
 	ret = copy_mc_to_kernel(kset_onmedia, key_addr, to_copy);
 	if (ret) {
 		pcache_dev_err(pcache, "error to read kset: %d", ret);
