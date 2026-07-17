@@ -97,6 +97,14 @@ int cache_key_decode(struct pcache_cache *cache,
 	key->cache_pos.cache_seg = &cache->segments[key_onmedia->cache_seg_id];
 	key->cache_pos.seg_off = key_onmedia->cache_seg_off;
 
+	if ((u64)key->cache_pos.seg_off + key->len >
+			key->cache_pos.cache_seg->segment.data_size) {
+		pcache_dev_err(pcache, "key seg_off %u + len %u exceeds segment data size %u\n",
+				key->cache_pos.seg_off, key->len,
+				key->cache_pos.cache_seg->segment.data_size);
+		return -EIO;
+	}
+
 	key->seg_gen = key_onmedia->seg_gen;
 	key->flags = key_onmedia->flags;
 
@@ -778,7 +786,7 @@ int cache_replay(struct pcache_cache *cache)
 			goto out;
 		}
 
-		if (kset_onmedia->magic != PCACHE_KSET_MAGIC ||
+		if (!kset_onmedia_valid(kset_onmedia) ||
 				kset_onmedia->crc != cache_kset_crc(kset_onmedia)) {
 			break;
 		}

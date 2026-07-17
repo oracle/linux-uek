@@ -44,11 +44,11 @@ static bool need_gc(struct pcache_cache *cache, struct pcache_cache_pos *dirty_t
 		return false;
 	}
 
-	/* Check if kset_onmedia is corrupted */
-	if (kset_onmedia->magic != PCACHE_KSET_MAGIC) {
-		pcache_dev_debug(pcache, "gc error: magic is not as expected. key_tail: %u:%u magic: %llx, expected: %llx\n",
+	/* Reject a corrupted or out-of-bounds kset before reading its keys */
+	if (!kset_onmedia_valid(kset_onmedia)) {
+		pcache_dev_debug(pcache, "gc error: invalid kset. key_tail: %u:%u magic: %llx, key_num: %u\n",
 					key_tail->cache_seg->cache_seg_id, key_tail->seg_off,
-					kset_onmedia->magic, PCACHE_KSET_MAGIC);
+					kset_onmedia->magic, kset_onmedia->key_num);
 		return false;
 	}
 
