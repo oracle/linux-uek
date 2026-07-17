@@ -762,7 +762,7 @@ int cache_replay(struct pcache_cache *cache)
 	struct pcache_cache_pos pos_tail;
 	struct pcache_cache_pos *pos;
 	struct pcache_cache_kset_onmedia *kset_onmedia;
-	u32 to_copy, count = 0;
+	u32 to_copy, count = 0, last_hops = 0;
 	int ret = 0;
 
 	kset_onmedia = kzalloc(PCACHE_KSET_ONMEDIA_SIZE_MAX, GFP_KERNEL);
@@ -796,6 +796,11 @@ int cache_replay(struct pcache_cache *cache)
 			struct pcache_cache_segment *next_seg;
 
 			pcache_dev_debug(pcache, "last kset replay, next: %u\n", kset_onmedia->next_cache_seg_id);
+
+			if (++last_hops > cache->n_segs) {
+				ret = -EIO;
+				goto out;
+			}
 
 			next_seg = &cache->segments[kset_onmedia->next_cache_seg_id];
 
