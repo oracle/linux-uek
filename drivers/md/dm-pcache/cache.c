@@ -119,6 +119,10 @@ int cache_pos_decode(struct pcache_cache *cache,
 		return -EIO;
 
 	pos->cache_seg = &cache->segments[latest.cache_seg_id];
+
+	if (latest.seg_off >= pos->cache_seg->segment.data_size)
+		return -EIO;
+
 	pos->seg_off = latest.seg_off;
 	*seq = latest.header.seq;
 	*index = (latest_addr - pos_onmedia);
