@@ -23,6 +23,7 @@
 #include <linux/slab.h>
 #include <linux/percpu-refcount.h>
 #include <linux/bpfptr.h>
+#include <linux/rcupdate_trace.h>
 #include <linux/uek_kabi.h>
 
 struct bpf_verifier_env;
@@ -1527,6 +1528,9 @@ out:
 			_ret = (_cn ? NET_XMIT_DROP : -EPERM);		\
 		_ret;					\
 	})
+
+#define bpf_rcu_lock_held() \
+	(rcu_read_lock_held() || rcu_read_lock_trace_held() || rcu_read_lock_bh_held())
 
 #ifdef CONFIG_BPF_SYSCALL
 DECLARE_PER_CPU(int, bpf_prog_active);
