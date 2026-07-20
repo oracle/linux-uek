@@ -1593,7 +1593,6 @@ struct rds_transport rds_ib_transport = {
 	.xmit_path_complete	= rds_ib_xmit_path_complete,
 	.xmit			= rds_ib_xmit,
 	.xmit_rdma		= rds_ib_xmit_rdma,
-	.xmit_atomic		= rds_ib_xmit_atomic,
 	.recv_path		= rds_ib_recv_path,
 	.recv_need_bufs         = rds_ib_recv_need_bufs,
 	.conn_alloc		= rds_ib_conn_alloc,

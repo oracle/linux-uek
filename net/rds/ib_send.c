@@ -172,26 +172,6 @@ static void rds_ib_send_unmap_rdma(struct rds_ib_connection *ic,
 	}
 }
 
-static void rds_ib_send_unmap_atomic(struct rds_ib_connection *ic,
-				     struct rm_atomic_op *op,
-				     int wc_status)
-{
-	/* unmap atomic recvbuf */
-	if (op->op_mapped) {
-		ib_dma_unmap_sg(ic->i_cm_id->device, op->op_sg, 1,
-				DMA_FROM_DEVICE);
-		op->op_mapped = 0;
-	}
-
-	rds_ib_send_complete(container_of(op, struct rds_message, atomic),
-			     wc_status, rds_atomic_send_complete);
-
-	if (op->op_type == RDS_ATOMIC_TYPE_CSWP)
-		rds_ib_stats_inc(s_ib_atomic_cswp);
-	else
-		rds_ib_stats_inc(s_ib_atomic_fadd);
-}
-
 /*
  * Unmap the resources associated with a struct send_work.
  *
@@ -218,13 +198,6 @@ static struct rds_message *rds_ib_send_unmap_op(struct rds_ib_connection *ic,
 		if (send->s_op) {
 			rm = container_of(send->s_op, struct rds_message, rdma);
 			rds_ib_send_unmap_rdma(ic, send->s_op, wc_status);
-		}
-		break;
-	case IB_WR_ATOMIC_FETCH_AND_ADD:
-	case IB_WR_ATOMIC_CMP_AND_SWP:
-		if (send->s_op) {
-			rm = container_of(send->s_op, struct rds_message, atomic);
-			rds_ib_send_unmap_atomic(ic, send->s_op, wc_status);
 		}
 		break;
 	default:
@@ -887,100 +860,6 @@ out:
 				      &conn->c_laddr, &conn->c_faddr,
 				      reason);
 	BUG_ON(adv_credits);
-	return ret;
-}
-
-/*
- * Issue atomic operation.
- * A simplified version of the rdma case, we always map 1 SG, and
- * only 8 bytes, for the return value from the atomic operation.
- */
-int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op)
-{
-	struct rds_ib_connection *ic = conn->c_transport_data;
-	struct rds_ib_send_work *send = NULL;
-	const struct ib_send_wr *failed_wr;
-	u32 pos;
-	u32 work_alloc;
-	int ret;
-	char *reason = NULL;
-
-	work_alloc = rds_ib_ring_alloc(&ic->i_send_ring, 1, &pos);
-	if (work_alloc != 1) {
-		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
-		rds_ib_stats_inc(s_ib_tx_ring_full);
-		reason = "rds_ib_ring_alloc failed";
-		ret = -ENOMEM;
-		goto out;
-	}
-
-	/* address of send request in ring */
-	send = &ic->i_sends[pos];
-	send->s_queued = jiffies;
-
-	if (op->op_type == RDS_ATOMIC_TYPE_CSWP) {
-		send->s_wr.opcode = IB_WR_ATOMIC_CMP_AND_SWP;
-		send->s_atomic_wr.compare_add = op->op_compare;
-		send->s_atomic_wr.swap = op->op_swap_add;
-	} else { /* FADD */
-		send->s_wr.opcode = IB_WR_ATOMIC_FETCH_AND_ADD;
-		send->s_atomic_wr.compare_add = op->op_swap_add;
-		send->s_atomic_wr.swap = 0;
-	}
-	send->s_wr.send_flags = 0;
-	rds_ib_set_wr_send_flags(ic, send, FLAGS_FORCE_SEND_SIGNALED | FLAGS_NO_SEND_SOLICITED);
-	send->s_wr.num_sge = 1;
-	send->s_wr.next = NULL;
-	send->s_atomic_wr.remote_addr = op->op_remote_addr;
-	send->s_atomic_wr.rkey = op->op_rkey;
-	send->s_op = op;
-	rds_message_addref(container_of(send->s_op, struct rds_message, atomic));
-
-	/* map 8 byte retval buffer to the device */
-	ret = ib_dma_map_sg(ic->i_cm_id->device, op->op_sg, 1, DMA_FROM_DEVICE);
-	rdsdebug("ic %p mapping atomic op %p. mapped %d pg\n", ic, op, ret);
-	if (ret != 1) {
-		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
-		rds_ib_stats_inc(s_ib_tx_sg_mapping_failure);
-		reason =  "ib_dma_map_sg failed";
-		ret = -ENOMEM; /* XXX ? */
-		goto out;
-	}
-
-	/* Convert our struct scatterlist to struct ib_sge */
-	send->s_sge[0].addr = sg_dma_address(op->op_sg);
-	send->s_sge[0].length = sg_dma_len(op->op_sg);
-	send->s_sge[0].lkey = ic->i_mr->lkey;
-
-	rdsdebug("rva %Lx rpa %Lx len %u\n", op->op_remote_addr,
-		 send->s_sge[0].addr, send->s_sge[0].length);
-
-	atomic_inc(&ic->i_signaled_sends);
-
-	failed_wr = &send->s_wr;
-	ret = ib_post_send(ic->i_cm_id->qp, &send->s_wr, &failed_wr);
-	rdsdebug("ic %p send %p (wr %p) ret %d wr %p\n", ic,
-		 send, &send->s_wr, ret, failed_wr);
-	BUG_ON(failed_wr != &send->s_wr);
-	if (ret) {
-		printk(KERN_WARNING "RDS/IB: atomic ib_post_send to %pI6c returned %d\n",
-		       &conn->c_faddr, ret);
-		reason = "atomic ib_post_send failed";
-		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
-		rds_ib_sub_signaled(ic, 1);
-		goto out;
-	}
-
-	if (unlikely(failed_wr != &send->s_wr)) {
-		printk(KERN_WARNING "RDS/IB: atomic ib_post_send() rc=%d, but failed_wqe updated!\n", ret);
-		BUG_ON(failed_wr != &send->s_wr);
-	}
-
-out:
-	if (reason)
-		trace_rds_drop_egress(NULL, NULL, conn, &conn->c_path[0],
-				      &conn->c_laddr, &conn->c_faddr,
-				      reason);
 	return ret;
 }
 

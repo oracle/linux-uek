@@ -310,7 +310,6 @@ struct rds_conn_path {
 	unsigned long		cp_xmit_sg;
 	unsigned int		cp_xmit_hdr_off;
 	unsigned int		cp_xmit_data_off;
-	unsigned int		cp_xmit_atomic_sent;
 	unsigned int		cp_xmit_rdma_sent;
 	unsigned int		cp_xmit_data_sent;
 
@@ -650,10 +649,6 @@ static inline u32 rds_rdma_cookie_offset(rds_rdma_cookie_t cookie)
 	return cookie >> 32;
 }
 
-/* atomic operation types */
-#define RDS_ATOMIC_TYPE_CSWP		0
-#define RDS_ATOMIC_TYPE_FADD		1
-
 /*
  * m_sock_item and m_conn_item are on lists that are serialized under
  * conn->c_lock.  m_sock_item has additional meaning in that once it is empty
@@ -737,23 +732,6 @@ struct rds_message {
 	void			*m_final_op;
 
 	struct {
-		struct rm_atomic_op {
-			int			op_type;
-			uint64_t		op_swap_add;
-			uint64_t		op_compare;
-
-			u32			op_rkey;
-			u64			op_remote_addr;
-			unsigned int		op_notify:1;
-			unsigned int		op_recverr:1;
-			unsigned int		op_mapped:1;
-			unsigned int		op_silent:1;
-			unsigned int		op_active:1;
-			struct scatterlist	*op_sg;
-			struct rds_notifier	*op_notifier;
-
-			struct rds_mr		*op_rdma_mr;
-		} atomic;
 		struct rm_rdma_op {
 			u32			op_rkey;
 			u64			op_remote_addr;
@@ -873,7 +851,6 @@ struct rds_transport {
 	int (*xmit)(struct rds_connection *conn, struct rds_message *rm,
 		    unsigned int hdr_off, unsigned int sg, unsigned int off);
 	int (*xmit_rdma)(struct rds_connection *conn, struct rm_rdma_op *op);
-	int (*xmit_atomic)(struct rds_connection *conn, struct rm_atomic_op *op);
 	int (*recv_path)(struct rds_conn_path *cp);
 	int (*inc_copy_to_user)(struct rds_sock *rs, struct rds_incoming *inc,
 				struct iov_iter *to);
@@ -1596,9 +1573,7 @@ int rds_rdma_process_send_cmsg(struct rds_sock *rs, struct rds_message *rm,
 			       struct cmsghdr *cmsg, int *indp,
 			       struct rds_iov_vector_arr *vct);
 void rds_rdma_free_op(struct rm_rdma_op *ro);
-void rds_atomic_free_op(struct rm_atomic_op *ao);
 void rds_rdma_send_complete(struct rds_message *rm, int wc_status);
-void rds_atomic_send_complete(struct rds_message *rm, int wc_status);
 void rds_asend_complete(struct rds_message *rm, int wc_status);
 
 void __rds_put_mr_final(struct kref *kref);

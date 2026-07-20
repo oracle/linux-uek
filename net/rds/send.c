@@ -84,7 +84,6 @@ void rds_send_path_reset(struct rds_conn_path *cp)
 	cp->cp_xmit_sg = 0;
 	cp->cp_xmit_hdr_off = 0;
 	cp->cp_xmit_data_off = 0;
-	cp->cp_xmit_atomic_sent = 0;
 	cp->cp_xmit_rdma_sent = 0;
 	cp->cp_xmit_data_sent = 0;
 
@@ -482,7 +481,6 @@ int rds_send_xmit(struct rds_conn_path *cp, enum rds_send_xmit_mode xmit_mode)
 				cp->cp_xmit_hdr_off = 0;
 				cp->cp_xmit_data_off = 0;
 				cp->cp_xmit_rdma_sent = 0;
-				cp->cp_xmit_atomic_sent = 0;
 				cp->cp_xmit_data_sent = 0;
 				spin_unlock_irqrestore(&cp->cp_lock, flags);
 				rds_message_put(rm);
@@ -501,38 +499,6 @@ int rds_send_xmit(struct rds_conn_path *cp, enum rds_send_xmit_mode xmit_mode)
 			cp->cp_xmit_rdma_sent = 1;
 		}
 
-		if (rm->atomic.op_active && !cp->cp_xmit_atomic_sent) {
-			rm->m_final_op = &rm->atomic;
-			/* The transport owns the mapped memory for now.
-			 * You can't unmap it while it's on the send queue */
-			spin_lock_irqsave(&cp->cp_lock, flags);
-			if (test_bit(RDS_MSG_CANCELED, &rm->m_flags)) {
-				rds_set_rm_flag_bit(rm, RDS_MSG_FLUSH);
-				cp->cp_xmit_rm = NULL;
-				cp->cp_xmit_sg = 0;
-				cp->cp_xmit_hdr_off = 0;
-				cp->cp_xmit_data_off = 0;
-				cp->cp_xmit_rdma_sent = 0;
-				cp->cp_xmit_atomic_sent = 0;
-				cp->cp_xmit_data_sent = 0;
-				spin_unlock_irqrestore(&cp->cp_lock, flags);
-				rds_message_put(rm);
-				continue;
-			}
-			rds_set_rm_flag_bit(rm, RDS_MSG_MAPPED);
-			spin_unlock_irqrestore(&cp->cp_lock, flags);
-
-			ret = conn->c_trans->xmit_atomic(conn, &rm->atomic);
-			if (ret) {
-				rds_message_unmapped(rm);
-				break;
-			}
-			trace_rds_send(rm, rm->m_rs, conn, cp,
-				       &conn->c_laddr, &conn->c_faddr);
-			cp->cp_xmit_atomic_sent = 1;
-
-		}
-
 		/*
 		 * A number of cases require an RDS header to be sent
 		 * even if there is no data.
@@ -540,20 +506,10 @@ int rds_send_xmit(struct rds_conn_path *cp, enum rds_send_xmit_mode xmit_mode)
 		 * However, if there are exclusively attached silent ops,
 		 * we skip the hdr/data send, to enable silent operation.
 		 */
-		if (rm->data.op_nents == 0) {
-			int ops_present;
-			int all_ops_are_silent = 1;
-
-			ops_present = (rm->atomic.op_active || rm->rdma.op_active);
-			if (rm->atomic.op_active && !rm->atomic.op_silent)
-				all_ops_are_silent = 0;
-			if (rm->rdma.op_active && !rm->rdma.op_silent)
-				all_ops_are_silent = 0;
-
-			if (ops_present && all_ops_are_silent
-			    && !rm->m_rdma_cookie)
+		if (rm->data.op_nents == 0 &&
+		    rm->rdma.op_active && rm->rdma.op_silent &&
+		    !rm->m_rdma_cookie)
 				rm->data.op_active = 0;
-		}
 
 		if (rm->data.op_active && !cp->cp_xmit_data_sent) {
 			rm->m_final_op = &rm->data;
@@ -606,7 +562,6 @@ int rds_send_xmit(struct rds_conn_path *cp, enum rds_send_xmit_mode xmit_mode)
 			cp->cp_xmit_hdr_off = 0;
 			cp->cp_xmit_data_off = 0;
 			cp->cp_xmit_rdma_sent = 0;
-			cp->cp_xmit_atomic_sent = 0;
 			cp->cp_xmit_data_sent = 0;
 
 			rds_message_put(rm);
@@ -804,47 +759,6 @@ void rds_rdma_send_complete(struct rds_message *rm, int status)
 EXPORT_SYMBOL_GPL(rds_rdma_send_complete);
 
 /*
- * Just like above, except looks at atomic op
- */
-void rds_atomic_send_complete(struct rds_message *rm, int status)
-{
-	struct rds_sock *rs = NULL;
-	struct rm_atomic_op *ao;
-	struct rds_notifier *notifier;
-	unsigned long flags;
-
-	spin_lock_irqsave(&rm->m_rs_lock, flags);
-
-	ao = &rm->atomic;
-	if (test_bit(RDS_MSG_ON_SOCK, &rm->m_flags) &&
-	    ao->op_active && ao->op_notify && ao->op_notifier) {
-		notifier = ao->op_notifier;
-		rs = rm->m_rs;
-		debug_sock_hold(rds_rs_to_sk(rs));
-
-		notifier->n_status = status;
-		if (!rds_async_send_enabled ||
-			(rds_async_send_enabled && !status)) {
-			spin_lock(&rs->rs_lock);
-			list_add_tail(&notifier->n_list,
-				&rs->rs_notify_queue);
-			spin_unlock(&rs->rs_lock);
-			ao->op_notifier = NULL;
-		}
-	}
-
-	spin_unlock_irqrestore(&rm->m_rs_lock, flags);
-
-	do_trace_rds_send_complete(rm, rs, "atomic send", status);
-
-	if (rs) {
-		rds_wake_sk_sleep(rs);
-		debug_sock_put(rds_rs_to_sk(rs));
-	}
-}
-EXPORT_SYMBOL_GPL(rds_atomic_send_complete);
-
-/*
  * This is the same as rds_rdma_send_complete except we
  * don't do any locking - we have all the ingredients (message,
  * socket, socket lock) and can just move the notifier.
@@ -854,7 +768,6 @@ __rds_send_complete(struct rds_sock *rs, struct rds_message *rm,
 		    char *reason, int status)
 {
 	struct rm_rdma_op *ro;
-	struct rm_atomic_op *ao;
 	struct rm_data_op *so;
 
 	ro = &rm->rdma;
@@ -862,13 +775,6 @@ __rds_send_complete(struct rds_sock *rs, struct rds_message *rm,
 		ro->op_notifier->n_status = status;
 		list_add_tail(&ro->op_notifier->n_list, &rs->rs_notify_queue);
 		ro->op_notifier = NULL;
-	}
-
-	ao = &rm->atomic;
-	if (ao->op_active && ao->op_notify && ao->op_notifier) {
-		ao->op_notifier->n_status = status;
-		list_add_tail(&ao->op_notifier->n_list, &rs->rs_notify_queue);
-		ao->op_notifier = NULL;
 	}
 
 	so = &rm->data;
@@ -958,11 +864,6 @@ void rds_send_remove_from_sock(struct list_head *messages, int status)
 
 				rds_q_or_free_notifier(rs, ro->op_notifier, ro->op_notify, status);
 				ro->op_notifier = NULL;
-			} else if (rm->atomic.op_active && rm->atomic.op_notifier) {
-				struct rm_atomic_op *ao = &rm->atomic;
-
-				rds_q_or_free_notifier(rs, ao->op_notifier, ao->op_notify, status);
-				ao->op_notifier = NULL;
 			} else if (rm->data.op_active && rm->data.op_notifier) {
 				struct rm_data_op *so = &rm->data;
 
@@ -1284,7 +1185,6 @@ static int rds_rm_size(struct msghdr *msg, int data_len,
 	int cmsg_groups = 0;
 	int retval;
 	struct rds_iov_vector *iov, *tmp_iov;
-	bool atomic_seen = false;
 
 	for_each_cmsghdr(cmsg, msg) {
 		if (!CMSG_OK(msg, cmsg))
@@ -1325,19 +1225,6 @@ static int rds_rm_size(struct msghdr *msg, int data_len,
 		case RDS_CMSG_ASYNC_SEND:
 			cmsg_groups |= 2;
 			/* these are valid but do no add any size */
-			break;
-
-		case RDS_CMSG_ATOMIC_CSWP:
-		case RDS_CMSG_ATOMIC_FADD:
-			if (cmsg->cmsg_len <
-			    CMSG_LEN(sizeof(struct rds_atomic_args)))
-				return -EINVAL;
-			if (atomic_seen)
-				return -EINVAL;
-			atomic_seen = true;
-
-			cmsg_groups |= 1;
-			size += sizeof(struct scatterlist);
 			break;
 
 		case RDS_CMSG_TOS:
@@ -1784,15 +1671,6 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 			       &rm->rdma, conn->c_trans->xmit_rdma);
 		ret = -EOPNOTSUPP;
 		reason = "RDMA xmit not supported for transport";
-		goto out;
-	}
-
-	if (rm->atomic.op_active && !conn->c_trans->xmit_atomic) {
-		if (printk_ratelimit())
-			printk(KERN_NOTICE "atomic_op %p conn xmit_atomic %p\n",
-			       &rm->atomic, conn->c_trans->xmit_atomic);
-		ret = -EOPNOTSUPP;
-		reason = "atomic op not supported for transport";
 		goto out;
 	}
 
