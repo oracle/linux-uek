@@ -100,36 +100,12 @@ static int __exfat_iomap_begin(struct inode *inode, loff_t offset, loff_t length
 			iomap->flags |= IOMAP_F_ZERO_TAIL;
 		}
 	} else {
-		/*
-		 * valid_size is tracked in byte granularity and
-		 * marks the exact boundary between valid data and
-		 * holes (or unwritten space).
-		 *
-		 * When IOMAP_REPORT is set (used by lseek(SEEK_HOLE)
-		 * and SEEK_DATA), we return IOMAP_HOLE. This allows
-		 * iomap_seek_hole_iter() to directly return the
-		 * precise byte position.
-		 *
-		 * For normal I/O paths (without IOMAP_REPORT) we
-		 * return IOMAP_UNWRITTEN so the write path can
-		 * distinguish it from a real hole.
-		 */
 		if (offset >= ei->valid_size) {
-			iomap->type = flags & IOMAP_REPORT ?
-				IOMAP_HOLE : IOMAP_UNWRITTEN;
+			iomap->type = IOMAP_UNWRITTEN;
 		} else if (offset + iomap->length > ei->valid_size) {
-			if (flags & IOMAP_REPORT) {
-				/*
-				 * For SEEK_HOLE/SEEK_DATA, clip the length
-				 * to the exact byte boundary (valid_size).
-				 * This ensures the caller gets the precise
-				 * hole position in byte units.
-				 */
-				iomap->length = ei->valid_size - iomap->offset;
-			} else
-				iomap->length = round_up(ei->valid_size,
-							 i_blocksize(inode)) -
-								iomap->offset;
+			iomap->length = round_up(ei->valid_size,
+						 i_blocksize(inode)) -
+							iomap->offset;
 		}
 	}
 

@@ -932,32 +932,9 @@ static int exfat_file_open(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static loff_t exfat_file_llseek(struct file *file, loff_t offset, int whence)
-{
-	struct inode *inode = file->f_mapping->host;
-
-	switch (whence) {
-	case SEEK_HOLE:
-		inode_lock_shared(inode);
-		offset = iomap_seek_hole(inode, offset, &exfat_iomap_ops);
-		inode_unlock_shared(inode);
-		break;
-	case SEEK_DATA:
-		inode_lock_shared(inode);
-		offset = iomap_seek_data(inode, offset, &exfat_iomap_ops);
-		inode_unlock_shared(inode);
-		break;
-	default:
-		return generic_file_llseek(file, offset, whence);
-	}
-	if (offset < 0)
-		return offset;
-	return vfs_setpos(file, offset, inode->i_sb->s_maxbytes);
-}
-
 const struct file_operations exfat_file_operations = {
 	.open		= exfat_file_open,
-	.llseek		= exfat_file_llseek,
+	.llseek		= generic_file_llseek,
 	.read_iter	= exfat_file_read_iter,
 	.write_iter	= exfat_file_write_iter,
 	.unlocked_ioctl = exfat_ioctl,
