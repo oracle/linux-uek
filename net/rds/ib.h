@@ -192,7 +192,6 @@ struct rds_ib_send_work {
 	union {
 		struct ib_send_wr	s_wr;
 		struct ib_rdma_wr	s_rdma_wr;
-		struct ib_atomic_wr	s_atomic_wr;
 	};
 	struct ib_sge		s_sge[RDS_IB_MAX_SGE];
 	unsigned long		s_queued;
@@ -609,8 +608,6 @@ struct rds_ib_statistics {
 	uint64_t        s_ib_rdma_mr_1m_pool_flush;
 	uint64_t        s_ib_rdma_mr_1m_pool_depleted;
 	uint64_t	s_ib_rdma_flush_mr_pool_avoided;
-	uint64_t	s_ib_atomic_cswp;
-	uint64_t	s_ib_atomic_fadd;
 	uint64_t        s_ib_srq_lows;
 	uint64_t        s_ib_srq_refills;
 	uint64_t        s_ib_srq_empty_refills;
@@ -851,7 +848,6 @@ void rds_ib_send_add_credits(struct rds_connection *conn, unsigned int credits);
 void rds_ib_advertise_credits(struct rds_connection *conn, unsigned int posted);
 int rds_ib_send_grab_credits(struct rds_ib_connection *ic, u32 wanted,
 			     u32 *adv_credits, int need_posted);
-int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op);
 
 /* ib_stats.c */
 DECLARE_PER_CPU(struct rds_ib_statistics, rds_ib_stats);

@@ -149,10 +149,7 @@ struct rds_cmsg_rx_trace {
 #define RDS_CMSG_RDMA_MAP		3
 #define RDS_CMSG_RDMA_SEND_STATUS	4
 #define RDS_CMSG_CONG_UPDATE		5
-#define RDS_CMSG_ATOMIC_FADD		6
-#define RDS_CMSG_ATOMIC_CSWP		7
-#define RDS_CMSG_MASKED_ATOMIC_FADD	8
-#define RDS_CMSG_MASKED_ATOMIC_CSWP	9
+/* deprecated: RDS_CMSG_ATOMIC_* 6,7,8,9 */
 #define RDS_CMSG_ASYNC_SEND		10
 #define RDS_CMSG_RXPATH_LATENCY		11
 #define RDS_CMSG_INQ			12
@@ -461,16 +458,6 @@ struct rds_rdma_args {
 	struct rds_iovec remote_vec;
 	__u64		local_vec_addr;
 	__u64		nr_local;
-	__u64		flags;
-	__u64		user_token;
-};
-
-struct rds_atomic_args {
-	rds_rdma_cookie_t cookie;
-	__u64		local_addr;
-	__u64		remote_addr;
-	__u64		swap_add;
-	__u64		compare;
 	__u64		flags;
 	__u64		user_token;
 };

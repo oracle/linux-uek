@@ -5,7 +5,6 @@
 #define	c_xmit_sg		c_path[0].cp_xmit_sg
 #define	c_xmit_hdr_off		c_path[0].cp_xmit_hdr_off
 #define	c_xmit_data_off		c_path[0].cp_xmit_data_off
-#define	c_xmit_atomic_sent	c_path[0].cp_xmit_atomic_sent
 #define	c_xmit_rdma_sent	c_path[0].cp_xmit_rdma_sent
 #define	c_xmit_data_sent	c_path[0].cp_xmit_data_sent
 #define	c_lock			c_path[0].cp_lock

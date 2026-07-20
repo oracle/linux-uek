@@ -187,11 +187,6 @@ static void rds_message_purge(struct rds_message *rm)
 		rds_rdma_free_op(&rm->rdma);
 	if (rm->rdma.op_rdma_mr)
 		kref_put(&rm->rdma.op_rdma_mr->r_kref, __rds_put_mr_final);
-
-	if (rm->atomic.op_active)
-		rds_atomic_free_op(&rm->atomic);
-	if (rm->atomic.op_rdma_mr)
-		kref_put(&rm->atomic.op_rdma_mr->r_kref, __rds_put_mr_final);
 }
 
 void rds_message_put(struct rds_message *rm)
