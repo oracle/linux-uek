@@ -20,3 +20,5 @@ obj-$(CONFIG_ARISTA_SCD_DRIVER) += tmp468.o
 obj-$(CONFIG_ARISTA_SCD_DRIVER) += amax31732.o
 obj-$(CONFIG_ARISTA_SCD_DRIVER) += amax31790.o
 obj-$(CONFIG_ARISTA_SCD_DRIVER) += arista-fan-cpld.o
+obj-$(CONFIG_ARISTA_SCD_DRIVER) += ar_pmbus_core.o
+obj-$(CONFIG_ARISTA_SCD_DRIVER) += atda38740.o
