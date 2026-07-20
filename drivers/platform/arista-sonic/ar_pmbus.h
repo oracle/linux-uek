@@ -6,16 +6,21 @@
  * Copyright (c) 2012 Guenter Roeck
  */
 
-#ifndef PMBUS_H
-#define PMBUS_H
+#ifndef AR_PMBUS_H
+#define AR_PMBUS_H
 
 #include <linux/bitops.h>
+#include <linux/module.h>
 #include <linux/regulator/driver.h>
+
+/* Convenience macro mirroring the in-tree MODULE_IMPORT_NS_PMBUS shim,
+ * but importing this forked driver's namespace. */
+#define MODULE_IMPORT_NS_AR_PMBUS MODULE_IMPORT_NS(AR_PMBUS)
 
 /*
  * Registers
  */
-enum pmbus_regs {
+enum ar_pmbus_regs {
 	PMBUS_PAGE			= 0x00,
 	PMBUS_OPERATION			= 0x01,
 	PMBUS_ON_OFF_CONFIG		= 0x02,
@@ -287,7 +292,7 @@ enum pmbus_regs {
 #define PB_FAN_1_RPM			BIT(6)
 #define PB_FAN_1_INSTALLED		BIT(7)
 
-enum pmbus_fan_mode { percent = 0, rpm };
+enum ar_pmbus_fan_mode { percent = 0, rpm };
 
 /*
  * STATUS_BYTE, STATUS_WORD (lower)
@@ -372,7 +377,7 @@ enum pmbus_fan_mode { percent = 0, rpm };
 #define PB_CML_FAULT_INVALID_DATA	BIT(6)
 #define PB_CML_FAULT_INVALID_COMMAND	BIT(7)
 
-enum pmbus_sensor_classes {
+enum ar_pmbus_sensor_classes {
 	PSC_VOLTAGE_IN = 0,
 	PSC_VOLTAGE_OUT,
 	PSC_CURRENT_IN,
@@ -415,7 +420,7 @@ enum pmbus_sensor_classes {
 #define PMBUS_PHASE_VIRTUAL	BIT(30)	/* Phases on this page are virtual */
 #define PMBUS_PAGE_VIRTUAL	BIT(31)	/* Page is virtual */
 
-enum pmbus_data_format { linear = 0, ieee754, direct, vid };
+enum ar_pmbus_data_format { linear = 0, ieee754, direct, vid };
 enum vrm_version { vr11 = 0, vr12, vr13, imvp9, amd625mv };
 
 /* PMBus revision identifiers */
@@ -424,10 +429,10 @@ enum vrm_version { vr11 = 0, vr12, vr13, imvp9, amd625mv };
 #define PMBUS_REV_12 0x22	/* PMBus revision 1.2 */
 #define PMBUS_REV_13 0x33	/* PMBus revision 1.3 */
 
-struct pmbus_driver_info {
+struct ar_pmbus_driver_info {
 	int pages;		/* Total number of pages */
 	u8 phases[PMBUS_PAGES];	/* Number of phases per page */
-	enum pmbus_data_format format[PSC_NUM_CLASSES];
+	enum ar_pmbus_data_format format[PSC_NUM_CLASSES];
 	enum vrm_version vrm_version[PMBUS_PAGES]; /* vrm version per page */
 	/*
 	 * Support one set of coefficients for each sensor type
@@ -464,7 +469,7 @@ struct pmbus_driver_info {
 	 * chips, and the chip functionality is not pre-determined.
 	 */
 	int (*identify)(struct i2c_client *client,
-			struct pmbus_driver_info *info);
+			struct ar_pmbus_driver_info *info);
 
 	/* Regulator functionality, if supported by this chip driver. */
 	int num_regulators;
@@ -486,7 +491,7 @@ struct pmbus_driver_info {
 
 /* Regulator ops */
 
-extern const struct regulator_ops pmbus_regulator_ops;
+extern const struct regulator_ops ar_pmbus_regulator_ops;
 
 /* Macros for filling in array of struct regulator_desc */
 #define PMBUS_REGULATOR_STEP(_name, _id, _voltages, _step, _min_uV)  \
@@ -495,7 +500,7 @@ extern const struct regulator_ops pmbus_regulator_ops;
 		.id = (_id),					\
 		.of_match = of_match_ptr(_name # _id),		\
 		.regulators_node = of_match_ptr("regulators"),	\
-		.ops = &pmbus_regulator_ops,			\
+		.ops = &ar_pmbus_regulator_ops,			\
 		.type = REGULATOR_VOLTAGE,			\
 		.owner = THIS_MODULE,				\
 		.n_voltages = _voltages,			\
@@ -510,7 +515,7 @@ extern const struct regulator_ops pmbus_regulator_ops;
 		.name = (_name),				\
 		.of_match = of_match_ptr(_name),		\
 		.regulators_node = of_match_ptr("regulators"),	\
-		.ops = &pmbus_regulator_ops,			\
+		.ops = &ar_pmbus_regulator_ops,			\
 		.type = REGULATOR_VOLTAGE,			\
 		.owner = THIS_MODULE,				\
 		.n_voltages = _voltages,			\
@@ -522,33 +527,33 @@ extern const struct regulator_ops pmbus_regulator_ops;
 
 /* Function declarations */
 
-void pmbus_clear_cache(struct i2c_client *client);
-void pmbus_set_update(struct i2c_client *client, u8 reg, bool update);
-int pmbus_set_page(struct i2c_client *client, int page, int phase);
-int pmbus_read_word_data(struct i2c_client *client, int page, int phase,
+void ar_pmbus_clear_cache(struct i2c_client *client);
+void ar_pmbus_set_update(struct i2c_client *client, u8 reg, bool update);
+int ar_pmbus_set_page(struct i2c_client *client, int page, int phase);
+int ar_pmbus_read_word_data(struct i2c_client *client, int page, int phase,
 			 u8 reg);
-int pmbus_write_word_data(struct i2c_client *client, int page, u8 reg,
+int ar_pmbus_write_word_data(struct i2c_client *client, int page, u8 reg,
 			  u16 word);
-int pmbus_read_byte_data(struct i2c_client *client, int page, u8 reg);
-int pmbus_write_byte(struct i2c_client *client, int page, u8 value);
-int pmbus_write_byte_data(struct i2c_client *client, int page, u8 reg,
+int ar_pmbus_read_byte_data(struct i2c_client *client, int page, u8 reg);
+int ar_pmbus_write_byte(struct i2c_client *client, int page, u8 value);
+int ar_pmbus_write_byte_data(struct i2c_client *client, int page, u8 reg,
 			  u8 value);
-int pmbus_update_byte_data(struct i2c_client *client, int page, u8 reg,
+int ar_pmbus_update_byte_data(struct i2c_client *client, int page, u8 reg,
 			   u8 mask, u8 value);
-void pmbus_clear_faults(struct i2c_client *client);
-bool pmbus_check_byte_register(struct i2c_client *client, int page, int reg);
-bool pmbus_check_word_register(struct i2c_client *client, int page, int reg);
-int pmbus_do_probe(struct i2c_client *client, struct pmbus_driver_info *info);
-const struct pmbus_driver_info *pmbus_get_driver_info(struct i2c_client
+void ar_pmbus_clear_faults(struct i2c_client *client);
+bool ar_pmbus_check_byte_register(struct i2c_client *client, int page, int reg);
+bool ar_pmbus_check_word_register(struct i2c_client *client, int page, int reg);
+int ar_pmbus_do_probe(struct i2c_client *client, struct ar_pmbus_driver_info *info);
+const struct ar_pmbus_driver_info *ar_pmbus_get_driver_info(struct i2c_client
 						      *client);
-int pmbus_get_fan_rate_device(struct i2c_client *client, int page, int id,
-			      enum pmbus_fan_mode mode);
-int pmbus_get_fan_rate_cached(struct i2c_client *client, int page, int id,
-			      enum pmbus_fan_mode mode);
-int pmbus_lock_interruptible(struct i2c_client *client);
-void pmbus_unlock(struct i2c_client *client);
-int pmbus_update_fan(struct i2c_client *client, int page, int id,
+int ar_pmbus_get_fan_rate_device(struct i2c_client *client, int page, int id,
+			      enum ar_pmbus_fan_mode mode);
+int ar_pmbus_get_fan_rate_cached(struct i2c_client *client, int page, int id,
+			      enum ar_pmbus_fan_mode mode);
+int ar_pmbus_lock_interruptible(struct i2c_client *client);
+void ar_pmbus_unlock(struct i2c_client *client);
+int ar_pmbus_update_fan(struct i2c_client *client, int page, int id,
 		     u8 config, u8 mask, u16 command);
-struct dentry *pmbus_get_debugfs_dir(struct i2c_client *client);
+struct dentry *ar_pmbus_get_debugfs_dir(struct i2c_client *client);
 
-#endif /* PMBUS_H */
+#endif /* AR_PMBUS_H */
