@@ -1276,13 +1276,15 @@ out:
  * rds_message is getting to be quite complicated, and we'd like to allocate
  * it all in one go. This figures out how big it needs to be up front.
  */
-static int rds_rm_size(struct msghdr *msg, int data_len, struct rds_iov_vector_arr *iov_arr)
+static int rds_rm_size(struct msghdr *msg, int data_len,
+		       struct rds_iov_vector_arr *iov_arr)
 {
 	struct cmsghdr *cmsg;
 	int size = 0;
 	int cmsg_groups = 0;
 	int retval;
 	struct rds_iov_vector *iov, *tmp_iov;
+	bool atomic_seen = false;
 
 	for_each_cmsghdr(cmsg, msg) {
 		if (!CMSG_OK(msg, cmsg))
@@ -1327,6 +1329,13 @@ static int rds_rm_size(struct msghdr *msg, int data_len, struct rds_iov_vector_a
 
 		case RDS_CMSG_ATOMIC_CSWP:
 		case RDS_CMSG_ATOMIC_FADD:
+			if (cmsg->cmsg_len <
+			    CMSG_LEN(sizeof(struct rds_atomic_args)))
+				return -EINVAL;
+			if (atomic_seen)
+				return -EINVAL;
+			atomic_seen = true;
+
 			cmsg_groups |= 1;
 			size += sizeof(struct scatterlist);
 			break;
@@ -1402,10 +1411,11 @@ static int rds_get_cmsg_tos_override(struct msghdr *msg, int default_tos)
 	return tos;
 }
 
-static inline int rds_rdma_bytes(struct msghdr *msg, size_t *rdma_bytes)
+static inline int rds_rdma_bytes(struct msghdr *msg, u64 *rdma_bytes)
 {
 	struct rds_rdma_args *args;
 	struct cmsghdr *cmsg;
+	bool args_seen = false;
 
 	for_each_cmsghdr(cmsg, msg) {
 		if (!CMSG_OK(msg, cmsg))
@@ -1418,8 +1428,12 @@ static inline int rds_rdma_bytes(struct msghdr *msg, size_t *rdma_bytes)
 			if (cmsg->cmsg_len <
 			    CMSG_LEN(sizeof(struct rds_rdma_args)))
 				return -EINVAL;
+			if (args_seen)
+				return -EINVAL;
+			args_seen = true;
+
 			args = CMSG_DATA(cmsg);
-			*rdma_bytes += args->remote_vec.bytes;
+			*rdma_bytes = args->remote_vec.bytes;
 		}
 	}
 
@@ -1442,7 +1456,8 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	int queued = 0;
 	int nonblock = msg->msg_flags & MSG_DONTWAIT;
 	long timeo = sock_sndtimeo(sk, nonblock);
-	size_t total_payload_len = payload_len, rdma_payload_len = 0;
+	size_t total_payload_len = payload_len;
+	u64 rdma_payload_len = 0;
 	struct rds_conn_path *cpath = NULL;
 	struct rs_buf_info *bufi;
 	struct rds_net *rns;

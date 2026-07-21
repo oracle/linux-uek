@@ -553,6 +553,7 @@ int rds_rdma_extra_size(struct rds_rdma_args *args, struct rds_iov_vector *iov)
 	struct rds_iovec *vec;
 	struct rds_iovec __user *local_vec;
 	int tot_pages = 0;
+	u64 local_bytes = 0;
 	int i;
 
 	if (args->nr_local == 0)
@@ -582,20 +583,21 @@ int rds_rdma_extra_size(struct rds_rdma_args *args, struct rds_iov_vector *iov)
 	iov->iv_entries = args->nr_local;
 	/* figure out the number of pages in the vector */
 	for (i = 0; i < iov->iv_entries; i++, vec++) {
-		int nr_pages = rds_pages_in_vec(vec);
+		int nr_pages;
+
+		if (vec->bytes > args->remote_vec.bytes - local_bytes)
+			return -EMSGSIZE;
+		local_bytes += vec->bytes;
+
+		nr_pages = rds_pages_in_vec(vec);
 
 		if (nr_pages == 0)
 			return -EINVAL;
 
 		iov->iv_nr_pages[i] = nr_pages;
 		tot_pages += nr_pages;
-
-		/* nr_pages for one entry is limited to (UINT_MAX>>PAGE_SHIFT)+1,
-		 * so tot_pages cannot overflow without first going negative.
-		 */
-		if (tot_pages < 0)
-			return -EINVAL;
 	}
+
 	iov->iv_tot_pages = tot_pages;
 	return tot_pages * sizeof(struct scatterlist);
 }
