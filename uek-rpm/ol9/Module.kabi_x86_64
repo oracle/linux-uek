@@ -458,6 +458,7 @@
 0xcaa49b81	kmem_cache_create_usercopy	vmlinux	EXPORT_SYMBOL
 0xa4ffc07a	kmem_cache_destroy	vmlinux	EXPORT_SYMBOL
 0x2693ba66	kmem_cache_free	vmlinux	EXPORT_SYMBOL
+0xcc198cd4	kmem_cache_size	vmlinux	EXPORT_SYMBOL
 0xee518148	kmsg_dump_get_buffer	vmlinux	EXPORT_SYMBOL_GPL
 0x4f2c996d	kmsg_dump_get_line	vmlinux	EXPORT_SYMBOL_GPL
 0x480305ca	kmsg_dump_rewind	vmlinux	EXPORT_SYMBOL_GPL
