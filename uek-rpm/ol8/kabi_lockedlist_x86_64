@@ -587,6 +587,7 @@
 	kmem_cache_create_usercopy
 	kmem_cache_destroy
 	kmem_cache_free
+	kmem_cache_size
 	kobject_put
 	kstrtoull
 	kthread_create_on_node

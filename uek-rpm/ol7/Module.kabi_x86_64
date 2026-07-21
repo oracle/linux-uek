@@ -586,6 +586,7 @@
 0xe240283a	kmem_cache_create_usercopy	vmlinux	EXPORT_SYMBOL	
 0x0e7f0fab	kmem_cache_destroy	vmlinux	EXPORT_SYMBOL	
 0xff212eb5	kmem_cache_free	vmlinux	EXPORT_SYMBOL	
+0x43492757	kmem_cache_size	vmlinux	EXPORT_SYMBOL
 0x1531a425	kobject_put	vmlinux	EXPORT_SYMBOL	
 0x5c3c7387	kstrtoull	vmlinux	EXPORT_SYMBOL	
 0x4f8d615e	kthread_create_on_node	vmlinux	EXPORT_SYMBOL	
