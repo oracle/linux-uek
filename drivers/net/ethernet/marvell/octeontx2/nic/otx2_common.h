@@ -804,7 +804,11 @@ MBOX_UP_CGX_MESSAGES
 #undef M
 
 /* Time to wait before watchdog kicks off */
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+#define OTX2_TX_TIMEOUT		(5 * HZ)
+#else
 #define OTX2_TX_TIMEOUT		(100 * HZ)
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 #define	RVU_PFVF_PF_SHIFT	10
 #define	RVU_PFVF_PF_MASK	0x3F
