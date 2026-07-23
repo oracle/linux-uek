@@ -1464,6 +1464,7 @@ static struct ib_pd *rxe_share_pd(struct ib_device *dev,
 	struct rxe_dev *rxe = to_rdev(dev);
 	struct ib_pd  *ibpd;
 	struct rxe_pd *pd;
+	int ret;
 
 	ibpd = rdma_zalloc_drv_obj(dev, ib_pd);
 	if (!ibpd)
@@ -1474,10 +1475,15 @@ static struct ib_pd *rxe_share_pd(struct ib_device *dev,
 
 	pd->real_rxepd = to_rshpd(shpd)->shared_rxepd;
 	pd->pdn = to_rshpd(shpd)->shared_pdn;
-	rxe_link_to_pool(&rxe->pd_pool, pd);
+	ret = rxe_link_to_pool(&rxe->pd_pool, pd);
+	if (ret) {
+		kfree(pd);
+		return ERR_PTR(ret);
+	}
 
 	if (context)
 		if (ib_copy_to_udata(udata, &pd->pdn, sizeof(__u32))) {
+			rxe_unlink(pd);
 			kfree(pd);
 			return ERR_PTR(-EFAULT);
 		}

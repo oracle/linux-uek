@@ -262,6 +262,22 @@ int __rxe_put(struct rxe_pool_elem *elem)
 	return kref_put(&elem->ref_cnt, rxe_elem_release);
 }
 
+/*
+ * Undo a link-only pool registration.
+ * The caller must ensure that elem has no references other than
+ * the initial reference created by rxe_link_to_pool().
+ * The caller remains responsible for freeing the containing object.
+ */
+void __rxe_unlink(struct rxe_pool_elem *elem)
+{
+	struct rxe_pool *pool = elem->pool;
+
+	__rxe_put(elem);
+	if (pool->cleanup)
+		pool->cleanup(elem);
+	atomic_dec(&pool->num_elem);
+}
+
 void __rxe_finalize(struct rxe_pool_elem *elem)
 {
 	void *xa_ret;

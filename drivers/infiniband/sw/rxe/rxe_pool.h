@@ -81,6 +81,9 @@ int __rxe_get(struct rxe_pool_elem *elem);
 int __rxe_put(struct rxe_pool_elem *elem);
 #define rxe_put(obj) __rxe_put(&(obj)->elem)
 
+void __rxe_unlink(struct rxe_pool_elem *elem);
+#define rxe_unlink(obj) __rxe_unlink(&(obj)->elem)
+
 int __rxe_cleanup(struct rxe_pool_elem *elem, bool sleepable);
 #define rxe_cleanup(obj) __rxe_cleanup(&(obj)->elem, true)
 #define rxe_cleanup_ah(obj, sleepable) __rxe_cleanup(&(obj)->elem, sleepable)
