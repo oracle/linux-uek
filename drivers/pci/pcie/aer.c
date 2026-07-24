@@ -957,7 +957,7 @@ void pci_print_aer(struct pci_dev *dev, int aer_severity,
 		status = aer->uncor_status;
 		mask = aer->uncor_mask;
 		info.level = KERN_ERR;
-		tlp_header_valid = status & AER_LOG_TLP_MASKS;
+		tlp_header_valid = (status & ~mask) & AER_LOG_TLP_MASKS;
 	}
 
 	info.status = status;
@@ -1442,7 +1442,7 @@ int aer_get_device_error_info(struct aer_err_info *info, int i)
 		pci_read_config_dword(dev, aer + PCI_ERR_CAP, &aercc);
 		info->first_error = PCI_ERR_CAP_FEP(aercc);
 
-		if (info->status & AER_LOG_TLP_MASKS) {
+		if ((info->status & ~info->mask) & AER_LOG_TLP_MASKS) {
 			info->tlp_header_valid = 1;
 			pcie_read_tlp_log(dev, aer + PCI_ERR_HEADER_LOG, &info->tlp);
 		}
