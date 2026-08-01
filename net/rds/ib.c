@@ -291,6 +291,7 @@ static void rds_ib_free_cache(struct rds_ib_refill_cache *cache)
 		atomic_set(&head->count, 0);
 		atomic64_set(&head->hit_count, 0);
 		atomic64_set(&head->miss_count, 0);
+		atomic64_set(&head->gc_count, 0);
 	}
 	lfstack_free(&cache->ready);
 	free_percpu(cache->percpu);
@@ -298,7 +299,6 @@ static void rds_ib_free_cache(struct rds_ib_refill_cache *cache)
 	atomic_set(&cache->count, 0);
 	atomic64_set(&cache->hit_count, 0);
 	atomic64_set(&cache->miss_count, 0);
-	atomic64_set(&head->gc_count, 0);
 }
 
 static int rds_ib_alloc_caches(struct rds_ib_device *rds_ibdev)
