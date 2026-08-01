@@ -119,10 +119,10 @@ static inline struct lfstack_el *lfstack_pop_all(union lfstack *stack)
 	union lfstack old_v, new_v;
 
 	new_v.first = NULL;
-	new_v.seq   = 0;
 	do {
 		old_v.first = READ_ONCE(stack->first);
 		old_v.seq   = READ_ONCE(stack->seq);
+		new_v.seq   = old_v.seq + 1;
 	} while (!try_cmpxchg128(&stack->full, &old_v.full, new_v.full));
 	return old_v.first;
 #else
