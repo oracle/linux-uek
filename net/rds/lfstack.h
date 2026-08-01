@@ -111,15 +111,14 @@ out:
 static inline struct lfstack_el *lfstack_pop_all(struct lfstack *stack)
 {
 #ifdef LFSTACK_LOCKFREE
-	struct lfstack_el *first, *next;
-	uintptr_t seq, nseq;
+	struct lfstack_el *first;
+	uintptr_t seq;
 
-	next = NULL;
-	nseq = 0;
 	do {
 		first = READ_ONCE(stack->first);
 		seq   = READ_ONCE(stack->seq);
-	} while (!cmpxchg_double(&stack->first, &stack->seq, first, seq, next, nseq));
+	} while (!cmpxchg_double(&stack->first, &stack->seq,
+				 first, seq, NULL, seq + 1));
 
 	return first;
 #else
