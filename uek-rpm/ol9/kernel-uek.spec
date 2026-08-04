@@ -590,6 +590,10 @@ Source51: modules.yaml.S.emb3
 Source52: denylist.txt.S.emb3
 Source53: modules.yaml.S.osp
 Source54: denylist.txt.S.osp
+Source55: modules.yaml.S.emb4h
+Source56: denylist.txt.S.emb4h
+Source57: modules.yaml.S.emb4s
+Source58: denylist.txt.S.emb4s
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
@@ -601,6 +605,8 @@ Source1011: config-aarch64-embedded4
 Source1012: config-aarch64-embedded
 Source1013: config-aarch64-embedded3
 Source1014: config-x86_64-osp
+Source1015: config-aarch64-embedded4h
+Source1016: config-aarch64-embedded4s
 
 Source25: Module.kabi_x86_64
 Source26: Module.kabi_aarch64
@@ -1012,6 +1018,16 @@ This package include debug kernel for 64k page size.
 This package includes an embedded kernel.
 
 %define variant_summary A kernel for an embedded platform
+%kernel_variant_package -emo emb4h
+%description -n kernel%{?variant}emb4h-core
+This package includes an embedded kernel.
+
+%define variant_summary A kernel for an embedded platform
+%kernel_variant_package -emo emb4s
+%description -n kernel%{?variant}emb4s-core
+This package includes an embedded kernel.
+
+%define variant_summary A kernel for an embedded platform
 %kernel_variant_package -emo emb3
 %description -n kernel%{?variant}emb3-core
 This package includes an embedded kernel.
@@ -1095,6 +1111,8 @@ mkdir -p configs
     cp %{SOURCE1008} configs/config-debug
     cp %{SOURCE1007} configs/config
     cp %{SOURCE1011} configs/config-embedded4
+    cp %{SOURCE1015} configs/config-embedded4h
+    cp %{SOURCE1016} configs/config-embedded4s
     cp %{SOURCE1012} configs/config-embedded
     cp %{SOURCE1013} configs/config-embedded3
 %endif
@@ -1259,6 +1277,16 @@ BuildKernel() {
         modlistVariant="$PWD/../kernel%{?variant}emb4"
         modlistSrc=modules.yaml.S.emb4
         denylistSrc=denylist.txt.S.emb4
+    elif [ "$Flavour" == "emb4h" ]; then
+        cp configs/config-embedded4h .config
+        modlistVariant="$PWD/../kernel%{?variant}emb4h"
+        modlistSrc=modules.yaml.S.emb4h
+        denylistSrc=denylist.txt.S.emb4h
+    elif [ "$Flavour" == "emb4s" ]; then
+        cp configs/config-embedded4s .config
+        modlistVariant="$PWD/../kernel%{?variant}emb4s"
+        modlistSrc=modules.yaml.S.emb4s
+        denylistSrc=denylist.txt.S.emb4s
     elif [ "$Flavour" == "emb3" ]; then
         cp configs/config-embedded3 .config
         modlistVariant="$PWD/../kernel%{?variant}emb3"
@@ -1336,7 +1364,7 @@ BuildKernel() {
     openssl dgst -sha256 -hmac "%{FIPS140_HMAC_KEY}" < $fips_golden_module_path/fips140.ko -out $RPM_BUILD_ROOT/lib/modules/$KernelVer/.vmlinuz-$KernelVer-fips.hmac
 %endif
 
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb3" ] && [ "$Flavour" != "emb4" ] && [ "$Flavour" != "osp" ]; then
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb3" ] && [ "$Flavour" != "emb4" ] && [ "$Flavour" != "emb4h" ] && [ "$Flavour" != "emb4s" ] && [ "$Flavour" != "osp" ]; then
        %{make} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
     else
        %{make} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
@@ -1482,7 +1510,7 @@ BuildKernel() {
     %_sourcedir/kabitool -s Module.symvers -o $RPM_BUILD_ROOT/kernel-$KernelVer-kabideps
 
 %if %{with_kabichk}
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "debug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb3" ] && [ "$Flavour" != "emb4" ] && [ "$Flavour" != "osp" ]; then
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "debug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb3" ] && [ "$Flavour" != "emb4" ] && [ "$Flavour" != "emb4h" ] && [ "$Flavour" != "emb4s" ] && [ "$Flavour" != "osp" ]; then
        # Create symbol type data which can be used to introspect kABI breakages
        python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
 
@@ -1882,6 +1910,8 @@ BuildKernel %make_target %kernel_image 64kdebug
 
 %if %{with_embedded4}
 BuildKernel %make_target %kernel_image emb4
+BuildKernel %make_target %kernel_image emb4h
+BuildKernel %make_target %kernel_image emb4s
 %endif
 
 %if %{with_embedded3}
@@ -1983,6 +2013,12 @@ BuildKernel %make_target %kernel_image osp
        mv certs/signing_key.pem.sign.emb4 certs/signing_key.pem \
        mv certs/signing_key.x509.sign.emb4 certs/signing_key.x509 \
        %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb4/ %{dgst} \
+       mv certs/signing_key.pem.sign.emb4h certs/signing_key.pem \
+       mv certs/signing_key.x509.sign.emb4h certs/signing_key.x509 \
+       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb4h/ %{dgst} \
+       mv certs/signing_key.pem.sign.emb4s certs/signing_key.pem \
+       mv certs/signing_key.x509.sign.emb4s certs/signing_key.x509 \
+       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb4s/ %{dgst} \
     fi \
     if [ "%{with_embedded3}" -ne "0" ]; then \
        mv certs/signing_key.pem.sign.emb3 certs/signing_key.pem \
@@ -2395,6 +2431,16 @@ fi\
 %kernel_variant_postun -o -v emb4
 %kernel_variant_post -mo -v emb4
 
+%kernel_variant_pre -o emb4h
+%kernel_variant_preun -o emb4h
+%kernel_variant_postun -o -v emb4h
+%kernel_variant_post -mo -v emb4h
+
+%kernel_variant_pre -o emb4s
+%kernel_variant_preun -o emb4s
+%kernel_variant_postun -o -v emb4s
+%kernel_variant_post -mo -v emb4s
+
 %kernel_variant_pre -o emb3
 %kernel_variant_preun -o emb3
 %kernel_variant_postun -o -v emb3
@@ -2585,6 +2631,8 @@ fi
 %kernel_variant_files -o %{with_64k_ps_debug} 64kdebug
 
 %kernel_variant_files -mo %{with_embedded4} emb4
+%kernel_variant_files -mo %{with_embedded4} emb4h
+%kernel_variant_files -mo %{with_embedded4} emb4s
 
 %kernel_variant_files -mo %{with_embedded3} emb3
 
