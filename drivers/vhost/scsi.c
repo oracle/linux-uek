@@ -2299,8 +2299,8 @@ static int vhost_scsi_open(struct inode *inode, struct file *f)
 	if (!vs->old_inflight)
 		goto err_inflight;
 
-	vs->vqs = kmalloc_array(nvqs, sizeof(*vs->vqs),
-				GFP_KERNEL | __GFP_ZERO);
+	vs->vqs = kvmalloc_array(nvqs, sizeof(*vs->vqs),
+				 GFP_KERNEL | __GFP_ZERO);
 	if (!vs->vqs)
 		goto err_vqs;
 
@@ -2336,7 +2336,7 @@ static int vhost_scsi_open(struct inode *inode, struct file *f)
 	return 0;
 
 err_local_vqs:
-	kfree(vs->vqs);
+	kvfree(vs->vqs);
 err_vqs:
 	kfree(vs->old_inflight);
 err_inflight:
@@ -2357,7 +2357,7 @@ static int vhost_scsi_release(struct inode *inode, struct file *f)
 	vhost_dev_stop(&vs->dev);
 	vhost_dev_cleanup(&vs->dev);
 	kfree(vs->dev.vqs);
-	kfree(vs->vqs);
+	kvfree(vs->vqs);
 	kfree(vs->old_inflight);
 	kvfree(vs);
 	return 0;
