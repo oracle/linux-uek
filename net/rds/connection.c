@@ -499,14 +499,14 @@ static void rds_conn_shutdown_final(struct rds_conn_path *cp)
 	    conn->c_trans->conn_has_alt_conn(conn))
 		reconnect = true;
 
+	rds_clear_shutdown_pending_work_bit(cp);
+
 	if (reconnect) {
 		if (conn->c_trans->t_mp_capable &&
 		    cp->cp_index == 0)
 			rds_send_hs_ping(conn, 0);
 		rds_queue_reconnect(cp, false);
 	}
-
-	rds_clear_shutdown_pending_work_bit(cp);
 
 	if (cp->cp_shutdown_final)
 		complete(cp->cp_shutdown_final);
