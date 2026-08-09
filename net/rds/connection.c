@@ -793,6 +793,7 @@ static void rds_conn_message_info_cmn(struct socket *sock, unsigned int len,
 	struct rds_message *rm;
 	unsigned int total = 0;
 	unsigned long flags;
+	struct net *net = sock_net(sock->sk);
 	int j;
 
 	if (isv6)
@@ -806,6 +807,9 @@ static void rds_conn_message_info_cmn(struct socket *sock, unsigned int len,
 		hlist_for_each_entry_rcu(conn, head, c_hash_node) {
 			struct rds_conn_path *cp;
 			int npaths;
+
+			if (conn->c_net != net)
+				continue;
 
 			if (!isv6 && conn->c_isv6)
 				continue;
@@ -905,6 +909,7 @@ void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 {
 	struct hlist_head *head;
 	struct rds_connection *conn;
+	struct net *net = sock_net(sock->sk);
 
 	rcu_read_lock();
 
@@ -913,6 +918,9 @@ void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 
 	for_each_conn_hash_bucket(head) {
 		hlist_for_each_entry_rcu(conn, head, c_hash_node) {
+
+			if (conn->c_net != net)
+				continue;
 
 			/* Zero the per-item buffer before handing it to the
 			 * visitor so any field the visitor does not write -
@@ -949,6 +957,7 @@ static void rds_walk_conn_path_info(struct socket *sock, unsigned int len,
 {
 	struct hlist_head *head;
 	struct rds_connection *conn;
+	struct net *net = sock_net(sock->sk);
 
 	rcu_read_lock();
 
@@ -958,6 +967,9 @@ static void rds_walk_conn_path_info(struct socket *sock, unsigned int len,
 	for_each_conn_hash_bucket(head) {
 		hlist_for_each_entry_rcu(conn, head, c_hash_node) {
 			struct rds_conn_path *cp;
+
+			if (conn->c_net != net)
+				continue;
 
 			/* XXX We only copy the information from the first
 			 * path for now.  The problem is that if there are
