@@ -1259,6 +1259,7 @@ static void rds_sock_inc_info(struct socket *sock, unsigned int len,
 			      struct rds_info_iterator *iter,
 			      struct rds_info_lengths *lens)
 {
+	struct net *net = sock_net(sock->sk);
 	struct rds_sock *rs;
 	struct rds_incoming *inc;
 	unsigned int total = 0;
@@ -1268,7 +1269,9 @@ static void rds_sock_inc_info(struct socket *sock, unsigned int len,
 	spin_lock_bh(&rds_sock_lock);
 
 	list_for_each_entry(rs, &rds_sock_list, rs_item) {
-		(void)rds_rs_to_sk(rs);
+		if (sock_net(rds_rs_to_sk(rs)) != net)
+			continue;
+
 		read_lock(&rs->rs_recv_lock);
 
 		/* XXX too lazy to maintain counts.. */
@@ -1295,6 +1298,7 @@ static void rds6_sock_inc_info(struct socket *sock, unsigned int len,
 			       struct rds_info_iterator *iter,
 			       struct rds_info_lengths *lens)
 {
+	struct net *net = sock_net(sock->sk);
 	struct rds_sock *rs;
 	struct rds_incoming *inc;
 	unsigned int total = 0;
@@ -1304,6 +1308,9 @@ static void rds6_sock_inc_info(struct socket *sock, unsigned int len,
 	spin_lock_bh(&rds_sock_lock);
 
 	list_for_each_entry(rs, &rds_sock_list, rs_item) {
+		if (sock_net(rds_rs_to_sk(rs)) != net)
+			continue;
+
 		read_lock(&rs->rs_recv_lock);
 
 		/* XXX too lazy to maintain counts.. */
@@ -1328,17 +1335,24 @@ static void rds_sock_info(struct socket *sock, unsigned int len,
 			  struct rds_info_iterator *iter,
 			  struct rds_info_lengths *lens)
 {
+	struct net *net = sock_net(sock->sk);
 	struct rds_sock *rs;
+	u32 sock_count = 0;
 
 	len /= sizeof(struct rds_info_socket);
 
 	spin_lock_bh(&rds_sock_lock);
 
-	if (len < rds_sock_count)
-		goto out;
-
 	list_for_each_entry(rs, &rds_sock_list, rs_item) {
 		struct rds_info_socket sinfo = {};
+		struct sock *sk = rds_rs_to_sk(rs);
+
+		if (sock_net(sk) != net)
+			continue;
+
+		sock_count++;
+		if (sock_count > len)
+			continue;
 
 		sinfo.sndbuf = rds_sk_sndbuf(rs);
 		sinfo.rcvbuf = rds_sk_rcvbuf(rs);
@@ -1346,7 +1360,7 @@ static void rds_sock_info(struct socket *sock, unsigned int len,
 		sinfo.connected_addr = rs->rs_conn_addr_v4;
 		sinfo.bound_port = rs->rs_bound_port;
 		sinfo.connected_port = rs->rs_conn_port;
-		sinfo.inum = sock_i_ino(rds_rs_to_sk(rs));
+		sinfo.inum = sock_i_ino(sk);
 		sinfo.pid = rs->rs_pid;
 		sinfo.cong = rs->rs_congested;
 		if (rs->rs_transport)
@@ -1354,8 +1368,7 @@ static void rds_sock_info(struct socket *sock, unsigned int len,
 		rds_info_copy(iter, &sinfo, sizeof(sinfo));
 	}
 
-out:
-	lens->nr = rds_sock_count;
+	lens->nr = sock_count;
 	lens->each = sizeof(struct rds_info_socket);
 
 	spin_unlock_bh(&rds_sock_lock);
@@ -1366,17 +1379,24 @@ static void rds6_sock_info(struct socket *sock, unsigned int len,
 			   struct rds_info_iterator *iter,
 			   struct rds_info_lengths *lens)
 {
+	struct net *net = sock_net(sock->sk);
 	struct rds_sock *rs;
+	u32 sock_count = 0;
 
 	len /= sizeof(struct rds6_info_socket);
 
 	spin_lock_bh(&rds_sock_lock);
 
-	if (len < rds_sock_count)
-		goto out;
-
 	list_for_each_entry(rs, &rds_sock_list, rs_item) {
 		struct rds6_info_socket sinfo6 = {};
+		struct sock *sk = rds_rs_to_sk(rs);
+
+		if (sock_net(sk) != net)
+			continue;
+
+		sock_count++;
+		if (sock_count > len)
+			continue;
 
 		sinfo6.sndbuf = rds_sk_sndbuf(rs);
 		sinfo6.rcvbuf = rds_sk_rcvbuf(rs);
@@ -1384,7 +1404,7 @@ static void rds6_sock_info(struct socket *sock, unsigned int len,
 		sinfo6.connected_addr = rs->rs_conn_addr;
 		sinfo6.bound_port = rs->rs_bound_port;
 		sinfo6.connected_port = rs->rs_conn_port;
-		sinfo6.inum = sock_i_ino(rds_rs_to_sk(rs));
+		sinfo6.inum = sock_i_ino(sk);
 		sinfo6.pid = rs->rs_pid;
 		sinfo6.cong = rs->rs_congested;
 		if (rs->rs_transport)
@@ -1392,8 +1412,7 @@ static void rds6_sock_info(struct socket *sock, unsigned int len,
 		rds_info_copy(iter, &sinfo6, sizeof(sinfo6));
 	}
 
-out:
-	lens->nr = rds_sock_count;
+	lens->nr = sock_count;
 	lens->each = sizeof(struct rds6_info_socket);
 
 	spin_unlock_bh(&rds_sock_lock);
