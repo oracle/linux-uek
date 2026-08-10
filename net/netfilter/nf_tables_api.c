@@ -6269,6 +6269,7 @@ err5:
 	for (k = i - 1; k >= 0; k--)
 		nf_unregister_net_hook(net, &flowtable->ops[k]);
 
+	synchronize_rcu();
 	kfree(flowtable->ops);
 err4:
 	flowtable->data.type->free(&flowtable->data);
