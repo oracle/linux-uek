@@ -68,6 +68,24 @@ struct alt_instr {
 	u8  padlen;		/* length of build-time padding */
 } __packed;
 
+#ifndef __GENKSYMS__
+/* The serialized layout is part of the UEK module kABI. */
+_Static_assert(sizeof(struct alt_instr) == 13,
+	       "UEK module .altinstructions entries must remain 13 bytes");
+_Static_assert(offsetof(struct alt_instr, instr_offset) == 0,
+	       "struct alt_instr.instr_offset offset changed");
+_Static_assert(offsetof(struct alt_instr, repl_offset) == 4,
+	       "struct alt_instr.repl_offset offset changed");
+_Static_assert(offsetof(struct alt_instr, cpuid) == 8,
+	       "struct alt_instr.cpuid offset changed");
+_Static_assert(offsetof(struct alt_instr, instrlen) == 10,
+	       "struct alt_instr.instrlen offset changed");
+_Static_assert(offsetof(struct alt_instr, replacementlen) == 11,
+	       "struct alt_instr.replacementlen offset changed");
+_Static_assert(offsetof(struct alt_instr, padlen) == 12,
+	       "struct alt_instr.padlen offset changed");
+#endif /* !__GENKSYMS__ */
+
 /*
  * Debug flag that can be tested to see whether alternative
  * instructions were patched in already:
