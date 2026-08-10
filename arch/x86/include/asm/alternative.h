@@ -68,6 +68,20 @@ struct alt_instr {
 	u8  replacementlen;	/* length of new instruction */
 } __packed;
 
+/* The serialized layout is part of the UEK module kABI. */
+static_assert(sizeof(struct alt_instr) == 12,
+	      "UEK module .altinstructions entries must remain 12 bytes");
+static_assert(offsetof(struct alt_instr, instr_offset) == 0,
+	      "struct alt_instr.instr_offset offset changed");
+static_assert(offsetof(struct alt_instr, repl_offset) == 4,
+	      "struct alt_instr.repl_offset offset changed");
+static_assert(offsetof(struct alt_instr, cpuid) == 8,
+	      "struct alt_instr.cpuid offset changed");
+static_assert(offsetof(struct alt_instr, instrlen) == 10,
+	      "struct alt_instr.instrlen offset changed");
+static_assert(offsetof(struct alt_instr, replacementlen) == 11,
+	      "struct alt_instr.replacementlen offset changed");
+
 /*
  * Debug flag that can be tested to see whether alternative
  * instructions were patched in already:
