@@ -90,6 +90,20 @@ struct alt_instr {
 	u8  replacementlen;	/* length of new instruction */
 } __packed;
 
+/* The serialized layout is part of the UEK module kABI. */
+static_assert(sizeof(struct alt_instr) == 14,
+	      "UEK module .altinstructions entries must remain 14 bytes");
+static_assert(offsetof(struct alt_instr, instr_offset) == 0,
+	      "struct alt_instr.instr_offset offset changed");
+static_assert(offsetof(struct alt_instr, repl_offset) == 4,
+	      "struct alt_instr.repl_offset offset changed");
+static_assert(offsetof(struct alt_instr, ft_flags) == 8,
+	      "struct alt_instr.ft_flags offset changed");
+static_assert(offsetof(struct alt_instr, instrlen) == 12,
+	      "struct alt_instr.instrlen offset changed");
+static_assert(offsetof(struct alt_instr, replacementlen) == 13,
+	      "struct alt_instr.replacementlen offset changed");
+
 extern struct alt_instr __alt_instructions[], __alt_instructions_end[];
 
 /*
