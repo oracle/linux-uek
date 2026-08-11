@@ -3,6 +3,7 @@
 #include <linux/context_tracking.h>
 #include <linux/entry-common.h>
 #include <linux/highmem.h>
+#include <linux/rseq_entry.h>
 #include <linux/livepatch.h>
 #include <linux/audit.h>
 #include <linux/tick.h>
@@ -225,7 +226,19 @@ static void exit_to_user_mode_prepare(struct pt_regs *regs)
 
 	ti_work = read_thread_flags();
 	if (unlikely(ti_work & EXIT_TO_USER_MODE_WORK))
-		ti_work = exit_to_user_mode_loop(regs, ti_work);
+		for (;;) {
+			ti_work = exit_to_user_mode_loop(regs, ti_work);
+			/*
+			 * This will try to arm time slice extension timer.
+			 * It can fail(returns true) if expiry time
+			 * exceeds the scheduling latency, sets resched
+			 * flags on the current task. So need to get
+			 * ti_work and repeat.
+			 */
+			if (likely(!rseq_exit_to_user_mode_restart()))
+				break;
+			ti_work = read_thread_flags();
+		}
 
 	arch_exit_to_user_mode_prepare(regs, ti_work);
 
@@ -326,12 +339,14 @@ __visible noinstr void syscall_exit_to_user_mode(struct pt_regs *regs)
 noinstr void irqentry_enter_from_user_mode(struct pt_regs *regs)
 {
 	__enter_from_user_mode(regs);
+	rseq_note_user_irq_entry();
 }
 
 noinstr void irqentry_exit_to_user_mode(struct pt_regs *regs)
 {
 	instrumentation_begin();
 	exit_to_user_mode_prepare(regs);
+	rseq_irqentry_exit_to_user_mode();
 	instrumentation_end();
 	__exit_to_user_mode();
 }

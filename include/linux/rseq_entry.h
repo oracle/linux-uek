@@ -43,9 +43,47 @@ static __always_inline bool rseq_slice_extension_enabled(void)
 {
 	return static_branch_likely(&rseq_slice_extension_key);
 }
+
+extern unsigned int rseq_slice_ext_nsecs;
+bool __rseq_arm_slice_extension_timer(void);
+
+static __always_inline bool rseq_arm_slice_extension_timer(void)
+{
+	if (!rseq_slice_extension_enabled())
+		return false;
+
+	if (likely(!current->rseq_slice.state.granted))
+		return false;
+
+	return __rseq_arm_slice_extension_timer();
+}
+
 #else /* CONFIG_RSEQ_SLICE_EXTENSION */
 static inline bool rseq_slice_extension_enabled(void) { return false; }
+static inline bool rseq_arm_slice_extension_timer(void) { return false; }
 #endif /* !CONFIG_RSEQ_SLICE_EXTENSION */
+
+static __always_inline void rseq_note_user_irq_entry(void)
+{
+	if (IS_ENABLED(CONFIG_GENERIC_ENTRY))
+		current->rseq_slice.user_irq = true;
+}
+
+static __always_inline void rseq_irqentry_exit_to_user_mode(void)
+{
+	if (current->rseq_slice.user_irq)
+		current->rseq_slice.user_irq = false;
+}
+
+static __always_inline bool rseq_exit_to_user_mode_restart(void)
+{
+	if (current->rseq_slice.user_irq)
+		current->rseq_slice.user_irq = false;
+	return rseq_arm_slice_extension_timer();
+}
+#else /* CONFIG_RSEQ */
+static inline void rseq_note_user_irq_entry(void) { }
+static inline bool rseq_exit_to_user_mode_restart(void) { return false; }
 #endif /* !CONFIG_RSEQ */
 
 #endif /* _LINUX_RSEQ_ENTRY_H */

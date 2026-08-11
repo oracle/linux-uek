@@ -26,6 +26,7 @@ union rseq_slice_state {
 struct rseq_slice {
 	union rseq_slice_state	state;
 	u8			yielded;
+	u8			user_irq;
 };
 #endif /* !CONFIG_RSEQ */
 #endif
