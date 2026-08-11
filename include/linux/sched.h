@@ -1491,11 +1491,12 @@ struct task_struct {
 #ifdef CONFIG_RSEQ
 	UEK_KABI_USE(5, struct rseq_slice rseq_slice)
 	UEK_KABI_USE(6, u64 rseq_slice_expires)
+	UEK_KABI_USE(7, u32 rseq_len)
 #else
 	UEK_KABI_RESERVE(5)
 	UEK_KABI_RESERVE(6)
-#endif
 	UEK_KABI_RESERVE(7)
+#endif
 	UEK_KABI_RESERVE(8)
 	UEK_KABI_RESERVE(9)
 	UEK_KABI_RESERVE(10)
@@ -2283,6 +2284,7 @@ static inline void rseq_reset(struct task_struct *t)
 	/* For memset, protect against preemption and membarrier IPI */
         guard(irqsave)();
 	t->rseq = NULL;
+	t->rseq_len = 0;
 	t->rseq_sig = 0;
 	t->rseq_event_mask = 0;
 	t->rseq_slice_expires = 0;
@@ -2299,6 +2301,7 @@ static inline void rseq_fork(struct task_struct *t, unsigned long clone_flags)
 		rseq_reset(t);
 	} else {
 		t->rseq = current->rseq;
+		t->rseq_len = current->rseq_len;
 		t->rseq_sig = current->rseq_sig;
 		t->rseq_event_mask = current->rseq_event_mask;
 		t->rseq_slice_expires = current->rseq_slice_expires;
