@@ -46,7 +46,6 @@
 #include <linux/cred.h>
 #include <linux/dax.h>
 #include <linux/uaccess.h>
-#include <linux/rseq.h>
 #include <asm/param.h>
 #include <asm/page.h>
 
@@ -294,14 +293,6 @@ create_elf_tables(struct linux_binprm *bprm, const struct elfhdr *exec,
 	if (bprm->have_execfd) {
 		NEW_AUX_ENT(AT_EXECFD, bprm->execfd);
 	}
-#ifdef CONFIG_RSEQ
-	/*
-	 * XXX UEK - user exposed size is + 1 byte due to KABI definition
-	 * of struct rseq.
-	 */
-	NEW_AUX_ENT(AT_RSEQ_FEATURE_SIZE, sizeof(struct rseq) + 1);
-	NEW_AUX_ENT(AT_RSEQ_ALIGN, rseq_alloc_align());
-#endif
 	NEW_AUX_ENT(AT_VA_RESERVATION, 1);
 #undef NEW_AUX_ENT
 	/* AT_NULL is zero; clear the rest too */

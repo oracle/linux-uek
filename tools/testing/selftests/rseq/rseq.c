@@ -120,7 +120,7 @@ static unsigned int get_rseq_kernel_feature_size(void)
 	if (auxv_rseq_feature_size)
 		return auxv_rseq_feature_size;
 	else
-		return ORIG_RSEQ_FEATURE_SIZE;
+		return sizeof(struct rseq_abi);
 }
 
 int __rseq_register_current_thread(bool nolibc, bool legacy)

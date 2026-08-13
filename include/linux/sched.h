@@ -2315,11 +2315,9 @@ static inline void rseq_execve(struct task_struct *t)
 }
 
 /*
- * Value returned by getauxval(AT_RSEQ_ALIGN) and expected by rseq
- * registration. This is the active rseq area size rounded up to next
- * power of 2, which guarantees that the rseq structure will always be
- * aligned on the nearest power of two large enough to contain it, even
- * as it grows.
+ * This is the active rseq area size rounded up to next * power of 2, which
+ * guarantees that the rseq structure will always be aligned on the nearest
+ * power of two large enough to contain it, even as it grows.
  *
  * XXX for UEK use sizeof(struct rseq) + 1 which is the user visible size.
  */
