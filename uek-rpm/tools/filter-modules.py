@@ -18,6 +18,8 @@ parser.add_argument('--ko-suffix', default='',
     help="kernel module suffix (e.g. .xz)")
 parser.add_argument('--output', required=True,
     help="where to place generated .list files")
+parser.add_argument('--subpackage',
+    help="combine all modules into this subpackage")
 parser.add_argument('-D', metavar='macro', default=[], action='append',
     help="preprocessor defines (e.g. Flavour_debug)")
 parser.add_argument('path',
@@ -67,6 +69,11 @@ data = yaml.safe_load(cpp.stdout)
 
 for subpackage, modnames in data.items():
     modules_by_subpackage.setdefault(subpackage, set()).update(modnames)
+
+if args.subpackage:
+    modules_by_subpackage = {
+        args.subpackage: set().union(*modules_by_subpackage.values())
+    }
 
 #
 # Read denylists

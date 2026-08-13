@@ -912,21 +912,26 @@ This package provides essential kernel modules for the %{variant_name}-core kern
 
 #
 # This macro creates a kernel%%{?variant}-<subpackage> meta package.
-#       %%kernel_meta_package [-o] <subpackage>
+#       %%kernel_meta_package [-m] [-o] <subpackage>
+# -m flag omits all module subpackages except modules-core
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_meta_package(o) \
+%define kernel_meta_package(mo) \
 %define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
 %package -n %{variant_name}\
 Summary: Kernel meta-package for the %{1} kernel\
 Group: System Environment/Kernel\
 Requires: %{variant_name}-core-uname-r = %{KVERREL}.%{1}\
+%if 0%{!?-m:1}\
 Requires: %{variant_name}-modules-uname-r = %{KVERREL}.%{1}\
+%endif\
 Requires: %{variant_name}-modules-core-uname-r = %{KVERREL}.%{1}\
+%if 0%{!?-m:1}\
 Requires: %{variant_name}-modules-desktop-uname-r = %{KVERREL}.%{1}\
 Requires: %{variant_name}-modules-extra-netfilter-uname-r = %{KVERREL}.%{1}\
 Requires: %{variant_name}-modules-usb-uname-r = %{KVERREL}.%{1}\
 Requires: %{variant_name}-modules-wireless-uname-r = %{KVERREL}.%{1}\
+%endif\
 Provides: installonlypkg(%{installonly_variant_name})\
 %description -n %{variant_name}\
 The meta-package for the %{1} kernel.\
@@ -935,11 +940,12 @@ The meta-package for the %{1} kernel.\
 #
 # This macro creates a kernel%%{?variant}-<subpackage> and its -devel and -debuginfo too.
 #       %%define variant_summary The Linux kernel compiled for <configuration>
-#       %%kernel_variant_package [-o] <subpackage>
+#       %%kernel_variant_package [-e] [-m] [-o] <subpackage>
 # -e flag denotes embedded kernels, skips the dependency on linux-firmware
+# -m flag omits all module subpackages except modules-core
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_variant_package(eo) \
+%define kernel_variant_package(emo) \
 %define variant_name kernel%{?variant}%{?1:%{!-o:-}%{1}}\
 %package -n %{variant_name}-core\
 Summary: %{variant_summary}\
@@ -954,17 +960,21 @@ Provides: kernel-ueknano = %{KVERREL}%{?1:.%{1}}\
 %endif\
 %{expand:%%kernel_reqprovconf}\
 %if %{?1:1} %{!?1:0} \
-%{expand:%%kernel_meta_package %{-o:%{-o}} %{?1:%{1}}}\
+%{expand:%%kernel_meta_package %{?-m:-m} %{-o:%{-o}} %{?1:%{1}}}\
 %endif\
 %{expand:%%kernel_devel_package %{-o:%{-o}} %{?1:%{1}}}\
+%if 0%{!?-m:1}\
 %{expand:%%kernel_modules_package %{?-e:-e} %{-o:%{-o}} %{?1:%{1}}}\
+%endif\
 %{expand:%%kernel_modules_core_package %{?-e:-e} %{-o:%{-o}} %{?1:%{1}}}\
+%if 0%{!?-m:1}\
 %{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s extra %{?1:%{1}}}\
 %{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s desktop %{?1:%{1}}}\
 %{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s deprecated %{?1:%{1}}}\
 %{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s extra-netfilter  %{?1:%{1}}}\
 %{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s usb %{?1:%{1}}}\
 %{expand:%%kernel_modules_extra_package %{-o:%{-o}} -s wireless %{?1:%{1}}}\
+%endif\
 %{expand:%%kernel_debuginfo_package %{-o:-o} %{?1:%{1}}}\
 %{expand:%%kernel_buildsupport_package %{-o:-o} %{?1:%{1}}}\
 %{nil}
@@ -981,22 +991,22 @@ This package includes 64k page size for aarch64 kernel.
 This package include debug kernel for 64k page size.
 
 %define variant_summary A kernel for an embedded platform
-%kernel_variant_package -eo emb4
+%kernel_variant_package -emo emb4
 %description -n kernel%{?variant}emb4-core
 This package includes an embedded kernel.
 
 %define variant_summary A kernel for an embedded platform
-%kernel_variant_package -eo emb3
+%kernel_variant_package -emo emb3
 %description -n kernel%{?variant}emb3-core
 This package includes an embedded kernel.
 
 %define variant_summary A kernel for an embedded platform
-%kernel_variant_package -eo emb
+%kernel_variant_package -emo emb
 %description -n kernel%{?variant}emb-core
 This package includes an embedded kernel.
 
 %define variant_summary A kernel for an ONOS platform
-%kernel_variant_package -eo onos
+%kernel_variant_package -emo onos
 %description -n kernel%{?variant}onos-core
 This package includes an ONOS  kernel
 
@@ -1628,15 +1638,34 @@ BuildKernel() {
 
     mkdir -p $RPM_BUILD_ROOT/etc/modprobe.d/
 
+    embedded_modules=
+    if [[ "$Flavour" == emb* || "$Flavour" == "onos" ]]; then
+        embedded_modules="--subpackage modules-core"
+    fi
+
     (cd $RPM_BUILD_ROOT && $RPM_SOURCE_DIR/filter-modules.py \
         --version "$KernelVer" \
         %{?compression_suffix:--ko-suffix %{compression_suffix}} \
         --output ${modlistVariant} \
+        ${embedded_modules} \
         -D"Arch_%{_target_cpu}" \
         -D"Flavour_${Flavour}" \
         $RPM_SOURCE_DIR/${modlistSrc} \
         $RPM_SOURCE_DIR/${denylistSrc})
 
+    if [[ "$Flavour" == emb* || "$Flavour" == "onos" ]]; then
+        cp System.map $RPM_BUILD_ROOT/.
+        pushd $RPM_BUILD_ROOT
+        depmod -b . -aeF ./System.map $KernelVer &> depmod.out
+        if [ -s depmod.out ]; then
+            echo "Depmod failure in embedded modules-core package"
+            cat depmod.out
+            exit 1
+        fi
+        rm depmod.out System.map
+        remove_depmod_files
+        popd
+    else
     # Copy the System.map file for depmod to use, and create a backup of the
     # full module tree so we can restore it after we're done filtering
     cp System.map $RPM_BUILD_ROOT/.
@@ -1760,6 +1789,7 @@ BuildKernel() {
     rm -f $RPM_BUILD_ROOT/modules-core.list
     rm -f $RPM_BUILD_ROOT/modules.list
     rm -f $RPM_BUILD_ROOT/mod-extra.list
+    fi
 
 %if %{signmodules}
     cp certs/signing_key.pem certs/signing_key.pem.sign${Flavour:+.${Flavour}}
@@ -2184,20 +2214,25 @@ fi\
 
 #
 # This macro defines a %%post script for a kernel package and its devel package.
-#        %%kernel_variant_post [-o][-v <subpackage>] [-r <replace>]
+#        %%kernel_variant_post [-m] [-o][-v <subpackage>] [-r <replace>]
+# -m flag omits all module subpackages except modules-core
 # -o flag omits the hyphen preceding <subpackage> in the package name
 # More text can follow to go at the end of this variant's %%post.
 #
-%define kernel_variant_post(ov:r:) \
+%define kernel_variant_post(mov:r:) \
 %{expand:%%kernel_devel_post %{-o:-o} %{?-v:%{?-v*}}}\
+%if 0%{!?-m:1}\
 %{expand:%%kernel_modules_post %{-o:-o} %{?-v:%{?-v*}}}\
+%endif\
 %{expand:%%kernel_modules_core_post %{-o:-o} %{?-v:%{?-v*}}}\
+%if 0%{!?-m:1}\
 %{expand:%%kernel_modules_extra_post %{-o:-o} -s extra %{?-v:%{?-v*}}}\
 %{expand:%%kernel_modules_extra_post %{-o:-o} -s desktop %{?-v:%{?-v*}}}\
 %{expand:%%kernel_modules_extra_post %{-o:-o} -s deprecated %{?-v:%{?-v*}}}\
 %{expand:%%kernel_modules_extra_post %{-o:-o} -s extra-netfilter %{?-v:%{?-v*}}}\
 %{expand:%%kernel_modules_extra_post %{-o:-o} -s usb %{?-v:%{?-v*}}}\
 %{expand:%%kernel_modules_extra_post %{-o:-o} -s wireless %{?-v:%{?-v*}}}\
+%endif\
 %{expand:%%kernel_variant_posttrans %{-o:-o} %{?-v:%{?-v*}}}\
 %{expand:%%post -n kernel%{?variant}%{?-v*:%{!-o:-}%{-v*}}-core}\
 %{-r:\
@@ -2327,22 +2362,22 @@ fi\
 %kernel_variant_pre -o emb4
 %kernel_variant_preun -o emb4
 %kernel_variant_postun -o -v emb4
-%kernel_variant_post -o -v emb4
+%kernel_variant_post -mo -v emb4
 
 %kernel_variant_pre -o emb3
 %kernel_variant_preun -o emb3
 %kernel_variant_postun -o -v emb3
-%kernel_variant_post -o -v emb3
+%kernel_variant_post -mo -v emb3
 
 %kernel_variant_pre -o emb
 %kernel_variant_preun -o emb
 %kernel_variant_postun -o -v emb
-%kernel_variant_post -o -v emb
+%kernel_variant_post -mo -v emb
 
 %kernel_variant_pre -o onos
 %kernel_variant_preun -o onos
 %kernel_variant_postun -o -v onos
-%kernel_variant_post -o -v onos
+%kernel_variant_post -mo -v onos
 
 if [ -x /sbin/ldconfig ]
 then
@@ -2429,10 +2464,11 @@ fi
 #
 # This macro defines the %%files sections for a kernel package
 # and its devel and debuginfo packages.
-#        %%kernel_variant_files [-k vmlinux] [-o] <condition> <subpackage>
+#        %%kernel_variant_files [-m] [-k vmlinux] [-o] <condition> <subpackage>
+# -m flag omits all module subpackages except modules-core
 # -o flag omits the hyphen preceding <subpackage> in the package name
 #
-%define kernel_variant_files(k:o) \
+%define kernel_variant_files(mk:o) \
 %if %{1}\
 %define variant_name kernel%{?variant}%{?2:%{!-o:-}%{2}}\
 %{expand:%%files -n %{variant_name}}\
@@ -2474,6 +2510,7 @@ fi
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.modesetting\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.networking\
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.order\
+%if 0%{!?-m:1}\
 %{expand:%%files -f %{variant_name}-modules.list -n %{variant_name}-modules}\
 %{expand:%%files -f %{variant_name}-modules-desktop.list -n %{variant_name}-modules-desktop}\
 %{expand:%%files -f %{variant_name}-modules-deprecated.list -n %{variant_name}-modules-deprecated}\
@@ -2481,6 +2518,7 @@ fi
 %{expand:%%files -f %{variant_name}-modules-usb.list -n %{variant_name}-modules-usb}\
 %{expand:%%files -f %{variant_name}-modules-wireless.list -n %{variant_name}-modules-wireless}\
 %{expand:%%files -f %{variant_name}-modules-extra.list -n %{variant_name}-modules-extra}\
+%endif\
 %{expand:%%files -n %{variant_name}-devel}\
 %defattr(-,root,root)\
 %dir /usr/src/kernels\
@@ -2515,12 +2553,12 @@ fi
 %kernel_variant_files -o %{with_64k_ps} 64k
 %kernel_variant_files -o %{with_64k_ps_debug} 64kdebug
 
-%kernel_variant_files -o %{with_embedded4} emb4
+%kernel_variant_files -mo %{with_embedded4} emb4
 
-%kernel_variant_files -o %{with_embedded3} emb3
+%kernel_variant_files -mo %{with_embedded3} emb3
 
-%kernel_variant_files -o %{with_embedded} emb
+%kernel_variant_files -mo %{with_embedded} emb
 
-%kernel_variant_files -o %{with_onos} onos
+%kernel_variant_files -mo %{with_onos} onos
 
 %changelog
