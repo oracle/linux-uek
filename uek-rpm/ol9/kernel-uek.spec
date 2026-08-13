@@ -175,6 +175,9 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 # Only build the embedded kernel (--with embeddedonly)
 %define with_embeddedonly %{?_with_embeddedonly: 1} %{?!_with_embeddedonly: 0}
 
+# Only build the embedded4 kernel family (--with embedded4only)
+%define with_embedded4only %{?_with_embedded4only: 1} %{?!_with_embedded4only: 0}
+
 # Only build the ONOS kernel (--with onosonly)
 %define with_onosonly %{?_with_onosonly: 1} %{?!_with_onosonly: 0}
 
@@ -366,6 +369,18 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define with_embedded3 0
 %define with_embedded4 0
 %else
+%if %{with_embedded4only}
+%define with_up 0
+%define with_container 0
+%define with_64k_ps 0
+%define with_debug 0
+%define with_headers 0
+%define with_bpftool 0
+%define with_embedded 0
+%define with_embedded3 0
+%define with_embedded4 1
+%define with_onos 0
+%else
 %if %{with_embeddedonly}
 %define with_up 0
 %define with_container 0
@@ -380,6 +395,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %else
 %define with_headers 1
 %define with_bpftool 1
+%endif
 %endif
 %endif
 %endif
