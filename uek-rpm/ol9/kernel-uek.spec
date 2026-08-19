@@ -1654,6 +1654,10 @@ BuildKernel() {
         $RPM_SOURCE_DIR/${denylistSrc})
 
     if [[ "$Flavour" == emb* || "$Flavour" == "onos" ]]; then
+        if [ ! -s "${modlistVariant}-modules-core.list" ]; then
+            printf '%%%%ghost /lib/modules/%s/modules.dep\n' "$KernelVer" \
+                >> "${modlistVariant}-modules-core.list"
+        fi
         cp System.map $RPM_BUILD_ROOT/.
         pushd $RPM_BUILD_ROOT
         depmod -b . -aeF ./System.map $KernelVer &> depmod.out
