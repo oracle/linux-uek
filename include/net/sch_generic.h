@@ -106,7 +106,8 @@ struct Qdisc {
 	struct gnet_stats_queue	__percpu *cpu_qstats;
 	int			pad;
 	refcount_t		refcnt;
-
+	/* 24 byte HOLE */
+	UEK_KABI_FILL_HOLE(int depth)
 	/*
 	 * For performance sake on SMP, we put highly modified fields at the end
 	 */
