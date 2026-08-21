@@ -515,9 +515,14 @@ static netdev_tx_t otx2vf_xmit(struct sk_buff *skb, struct net_device *netdev)
 		/* Check again, incase SQBs got freed up */
 		smp_mb();
 		if (((sq->num_sqbs - *sq->aura_fc_addr) * sq->sqe_per_sqb)
-							> sq->sqe_thresh)
+							> sq->sqe_thresh) {
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		   int free_desc;
+		   free_desc = (sq->cons_head - sq->head - 1 + sq->sqe_cnt) & (sq->sqe_cnt - 1);
+		   if (free_desc >= sq->sqe_thresh)
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 			netif_tx_wake_queue(txq);
-
+		}
 		return NETDEV_TX_BUSY;
 	}
 

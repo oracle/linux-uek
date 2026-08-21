@@ -1034,7 +1034,11 @@ MBOX_UP_MCS_MESSAGES
 #undef M
 
 /* Time to wait before watchdog kicks off */
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+#define OTX2_TX_TIMEOUT		(5 * HZ)
+#else
 #define OTX2_TX_TIMEOUT		(100 * HZ)
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 static inline bool is_otx2_vf(u16 pcifunc)
 {
