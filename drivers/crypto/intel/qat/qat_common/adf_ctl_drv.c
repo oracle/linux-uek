@@ -9,6 +9,9 @@
 
 static int __init adf_register_ctl_device_driver(void)
 {
+	if (adf_init_misc_wq())
+		goto err_misc_wq;
+
 	if (adf_init_aer())
 		goto err_aer;
 
@@ -35,11 +38,14 @@ err_vf_wq:
 err_pf_wq:
 	adf_exit_aer();
 err_aer:
+	adf_exit_misc_wq();
+err_misc_wq:
 	return -EFAULT;
 }
 
 static void __exit adf_unregister_ctl_device_driver(void)
 {
+	adf_exit_misc_wq();
 	adf_exit_aer();
 	adf_exit_vf_wq();
 	adf_exit_pf_wq();
