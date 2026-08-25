@@ -70,13 +70,13 @@ Further instructions on installing the generated RPMs in `rpmbuild/RPMS` can be 
 
 ```
 make -j$(nproc) binrpm-pkg
- Wrote: /home/opc/linux-uek/rpmbuild/RPMS/x86_64/kernel-headers-7.1.8+-2.x86_64.rpm
- Wrote: /home/opc/linux-uek/rpmbuild/RPMS/x86_64/kernel-devel-7.1.8+-2.x86_64.rpm
- Wrote: /home/opc/linux-uek/rpmbuild/RPMS/x86_64/kernel-7.1.8+-2.x86_64.rpm
+ Wrote: /home/opc/linux-uek/rpmbuild/RPMS/x86_64/kernel-headers-7.1.9+-2.x86_64.rpm
+ Wrote: /home/opc/linux-uek/rpmbuild/RPMS/x86_64/kernel-devel-7.1.9+-2.x86_64.rpm
+ Wrote: /home/opc/linux-uek/rpmbuild/RPMS/x86_64/kernel-7.1.9+-2.x86_64.rpm
  Executing(%clean): /bin/sh -e /var/tmp/rpm-tmp.0J6zal
  + umask 022
  + cd /home/opc/linux-uek
- + rm -rf /home/opc/linux-uek/rpmbuild/BUILDROOT/kernel-7.1.8+-2.x86_64
+ + rm -rf /home/opc/linux-uek/rpmbuild/BUILDROOT/kernel-7.1.9+-2.x86_64
  + RPM_EC=0
  ++ jobs -p
  + exit 0
@@ -85,8 +85,8 @@ make -j$(nproc) binrpm-pkg
 The generated RPM can be installed from `rpmbuild/RPMS/$(arch -m)` using the path generated,
 
 ```
-sudo dnf install -y /home/opc/linux-uek/rpmbuild/RPMS/x86_64/kernel-7.1.8+-2.x86_64.rpm
-sudo grubby --set-default /boot/vmlinuz-7.1.8+
- The default is /boot/loader/entries/e3b44b41fd25421f99d3ff3416d9d237-7.1.8+.conf with index 3 and kernel /boot/vmlinuz-7.1.8+
+sudo dnf install -y /home/opc/linux-uek/rpmbuild/RPMS/x86_64/kernel-7.1.9+-2.x86_64.rpm
+sudo grubby --set-default /boot/vmlinuz-7.1.9+
+ The default is /boot/loader/entries/e3b44b41fd25421f99d3ff3416d9d237-7.1.9+.conf with index 3 and kernel /boot/vmlinuz-7.1.9+
 sudo reboot
 ```

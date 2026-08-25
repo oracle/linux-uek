@@ -39,7 +39,7 @@ Further details on these signing keys can be found at:
   - Post installation, set it as the default using `grubby` as:
 
     ```
-	sudo grubby --set-default=/boot/vmlinuz-7.1.8-0.el9ueknext.$(name -p)
+	sudo grubby --set-default=/boot/vmlinuz-7.1.9-0.el9ueknext.$(name -p)
 	```
 
 ## DNF Repo-based Installation
@@ -103,7 +103,7 @@ rpm -K *.rpm
 Installation can then be done using the dnf install command as follows:
 
 ```
-VERSION="v7.1.8-0"
+VERSION="v7.1.9-0"
 ARCH="$(uname -p)"
 
 sudo dnf install \
