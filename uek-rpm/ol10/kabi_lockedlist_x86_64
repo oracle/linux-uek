@@ -141,6 +141,7 @@
 	blk_mq_stop_hw_queues
 	blk_mq_unique_tag
 	blk_put_queue
+	blk_queue_flag_set
 	blk_set_stacking_limits
 	blk_stack_limits
 	blk_start_plug
@@ -272,6 +273,7 @@
 	grab_cache_page_write_begin
 	hugetlb_optimize_vmemmap_key
 	igrab
+	in_egroup_p
 	in_group_p
 	inc_nlink
 	init_net
