@@ -391,6 +391,7 @@
 	igrab
 	import_iovec
 	in4_pton
+	in_egroup_p
 	in_group_p
 	inc_nlink
 	inet_addr_type
