@@ -121,6 +121,7 @@ static int msc313e_wdt_probe(struct platform_device *pdev)
 	priv->wdev.timeout = MSC313E_WDT_DEFAULT_TIMEOUT;
 
 	watchdog_set_drvdata(&priv->wdev, priv);
+	platform_set_drvdata(pdev, priv);
 
 	watchdog_init_timeout(&priv->wdev, timeout, dev);
 	watchdog_stop_on_reboot(&priv->wdev);
