@@ -485,7 +485,10 @@ struct cgroup {
 	/* Used to store internal freezer state */
 	struct cgroup_freezer_state freezer;
 
-	/* sequence number for cgroup.kill, serialized by css_set_lock. */
+	/*
+	 * Sequence number for cgroup.kill. Incremented with both cgroup_mutex
+	 * and css_set_lock held. Readers hold either one.
+	 */
 	UEK_KABI_FILL_HOLE(unsigned int kill_seq)
 
 	UEK_KABI_RESERVE(1)
