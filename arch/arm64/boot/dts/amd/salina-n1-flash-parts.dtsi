@@ -81,7 +81,7 @@
 		};
 
 		partition@6400000 {
-			label = "a35_gold_ubootenv";
+			label = "gold_ubootenv";
 			reg = <0x06400000 0x00010000>;
 		};
 
@@ -97,7 +97,7 @@
 
 		partition@7800000 {
 			label = "a35_golduboot";
-			reg = <0x07800000 0x07c00000>;
+			reg = <0x07800000 0x00400000>;
 		};
 
 		partition@7c00000 {
@@ -106,7 +106,7 @@
 		};
 
 		partition@7fe0000 {
-			label = "a35_ubootenv";
+			label = "ubootenv";
 			reg = <0x07fe0000 0x00010000>;
 		};
 
