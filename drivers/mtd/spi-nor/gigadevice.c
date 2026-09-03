@@ -33,6 +33,16 @@ static const struct spi_nor_fixups gd25q256_fixups = {
 	.post_bfpt = gd25q256_post_bfpt,
 };
 
+static void gd55lf02gf_default_init(struct spi_nor *nor)
+{
+	/* QE is at SR2 bit 1 (S9); default is QE=1 (permanent) */
+	nor->params->quad_enable = spi_nor_sr2_bit1_quad_enable;
+}
+
+static const struct spi_nor_fixups gd55lf02gf_fixups = {
+	.default_init = gd55lf02gf_default_init,
+};
+
 static const struct flash_info gigadevice_nor_parts[] = {
 	{
 		.id = SNOR_ID(0xc8, 0x40, 0x15),
@@ -82,6 +92,14 @@ static const struct flash_info gigadevice_nor_parts[] = {
 		.size = SZ_16M,
 		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
+	}, {
+		.id = SNOR_ID(0xc8, 0x63, 0x1c),
+		.name = "gd55lf02gf",
+		.size = SZ_256M,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
+		.fixup_flags = SPI_NOR_4B_OPCODES,
+		.fixups = &gd55lf02gf_fixups,
 	},
 };
 
