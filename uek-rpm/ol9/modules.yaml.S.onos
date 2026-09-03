@@ -245,6 +245,8 @@ modules-core:
 - aqc111
 - aquacomputer_d5next
 - aquantia
+- ar_pmbus_core
+- arista-fan-cpld
 - arcmsr
 - arcnet
 - arc-rawmode
@@ -264,6 +266,7 @@ modules-core:
 - async_tx
 - async_xor
 - at24
+- atda38740
 - at25
 - at803x
 - at86rf230
@@ -1548,7 +1551,6 @@ modules-core:
 - microtek
 - mii
 - minix
-- minke-fan-cpld
 - mite
 - mkiss
 - mlx4_core
