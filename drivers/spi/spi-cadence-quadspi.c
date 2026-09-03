@@ -2216,6 +2216,7 @@ static const struct cqspi_driver_platdata pensando_elba_qspi = {
 static const struct cqspi_driver_platdata pensando_salina_qspi = {
 	.quirks = CQSPI_NEEDS_APB_AHB_HAZARD_WAR |
 		  CQSPI_NEEDS_INDIRECT_WR_POLL_WAR |
+		  CQSPI_DISABLE_STIG_MODE |
 		  CQSPI_DISABLE_DAC_MODE,
 };
 
