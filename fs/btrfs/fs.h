@@ -1009,6 +1009,8 @@ void btrfs_csum_init(struct btrfs_csum_ctx *ctx, u16 csum_type);
 void btrfs_csum_update(struct btrfs_csum_ctx *ctx, const u8 *data, size_t len);
 void btrfs_csum_final(struct btrfs_csum_ctx *ctx, u8 *out);
 
+bool __pure btrfs_is_empty_uuid(const u8 *uuid);
+
 /* Compatibility and incompatibility defines */
 void __btrfs_set_fs_incompat(struct btrfs_fs_info *fs_info, u64 flag,
 			     const char *name);
