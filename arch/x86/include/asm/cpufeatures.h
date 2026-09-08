@@ -75,6 +75,13 @@
 #define X86_FEATURE_LONGRUN		( 2*32+ 1) /* Longrun power control */
 #define X86_FEATURE_LRTI		( 2*32+ 3) /* LongRun table interface */
 
+/*
+ * The Linux extended auxiliary flags words are either full or at risk of
+ * downstream collision in the future. The Transmeta word is not. Add this
+ * feature at the end of this word where it can hopefully stay conflict free.
+ */
+#define X86_FEATURE_NT_GOOD            ( 2*32+31) /* Non-temporal instructions perform well */
+
 /* Other features, Linux-defined mapping, word 3 */
 /* This range is used for feature bits which conflict or are synthesized */
 #define X86_FEATURE_CXMMX		( 3*32+ 0) /* Cyrix MMX extensions */
@@ -305,7 +312,6 @@
 #define X86_FEATURE_CLEAR_CPU_BUF	(11*32+18) /* "" Clear CPU buffers using VERW */
 
 #define X86_FEATURE_MSR_TSX_CTRL	(11*32+20) /* "" MSR IA32_TSX_CTRL (Intel) implemented */
-#define X86_FEATURE_NT_GOOD		(11*32+31) /* Non-temporal instructions perform well */
 
 #define X86_FEATURE_SRSO		(11*32+24) /* "" AMD BTB untrain RETs */
 #define X86_FEATURE_SRSO_ALIAS		(11*32+25) /* "" AMD BTB untrain RETs through aliasing */
