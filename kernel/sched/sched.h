@@ -1379,7 +1379,12 @@ struct rq {
 	struct list_head	cfsb_csd_list;
 #endif
 
+#ifdef CONFIG_SCHED_CORE
+	UEK_KABI_USE(1, unsigned int core_pick_in_flight)
+#else
 	UEK_KABI_RESERVE(1)
+#endif /* CONFIG_SCHED_CORE */
+
 	UEK_KABI_RESERVE(2)
 };
 
