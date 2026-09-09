@@ -1834,7 +1834,18 @@ if [ -x /sbin/weak-modules ]\
 then\
     /sbin/weak-modules --add-kernel %{KVERREL}%{?1:.%{1}} || exit $?\
 fi\
-/bin/kernel-install add %{KVERREL}%{?1:.%{1}} /lib/modules/%{KVERREL}%{?1:.%{1}}/vmlinuz || exit $?\
+/bin/kernel-install add %{KVERREL}%{?1:.%{1}} /lib/modules/%{KVERREL}%{?1:.%{1}}/vmlinuz\
+rc=$?\
+if [ $rc -ne 0 ]\
+then\
+    if /bin/kernel-install remove %{KVERREL}%{?1:.%{1}}\
+    then\
+        echo "Kernel installation failed; BLS/initramfs removed. Free /boot and run dnf reinstall." >&2\
+    else\
+        echo "Kernel installation and boot-artifact cleanup failed." >&2\
+    fi\
+    exit $rc\
+fi\
 %{nil}
 
 #
