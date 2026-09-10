@@ -179,6 +179,7 @@ static void __rds_conn_path_init(struct rds_connection *conn,
 	init_waitqueue_head(&cp->cp_waitq);
 	INIT_LIST_HEAD(&cp->cp_send_queue);
 	INIT_LIST_HEAD(&cp->cp_retrans);
+	spin_lock_init(&cp->cp_conn_time_lock);
 
 	cp->cp_conn = conn;
 	rds_conn_path_state_change(cp, RDS_CONN_DOWN, DR_DEFAULT, 0);
@@ -327,7 +328,7 @@ static struct rds_connection *__rds_conn_create(struct net *net,
 	}
 
 	conn->c_trans = trans;
-	conn->c_path->cp_conn_ts_jf = jiffies;
+	conn->c_path->cp_conn_ts = ktime_get_boottime();
 
 	init_waitqueue_head(&conn->c_hs_waitq);
 	for (i = 0; i < npaths; i++) {
@@ -1453,6 +1454,8 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err)
 {
 	struct rds_connection *conn = cp->cp_conn;
 	unsigned long now = ktime_get_real_seconds();
+	s64 up_ms = 0;
+	bool was_up;
 
 	if (conn->c_trans->conn_path_reset) {
 		unsigned flags = RDS_CONN_PATH_RESET_WATCHDOG;
@@ -1466,31 +1469,41 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err)
 	cp->cp_drop_source = reason;
 	trace_rds_conn_drop(NULL, conn, cp, conn_drop_reason_str(reason), err);
 
-	if (rds_conn_path_state(cp) == RDS_CONN_UP) {
+	spin_lock_bh(&cp->cp_conn_time_lock);
+	was_up = rds_conn_path_state(cp) == RDS_CONN_UP;
+	if (was_up) {
+		ktime_t now_boottime = ktime_get_boottime();
+
+		up_ms = ktime_ms_delta(now_boottime, cp->cp_conn_ts);
+		cp->cp_conn_ts = now_boottime;
 		cp->cp_reconnect_start = now;
 		cp->cp_reconnect_warn = 1;
 		cp->cp_reconnect_err = 0;
 		cp->cp_connection_reset = ktime_get_real_seconds();
 		/* Restart counting */
 		cp->cp_connection_attempts = 0;
-		if (conn->c_trans->t_type != RDS_TRANS_TCP) {
+	}
+	rds_conn_path_state_change(cp, RDS_CONN_ERROR, reason, err);
+	spin_unlock_bh(&cp->cp_conn_time_lock);
+
+	if (was_up) {
+		if (conn->c_trans->t_type == RDS_TRANS_IB) {
 			if (reason == DR_USER_RESET)
-				printk(KERN_INFO "RDS/IB: connection <%pI6c,%pI6c,%d> dropped due to '%s'(up for %u ms) by PPID %u (%s)\n",
-				       &conn->c_laddr,
-				       &conn->c_faddr,
-				       conn->c_tos,
-				       conn_drop_reason_str(reason),
-				       jiffies_to_msecs(jiffies - cp->cp_conn_ts_jf),
-				       current->real_parent->pid,
-				       current->real_parent->comm);
+				pr_info("RDS/IB: connection <%pI6c,%pI6c,%d> dropped due to '%s' (up for %lld ms) by PPID %u (%s)\n",
+					&conn->c_laddr,
+					&conn->c_faddr,
+					conn->c_tos,
+					conn_drop_reason_str(reason),
+					up_ms,
+					current->real_parent->pid,
+					current->real_parent->comm);
 			else
-				printk(KERN_INFO "RDS/IB: connection <%pI6c,%pI6c,%d> dropped due to '%s'(up for %u ms)\n",
-				       &conn->c_laddr,
-				       &conn->c_faddr,
-				       conn->c_tos,
-				       conn_drop_reason_str(reason),
-				       jiffies_to_msecs(jiffies - cp->cp_conn_ts_jf));
-			cp->cp_conn_ts_jf = jiffies;
+				pr_info("RDS/IB: connection <%pI6c,%pI6c,%d> dropped due to '%s' (up for %lld ms)\n",
+					&conn->c_laddr,
+					&conn->c_faddr,
+					conn->c_tos,
+					conn_drop_reason_str(reason),
+					up_ms);
 		}
 
 	} else if ((cp->cp_reconnect_warn) &&
@@ -1505,8 +1518,6 @@ void rds_conn_path_drop(struct rds_conn_path *cp, int reason, int err)
 		cp->cp_reconnect_warn = 0;
 	}
 	cp->cp_conn_start_jf = 0;
-
-	rds_conn_path_state_change(cp, RDS_CONN_ERROR, reason, err);
 
 	smp_rmb(); /* Pairs with smp_mb() in rds_conn_destroy() */
 	if (reason != DR_CONN_DESTROY && conn->c_destroy_in_prog) {

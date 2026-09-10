@@ -293,7 +293,8 @@ struct rds_conn_path {
 
 	/* when was this connection started */
 	uint64_t		cp_conn_start_jf;
-	uint64_t		cp_conn_ts_jf;
+	spinlock_t		cp_conn_time_lock;
+	ktime_t			cp_conn_ts;
 	unsigned long		cp_conn_shutdown_jf;
 
 	/* Re-connect stall diagnostics */
@@ -1589,8 +1590,8 @@ void rds_conn_reap_worker(struct work_struct *work);
 void rds_send_worker(struct work_struct *);
 void rds_recv_worker(struct work_struct *);
 void rds_hb_worker(struct work_struct *);
-void rds_connect_path_complete(struct rds_conn_path *cp, int curr);
-void rds_connect_complete(struct rds_connection *conn);
+s64 rds_connect_path_complete(struct rds_conn_path *cp, int curr);
+s64 rds_connect_complete(struct rds_connection *conn);
 int rds_addr_cmp(const struct in6_addr *a1, const struct in6_addr *a2);
 bool rds_queue_cancel_work(struct rds_conn_path *cp,
 			   struct delayed_work *dwork,
