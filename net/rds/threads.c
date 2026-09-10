@@ -204,14 +204,28 @@ void rds_queue_flush_work(struct rds_conn_path *cp,
 }
 EXPORT_SYMBOL_GPL(rds_queue_flush_work);
 
-void rds_connect_path_complete(struct rds_conn_path *cp, int curr)
+/* Return the time since connection creation or the previous drop.
+ * On transition failure, drop the path and return -1.
+ */
+s64 rds_connect_path_complete(struct rds_conn_path *cp, int curr)
 {
 	struct rds_connection *conn = cp->cp_conn;
+	ktime_t now_boottime;
+	s64 elapsed_ms;
 
+	/* A drop may run from a CQ tasklet, so disable bottom halves while
+	 * serializing the UP transition with its timestamp update.
+	 */
+	spin_lock_bh(&cp->cp_conn_time_lock);
 	if (!rds_conn_path_transition(cp, curr, RDS_CONN_UP, DR_DEFAULT)) {
+		spin_unlock_bh(&cp->cp_conn_time_lock);
 		rds_conn_path_drop(cp, DR_IB_NOT_CONNECTING_STATE, 0);
-		return;
+		return -1;
 	}
+	now_boottime = ktime_get_boottime();
+	elapsed_ms = ktime_ms_delta(now_boottime, cp->cp_conn_ts);
+	cp->cp_conn_ts = now_boottime;
+	spin_unlock_bh(&cp->cp_conn_time_lock);
 
 	cp->cp_reconnect_jiffies = 0;
 	/* Congestion map gets sent everytime a connection is re-established.
@@ -235,12 +249,14 @@ void rds_connect_path_complete(struct rds_conn_path *cp, int curr)
 	cp->cp_reconnect = 1;
 	cp->cp_connection_established = ktime_get_real_seconds();
 	conn->c_proposed_version = RDS_PROTOCOL_VERSION;
+
+	return elapsed_ms;
 }
 EXPORT_SYMBOL_GPL(rds_connect_path_complete);
 
-void rds_connect_complete(struct rds_connection *conn)
+s64 rds_connect_complete(struct rds_connection *conn)
 {
-	rds_connect_path_complete(&conn->c_path[0], RDS_CONN_CONNECTING);
+	return rds_connect_path_complete(&conn->c_path[0], RDS_CONN_CONNECTING);
 }
 EXPORT_SYMBOL_GPL(rds_connect_complete);
 

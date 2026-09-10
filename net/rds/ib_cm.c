@@ -298,6 +298,8 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	__be16 frag_sz = 0;
 	__be64 ack_seq = 0;
 	__be32 credit = 0;
+	s64 elapsed_ms;
+	bool ever_up;
 	u8 major = 0;
 	u8 minor = 0;
 	int err;
@@ -344,22 +346,6 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 		}
 	}
 
-	pr_notice("RDS/IB: %s conn %p i_cm_id %p, frag %dKB, connected <%pI6c,%pI6c,%d> (down for %u ms) version %u.%u%s%s"
-		 ", scq_vector=%d, preferred_send_cpu=%d, rcq_vector=%d, preferred_recv_cpu=%d\n",
-		  ic->i_active_side ? "Active " : "Passive",
-		  conn, ic->i_cm_id, ic->i_frag_sz / SZ_1K,
-		  &conn->c_laddr, &conn->c_faddr, conn->c_tos,
-		  jiffies_to_msecs(jiffies - conn->c_path->cp_conn_ts_jf),
-		  RDS_PROTOCOL_MAJOR(conn->c_version),
-		  RDS_PROTOCOL_MINOR(conn->c_version),
-		  ic->i_flowctl ? ", flow control" : "",
-		  conn->c_acl_en ? ", ACL Enabled" : "",
-		  ic->i_scq_vector,
-		  ic->i_preferred_send_cpu != WORK_CPU_UNBOUND ? ic->i_preferred_send_cpu : -1,
-		  ic->i_rcq_vector,
-		  ic->i_preferred_recv_cpu != WORK_CPU_UNBOUND ? ic->i_preferred_recv_cpu : -1);
-
-	conn->c_path->cp_conn_ts_jf = jiffies;
 	/* The connection might have been dropped under us*/
 	if (!ic->i_cm_id) {
 		rds_conn_drop(conn, DR_IB_CONN_DROP_RACE, 0);
@@ -407,7 +393,26 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 
 	rds_ib_cancel_cm_watchdog(ic, "connect complete");
 
-	rds_connect_complete(conn);
+	ever_up = conn->c_path[0].cp_reconnect;
+	elapsed_ms = rds_connect_complete(conn);
+	/* Failed to move state to UP. */
+	if (elapsed_ms < 0)
+		return;
+
+	pr_notice("RDS/IB: %s conn %p i_cm_id %p, frag %dKB, %s <%pI6c,%pI6c,%d> (%s %lld ms) version %u.%u%s%s, scq_vector=%d, preferred_send_cpu=%d, rcq_vector=%d, preferred_recv_cpu=%d\n",
+		  ic->i_active_side ? "Active " : "Passive",
+		  conn, ic->i_cm_id, ic->i_frag_sz / SZ_1K,
+		  ever_up ? "reconnected" : "connected",
+		  &conn->c_laddr, &conn->c_faddr, conn->c_tos,
+		  ever_up ? "down for" : "setup in", elapsed_ms,
+		  RDS_PROTOCOL_MAJOR(conn->c_version),
+		  RDS_PROTOCOL_MINOR(conn->c_version),
+		  ic->i_flowctl ? ", flow control" : "",
+		  conn->c_acl_en ? ", ACL Enabled" : "",
+		  ic->i_scq_vector,
+		  ic->i_preferred_send_cpu != WORK_CPU_UNBOUND ? ic->i_preferred_send_cpu : -1,
+		  ic->i_rcq_vector,
+		  ic->i_preferred_recv_cpu != WORK_CPU_UNBOUND ? ic->i_preferred_recv_cpu : -1);
 
 	atomic64_set(&ic->i_connecting_ts, ktime_get());
 }
