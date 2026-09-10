@@ -1812,11 +1812,11 @@ try_ssdr:
 		    spinand->ssdr_op_templates.write_cache->data.buswidth == 4 ||
 		    spinand->ssdr_op_templates.update_cache->data.buswidth == 4)
 			quad_enable = true;
-	}
 
-	ret = spinand_init_quad_enable(spinand, quad_enable);
-	if (ret)
-		return ret;
+		ret = spinand_init_quad_enable(spinand, quad_enable);
+		if (ret)
+			return ret;
+	}
 
 	if (spinand->configure_chip) {
 		ret = spinand->configure_chip(spinand, SSDR);
@@ -1824,7 +1824,7 @@ try_ssdr:
 			return ret;
 	}
 
-	return ret;
+	return 0;
 }
 
 static int spinand_init_flash(struct spinand_device *spinand)
