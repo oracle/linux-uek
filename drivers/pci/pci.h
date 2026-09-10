@@ -431,10 +431,10 @@ struct pci_sriov {
 	u16		driver_max_VFs;	/* Max num VFs driver supports */
 	struct pci_dev	*dev;		/* Lowest numbered PF */
 	struct pci_dev	*self;		/* This PF */
-	u32		class;		/* VF device */
-	u8		hdr_type;	/* VF header type */
-	u16		subsystem_vendor; /* VF subsystem vendor */
-	u16		subsystem_device; /* VF subsystem device */
+	UEK_KABI_DEPRECATE(u32, class)
+	UEK_KABI_DEPRECATE(u8, hdr_type)
+	UEK_KABI_DEPRECATE(u16, subsystem_vendor)
+	UEK_KABI_DEPRECATE(u16, subsystem_device)
 	resource_size_t	barsz[PCI_SRIOV_NUM_BARS];	/* VF BAR size */
 	bool		drivers_autoprobe; /* Auto probing of VFs by driver */
 };
