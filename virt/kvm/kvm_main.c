@@ -4324,6 +4324,10 @@ static long kvm_vcpu_ioctl(struct file *filp,
 			if (r)
 				break;
 
+#ifdef CONFIG_X86
+			vcpu->arch.st.last_steal = current->sched_info.run_delay;
+#endif
+
 			newpid = get_task_pid(current, PIDTYPE_PID);
 			rcu_assign_pointer(vcpu->pid, newpid);
 			if (oldpid)
