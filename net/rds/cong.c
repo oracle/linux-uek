@@ -99,8 +99,12 @@ static void rds_cong_notify_worker(struct work_struct *work)
 
 	read_lock_irqsave(&rds_cong_monitor->rc_monitor_lock, flags);
 	list_for_each_entry(rs, &rds_cong_monitor->rc_monitor, rs_cong_list) {
-		atomic64_or(atomic64_read(&rs->rs_cong_mask) & portmask, &rs->rs_cong_notify);
-		atomic64_and(~portmask, &rs->rs_cong_mask);
+		u64 notify;
+
+		notify = atomic64_fetch_andnot(portmask, &rs->rs_cong_mask) & portmask;
+		if (notify)
+			atomic64_or(notify, &rs->rs_cong_notify);
+
 		if (atomic64_read(&rs->rs_cong_notify)) {
 			trace_rds_cong_notify(rs, NULL, NULL,
 					      "cong map update", 0);
