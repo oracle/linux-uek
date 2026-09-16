@@ -621,17 +621,15 @@ static const struct file_operations nvme_ns_head_chr_fops = {
 
 static void nvme_add_ns_head_cdev(struct nvme_ns_head *head)
 {
-	char name[32];
-
 	head->cdev_device.parent = &head->subsys->dev;
-	snprintf(name, sizeof(name), "ng%dn%d", head->subsys->instance,
-		 head->instance);
 
 	nvme_get_ns_head(head); /* Undone in nvme_cdev_rel() */
-	if (nvme_cdev_add(name, &head->cdev, &head->cdev_device,
-			&nvme_ns_head_chr_fops, THIS_MODULE)) {
+	if (nvme_cdev_add(&head->cdev, &head->cdev_device,
+			&nvme_ns_head_chr_fops, THIS_MODULE,
+			head->subsys->instance, head->instance)) {
 		dev_err(disk_to_dev(head->disk),
-			"Unable to create the %s device\n", name);
+			"Unable to create the ng%dn%d device\n",
+			head->subsys->instance, head->instance);
 		nvme_put_ns_head(head);
 		return;
 	}

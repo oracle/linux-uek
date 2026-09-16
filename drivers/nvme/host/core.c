@@ -3913,9 +3913,9 @@ void nvme_cdev_del(struct cdev *cdev, struct device *cdev_device)
 	put_device(cdev_device);
 }
 
-int nvme_cdev_add(const char *name, struct cdev *cdev,
-		struct device *cdev_device,
-		const struct file_operations *fops, struct module *owner)
+int nvme_cdev_add(struct cdev *cdev, struct device *cdev_device,
+		const struct file_operations *fops, struct module *owner,
+		int ctrl, int head)
 {
 	int minor, ret;
 
@@ -3923,7 +3923,7 @@ int nvme_cdev_add(const char *name, struct cdev *cdev,
 	if (minor < 0)
 		return minor;
 
-	ret = dev_set_name(cdev_device, name);
+	ret = dev_set_name(cdev_device, "ng%dn%d", ctrl, head);
 	if (ret) {
 		ida_free(&nvme_ns_chr_minor_ida, minor);
 		return ret;
@@ -3964,17 +3964,14 @@ static const struct file_operations nvme_ns_chr_fops = {
 
 static void nvme_add_ns_cdev(struct nvme_ns *ns)
 {
-	char name[32];
-
 	ns->cdev_device.parent = ns->ctrl->device;
-	snprintf(name, sizeof(name), "ng%dn%d", ns->ctrl->instance,
-		 ns->head->instance);
 
 	nvme_get_ns(ns); /* Undone in nvme_cdev_rel() */
-	if (nvme_cdev_add(name, &ns->cdev, &ns->cdev_device,
-			&nvme_ns_chr_fops, ns->ctrl->ops->module)) {
-		dev_err(ns->ctrl->device, "Unable to create the %s device\n",
-			name);
+	if (nvme_cdev_add(&ns->cdev, &ns->cdev_device,
+			&nvme_ns_chr_fops, ns->ctrl->ops->module,
+			ns->ctrl->instance, ns->head->instance)) {
+		dev_err(ns->ctrl->device, "Unable to create the ng%dn%d device\n",
+			ns->ctrl->instance, ns->head->instance);
 		nvme_put_ns(ns);
 		return;
 	}
