@@ -14,6 +14,7 @@
 #include <linux/err.h>
 #include <linux/fs.h>
 #include <linux/init.h>
+#include <linux/kdev_t.h>
 #include <linux/kernel.h>
 #include <linux/limits.h>
 #include <linux/list.h>
@@ -365,7 +366,7 @@ static inline int current_check_access_path(const struct path *const path,
 	return check_access_path(dom, path, access_request);
 }
 
-static inline access_mask_t get_mode_access(const umode_t mode)
+static inline access_mask_t get_mode_access(const umode_t mode, const dev_t dev)
 {
 	switch (mode & S_IFMT) {
 	case S_IFLNK:
@@ -373,6 +374,9 @@ static inline access_mask_t get_mode_access(const umode_t mode)
 	case S_IFDIR:
 		return LANDLOCK_ACCESS_FS_MAKE_DIR;
 	case S_IFCHR:
+		/* Whiteout objects are guarded with MAKE_REG. */
+		if (dev == WHITEOUT_DEV)
+			return LANDLOCK_ACCESS_FS_MAKE_REG;
 		return LANDLOCK_ACCESS_FS_MAKE_CHAR;
 	case S_IFBLK:
 		return LANDLOCK_ACCESS_FS_MAKE_BLOCK;
@@ -387,6 +391,13 @@ static inline access_mask_t get_mode_access(const umode_t mode)
 		/* Treats weird files as regular files. */
 		return LANDLOCK_ACCESS_FS_MAKE_REG;
 	}
+}
+
+static inline access_mask_t get_dentry_access(const struct dentry *const dentry)
+{
+	const struct inode *const inode = d_backing_inode(dentry);
+
+	return get_mode_access(inode->i_mode, inode->i_rdev);
 }
 
 static inline access_mask_t maybe_remove(const struct dentry *const dentry)
@@ -613,18 +624,18 @@ static int hook_path_link(struct dentry *const old_dentry,
 		return -EXDEV;
 	if (unlikely(d_is_negative(old_dentry)))
 		return -ENOENT;
-	return check_access_path(
-		dom, new_dir,
-		get_mode_access(d_backing_inode(old_dentry)->i_mode));
+	return check_access_path(dom, new_dir, get_dentry_access(old_dentry));
 }
 
 static int hook_path_rename(const struct path *const old_dir,
 			    struct dentry *const old_dentry,
 			    const struct path *const new_dir,
-			    struct dentry *const new_dentry)
+			    struct dentry *const new_dentry,
+			    const unsigned int flags)
 {
 	const struct landlock_ruleset *const dom =
 		landlock_get_current_domain();
+	access_mask_t access_request;
 
 	if (!dom)
 		return 0;
@@ -635,10 +646,18 @@ static int hook_path_rename(const struct path *const old_dir,
 	if (unlikely(d_is_negative(old_dentry)))
 		return -ENOENT;
 	/* RENAME_EXCHANGE is handled because directories are the same. */
-	return check_access_path(
-		dom, old_dir,
-		maybe_remove(old_dentry) | maybe_remove(new_dentry) |
-			get_mode_access(d_backing_inode(old_dentry)->i_mode));
+	access_request = maybe_remove(old_dentry) | maybe_remove(new_dentry) |
+			 get_dentry_access(old_dentry);
+	/*
+	 * In case of renameat2(2) with RENAME_WHITEOUT, a whiteout object is
+	 * created in the source location, so we require an additional access
+	 * right there.
+	 */
+	if (flags & RENAME_WHITEOUT)
+		access_request |=
+			get_mode_access(S_IFCHR | WHITEOUT_MODE, WHITEOUT_DEV);
+
+	return check_access_path(dom, old_dir, access_request);
 }
 
 static int hook_path_mkdir(const struct path *const dir,
@@ -656,7 +675,8 @@ static int hook_path_mknod(const struct path *const dir,
 
 	if (!dom)
 		return 0;
-	return check_access_path(dom, dir, get_mode_access(mode));
+	return check_access_path(dom, dir,
+				 get_mode_access(mode, new_decode_dev(dev)));
 }
 
 static int hook_path_symlink(const struct path *const dir,

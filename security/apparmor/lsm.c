@@ -353,8 +353,11 @@ static int apparmor_path_link(struct dentry *old_dentry, const struct path *new_
 	return error;
 }
 
-static int apparmor_path_rename(const struct path *old_dir, struct dentry *old_dentry,
-				const struct path *new_dir, struct dentry *new_dentry)
+static int apparmor_path_rename(const struct path *old_dir,
+				struct dentry *old_dentry,
+				const struct path *new_dir,
+				struct dentry *new_dentry,
+				const unsigned int flags)
 {
 	struct aa_label *label;
 	int error = 0;
