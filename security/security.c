@@ -1247,13 +1247,13 @@ int security_path_rename(const struct path *old_dir, struct dentry *old_dentry,
 
 	if (flags & RENAME_EXCHANGE) {
 		int err = call_int_hook(path_rename, new_dir, new_dentry,
-					old_dir, old_dentry);
+					old_dir, old_dentry, flags);
 		if (err)
 			return err;
 	}
 
 	return call_int_hook(path_rename, old_dir, old_dentry, new_dir,
-				new_dentry);
+			     new_dentry, flags);
 }
 EXPORT_SYMBOL(security_path_rename);
 
