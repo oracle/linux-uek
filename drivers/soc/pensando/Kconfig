@@ -13,7 +13,7 @@ choice
 
 config ARCH_PENSANDO_ELBA_SOC
 	bool "Elba SoC"
-	select DMA_OPS
+	select ARCH_HAS_DMA_OPS
 	select REGMAP_SPI
 	help
 	  Support for the AMD Pensando Elba SoC, a multi-core ARMv8
@@ -31,7 +31,7 @@ config ARCH_PENSANDO_GIGLIO_SOC
 
 config ARCH_PENSANDO_SALINA_SOC
 	bool "Salina SoC"
-	select DMA_OPS
+	select ARCH_HAS_DMA_OPS
 	help
 	  Support for the AMD Pensando Salina SoC, a multi-core ARMv8
 	  data-processing unit (DPU) with four DDR5 memory controllers.
