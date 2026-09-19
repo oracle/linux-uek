@@ -65,7 +65,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release %{uek_release}
 %define stable_base %(echo $((%{stable_update} - 1)))
 %endif
 %endif
-%define rpmversion 5.15.%{base_sublevel}%{?stablerev}
+%define kernel_rpmversion 5.15.%{base_sublevel}%{?stablerev}
 
 ## The not-released-kernel case ##
 %else
@@ -76,7 +76,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release %{uek_release}
 # The git snapshot level
 %define gitrev 0
 # Set rpm version accordingly
-%define rpmversion 5.15.%{upstream_sublevel}
+%define kernel_rpmversion 5.15.%{upstream_sublevel}
 %endif
 # Nb: The above rcrev and gitrev values automagically define Patch00 and Patch01 below.
 
@@ -213,7 +213,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release %{uek_release}
 
 %define pkg_release 1%{?dist}uek%{?buildid}
 
-%define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
+%define KVERREL %{kernel_rpmversion}-%{pkg_release}.%{_target_cpu}
 
 %if !%{debugbuildsenabled}
 %define with_debug 0
@@ -439,7 +439,7 @@ Name: kernel%{?variant}
 Group: System Environment/Kernel
 License: GPLv2
 URL: http://www.kernel.org/
-Version: %{rpmversion}
+Version: %{kernel_rpmversion}
 Release: %{pkg_release}
 # DO NOT CHANGE THE 'ExclusiveArch' LINE TO TEMPORARILY EXCLUDE AN ARCHITECTURE BUILD.
 # SET %%nobuildarches (ABOVE) INSTEAD
@@ -687,9 +687,9 @@ This package provides debug information for the bpftool package.
 # macros defined above.
 #
 %define kernel_reqprovconf \
-Provides: %{name} = %{rpmversion}-%{pkg_release}\
-Provides: %{variant_name} = %{rpmversion}-%{pkg_release}\
-Provides: %{variant_name}-%{_target_cpu} = %{rpmversion}-%{pkg_release}%{?1:.%{1}}\
+Provides: %{name} = %{kernel_rpmversion}-%{pkg_release}\
+Provides: %{variant_name} = %{kernel_rpmversion}-%{pkg_release}\
+Provides: %{variant_name}-%{_target_cpu} = %{kernel_rpmversion}-%{pkg_release}%{?1:.%{1}}\
 Provides: %{variant_name}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: %{name}-drm = 4.3.0\
 Provides: %{name}-drm-nouveau = 12\
@@ -701,7 +701,7 @@ Provides: turbostat = %{KVERREL}%{?1:.%{1}}\
 %endif\
 Provides: perf = %{KVERREL}%{?1:.%{1}}\
 %ifarch aarch64\
-Provides: kernel = %{rpmversion}-%{pkg_release}\
+Provides: kernel = %{kernel_rpmversion}-%{pkg_release}\
 Provides: kernel-uname-r = %{KVERREL}%{?1:.%{1}}\
 %endif\
 Requires(pre): %{kernel_prereq}\
@@ -1820,7 +1820,7 @@ cd linux-%{version}-%{release}
 
 %if %{with_doc}
 # copy the output files
-docdir=$RPM_BUILD_ROOT%{_datadir}/doc/kernel%{variant}-doc-%{rpmversion}
+docdir=$RPM_BUILD_ROOT%{_datadir}/doc/kernel%{variant}-doc-%{kernel_rpmversion}
 mkdir -p $docdir
 cp -a Documentation/output/* $docdir
 %endif
@@ -2168,8 +2168,8 @@ fi
 %if %{with_doc}
 %files doc
 %defattr(-,root,root)
-%{_datadir}/doc/kernel%{variant}-doc-%{rpmversion}/*
-%dir %{_datadir}/doc/kernel%{variant}-doc-%{rpmversion}
+%{_datadir}/doc/kernel%{variant}-doc-%{kernel_rpmversion}/*
+%dir %{_datadir}/doc/kernel%{variant}-doc-%{kernel_rpmversion}
 %endif
 
 # This is image_install_path on an arch where that includes ELF files,
