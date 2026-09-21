@@ -131,8 +131,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define with_embedded3 %{?_without_embedded: 0} %{?!_without_embedded: 1}
 %define with_embedded4 %{?_without_embedded: 0} %{?!_without_embedded: 1}
 
-# build the ONOS kernel
-%define with_onos %{?_without_onos: 0} %{?!_without_onos: 1}
+# build the OSP kernel
+%define with_osp %{?_without_osp: 0} %{?!_without_osp: 1}
 
 # verbose build, i.e. no silent rules and V=1
 %define with_verbose %{?_with_verbose:        1} %{?!_with_verbose:      0}
@@ -178,8 +178,8 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 # Only build the embedded4 kernel family (--with embedded4only)
 %define with_embedded4only %{?_with_embedded4only: 1} %{?!_with_embedded4only: 0}
 
-# Only build the ONOS kernel (--with onosonly)
-%define with_onosonly %{?_with_onosonly: 1} %{?!_with_onosonly: 0}
+# Only build the OSP kernel (--with osponly)
+%define with_osponly %{?_with_osponly: 1} %{?!_with_osponly: 0}
 
 # should we do C=1 builds with sparse
 %define with_sparse     %{?_with_sparse:       1} %{?!_with_sparse:       0}
@@ -259,7 +259,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define with_embedded 0
 %define with_embedded3 0
 %define with_embedded4 0
-%define with_onos 0
+%define with_osp 0
 %endif
 
 %define all_x86 i386 i686
@@ -286,7 +286,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %endif
 
 %ifnarch x86_64
-%define with_onos 0
+%define with_osp 0
 %endif
 
 # only package docs noarch
@@ -322,14 +322,14 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define asmarch x86
 %define image_install_path boot
 %define kernel_image arch/x86/boot/bzImage
-%if %{with_onosonly}
+%if %{with_osponly}
 %define with_up 0
 %define with_container 0
 %define with_debug 0
 %define with_headers 0
 %define with_bpftool 0
 %define with_tools 0
-%define with_onos 1
+%define with_osp 1
 %endif
 %if %{with_container}
 #
@@ -379,7 +379,7 @@ Summary: Oracle Unbreakable Enterprise Kernel Release
 %define with_embedded 0
 %define with_embedded3 0
 %define with_embedded4 1
-%define with_onos 0
+%define with_osp 0
 %else
 %if %{with_embeddedonly}
 %define with_up 0
@@ -588,8 +588,8 @@ Source49: modules.yaml.S.emb
 Source50: denylist.txt.S.emb
 Source51: modules.yaml.S.emb3
 Source52: denylist.txt.S.emb3
-Source53: modules.yaml.S.onos
-Source54: denylist.txt.S.onos
+Source53: modules.yaml.S.osp
+Source54: denylist.txt.S.osp
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
@@ -600,7 +600,7 @@ Source1009: config-aarch64-container
 Source1011: config-aarch64-embedded4
 Source1012: config-aarch64-embedded
 Source1013: config-aarch64-embedded3
-Source1014: config-x86_64-onos
+Source1014: config-x86_64-osp
 
 Source25: Module.kabi_x86_64
 Source26: Module.kabi_aarch64
@@ -1021,10 +1021,10 @@ This package includes an embedded kernel.
 %description -n kernel%{?variant}emb-core
 This package includes an embedded kernel.
 
-%define variant_summary A kernel for an ONOS platform
-%kernel_variant_package -emo onos
-%description -n kernel%{?variant}onos-core
-This package includes an ONOS  kernel
+%define variant_summary A kernel for an OSP platform
+%kernel_variant_package -emo osp
+%description -n kernel%{?variant}osp-core
+This package includes an OSP  kernel
 
 %define variant_summary The Linux kernel compiled with extra debugging enabled
 %kernel_variant_package debug
@@ -1087,7 +1087,7 @@ mkdir -p configs
     cp %{SOURCE1002} configs/config-container
     cp %{SOURCE1001} configs/config-debug
     cp %{SOURCE1000} configs/config
-    cp %{SOURCE1014} configs/config-onos
+    cp %{SOURCE1014} configs/config-osp
 %endif
 
 %ifarch aarch64
@@ -1269,11 +1269,11 @@ BuildKernel() {
         modlistVariant="$PWD/../kernel%{?variant}emb"
         modlistSrc=modules.yaml.S.emb
         denylistSrc=denylist.txt.S.emb
-    elif [ "$Flavour" == "onos" ]; then
-        cp configs/config-onos .config
-        modlistVariant="$PWD/../kernel%{?variant}onos"
-        modlistSrc=modules.yaml.S.onos
-        denylistSrc=denylist.txt.S.onos
+    elif [ "$Flavour" == "osp" ]; then
+        cp configs/config-osp .config
+        modlistVariant="$PWD/../kernel%{?variant}osp"
+        modlistSrc=modules.yaml.S.osp
+        denylistSrc=denylist.txt.S.osp
     else
         cp configs/config .config
         modlistVariant="$PWD/../kernel%{?variant}${Flavour:+-${Flavour}}"
@@ -1336,7 +1336,7 @@ BuildKernel() {
     openssl dgst -sha256 -hmac "%{FIPS140_HMAC_KEY}" < $fips_golden_module_path/fips140.ko -out $RPM_BUILD_ROOT/lib/modules/$KernelVer/.vmlinuz-$KernelVer-fips.hmac
 %endif
 
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb3" ] && [ "$Flavour" != "emb4" ] && [ "$Flavour" != "onos" ]; then
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb3" ] && [ "$Flavour" != "emb4" ] && [ "$Flavour" != "osp" ]; then
        %{make} ARCH=$Arch KBUILD_SYMTYPES=y %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
     else
        %{make} ARCH=$Arch %{?_kernel_cc} %{?_smp_mflags} $MakeTarget modules %{?sparse_mflags} || exit 1
@@ -1482,7 +1482,7 @@ BuildKernel() {
     %_sourcedir/kabitool -s Module.symvers -o $RPM_BUILD_ROOT/kernel-$KernelVer-kabideps
 
 %if %{with_kabichk}
-    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "debug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb3" ] && [ "$Flavour" != "emb4" ] && [ "$Flavour" != "onos" ]; then
+    if [ "$Flavour" != "64k" ] && [ "$Flavour" != "64kdebug" ] && [ "$Flavour" != "debug" ] && [ "$Flavour" != "emb" ] && [ "$Flavour" != "emb3" ] && [ "$Flavour" != "emb4" ] && [ "$Flavour" != "osp" ]; then
        # Create symbol type data which can be used to introspect kABI breakages
        python3 $RPM_SOURCE_DIR/kabi collect . -o Symtypes.build
 
@@ -1655,7 +1655,7 @@ BuildKernel() {
     mkdir -p $RPM_BUILD_ROOT/etc/modprobe.d/
 
     embedded_modules=
-    if [[ "$Flavour" == emb* || "$Flavour" == "onos" ]]; then
+    if [[ "$Flavour" == emb* || "$Flavour" == "osp" ]]; then
         embedded_modules="--subpackage modules-core"
     fi
 
@@ -1669,7 +1669,7 @@ BuildKernel() {
         $RPM_SOURCE_DIR/${modlistSrc} \
         $RPM_SOURCE_DIR/${denylistSrc})
 
-    if [[ "$Flavour" == emb* || "$Flavour" == "onos" ]]; then
+    if [[ "$Flavour" == emb* || "$Flavour" == "osp" ]]; then
         if [ ! -s "${modlistVariant}-modules-core.list" ]; then
             printf '%%%%ghost /lib/modules/%s/modules.dep\n' "$KernelVer" \
                 >> "${modlistVariant}-modules-core.list"
@@ -1892,8 +1892,8 @@ BuildKernel %make_target %kernel_image emb3
 BuildKernel %make_target %kernel_image emb
 %endif
 
-%if %{with_onos}
-BuildKernel %make_target %kernel_image onos
+%if %{with_osp}
+BuildKernel %make_target %kernel_image osp
 %endif
 
 %global bpftool_make \
@@ -1994,10 +1994,10 @@ BuildKernel %make_target %kernel_image onos
        mv certs/signing_key.x509.sign.emb certs/signing_key.x509 \
        %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.emb/ %{dgst} \
     fi \
-    if [ "%{with_onos}" -ne "0" ]; then \
-       mv certs/signing_key.pem.sign.onos certs/signing_key.pem \
-       mv certs/signing_key.x509.sign.onos certs/signing_key.x509 \
-       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.onos/ %{dgst} \
+    if [ "%{with_osp}" -ne "0" ]; then \
+       mv certs/signing_key.pem.sign.osp certs/signing_key.pem \
+       mv certs/signing_key.x509.sign.osp certs/signing_key.x509 \
+       %{modsign_cmd} %{?_smp_mflags} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.osp/ %{dgst} \
     fi \
   fi \
 %{nil}
@@ -2405,10 +2405,10 @@ fi\
 %kernel_variant_postun -o -v emb
 %kernel_variant_post -mo -v emb
 
-%kernel_variant_pre -o onos
-%kernel_variant_preun -o onos
-%kernel_variant_postun -o -v onos
-%kernel_variant_post -mo -v onos
+%kernel_variant_pre -o osp
+%kernel_variant_preun -o osp
+%kernel_variant_postun -o -v osp
+%kernel_variant_post -mo -v osp
 
 if [ -x /sbin/ldconfig ]
 then
@@ -2590,6 +2590,6 @@ fi
 
 %kernel_variant_files -mo %{with_embedded} emb
 
-%kernel_variant_files -mo %{with_onos} onos
+%kernel_variant_files -mo %{with_osp} osp
 
 %changelog
