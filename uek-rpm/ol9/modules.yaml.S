@@ -558,6 +558,7 @@ modules-core:
 - ffa-module
 - fwctl
 - ghash-ce
+- mstflint_access
 - poly1305-neon
 - sbsa_gwdt
 - scsi_dh_alua
