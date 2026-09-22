@@ -2797,11 +2797,31 @@ static void ionic_vf_attr_replay(struct ionic_lif *lif)
 	ionic_vf_start(ionic, -1);
 }
 
+static u16 ionic_select_queue(struct net_device *netdev, struct sk_buff *skb,
+			      struct net_device *sb_dev)
+{
+#if IS_ENABLED(CONFIG_PTP_1588_CLOCK)
+	struct ionic_lif *lif = netdev_priv(netdev);
+
+	/* The whole lif shares a single hwstamp_txq. Steer every hardware-
+	 * timestamped TX packet to queue 0 so ionic_start_xmit() only ever
+	 * posts to that shared queue under queue 0's HARD_TX_LOCK. Otherwise
+	 * PTP TX from multiple sockets maps to different tx queues (different
+	 * locks/CPUs) and races on the shared hwstamp_txq's head/desc state.
+	 */
+	if (unlikely(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) &&
+	    lif->hwstamp_txq && lif->phc && lif->phc->ts_config_tx_mode)
+		return 0;
+#endif
+	return netdev_pick_tx(netdev, skb, sb_dev);
+}
+
 static const struct net_device_ops ionic_netdev_ops = {
 	.ndo_open               = ionic_open,
 	.ndo_stop               = ionic_stop,
 	.ndo_eth_ioctl		= ionic_eth_ioctl,
 	.ndo_start_xmit		= ionic_start_xmit,
+	.ndo_select_queue	= ionic_select_queue,
 	.ndo_get_stats64	= ionic_get_stats64,
 	.ndo_set_rx_mode	= ionic_ndo_set_rx_mode,
 	.ndo_set_features	= ionic_set_features,
@@ -2851,6 +2871,7 @@ static const struct net_device_ops ionic_mnic_netdev_ops = {
 	.ndo_stop               = ionic_stop,
 	.ndo_eth_ioctl		= ionic_eth_ioctl,
 	.ndo_start_xmit		= ionic_start_xmit,
+	.ndo_select_queue	= ionic_select_queue,
 	.ndo_get_stats64	= ionic_get_stats64,
 	.ndo_set_rx_mode	= ionic_ndo_set_rx_mode,
 	.ndo_set_features	= ionic_set_features,
