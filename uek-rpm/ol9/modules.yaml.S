@@ -115,7 +115,6 @@ modules-core:
 - drm_kms_helper
 - drm_shmem_helper
 - drm_ttm_helper
-- drm_client_lib
 - drm_vram_helper
 - dummy
 - ebtable_broute
@@ -134,7 +133,6 @@ modules-core:
 - failover
 - fat
 - fcoe
-- fcrypt
 - fou
 - fou6
 - ftdi_sio
@@ -166,6 +164,7 @@ modules-core:
 - ib_srpt
 - ib_umad
 - ib_uverbs
+- ib_uverbs_support
 - ice
 - ieee802154
 - ifb
@@ -244,8 +243,6 @@ modules-core:
 - lockd
 - loop
 - lrw
-- lz4
-- lz4_compress
 - lz4hc
 - lz4hc_compress
 - mac802154
@@ -392,7 +389,6 @@ modules-core:
 - ocfs2_stackglue
 - overlay
 - pata_acpi
-- pcbc
 - pci-hyperv
 - pci-hyperv-intf
 - pcrypt
@@ -450,6 +446,7 @@ modules-core:
 - serpent_generic
 - ses
 - sit
+- smb_compress
 - smbdirect
 - squashfs
 - st
@@ -642,7 +639,6 @@ modules-core:
 - mxm-wmi
 - nd_e820
 - opbmc
-- ovmapi
 - pcc-cpufreq
 - pcspkr
 - power
@@ -717,6 +713,7 @@ modules:
 - adt7x10
 - ahci_platform
 - air_en8811h
+- air_phy_lib
 - alim7101_wdt
 - altera-stapl
 - altera_ps2
@@ -727,7 +724,6 @@ modules:
 - amd8111e
 - aoe
 - apds9802als
-- apds990x
 - appletouch
 - aquantia
 - arc_ps2
@@ -1583,6 +1579,7 @@ modules:
 - bcm_crypto_spu
 - bd9571mwv
 - bd9571mwv-regulator
+- camcc-x1p42100
 - capsule-loader
 - cc2520
 - ci_hdrc
@@ -1638,9 +1635,11 @@ modules:
 - ff-memless
 - ftsteutates
 - gcc-ipq8074
+- gcc-ipq9650
 - gcc-msm8916
 - gcc-msm8994
 - gcc-msm8996
+- gcc-x1e80100
 - gpio-bd9571mwv
 - gpio-dwapb
 - gpio-exar
@@ -1781,6 +1780,8 @@ modules:
 - phy-tegra-usb
 - phy-tegra-xusb
 - pinctrl-max77620
+- pinctrl-tegra238
+- pinctrl-tegra264
 - pl172
 - pl330
 - platform_mhu
@@ -1888,6 +1889,7 @@ modules:
 - vfio_platform_bcmflexrm
 - via-rhine
 - via-velocity
+- videocc-x1p42100
 - virtual
 - w1_ds2405
 - w1_ds2406
@@ -2087,6 +2089,7 @@ modules:
 - intel_ips
 - intel_pmc_core
 - intel_pmc_core_pltdrv
+- intel_pmc_pwrm_telemetry
 - intel_pmc_ssram_telemetry
 - intel_rapl_tpmi
 - intel_skl_int3472_common
@@ -2115,7 +2118,6 @@ modules:
 - lp3971
 - lpc_sch
 - lpddr_cmds
-- machzwd
 - macmodes
 - map_absent
 - map_funcs
@@ -2315,6 +2317,7 @@ modules:
 - sungem_phy
 - sunhme
 - tdx-guest
+- tdx-host
 - thinkpad_acpi
 - tlan
 - tlclk
@@ -2365,10 +2368,6 @@ modules:
 #endif /* Arch_x86_64 */
 
 /* modules: */
-#if defined(Flavour_debug) || defined(Flavour_64kdebug)
-- dmabuf_selftests
-#endif
-
 modules-extra:
 - act_connmark
 - act_ct
@@ -3348,7 +3347,6 @@ modules-desktop:
 - i2c-cros-ec-tunnel
 - igorplugusb
 - iio-mux
-- iio-trig-interrupt
 - iio-trig-loop
 - iio-trig-sysfs
 - iio_hwmon
@@ -3651,7 +3649,6 @@ modules-desktop:
 - snd-soc-acp6x-mach
 - snd-soc-acpi
 - snd-soc-acpi-amd-match
-- snd-soc-acpi-amd-sdca-quirks
 - snd-soc-acpi-intel-match
 - snd-soc-acpi-intel-sdca-quirks
 - snd-soc-avs
@@ -3689,6 +3686,7 @@ modules-desktop:
 - snd-soc-da7219
 - snd-soc-ehl-rt5660
 - snd-soc-es8326
+- snd-soc-es9356
 - snd-soc-es83xx-dsm-common
 - snd-soc-hda-codec
 - snd-soc-hdac-hda

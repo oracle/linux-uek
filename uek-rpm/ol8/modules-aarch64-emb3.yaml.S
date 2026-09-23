@@ -177,7 +177,6 @@ modules-core:
 - ext2
 - failover
 - fat
-- fcrypt
 - fou
 - fou6
 - ftdi_sio
@@ -201,6 +200,7 @@ modules-core:
 - ib_srpt
 - ib_umad
 - ib_uverbs
+- ib_uverbs_support
 - ice
 - ieee802154
 - igb
@@ -308,8 +308,6 @@ modules-core:
 - lockd
 - loop
 - lrw
-- lz4
-- lz4_compress
 - lz4hc
 - lz4hc_compress
 - mac802154
@@ -458,7 +456,6 @@ modules-core:
 - of_mmc_spi
 - overlay
 - pata_acpi
-- pcbc
 - pcrypt
 - pinctrl-mlxbf3
 - pkcs8_key_parser
@@ -528,6 +525,7 @@ modules-core:
 - sha256-arm64
 - sha512-arm64
 - sit
+- smb_compress
 - squashfs
 - st
 - sunrpc
@@ -746,7 +744,6 @@ modules:
 - amlogic-gxl-crypto
 - aoe
 - apds9802als
-- apds990x
 - appledisplay
 - appletouch
 - aquantia
@@ -812,6 +809,7 @@ modules:
 - broadcom
 - bsd_comp
 - cachefiles
+- camcc-x1p42100
 - capsule-loader
 - catc
 - cb710
@@ -967,9 +965,11 @@ modules:
 - g762
 - garmin_gps
 - gcc-ipq8074
+- gcc-ipq9650
 - gcc-msm8916
 - gcc-msm8994
 - gcc-msm8996
+- gcc-x1e80100
 - genet
 - gen_probe
 - gfs2
@@ -1135,7 +1135,6 @@ modules:
 - igc
 - iio_hwmon
 - iio-mux
-- iio-trig-interrupt
 - iio-trig-loop
 - iio-trig-sysfs
 - ili210x
@@ -1477,6 +1476,8 @@ modules:
 - pinctrl-single
 - pinctrl-spmi-gpio
 - pinctrl-spmi-mpp
+- pinctrl-tegra238
+- pinctrl-tegra264
 - pixcir_i2c_ts
 - pktcdvd
 - pl172
@@ -1826,6 +1827,7 @@ modules:
 - via-rhine
 - via-velocity
 - virt-dma
+- videocc-x1p42100
 - virtual
 - visor
 - vitesse
