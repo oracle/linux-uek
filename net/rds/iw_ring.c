@@ -33,7 +33,7 @@
 #include <linux/kernel.h>
 
 #include "rds.h"
-#include "ib.h"
+#include "iw.h"
 
 /*
  * Locking for IB rings.
@@ -61,16 +61,16 @@
 /*
  * This only happens on shutdown.
  */
-DECLARE_WAIT_QUEUE_HEAD(rds_ib_ring_empty_wait);
+DECLARE_WAIT_QUEUE_HEAD(rds_iw_ring_empty_wait);
 
-void rds_ib_ring_init(struct rds_ib_work_ring *ring, u32 nr)
+void rds_iw_ring_init(struct rds_iw_work_ring *ring, u32 nr)
 {
 	memset(ring, 0, sizeof(*ring));
 	ring->w_nr = nr;
 	rdsdebug("ring %p nr %u\n", ring, ring->w_nr);
 }
 
-static inline u32 __rds_ib_ring_used(struct rds_ib_work_ring *ring)
+static inline u32 __rds_iw_ring_used(struct rds_iw_work_ring *ring)
 {
 	u32 diff;
 
@@ -81,24 +81,24 @@ static inline u32 __rds_ib_ring_used(struct rds_ib_work_ring *ring)
 	return diff;
 }
 
-void rds_ib_ring_resize(struct rds_ib_work_ring *ring, u32 nr)
+void rds_iw_ring_resize(struct rds_iw_work_ring *ring, u32 nr)
 {
 	/* We only ever get called from the connection setup code,
 	 * prior to creating the QP. */
-	BUG_ON(__rds_ib_ring_used(ring));
+	BUG_ON(__rds_iw_ring_used(ring));
 	ring->w_nr = nr;
 }
 
-static int __rds_ib_ring_empty(struct rds_ib_work_ring *ring)
+static int __rds_iw_ring_empty(struct rds_iw_work_ring *ring)
 {
-	return __rds_ib_ring_used(ring) == 0;
+	return __rds_iw_ring_used(ring) == 0;
 }
 
-u32 rds_ib_ring_alloc(struct rds_ib_work_ring *ring, u32 val, u32 *pos)
+u32 rds_iw_ring_alloc(struct rds_iw_work_ring *ring, u32 val, u32 *pos)
 {
 	u32 ret = 0, avail;
 
-	avail = ring->w_nr - __rds_ib_ring_used(ring);
+	avail = ring->w_nr - __rds_iw_ring_used(ring);
 
 	rdsdebug("ring %p val %u next %u free %u\n", ring, val,
 		 ring->w_alloc_ptr, avail);
@@ -114,37 +114,38 @@ u32 rds_ib_ring_alloc(struct rds_ib_work_ring *ring, u32 val, u32 *pos)
 	return ret;
 }
 
-void rds_ib_ring_free(struct rds_ib_work_ring *ring, u32 val)
+void rds_iw_ring_free(struct rds_iw_work_ring *ring, u32 val)
 {
 	ring->w_free_ptr = (ring->w_free_ptr + val) % ring->w_nr;
 	atomic_add(val, &ring->w_free_ctr);
 
-	if (__rds_ib_ring_empty(ring) &&
-	    waitqueue_active(&rds_ib_ring_empty_wait))
-		wake_up(&rds_ib_ring_empty_wait);
+	if (__rds_iw_ring_empty(ring) &&
+	    waitqueue_active(&rds_iw_ring_empty_wait))
+		wake_up(&rds_iw_ring_empty_wait);
 }
 
-void rds_ib_ring_unalloc(struct rds_ib_work_ring *ring, u32 val)
+void rds_iw_ring_unalloc(struct rds_iw_work_ring *ring, u32 val)
 {
 	ring->w_alloc_ptr = (ring->w_alloc_ptr - val) % ring->w_nr;
 	ring->w_alloc_ctr -= val;
 }
 
-int rds_ib_ring_empty(struct rds_ib_work_ring *ring)
+int rds_iw_ring_empty(struct rds_iw_work_ring *ring)
 {
-	return __rds_ib_ring_empty(ring);
+	return __rds_iw_ring_empty(ring);
 }
 
-int rds_ib_ring_low(struct rds_ib_work_ring *ring)
+int rds_iw_ring_low(struct rds_iw_work_ring *ring)
 {
-	return __rds_ib_ring_used(ring) <= (ring->w_nr >> 2);
+	return __rds_iw_ring_used(ring) <= (ring->w_nr >> 2);
 }
+
 
 /*
  * returns the oldest alloced ring entry.  This will be the next one
  * freed.  This can't be called if there are none allocated.
  */
-u32 rds_ib_ring_oldest(struct rds_ib_work_ring *ring)
+u32 rds_iw_ring_oldest(struct rds_iw_work_ring *ring)
 {
 	return ring->w_free_ptr;
 }
@@ -153,7 +154,7 @@ u32 rds_ib_ring_oldest(struct rds_ib_work_ring *ring)
  * returns the number of completed work requests.
  */
 
-u32 rds_ib_ring_completed(struct rds_ib_work_ring *ring, u32 wr_id, u32 oldest)
+u32 rds_iw_ring_completed(struct rds_iw_work_ring *ring, u32 wr_id, u32 oldest)
 {
 	u32 ret;
 
