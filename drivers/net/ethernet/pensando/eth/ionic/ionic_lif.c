@@ -2957,11 +2957,31 @@ static int ionic_xdp(struct net_device *netdev, struct netdev_bpf *bpf)
 }
 #endif
 
+static u16 ionic_select_queue(struct net_device *netdev, struct sk_buff *skb,
+			      struct net_device *sb_dev)
+{
+#if IS_ENABLED(CONFIG_PTP_1588_CLOCK)
+	struct ionic_lif *lif = netdev_priv(netdev);
+
+	/* The whole lif shares a single hwstamp_txq. Steer every hardware-
+	 * timestamped TX packet to queue 0 so ionic_start_xmit() only ever
+	 * posts to that shared queue under queue 0's HARD_TX_LOCK. Otherwise
+	 * PTP TX from multiple sockets maps to different tx queues (different
+	 * locks/CPUs) and races on the shared hwstamp_txq's head/desc state.
+	 */
+	if (unlikely(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) &&
+	    lif->hwstamp_txq && lif->phc && lif->phc->ts_config_tx_mode)
+		return 0;
+#endif
+	return netdev_pick_tx(netdev, skb, sb_dev);
+}
+
 static const struct net_device_ops ionic_netdev_ops = {
 	.ndo_open               = ionic_open,
 	.ndo_stop               = ionic_stop,
 	.ndo_eth_ioctl		= ionic_eth_ioctl,
 	.ndo_start_xmit		= ionic_start_xmit,
+	.ndo_select_queue	= ionic_select_queue,
 #ifdef HAVE_NET_XDP
 	.ndo_bpf		= ionic_xdp,
 	.ndo_xdp_xmit		= ionic_xdp_xmit,
@@ -3015,6 +3035,7 @@ static const struct net_device_ops ionic_mnic_netdev_ops = {
 	.ndo_stop               = ionic_stop,
 	.ndo_eth_ioctl		= ionic_eth_ioctl,
 	.ndo_start_xmit		= ionic_start_xmit,
+	.ndo_select_queue	= ionic_select_queue,
 #ifdef HAVE_NET_XDP
 	.ndo_bpf		= ionic_xdp,
 	.ndo_xdp_xmit		= ionic_xdp_xmit,
