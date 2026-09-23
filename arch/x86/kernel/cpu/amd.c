@@ -1519,7 +1519,10 @@ bool amd_check_tsa_microcode(void)
 	if (ret)
 		setup_force_cpu_cap(X86_FEATURE_VERW_CLEAR);
 
-	return ret;
+	/*
+	 * zen5 may already have this capablility enabled
+	 */
+	return boot_cpu_has(X86_FEATURE_VERW_CLEAR);
 }
 
 /*
