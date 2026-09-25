@@ -46,6 +46,7 @@ enum {
 #define	NR_COND_REJECT			0x02
 #define	NR_COND_PEER_RX_BUSY		0x04
 #define	NR_COND_OWN_RX_BUSY		0x08
+#define	NR_COND_FRAG_DISCARD		0x10
 
 #define NR_DEFAULT_T1			120000		/* Outstanding frames - 120 seconds */
 #define NR_DEFAULT_T2			5000		/* Response delay     - 5 seconds */
@@ -74,7 +75,7 @@ struct nr_sock {
 	unsigned short		vs, vr, va, vl;
 	unsigned char		n2, n2count;
 	unsigned long		t1, t2, t4, idle;
-	unsigned short		fraglen;
+	unsigned int		fraglen;
 	struct timer_list	t1timer;
 	struct timer_list	t2timer;
 	struct timer_list	t4timer;
