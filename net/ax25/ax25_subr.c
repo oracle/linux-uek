@@ -102,6 +102,9 @@ int ax25_decode(ax25_cb *ax25, struct sk_buff *skb, int *ns, int *nr, int *pf)
 	frame = skb->data;
 	*ns = *nr = *pf = 0;
 
+	if (skb->len < 1)
+		return frametype;
+
 	if (ax25->modulus == AX25_MODULUS) {
 		if ((frame[0] & AX25_S) == 0) {
 			frametype = AX25_I;			/* I frame - carries NR/NS/PF */
@@ -118,6 +121,10 @@ int ax25_decode(ax25_cb *ax25, struct sk_buff *skb, int *ns, int *nr, int *pf)
 		}
 		skb_pull(skb, 1);
 	} else {
+		/* I and S frames carry a two-byte control field here */
+		if ((frame[0] & AX25_U) != 3 && skb->len < 2)
+			return frametype;
+
 		if ((frame[0] & AX25_S) == 0) {
 			frametype = AX25_I;			/* I frame - carries NR/NS/PF */
 			*ns = (frame[0] >> 1) & 0x7F;

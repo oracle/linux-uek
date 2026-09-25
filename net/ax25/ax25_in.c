@@ -104,6 +104,10 @@ int ax25_rx_iframe(ax25_cb *ax25, struct sk_buff *skb)
 
 	if (skb == NULL) return 0;
 
+	/* An I frame must at least carry its PID byte */
+	if (skb->len < 1)
+		return 0;
+
 	ax25_start_idletimer(ax25);
 
 	pid = *skb->data;
