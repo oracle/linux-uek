@@ -115,7 +115,6 @@ struct nr_node {
 	unsigned char		count;
 	struct nr_route		routes[3];
 	refcount_t		refcount;
-	spinlock_t		node_lock;
 };
 
 /*********************************************************************
@@ -143,20 +142,6 @@ static __inline__ void nr_neigh_put(struct nr_neigh *nr_neigh)
 		kfree(nr_neigh->digipeat);
 		kfree(nr_neigh);
 	}
-}
-
-/* nr_node_lock and nr_node_unlock also hold/put the node's refcounter.
- */
-static __inline__ void nr_node_lock(struct nr_node *nr_node)
-{
-	nr_node_hold(nr_node);
-	spin_lock_bh(&nr_node->node_lock);
-}
-
-static __inline__ void nr_node_unlock(struct nr_node *nr_node)
-{
-	spin_unlock_bh(&nr_node->node_lock);
-	nr_node_put(nr_node);
 }
 
 #define nr_neigh_for_each(__nr_neigh, list) \
