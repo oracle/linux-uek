@@ -388,8 +388,9 @@ static int nr_del_node(ax25_address *callsign, ax25_address *neighbour, struct n
 				case 2:
 					break;
 				}
-				nr_node_put(nr_node);
 			}
+			/* Drop the reference taken by __nr_node_get() */
+			nr_node_put(nr_node);
 			ret = 0;
 			goto out;
 		}
