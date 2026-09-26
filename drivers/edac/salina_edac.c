@@ -11,6 +11,7 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/panic_notifier.h>
+#include <linux/arm-smccc.h>
 #include "edac_module.h"
 
 #define SAL_MC_NCHANS			4
@@ -36,30 +37,72 @@
 
 #define SAL_MCTL_INT_ACK_MASK		0xf
 
+/* Refer Pensando BL31 Function Registry.docx */
+#define PEN_SECREG_SMC_CALL_FID       0xC200000B
+
+enum pen_secreg_smc_sub_fid {
+	PEN_SECREG_SMC_REG_READ = 0,
+	PEN_SECREG_SMC_REG_WRITE = 1,
+};
+
+enum pen_secreg_smc_err_codes {
+	PEN_SECREG_SMC_ERR_NONE = 0,
+	/* -1 reserved for unknown fid as per smcc calling convention */
+	PEN_SECREG_SMC_ERR_INVALID = -2,
+	PEN_SECREG_SMC_ERR_UNSUPPORTED = -3,
+};
+
 struct salina_mcdata {
-	void __iomem *base[SAL_MC_NCHANS];	// per-channel memory controller registers
+	phys_addr_t base[SAL_MC_NCHANS];	/* per-channel MC physical base addresses */
 };
 
 static struct salina_mcdata *g_mcp;
 
 struct salina_mcpoll_res {
-	u64 ddr_addr;			// ecc address reported by the mc
-	u64 bus_addr;			// system bus address (or 0 if no map)
-	u16 cnt;			// ecc count (1=single, 2=multiple)
-	u16 id;				// axi source id info
-	u8 synd;			// ecc syndrome
-	char msg[128];			// informational message
+	u64 ddr_addr;			/* ecc address reported by the mc */
+	u64 bus_addr;			/* system bus address (or 0 if no map) */
+	u16 cnt;			/* ecc count (1=single, 2=multiple) */
+	u16 id;				/* axi source id info */
+	u8 synd;			/* ecc syndrome */
+	char msg[128];			/* informational message */
 };
 
-static inline u32 salina_mctl_read(struct salina_mcdata *mcp, int chan, int reg)
+static inline int salina_mctl_read(struct salina_mcdata *mcp, int chan, int reg,
+				   u32 *val)
 {
-	return readl(mcp->base[chan] + SAL_MC_MCTL_OFFS + 4 * reg);
+	struct arm_smccc_res res = {0};
+	phys_addr_t addr = mcp->base[chan] + SAL_MC_MCTL_OFFS + 4 * reg;
+
+	arm_smccc_smc(PEN_SECREG_SMC_CALL_FID,
+		      PEN_SECREG_SMC_REG_READ, addr,
+		      0, 0, 0, 0, 0, &res);
+
+	if (res.a0 != PEN_SECREG_SMC_ERR_NONE) {
+		pr_err_once("pensando-mctl: read failed! ret=%ld\n", res.a0);
+		return -EIO;
+	}
+
+	/* result passed back in a1 reg */
+	*val = (u32)res.a1;
+	return 0;
 }
 
-static inline void salina_mctl_write(struct salina_mcdata *mcp, int chan, int reg,
-				     u32 data)
+static inline int salina_mctl_write(struct salina_mcdata *mcp, int chan, int reg,
+				    u32 data)
 {
-	writel(data, mcp->base[chan] + SAL_MC_MCTL_OFFS + 4 * reg);
+	struct arm_smccc_res res = {0};
+	phys_addr_t addr = mcp->base[chan] + SAL_MC_MCTL_OFFS + 4 * reg;
+
+	arm_smccc_smc(PEN_SECREG_SMC_CALL_FID,
+		      PEN_SECREG_SMC_REG_WRITE, addr,
+		      data, 0, 0, 0, 0, &res);
+
+	if (res.a0 != PEN_SECREG_SMC_ERR_NONE) {
+		pr_err_once("pensando-mctl: failed to write data! ret=%d\n", (int)res.a0);
+		return -EIO;
+	}
+
+	return 0;
 }
 
 /* TODO: implement via Salina BL31 DDR SMC once ATF support lands. */
@@ -77,9 +120,11 @@ static int salina_edac_mc_c_poll(struct salina_mcdata *mcp, int chan, u32 int_st
 		return 0;
 
 	res->cnt = (int_stat & SAL_MCTL_INT_MULTI_C_ECC) ? 2 : 1;
-	addr = salina_mctl_read(mcp, chan, SAL_MCTL_ECC_C_ADDR);
-	synd = salina_mctl_read(mcp, chan, SAL_MCTL_ECC_C_SYND);
-	id   = salina_mctl_read(mcp, chan, SAL_MCTL_ECC_ID);
+	if (salina_mctl_read(mcp, chan, SAL_MCTL_ECC_C_ADDR, &addr) ||
+	    salina_mctl_read(mcp, chan, SAL_MCTL_ECC_C_SYND, &synd) ||
+	    salina_mctl_read(mcp, chan, SAL_MCTL_ECC_ID, &id))
+		return -EIO;
+
 	res->ddr_addr = SAL_MCTL_ECC_ADDR(addr, synd);
 	res->bus_addr = salina_ddr_addr_to_bus(mcp, res->ddr_addr);
 	res->synd = SAL_MCTL_ECC_SYND(synd);
@@ -98,9 +143,11 @@ static int salina_edac_mc_u_poll(struct salina_mcdata *mcp, int chan, u32 int_st
 		return 0;
 
 	res->cnt = (int_stat & SAL_MCTL_INT_MULTI_U_ECC) ? 2 : 1;
-	addr = salina_mctl_read(mcp, chan, SAL_MCTL_ECC_U_ADDR);
-	synd = salina_mctl_read(mcp, chan, SAL_MCTL_ECC_U_SYND);
-	id   = salina_mctl_read(mcp, chan, SAL_MCTL_ECC_ID);
+	if (salina_mctl_read(mcp, chan, SAL_MCTL_ECC_U_ADDR, &addr) ||
+	    salina_mctl_read(mcp, chan, SAL_MCTL_ECC_U_SYND, &synd) ||
+	    salina_mctl_read(mcp, chan, SAL_MCTL_ECC_ID, &id))
+		return -EIO;
+
 	res->ddr_addr = SAL_MCTL_ECC_ADDR(addr, synd);
 	res->bus_addr = salina_ddr_addr_to_bus(mcp, res->ddr_addr);
 	res->synd = SAL_MCTL_ECC_SYND(synd);
@@ -116,14 +163,16 @@ static void salina_edac_mc_poll_chan(struct mem_ctl_info *mci, int chan)
 	struct salina_mcpoll_res res;
 	u32 int_stat, int_ack;
 
-	int_stat = salina_mctl_read(mcp, chan, SAL_MCTL_INT_STAT_ECC);
-	if (salina_edac_mc_c_poll(mcp, chan, int_stat, &res)) {
+	if (salina_mctl_read(mcp, chan, SAL_MCTL_INT_STAT_ECC, &int_stat))
+		return;
+
+	if (salina_edac_mc_c_poll(mcp, chan, int_stat, &res) > 0) {
 		edac_mc_handle_error(HW_EVENT_ERR_CORRECTED, mci, res.cnt,
 			res.bus_addr >> PAGE_SHIFT, res.bus_addr & ~PAGE_MASK,
 			res.synd, chan, -1, -1, res.msg, "");
 	}
 
-	if (salina_edac_mc_u_poll(mcp, chan, int_stat, &res)) {
+	if (salina_edac_mc_u_poll(mcp, chan, int_stat, &res) > 0) {
 		edac_mc_handle_error(HW_EVENT_ERR_UNCORRECTED, mci, res.cnt,
 			res.bus_addr >> PAGE_SHIFT, res.bus_addr & ~PAGE_MASK,
 			res.synd, chan, -1, -1, res.msg, "");
@@ -155,8 +204,9 @@ static int salina_edac_mc_panic_notifier(struct notifier_block *nb,
 	int chan;
 
 	for (chan = 0; chan < SAL_MC_NCHANS; chan++) {
-		int_stat = salina_mctl_read(mcp, chan, SAL_MCTL_INT_STAT_ECC);
-		if (salina_edac_mc_u_poll(mcp, chan, int_stat, &res)) {
+		if (salina_mctl_read(mcp, chan, SAL_MCTL_INT_STAT_ECC, &int_stat))
+			continue;
+		if (salina_edac_mc_u_poll(mcp, chan, int_stat, &res) > 0) {
 			pr_crit("EDAC MC0: %u UE %s "
 				"on unknown memory (channel:%u page:0x%llx "
 				"offset:0x%llx grain:8 syndrome:0x%02x)\n",
@@ -194,7 +244,6 @@ static int salina_edac_mc_probe(struct platform_device *pdev)
 	struct mem_ctl_info *mci;
 	struct salina_mcdata *mcp;
 	struct resource *r;
-	void __iomem *base[SAL_MC_NCHANS];
 	int chan;
 
 	for (chan = 0; chan < SAL_MC_NCHANS; chan++) {
@@ -203,11 +252,6 @@ static int salina_edac_mc_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "Unable to get mem resource %d\n",
 				chan);
 			return -ENODEV;
-		}
-		base[chan] = devm_ioremap_resource(&pdev->dev, r);
-		if (IS_ERR(base[chan])) {
-			dev_err(&pdev->dev, "Unable to map regs %d\n", chan);
-			return PTR_ERR(base[chan]);
 		}
 	}
 
@@ -220,8 +264,10 @@ static int salina_edac_mc_probe(struct platform_device *pdev)
 		return -ENXIO;
 
 	mcp = mci->pvt_info;
-	for (chan = 0; chan < SAL_MC_NCHANS; chan++)
-		mcp->base[chan] = base[chan];
+	for (chan = 0; chan < SAL_MC_NCHANS; chan++) {
+		r = platform_get_resource(pdev, IORESOURCE_MEM, chan);
+		mcp->base[chan] = r->start;
+	}
 
 	salina_init_dimms(mci);
 
