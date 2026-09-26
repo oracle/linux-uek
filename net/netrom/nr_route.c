@@ -526,6 +526,9 @@ void nr_rt_device_down(struct net_device *dev)
 			nr_node_for_each_safe(t, node2t, &nr_node_list) {
 				for (i = 0; i < t->count; i++) {
 					if (t->routes[i].neighbour == s) {
+						s->count--;
+						nr_neigh_put(s);
+
 						t->count--;
 
 						switch (i) {
