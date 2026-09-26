@@ -715,34 +715,35 @@ void nr_link_failed(ax25_cb *ax25, int reason)
 	struct nr_neigh *s, *nr_neigh = NULL;
 	struct nr_node  *nr_node = NULL;
 
+	/*
+	 * nr_route_frame() replaces nr_neigh->ax25 under nr_route_lock;
+	 * clear it and drop its reference under the same lock, so that the
+	 * two paths cannot both put the same ax25_cb.
+	 */
 	spin_lock_bh(&nr_route_lock);
 	nr_neigh_for_each(s, &nr_neigh_list) {
 		if (s->ax25 == ax25) {
-			nr_neigh_hold(s);
 			nr_neigh = s;
 			break;
 		}
 	}
-	spin_unlock_bh(&nr_route_lock);
 
 	if (nr_neigh == NULL)
-		return;
+		goto out;
 
 	nr_neigh->ax25 = NULL;
 	ax25_cb_put(ax25);
 
-	if (++nr_neigh->failed < READ_ONCE(sysctl_netrom_link_fails_count)) {
-		nr_neigh_put(nr_neigh);
-		return;
-	}
-	spin_lock_bh(&nr_route_lock);
+	if (++nr_neigh->failed < READ_ONCE(sysctl_netrom_link_fails_count))
+		goto out;
+
 	nr_node_for_each(nr_node, &nr_node_list) {
 		if (nr_node->which < nr_node->count &&
 		    nr_node->routes[nr_node->which].neighbour == nr_neigh)
 			nr_node->which++;
 	}
+out:
 	spin_unlock_bh(&nr_route_lock);
-	nr_neigh_put(nr_neigh);
 }
 
 /*
