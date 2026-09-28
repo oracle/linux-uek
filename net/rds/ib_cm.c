@@ -172,7 +172,7 @@ static u16 rds_ib_set_frag_size(struct rds_connection *conn, u16 dp_frag)
 
 	frag = min_t(unsigned int, ib_init_frag_size,
 		     PAGE_ALIGN((ic->i_hca_sge - 1) * PAGE_SIZE));
-	if (!rds_ib_prq_mode(ic))
+	if (!rds_ib_prq_mode(ic) && !rds_ib_srq_indulgent_allocation)
 		frag = min_t(unsigned int, RDS_COMPOSITE_SGE_FRAG_SIZE, frag);
 
 	if (frag != dp_frag) {

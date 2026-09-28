@@ -114,7 +114,7 @@ struct rds_page_frag {
 	struct list_head	f_item;
 	struct lfstack_el	f_cache_entry;
 	struct scatterlist	f_sg[NUM_RDS_RECV_SG];
-	bool			f_sg_is_composite;
+	unsigned int		f_sg_composite_size;
 	struct rds_ib_device	*rds_ibdev;
 	struct rds_ib_srq	*rds_srq;
 };
@@ -630,6 +630,7 @@ struct rds_ib_statistics {
 	uint64_t	s_ib_srq_refill_cq_failures;
 	uint64_t	s_ib_srq_refill_worker_failures;
 	uint64_t	s_ib_frag_alloc_composite;
+	uint64_t	s_ib_frag_alloc_indulgent;
 	uint64_t	s_ib_frag_alloc_conservative;
 };
 
@@ -795,6 +796,7 @@ struct rds_ib_device *rds_rdma_rs_get_device(const struct in6_addr *addr,
 					     struct rds_sock *rs);
 
 /* ib_recv.c */
+extern bool rds_ib_srq_indulgent_allocation;
 extern struct kmem_cache *rds_ib_incoming_slab;
 extern struct kmem_cache *rds_ib_frag_slab;
 extern atomic_t rds_ib_allocation;
