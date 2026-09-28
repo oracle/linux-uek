@@ -995,8 +995,11 @@ cp_vmlinux()
 # ID collisions. Fall back to using UUID-based build IDs in this case,
 # which is less reproducible, but is simple and avoids collisions.
 
-%define build_hostcflags  %{?build_cflags}
-%define build_hostldflags %{?build_ldflags} -Wl,--build-id=uuid
+# Host tools (notably objtool) must not use RPM's LTO flags.  The
+# objtool BFD/disassembler build can otherwise produce invalid DWARF
+# references when GCC partitions the LTO link.
+%define build_hostcflags  %{?build_cflags} -fno-lto
+%define build_hostldflags %{?build_ldflags} -Wl,--build-id=uuid -fno-lto
 
 %define make %{__make} %{?make_opts} HOSTCFLAGS="%{?build_hostcflags}" HOSTLDFLAGS="%{?build_hostldflags}"
 
