@@ -98,6 +98,7 @@ static char *rds_ib_stat_names[] = {
 	"ib_srq_refill_cq_failures",
 	"ib_srq_refill_worker_failures",
 	"ib_frag_alloc_composite",
+	"ib_frag_alloc_indulgent",
 	"ib_frag_alloc_conservative",
 };
 

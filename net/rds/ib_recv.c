@@ -46,11 +46,13 @@
 
 static bool rds_ib_srq_enabled;
 static bool rds_ib_per_llc_srq = true;
+bool rds_ib_srq_indulgent_allocation = true;
 static unsigned int rds_ib_srq_max_wr = RDS_IB_DEFAULT_SRQ_RECV_WR;
 static unsigned int rds_ib_srq_max_cached_factor = 10;
 
 module_param(rds_ib_srq_enabled, bool, 0444);
 module_param(rds_ib_per_llc_srq, bool, 0444);
+module_param(rds_ib_srq_indulgent_allocation, bool, 0444);
 module_param(rds_ib_srq_max_wr, uint, 0444);
 module_param(rds_ib_srq_max_cached_factor, uint, 0444);
 
@@ -66,10 +68,12 @@ atomic_t rds_ib_allocation = ATOMIC_INIT(0);
 static inline unsigned rds_ib_frag_sg_size(struct rds_ib_connection *ic,
 					   struct rds_page_frag *frag)
 {
-	if (frag->f_sg_is_composite)
-		return RDS_COMPOSITE_SGE_FRAG_SIZE + sizeof(struct rds_header);
+	if (frag->f_sg_composite_size)
+		return frag->f_sg_composite_size + sizeof(struct rds_header);
 	else if (rds_ib_prq_mode(ic))
 		return ic->i_frag_sz;
+	else if (rds_ib_srq_indulgent_allocation)
+		return RDS_MAX_FRAG_SIZE;
 	else
 		return RDS_COMPOSITE_SGE_FRAG_SIZE;
 }
@@ -343,7 +347,7 @@ void rds_ib_recv_free_frag(struct rds_page_frag *frag, int nent)
 
 	list_del_init(&frag->f_item);
 
-	if (frag->f_sg_is_composite)
+	if (frag->f_sg_composite_size)
 		nent = 1;
 
 	for_each_sg(frag->f_sg, s, nent, i) {
@@ -503,7 +507,7 @@ void rds_ib_recv_clear_one(struct rds_ib_device *rds_ibdev,
 	if (recv->r_frag) {
 		ib_dma_unmap_sg(rds_ibdev->dev,
 				recv->r_frag->f_sg,
-				recv->r_frag->f_sg_is_composite ? 1 :
+				recv->r_frag->f_sg_composite_size ? 1 :
 				ic ? ic->i_frag_pages :
 				DIV_ROUND_UP(RDS_MAX_FRAG_SIZE, PAGE_SIZE),
 				DMA_FROM_DEVICE);
@@ -572,7 +576,7 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_device *rds_ib
 		frag_pages = ic->i_frag_pages;
 	} else {
 		frag_cache = &rds_srq->cache_frags;
-		frag_size = RDS_COMPOSITE_SGE_FRAG_SIZE;
+		frag_size = rds_ib_srq_indulgent_allocation ? RDS_MAX_FRAG_SIZE : RDS_COMPOSITE_SGE_FRAG_SIZE;
 		frag_pages = DIV_ROUND_UP(frag_size, PAGE_SIZE);
 	}
 
@@ -602,23 +606,26 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_device *rds_ib
 			return NULL;
 		}
 
-		if (frag_size == RDS_COMPOSITE_SGE_FRAG_SIZE &&
-		    !rds_ib_prq_mode(ic)) {
+		if (!rds_ib_prq_mode(ic) &&
+		    (frag_size == RDS_COMPOSITE_SGE_FRAG_SIZE ||
+		     rds_ib_srq_indulgent_allocation)) {
 			one_sge_page = alloc_pages_node(rdsibdev_to_node(rds_ibdev),
 							page_mask | __GFP_HIGHMEM,
 							get_order(frag_size + sizeof(struct rds_header)));
 			if (one_sge_page) {
-				frag->f_sg_is_composite = true;
+				frag->f_sg_composite_size = frag_size;
 				sg_init_table(frag->f_sg, 1);
 				sg_set_page(frag->f_sg, one_sge_page,
 					    frag_size + sizeof(struct rds_header), 0);
 				rds_ib_stats_inc(s_ib_frag_alloc_composite);
+				if (!is_power_of_2(frag_size + sizeof(struct rds_header)))
+					rds_ib_stats_inc(s_ib_frag_alloc_indulgent);
 			}
 		} else
 			one_sge_page = NULL;
 
 		if (!one_sge_page) {
-			frag->f_sg_is_composite = false;
+			frag->f_sg_composite_size = 0;
 			sg_init_table(frag->f_sg, frag_pages);
 
 			for_each_sg(frag->f_sg, sg, frag_pages, i) {
@@ -684,7 +691,7 @@ int rds_ib_recv_refill_one(struct rds_ib_device *rds_ibdev,
 	if (!recv->r_frag)
 		return -ENOMEM;
 
-	if (recv->r_frag->f_sg_is_composite) {
+	if (recv->r_frag->f_sg_composite_size) {
 		/* single SGE for everything */
 		sg = recv->r_frag->f_sg;
 		ret = ib_dma_map_sg(rds_ibdev->dev,
@@ -992,7 +999,7 @@ int rds_ib_inc_copy_to_user(struct rds_sock *rs, struct rds_incoming *inc,
 
 	ibinc = container_of(inc, struct rds_ib_incoming, ii_inc);
 	frag = list_entry(ibinc->ii_frags.next, struct rds_page_frag, f_item);
-	frag_off = frag->f_sg_is_composite ? sizeof(struct rds_header) : 0;
+	frag_off = frag->f_sg_composite_size ? sizeof(struct rds_header) : 0;
 	len = be32_to_cpu(inc->i_hdr.h_len);
 	sg = frag->f_sg;
 
@@ -1032,13 +1039,13 @@ int rds_ib_inc_copy_to_user(struct rds_sock *rs, struct rds_incoming *inc,
 		if (copied % ic->i_frag_sz == 0) {
 			frag = list_entry(frag->f_item.next,
 					  struct rds_page_frag, f_item);
-			frag_off = frag->f_sg_is_composite ? sizeof(struct rds_header) : 0;
+			frag_off = frag->f_sg_composite_size ? sizeof(struct rds_header) : 0;
 			sg = frag->f_sg;
 		}
 		if ((sg == NULL) && (copied < len)) {
 			frag = list_entry(frag->f_item.next,
 					  struct rds_page_frag, f_item);
-			frag_off = frag->f_sg_is_composite ? sizeof(struct rds_header) : 0;
+			frag_off = frag->f_sg_composite_size ? sizeof(struct rds_header) : 0;
 			sg = frag->f_sg;
 		}
 
@@ -1299,7 +1306,7 @@ static void rds_ib_cong_recv(struct rds_connection *conn,
 	map_off = 0;
 
 	frag = list_entry(ibinc->ii_frags.next, struct rds_page_frag, f_item);
-	frag_hdr_sz = frag->f_sg_is_composite ? sizeof(struct rds_header) : 0;
+	frag_hdr_sz = frag->f_sg_composite_size ? sizeof(struct rds_header) : 0;
 	frag_off = frag_hdr_sz;
 
 	copied = 0;
@@ -1336,7 +1343,7 @@ static void rds_ib_cong_recv(struct rds_connection *conn,
 		if (frag_off == frag_hdr_sz + ic->i_frag_sz) {
 			frag = list_entry(frag->f_item.next,
 					  struct rds_page_frag, f_item);
-			frag_hdr_sz = frag->f_sg_is_composite ? sizeof(struct rds_header) : 0;
+			frag_hdr_sz = frag->f_sg_composite_size ? sizeof(struct rds_header) : 0;
 			frag_off = frag_hdr_sz;
 			sg = frag->f_sg;
 		}
@@ -1382,7 +1389,7 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 	}
 	data_len -= sizeof(struct rds_header);
 
-	if (recv->r_frag->f_sg_is_composite)
+	if (recv->r_frag->f_sg_composite_size)
 		/* XXX doesn't work for unmapped GFP_HIGHMEM addresses */
 		ihdr = page_to_virt(sg_page(recv->r_frag->f_sg));
 	else if (rds_ib_prq_mode(ic))
@@ -1560,13 +1567,13 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 		recv = rds_srq->recvs + wc->wr_id;
 		ib_dma_unmap_sg(ic->i_cm_id->device,
 				recv->r_frag->f_sg,
-				recv->r_frag->f_sg_is_composite ? 1 :
+				recv->r_frag->f_sg_composite_size ? 1 :
 				DIV_ROUND_UP(RDS_MAX_FRAG_SIZE, PAGE_SIZE),
 				DMA_FROM_DEVICE);
 	} else {
 		recv = &ic->i_recvs[rds_ib_ring_oldest(&ic->i_recv_ring)];
 		ib_dma_unmap_sg(ic->i_cm_id->device, recv->r_frag->f_sg,
-				recv->r_frag->f_sg_is_composite ? 1 : ic->i_frag_pages,
+				recv->r_frag->f_sg_composite_size ? 1 : ic->i_frag_pages,
 				DMA_FROM_DEVICE);
 		rds_ib_stats_sub(s_ib_frag_pages_in_ib_recv_queue, ic->i_frag_pages);
 	}
