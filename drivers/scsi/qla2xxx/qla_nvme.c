@@ -1222,6 +1222,7 @@ void qla2xxx_process_purls_iocb(void **pkt, struct rsp_que **rsp)
 	struct pt_ls4_rx_unsol *p = *pkt;
 	struct qla_nvme_unsol_ctx *uctx;
 	struct rsp_que *rsp_q = *rsp;
+	response_t *ring_ptr = rsp_q->ring_ptr;
 	struct qla_hw_data *ha;
 	scsi_qla_host_t	*vha;
 	fc_port_t *fcport = NULL;
@@ -1229,6 +1230,7 @@ void qla2xxx_process_purls_iocb(void **pkt, struct rsp_que **rsp)
 	port_id_t d_id = {0};
 	port_id_t id = {0};
 	u8 *opcode;
+	u16 ring_index = rsp_q->ring_index;
 	bool xmt_reject = false;
 
 	ha = rsp_q->hw;
@@ -1313,6 +1315,11 @@ void qla2xxx_process_purls_iocb(void **pkt, struct rsp_que **rsp)
 out:
 	if (xmt_reject) {
 		qla_nvme_ls_reject_iocb(vha, (*rsp)->qpair, &a, false);
+		/* qla27xx_copy_multiple_pkt() may have advanced the cursor. */
+		rsp_q->ring_ptr = ring_ptr;
+		rsp_q->ring_index = ring_index;
+		/* __qla_consume_iocb() expects the PURLS head IOCB. */
+		*pkt = p;
 		__qla_consume_iocb(vha, pkt, rsp);
 	}
 }
