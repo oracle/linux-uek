@@ -1889,6 +1889,7 @@ drop:
 
 			if (!pskb_may_pull(skb, 1)) {
 				err = -EINVAL;
+				drop_reason = SKB_DROP_REASON_HDR_TRUNC;
 				goto drop;
 			}
 			ip_version = skb->data[0] >> 4;
