@@ -5019,8 +5019,11 @@ static int netif_rx_internal(struct sk_buff *skb)
 		/* strip any vlan tag before calling get_rps_cpu() */
 		if (skb->protocol == cpu_to_be16(ETH_P_8021Q) ||
 		    skb->protocol == cpu_to_be16(ETH_P_8021AD)) {
+			struct net_device *dev = skb->dev;
+
 			skb = skb_vlan_untag(skb);
 			if (unlikely(!skb)) {
+				dev_core_stats_rx_dropped_inc(dev);
 				ret = NET_RX_DROP;
 				goto unlock;
 			}
@@ -5770,8 +5773,11 @@ static int netif_receive_skb_internal(struct sk_buff *skb)
 		/* strip any vlan tag before calling get_rps_cpu() */
 		if (skb->protocol == cpu_to_be16(ETH_P_8021Q) ||
 		    skb->protocol == cpu_to_be16(ETH_P_8021AD)) {
+			struct net_device *dev = skb->dev;
+
 			skb = skb_vlan_untag(skb);
 			if (unlikely(!skb)) {
+				dev_core_stats_rx_dropped_inc(dev);
 				ret = NET_RX_DROP;
 				goto out;
 			}
