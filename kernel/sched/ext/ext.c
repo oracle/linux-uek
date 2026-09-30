@@ -6221,6 +6221,7 @@ static inline void scx_sub_disable(struct scx_sched *sch) { }
 
 static void scx_root_disable(struct scx_sched *sch)
 {
+	struct scx_cid_topo *topo;
 	struct scx_task_iter sti;
 	struct task_struct *p;
 	bool was_switched_all;
@@ -6350,7 +6351,14 @@ static void scx_root_disable(struct scx_sched *sch)
 	 */
 	cpus_read_lock();
 	RCU_INIT_POINTER(scx_root, NULL);
+	topo = rcu_replace_pointer(scx_cid_topo, NULL,
+				   lockdep_is_held(&scx_enable_mutex));
 	cpus_read_unlock();
+
+	if (topo) {
+		synchronize_rcu();
+		kfree(topo);
+	}
 
 	/*
 	 * Delete the kobject from the hierarchy synchronously. Otherwise, sysfs
@@ -9625,10 +9633,10 @@ __bpf_kfunc void scx_bpf_kick_cpu(s32 cpu, u64 flags, const struct bpf_prog_aux 
  * @flags: %SCX_KICK_* flags
  * @aux: implicit BPF argument to access bpf_prog_aux hidden from BPF progs
  *
- * cid-addressed equivalent of scx_bpf_kick_cpu(). Return 0 on success,
- * -errno otherwise.
+ * cid-addressed equivalent of scx_bpf_kick_cpu(). An invalid @cid aborts the
+ * scheduler via scx_cid_to_cpu().
  */
-__bpf_kfunc s32 scx_bpf_kick_cid(s32 cid, u64 flags, const struct bpf_prog_aux *aux)
+__bpf_kfunc void scx_bpf_kick_cid(s32 cid, u64 flags, const struct bpf_prog_aux *aux)
 {
 	struct scx_sched *sch;
 	s32 cpu;
@@ -9636,12 +9644,11 @@ __bpf_kfunc s32 scx_bpf_kick_cid(s32 cid, u64 flags, const struct bpf_prog_aux *
 	guard(rcu)();
 	sch = scx_prog_sched(aux);
 	if (unlikely(!sch))
-		return -ENODEV;
+		return;
 	cpu = scx_cid_to_cpu(sch, cid);
 	if (cpu < 0)
-		return cpu;
+		return;
 	scx_kick_cpu(sch, cpu, flags);
-	return 0;
 }
 
 /**
