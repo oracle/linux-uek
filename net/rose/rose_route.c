@@ -286,6 +286,49 @@ static void rose_remove_route(struct rose_route *rose_route)
 }
 
 /*
+ *	A neighbour is being removed from the tables while its link may still
+ *	be up (route deleted or routes cleared by the configuration). Clear the
+ *	through routes using it, on both sides since both can still be reached,
+ *	instead of leaving them in rose_route_list for ever: no frame can reach
+ *	them once the neighbour is gone. Local connections using it are cut too,
+ *	as rose_link_failed() does.
+ *
+ *	Caller is holding rose_node_list_lock and rose_neigh_list_lock, taken
+ *	before rose_route_list_lock as in rose_route_frame() and
+ *	rose_link_failed().
+ */
+static void rose_neigh_clear_routes(struct rose_neigh *rose_neigh)
+{
+	struct rose_route *rose_route, *s;
+
+	spin_lock_bh(&rose_route_list_lock);
+
+	rose_route = rose_route_list;
+	while (rose_route != NULL) {
+		s = rose_route->next;
+
+		if (rose_route->neigh1 == rose_neigh ||
+		    rose_route->neigh2 == rose_neigh) {
+			if (rose_route->neigh1 != NULL)
+				rose_transmit_clear_request(rose_route->neigh1,
+							    rose_route->lci1,
+							    ROSE_OUT_OF_ORDER, 0);
+			if (rose_route->neigh2 != NULL)
+				rose_transmit_clear_request(rose_route->neigh2,
+							    rose_route->lci2,
+							    ROSE_OUT_OF_ORDER, 0);
+			rose_remove_route(rose_route);
+		}
+
+		rose_route = s;
+	}
+
+	spin_unlock_bh(&rose_route_list_lock);
+
+	rose_kill_by_neigh(rose_neigh);
+}
+
+/*
  *	"Delete" a node. Strictly speaking remove a route to a node. The node
  *	is only deleted if no routes are left to it.
  */
@@ -333,6 +376,7 @@ static int rose_del_node(struct rose_route_struct *rose_route,
 			rose_neigh_put(rose_neigh);
 
 			if (rose_neigh->count == 0) {
+				rose_neigh_clear_routes(rose_neigh);
 				rose_remove_neigh(rose_neigh);
 				rose_neigh_put(rose_neigh);
 			}
@@ -547,8 +591,8 @@ void rose_route_device_down(struct net_device *dev)
 #endif
 
 /*
- *	Clear all nodes and neighbours out, except for neighbours with
- *	active connections going through them.
+ *	Clear all nodes and neighbours out, with the through routes and
+ *	connections using those neighbours.
  *  Do not clear loopback neighbour and nodes.
  */
 static int rose_clear_routes(void)
@@ -579,6 +623,7 @@ static int rose_clear_routes(void)
 		rose_neigh = rose_neigh->next;
 
 		if (!s->loopback) {
+			rose_neigh_clear_routes(s);
 			rose_remove_neigh(s);
 			rose_neigh_put(s);
 		}
