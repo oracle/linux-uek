@@ -23,6 +23,7 @@
 
 #include "vm_util.h"
 #include "thp_settings.h"
+#include "../kselftest.h"
 
 #define BASE_ADDR ((void *)(1UL << 30))
 static unsigned long hpage_pmd_size;
