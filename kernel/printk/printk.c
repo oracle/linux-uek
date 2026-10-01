@@ -84,6 +84,7 @@ int oops_in_progress;
 EXPORT_SYMBOL(oops_in_progress);
 
 struct task_struct *printk_thread;
+static atomic_t printk_thread_pending = ATOMIC_INIT(0);
 static void __console_flush_and_unlock(u64 start_ns, bool *incomplete);
 
 /*
@@ -3271,6 +3272,7 @@ static bool console_flush_all(bool do_cond_resched, u64 *next_seq, bool *handove
 			return false;
 
 		if (should_wake_printk_thread(start_ns)) {
+			atomic_set(&printk_thread_pending, 1);
 			wake_up_process(printk_thread);
 			return false;
 		} else if (incomplete && need_resched()) {
@@ -3358,9 +3360,15 @@ static int printk_thread_fn(void *unused)
 	bool more_work = false;
 
 	for (;;) {
-		if (!more_work)
+		if (!more_work) {
 			set_current_state(TASK_INTERRUPTIBLE);
-		schedule();
+			/* Check for a wakeup that arrived before we could sleep. */
+			if (!atomic_xchg(&printk_thread_pending, 0))
+				schedule();
+			__set_current_state(TASK_RUNNING);
+		} else {
+			schedule();
+		}
 		more_work = false;
 		if (console_trylock_spinning())
 			__console_flush_and_unlock(0, &more_work);
