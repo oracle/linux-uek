@@ -259,6 +259,26 @@ void rose_transmit_clear_request(struct rose_neigh *neigh, unsigned int lci, uns
 		kfree_skb(skb);
 }
 
+/*
+ * A neighbour has just been created while an AX.25 connection to it is
+ * already up, e.g. it was removed from the routing tables and added back.
+ * The other end still regards the link as restarted and will not restart it,
+ * and through calls only use restarted neighbours, so nothing would ever
+ * restart it from this end either: do it now.
+ */
+void rose_link_restart(struct rose_neigh *neigh)
+{
+	if (neigh->loopback || neigh->restarted || rose_t0timer_running(neigh))
+		return;
+
+	if (!rose_link_up(neigh))
+		return;
+
+	rose_transmit_restart_request(neigh);
+	neigh->dce_mode = 0;
+	rose_start_t0timer(neigh);
+}
+
 void rose_transmit_link(struct sk_buff *skb, struct rose_neigh *neigh)
 {
 	unsigned char *dptr;
