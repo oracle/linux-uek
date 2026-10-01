@@ -49,6 +49,7 @@
 #include <linux/sched/clock.h>
 #include <linux/sched/debug.h>
 #include <linux/sched/task_stack.h>
+#include <linux/kthread.h>
 
 #include <linux/uaccess.h>
 #include <asm/sections.h>
@@ -81,6 +82,9 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(console);
  */
 int oops_in_progress;
 EXPORT_SYMBOL(oops_in_progress);
+
+struct task_struct *printk_thread;
+static void __console_flush_and_unlock(u64 start_ns, bool *incomplete);
 
 /*
  * console_mutex protects console_list updates and console->flags updates.
@@ -2345,6 +2349,7 @@ asmlinkage int vprintk_emit(int facility, int level,
 {
 	struct console_flush_type ft;
 	int printed_len;
+	u64 start_ns;
 
 	/* Suppress unimportant messages after panic happens */
 	if (unlikely(suppress_printk))
@@ -2388,6 +2393,7 @@ asmlinkage int vprintk_emit(int facility, int level,
 		 * another printk() caller will take over the printing.
 		 */
 		preempt_disable();
+		start_ns = local_clock();
 		/*
 		 * Try to acquire and then immediately release the console
 		 * semaphore. The release will print out buffers. With the
@@ -2395,7 +2401,7 @@ asmlinkage int vprintk_emit(int facility, int level,
 		 * printing from another printing context.
 		 */
 		if (console_trylock_spinning())
-			console_unlock();
+			__console_flush_and_unlock(start_ns, NULL);
 		preempt_enable();
 	}
 
@@ -2623,6 +2629,21 @@ __setup("console=", console_setup);
 int add_preferred_console(const char *name, const short idx, char *options)
 {
 	return __add_preferred_console(name, idx, NULL, options, NULL, false);
+}
+
+/*
+ * Return true if it is necessary to wake the printk thread
+ *
+ * When start_ns is zero, the caller has signalled that we should not awaken the
+ * kthread. If the kthread has not been started, we cannot delegate to it. We
+ * should only awaken the kthread if we've been printing for more than a second,
+ * and even then, only if a panic is not in progress.
+ */
+static inline bool should_wake_printk_thread(u64 start_ns)
+{
+	return (start_ns != 0 && printk_thread &&
+		local_clock() - start_ns >= NSEC_PER_SEC &&
+		likely(atomic_read(&panic_cpu) == PANIC_CPU_INVALID));
 }
 
 /**
@@ -3217,6 +3238,9 @@ abandon:
  * @handover will be set to true if a printk waiter has taken over the
  * console_lock, in which case the caller is no longer holding the
  * console_lock. Otherwise it is set to false.
+ * @start_ns: nonzero when the caller wants the flush limited to one second.
+ * @incomplete: set by the printk handoff thread, in which case we set the
+ * pointed value true if need_resched() before all records are flushed.
  *
  * Returns true when there was at least one usable console and all messages
  * were flushed to all usable consoles. A returned false informs the caller
@@ -3227,7 +3251,8 @@ abandon:
  *
  * Requires the console_lock.
  */
-static bool console_flush_all(bool do_cond_resched, u64 *next_seq, bool *handover)
+static bool console_flush_all(bool do_cond_resched, u64 *next_seq, bool *handover,
+			      u64 start_ns, bool *incomplete)
 {
 	bool any_usable = false;
 	bool any_progress;
@@ -3244,12 +3269,21 @@ static bool console_flush_all(bool do_cond_resched, u64 *next_seq, bool *handove
 
 		if (panic_on_other_cpu())
 			return false;
+
+		if (should_wake_printk_thread(start_ns)) {
+			wake_up_process(printk_thread);
+			return false;
+		} else if (incomplete && need_resched()) {
+			*incomplete = true;
+			return false;
+		}
+
 	} while (any_progress);
 
 	return any_usable;
 }
 
-static void __console_flush_and_unlock(void)
+static void __console_flush_and_unlock(u64 start_ns, bool *incomplete)
 {
 	bool do_cond_resched;
 	bool handover;
@@ -3272,7 +3306,8 @@ static void __console_flush_and_unlock(void)
 	do {
 		console_may_schedule = 0;
 
-		flushed = console_flush_all(do_cond_resched, &next_seq, &handover);
+		flushed = console_flush_all(do_cond_resched, &next_seq, &handover,
+					    start_ns, incomplete);
 		if (!handover)
 			__console_unlock();
 
@@ -3312,11 +3347,27 @@ void console_unlock(void)
 
 	printk_get_console_flush_type(&ft);
 	if (ft.legacy_direct)
-		__console_flush_and_unlock();
+		__console_flush_and_unlock(0, NULL);
 	else
 		__console_unlock();
 }
 EXPORT_SYMBOL(console_unlock);
+
+static int printk_thread_fn(void *unused)
+{
+	bool more_work = false;
+
+	for (;;) {
+		if (!more_work)
+			set_current_state(TASK_INTERRUPTIBLE);
+		schedule();
+		more_work = false;
+		if (console_trylock_spinning())
+			__console_flush_and_unlock(0, &more_work);
+	}
+
+	return 0;
+}
 
 /**
  * console_conditional_schedule - yield the CPU if required
@@ -3478,7 +3529,7 @@ void console_flush_on_panic(enum con_flush_mode mode)
 
 	/* Flush legacy consoles once allowed, even when dangerous. */
 	if (legacy_allow_panic_sync)
-		console_flush_all(false, &next_seq, &handover);
+		console_flush_all(false, &next_seq, &handover, 0, NULL);
 }
 
 /*
@@ -3625,7 +3676,7 @@ static int legacy_kthread_func(void *unused)
 			break;
 
 		console_lock();
-		__console_flush_and_unlock();
+		__console_flush_and_unlock(0, NULL);
 	}
 
 	return 0;
@@ -3901,7 +3952,8 @@ static u64 get_init_console_seq(struct console *newcon, bool bootcon_registered)
 			 * Flush all consoles and set the console to start at
 			 * the next unprinted sequence number.
 			 */
-			if (!console_flush_all(true, &init_seq, &handover)) {
+			if (!console_flush_all(true, &init_seq, &handover,
+					       0, NULL)) {
 				/*
 				 * Flushing failed. Just choose the lowest
 				 * sequence of the enabled boot consoles.
@@ -4361,6 +4413,12 @@ static int __init printk_late_init(void)
 					console_cpu_notify, NULL);
 	WARN_ON(ret < 0);
 	printk_sysctl_init();
+
+	printk_thread = kthread_run(printk_thread_fn, NULL, "kprintkd");
+	if (IS_ERR(printk_thread)) {
+		printk_thread = NULL;
+		pr_err("printk kthread: failed to initialize\n");
+	}
 	return 0;
 }
 late_initcall(printk_late_init);
