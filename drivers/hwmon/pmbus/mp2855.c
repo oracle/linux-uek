@@ -369,7 +369,7 @@ static struct i2c_driver mp2855_driver = {
 		.name = "mp2855",
 		.of_match_table = mp2855_of_match,
 	},
-	.probe_new = mp2855_probe,
+	.probe = mp2855_probe,
 	.id_table = mp2855_id,
 };
 
