@@ -383,6 +383,24 @@ static int ax25_rcv(struct sk_buff *skb, struct net_device *dev,
 		}
 
 		ax25 = sk_to_ax25(make);
+
+		/*
+		 * Get the digipeater path before the skb goes on the
+		 * listener's queue: once queued it belongs to that queue
+		 * and cannot simply be freed if the allocation fails.
+		 */
+		if (dp.ndigi && !ax25->digipeat) {
+			ax25->digipeat = kmalloc(sizeof(ax25_digi), GFP_ATOMIC);
+			if (!ax25->digipeat) {
+				kfree_skb(skb);
+				ax25_destroy_socket(ax25);
+				bh_unlock_sock(sk);
+				sock_put(sk);
+
+				return 0;
+			}
+		}
+
 		skb_set_owner_r(skb, make);
 		skb_queue_head(&sk->sk_receive_queue, skb);
 
@@ -406,14 +424,13 @@ static int ax25_rcv(struct sk_buff *skb, struct net_device *dev,
 	ax25->dest_addr   = src;
 
 	/*
-	 *	Sort out any digipeated paths.
+	 *	Sort out any digipeated paths. A socket made from a listener
+	 *	already has its path allocated, see above.
 	 */
 	if (dp.ndigi && !ax25->digipeat &&
 	    (ax25->digipeat = kmalloc(sizeof(ax25_digi), GFP_ATOMIC)) == NULL) {
 		kfree_skb(skb);
 		ax25_destroy_socket(ax25);
-		if (sk)
-			sock_put(sk);
 		return 0;
 	}
 
