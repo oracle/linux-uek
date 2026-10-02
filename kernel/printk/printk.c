@@ -3372,6 +3372,8 @@ static int printk_thread_fn(void *unused)
 		more_work = false;
 		if (console_trylock_spinning())
 			__console_flush_and_unlock(0, &more_work);
+		/* If trylock failed, the current owner will flush on unlock
+		 * and if necessary, wake us again. No need to retry. */
 	}
 
 	return 0;
