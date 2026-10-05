@@ -91,7 +91,7 @@ again:
 			if (!sk) {
 				spin_unlock_bh(&ax25_list_lock);
 				ax25_disconnect(s, ENETUNREACH);
-				s->ax25_dev = NULL;
+				WRITE_ONCE(s->ax25_dev, NULL);
 				ax25_cb_del(s);
 				spin_lock_bh(&ax25_list_lock);
 				goto again;
@@ -100,7 +100,7 @@ again:
 			spin_unlock_bh(&ax25_list_lock);
 			lock_sock(sk);
 			ax25_disconnect(s, ENETUNREACH);
-			s->ax25_dev = NULL;
+			WRITE_ONCE(s->ax25_dev, NULL);
 			if (sk->sk_socket) {
 				netdev_put(ax25_dev->dev,
 					   &s->dev_tracker);
@@ -172,6 +172,7 @@ void ax25_cb_add(ax25_cb *ax25)
 struct sock *ax25_find_listener(ax25_address *addr, int digi,
 	struct net_device *dev, int type)
 {
+	ax25_dev *ax25_dev;
 	ax25_cb *s;
 
 	spin_lock(&ax25_list_lock);
@@ -181,7 +182,8 @@ struct sock *ax25_find_listener(ax25_address *addr, int digi,
 		if (s->sk && !ax25cmp(&s->source_addr, addr) &&
 		    s->sk->sk_type == type && s->sk->sk_state == TCP_LISTEN) {
 			/* If device is null we match any device */
-			if (s->ax25_dev == NULL || s->ax25_dev->dev == dev) {
+			ax25_dev = READ_ONCE(s->ax25_dev);
+			if (ax25_dev == NULL || ax25_dev->dev == dev) {
 				sock_hold(s->sk);
 				spin_unlock(&ax25_list_lock);
 				return s->sk;
@@ -226,14 +228,16 @@ static ax25_cb *__ax25_find_cb(const ax25_address *src_addr,
 			       ax25_address *dest_addr, ax25_digi *digi,
 			       struct net_device *dev)
 {
+	ax25_dev *ax25_dev;
 	ax25_cb *s;
 
 	ax25_for_each(s, &ax25_list) {
 		if (s->sk && s->sk->sk_type != SOCK_SEQPACKET)
 			continue;
-		if (s->ax25_dev == NULL)
+		ax25_dev = READ_ONCE(s->ax25_dev);
+		if (ax25_dev == NULL)
 			continue;
-		if (ax25cmp(&s->source_addr, src_addr) == 0 && ax25cmp(&s->dest_addr, dest_addr) == 0 && s->ax25_dev->dev == dev) {
+		if (ax25cmp(&s->source_addr, src_addr) == 0 && ax25cmp(&s->dest_addr, dest_addr) == 0 && ax25_dev->dev == dev) {
 			if (digi != NULL && digi->ndigi != 0) {
 				if (s->digipeat == NULL)
 					continue;
@@ -293,15 +297,17 @@ ax25_cb *ax25_cb_add_unique(ax25_cb *ax25)
 
 void ax25_send_to_raw(ax25_address *addr, struct sk_buff *skb, int proto)
 {
+	ax25_dev *ax25_dev;
 	ax25_cb *s;
 	struct sk_buff *copy;
 
 	spin_lock(&ax25_list_lock);
 	ax25_for_each(s, &ax25_list) {
+		ax25_dev = READ_ONCE(s->ax25_dev);
 		if (s->sk != NULL && ax25cmp(&s->source_addr, addr) == 0 &&
 		    s->sk->sk_type == SOCK_RAW &&
 		    s->sk->sk_protocol == proto &&
-		    s->ax25_dev->dev == skb->dev &&
+		    ax25_dev && ax25_dev->dev == skb->dev &&
 		    atomic_read(&s->sk->sk_rmem_alloc) <= s->sk->sk_rcvbuf) {
 			if ((copy = skb_clone(skb, GFP_ATOMIC)) == NULL)
 				continue;
