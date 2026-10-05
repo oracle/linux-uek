@@ -35,33 +35,33 @@ ax25_cb *ax25_send_frame(struct sk_buff *skb, int paclen, const ax25_address *sr
 	ax25_cb *ax25, *existing;
 
 	/*
+	 * The connection made or used here holds no reference on the
+	 * ax25_dev. ax25_kill_by_device() clears device_up, waits for the RCU
+	 * readers and only then detaches the connections of the device: stay
+	 * under the RCU read lock until the frame is queued, and do not start
+	 * anything on a device that is going down.
+	 */
+	rcu_read_lock();
+	ax25_dev = ax25_dev_ax25dev(dev);
+	if (!ax25_dev || !READ_ONCE(ax25_dev->device_up)) {
+		rcu_read_unlock();
+		return NULL;
+	}
+
+	/*
 	 * Take the default packet length for the device if zero is
 	 * specified.
 	 */
-	if (paclen == 0) {
-		rcu_read_lock();
-		ax25_dev = ax25_dev_ax25dev(dev);
-		if (!ax25_dev) {
-			rcu_read_unlock();
-			return NULL;
-		}
+	if (paclen == 0)
 		paclen = ax25_dev->values[AX25_VALUES_PACLEN];
-		rcu_read_unlock();
-	}
 
 	/*
 	 * Look for an existing connection.
 	 */
 	if ((ax25 = ax25_find_cb(src, dest, digi, dev)) != NULL) {
 		ax25_output(ax25, paclen, skb);
-		return ax25;		/* It already existed */
-	}
-
-	rcu_read_lock();
-	ax25_dev = ax25_dev_ax25dev(dev);
-	if (!ax25_dev) {
 		rcu_read_unlock();
-		return NULL;
+		return ax25;		/* It already existed */
 	}
 
 	if ((ax25 = ax25_create_cb()) == NULL) {
@@ -69,7 +69,6 @@ ax25_cb *ax25_send_frame(struct sk_buff *skb, int paclen, const ax25_address *sr
 		return NULL;
 	}
 	ax25_fillin_cb(ax25, ax25_dev);
-	rcu_read_unlock();
 
 	ax25->source_addr = *src;
 	ax25->dest_addr   = *dest;
@@ -78,6 +77,7 @@ ax25_cb *ax25_send_frame(struct sk_buff *skb, int paclen, const ax25_address *sr
 		ax25->digipeat = kmemdup(digi, sizeof(*digi), GFP_ATOMIC);
 		if (ax25->digipeat == NULL) {
 			ax25_cb_put(ax25);
+			rcu_read_unlock();
 			return NULL;
 		}
 	}
@@ -91,10 +91,11 @@ ax25_cb *ax25_send_frame(struct sk_buff *skb, int paclen, const ax25_address *sr
 	if (existing) {
 		ax25_cb_put(ax25);
 		ax25_output(existing, paclen, skb);
+		rcu_read_unlock();
 		return existing;
 	}
 
-	switch (ax25->ax25_dev->values[AX25_VALUES_PROTOCOL]) {
+	switch (ax25_dev->values[AX25_VALUES_PROTOCOL]) {
 	case AX25_PROTO_STD_SIMPLEX:
 	case AX25_PROTO_STD_DUPLEX:
 		ax25_std_establish_data_link(ax25);
@@ -121,6 +122,7 @@ ax25_cb *ax25_send_frame(struct sk_buff *skb, int paclen, const ax25_address *sr
 	ax25_start_heartbeat(ax25);
 
 	ax25_output(ax25, paclen, skb);
+	rcu_read_unlock();
 
 	return ax25;			/* We had to create it */
 }
