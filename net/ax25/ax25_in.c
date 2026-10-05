@@ -217,6 +217,15 @@ static int ax25_rcv(struct sk_buff *skb, struct net_device *dev,
 		goto free;
 
 	/*
+	 * A connection made below on an incoming SABM holds no reference on
+	 * the ax25_dev either. We are called under rcu_read_lock(), which
+	 * ax25_kill_by_device() waits for after it has cleared device_up:
+	 * leave a device that is going down alone.
+	 */
+	if (!READ_ONCE(ax25_dev->device_up))
+		goto free;
+
+	/*
 	 *	Parse the address header.
 	 */
 

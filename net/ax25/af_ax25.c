@@ -84,12 +84,12 @@ static void ax25_kill_by_device(struct net_device *dev)
 	WRITE_ONCE(ax25_dev->device_up, false);
 
 	/*
-	 * ax25_send_frame() creates connections that hold no reference on
-	 * the ax25_dev: they rely on the walk below to detach them before the
-	 * ax25_dev is freed. It runs under rcu_read_lock() and gives up when
-	 * device_up is clear, so once this returns every connection it was
-	 * setting up is complete and on the list, and no new one can appear
-	 * behind the walk.
+	 * ax25_send_frame() and ax25_rcv() create connections that hold no
+	 * reference on the ax25_dev: they rely on the walk below to detach
+	 * them before the ax25_dev is freed. Both run under rcu_read_lock()
+	 * and give up when device_up is clear, so once this returns every
+	 * connection they were setting up is complete and on the list, and
+	 * no new one can appear behind the walk.
 	 */
 	synchronize_rcu();
 
