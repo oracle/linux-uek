@@ -1698,10 +1698,23 @@ static int lan743x_tx_next_index(struct lan743x_tx *tx, int index)
 
 static void lan743x_tx_release_completed_descriptors(struct lan743x_tx *tx)
 {
+	struct lan743x_tx_buffer_info *buffer_info;
+	unsigned int bytes = 0;
+	unsigned int pkts = 0;
+
 	while (le32_to_cpu(*tx->head_cpu_ptr) != (tx->last_head)) {
+		buffer_info = &tx->buffer_info[tx->last_head];
+		if (buffer_info->skb) {
+			bytes += buffer_info->skb->len;
+			pkts++;
+		}
 		lan743x_tx_release_desc(tx, tx->last_head, false);
 		tx->last_head = lan743x_tx_next_index(tx, tx->last_head);
 	}
+
+	netdev_tx_completed_queue(netdev_get_tx_queue(tx->adapter->netdev,
+						      tx->channel_number),
+				  pkts, bytes);
 }
 
 static void lan743x_tx_release_all_descriptors(struct lan743x_tx *tx)
@@ -1993,6 +2006,10 @@ static void lan743x_tx_frame_end(struct lan743x_tx *tx,
 	if (ignore_sync)
 		buffer_info->flags |= TX_BUFFER_INFO_FLAG_IGNORE_SYNC;
 
+	netdev_tx_sent_queue(netdev_get_tx_queue(adapter->netdev,
+						 tx->channel_number),
+			     skb->len);
+
 	tx_descriptor = &tx->ring_cpu_ptr[tx->frame_tail];
 	tx_descriptor->data0 = cpu_to_le32(tx->frame_data0);
 	tx->frame_tail = lan743x_tx_next_index(tx, tx->frame_tail);
@@ -2266,6 +2283,8 @@ static void lan743x_tx_close(struct lan743x_tx *tx)
 				 0, 1000, 20000, 100);
 
 	lan743x_tx_release_all_descriptors(tx);
+	netdev_tx_reset_queue(netdev_get_tx_queue(adapter->netdev,
+						  tx->channel_number));
 
 	tx->rqd_descriptors = 0;
 
