@@ -2115,7 +2115,8 @@ static int lan743x_tx_napi_poll(struct napi_struct *napi, int weight)
 	/* clean up tx ring */
 	lan743x_tx_release_completed_descriptors(tx);
 	txq = netdev_get_tx_queue(adapter->netdev, tx->channel_number);
-	if (netif_tx_queue_stopped(txq)) {
+	if (netif_tx_queue_stopped(txq) &&
+	    netif_device_present(adapter->netdev)) {
 		if (tx->rqd_descriptors) {
 			if (tx->rqd_descriptors <=
 			    lan743x_tx_get_avail_desc(tx)) {
@@ -3288,6 +3289,9 @@ static int lan743x_netdev_close(struct net_device *netdev)
 	int index;
 
 	lan743x_phylink_disconnect(adapter);
+
+	synchronize_net();
+	netif_tx_disable(netdev);
 
 	for (index = 0; index < adapter->used_tx_channels; index++)
 		lan743x_tx_close(&adapter->tx[index]);
