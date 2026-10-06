@@ -6,6 +6,7 @@
 
 #include <linux/phy.h>
 #include <linux/phylink.h>
+#include <linux/workqueue.h>
 #include "lan743x_ptp.h"
 
 #define DRIVER_AUTHOR   "Bryan Whitehead <Bryan.Whitehead@microchip.com>"
@@ -1070,6 +1071,7 @@ struct lan743x_adapter {
 	struct lan743x_phy      phy;
 	struct lan743x_tx       tx[PCI11X1X_USED_TX_CHANNELS];
 	struct lan743x_rx       rx[LAN743X_USED_RX_CHANNELS];
+	struct work_struct	reset_work;
 	bool			is_pci11x1x;
 	bool			is_sgmii_en;
 	/* protect ethernet syslock */
