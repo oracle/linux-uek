@@ -142,6 +142,14 @@ void rose_link_rx_restart(struct sk_buff *skb, struct rose_neigh *neigh, unsigne
 
 	switch (frametype) {
 	case ROSE_RESTART_REQUEST:
+		/*
+		 * A Restart Request on a link that is already up means that
+		 * the other end has lost its virtual circuits, clear ours.
+		 * Nothing is established over a link that is not up yet, and
+		 * the calls waiting in neigh->queue must be left alone.
+		 */
+		if (neigh->restarted)
+			rose_link_restarted(neigh);
 		rose_stop_t0timer(neigh);
 		neigh->restarted = 1;
 		neigh->dce_mode  = (skb->data[3] == ROSE_DTE_ORIGINATED);

@@ -827,18 +827,14 @@ int rose_rt_ioctl(unsigned int cmd, void __user *arg)
 	return 0;
 }
 
-static void rose_del_route_by_neigh(struct rose_neigh *rose_neigh)
+/*
+ *	Blow away the through routes using this neighbour: the half on the
+ *	neighbour is dropped and the other half is told with a Clear Request.
+ *	The caller holds rose_route_list_lock.
+ */
+static void rose_clear_routes_by_neigh(struct rose_neigh *rose_neigh)
 {
 	struct rose_route *rose_route, *s;
-
-	rose_neigh->restarted = 0;
-
-	rose_stop_t0timer(rose_neigh);
-	rose_start_ftimer(rose_neigh);
-
-	skb_queue_purge(&rose_neigh->queue);
-
-	spin_lock_bh(&rose_route_list_lock);
 
 	rose_route = rose_route_list;
 
@@ -866,7 +862,35 @@ static void rose_del_route_by_neigh(struct rose_neigh *rose_neigh)
 
 		rose_route = rose_route->next;
 	}
+}
+
+static void rose_del_route_by_neigh(struct rose_neigh *rose_neigh)
+{
+	rose_neigh->restarted = 0;
+
+	rose_stop_t0timer(rose_neigh);
+	rose_start_ftimer(rose_neigh);
+
+	skb_queue_purge(&rose_neigh->queue);
+
+	spin_lock_bh(&rose_route_list_lock);
+	rose_clear_routes_by_neigh(rose_neigh);
 	spin_unlock_bh(&rose_route_list_lock);
+}
+
+/*
+ *	The neighbour has restarted a link that was up: it has lost every
+ *	virtual circuit that ran over it. Blow away the through routes and
+ *	the connections using this neighbour, the link itself stays up.
+ *	Called from rose_route_frame() with rose_neigh_list_lock and
+ *	rose_route_list_lock held.
+ */
+void rose_link_restarted(struct rose_neigh *rose_neigh)
+{
+	lockdep_assert_held(&rose_route_list_lock);
+
+	rose_clear_routes_by_neigh(rose_neigh);
+	rose_kill_by_neigh(rose_neigh);
 }
 
 /*
