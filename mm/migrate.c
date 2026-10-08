@@ -1296,6 +1296,7 @@ static int unmap_and_move_huge_page(new_page_t get_new_page,
 	int page_was_mapped = 0;
 	struct page *new_hpage;
 	struct anon_vma *anon_vma = NULL;
+	struct rw_semaphore *trunc_rwsem = NULL;
 
 	/*
 	 * Migratability of hugepages depends on architectures and their size.
@@ -1343,6 +1344,22 @@ static int unmap_and_move_huge_page(new_page_t get_new_page,
 		goto put_anon;
 
 	if (page_mapped(hpage)) {
+#ifdef CONFIG_HUGETLBFS
+		struct address_space *mapping = page_mapping(hpage);
+		/*
+		 * try_to_unmap may call huge_pmd_unshare, which can race with
+		 * huge_pmd_share during fault handling much like truncate can.
+		 * Hold trunc_rwsem in write mode to enforce mutual exclusion.
+		 * There are better fixes upstream but this protects us in UEK.
+		 */
+		if (!PageAnon(hpage) && mapping) {
+			trunc_rwsem = &HUGETLBFS_I(mapping->host)->trunc_rwsem;
+			if (!down_write_trylock(trunc_rwsem)) {
+				trunc_rwsem = NULL;
+				goto unlock_new;
+			}
+		}
+#endif
 		try_to_unmap(hpage,
 			TTU_MIGRATION|TTU_IGNORE_MLOCK|TTU_IGNORE_ACCESS);
 		page_was_mapped = 1;
@@ -1355,6 +1372,12 @@ static int unmap_and_move_huge_page(new_page_t get_new_page,
 		remove_migration_ptes(hpage,
 			rc == MIGRATEPAGE_SUCCESS ? new_hpage : hpage, false);
 
+	if (trunc_rwsem)
+		up_write(trunc_rwsem);
+
+#ifdef CONFIG_HUGETLBFS
+unlock_new:
+#endif
 	unlock_page(new_hpage);
 
 put_anon:
