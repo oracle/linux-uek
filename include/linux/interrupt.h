@@ -15,6 +15,7 @@
 #include <linux/cpumask_types.h>
 #include <linux/workqueue.h>
 #include <linux/jump_label.h>
+#include <linux/uek_kabi.h>
 
 #include <linux/atomic.h>
 #include <asm/ptrace.h>
@@ -118,6 +119,7 @@ typedef irqreturn_t (*irq_handler_t)(int, void *);
  * @thread_flags:	flags related to @thread
  * @thread_mask:	bitmask for keeping track of @thread activity
  * @dir:	pointer to the proc/irq/NN/name entry
+ * @thread_dtor:	task_work for @thread irregular exit cleanup
  */
 struct irqaction {
 	irq_handler_t		handler;
@@ -133,6 +135,8 @@ struct irqaction {
 	unsigned long		thread_mask;
 	const char		*name;
 	struct proc_dir_entry	*dir;
+	/* Fits in the baseline tail padding on the supported x86_64 config. */
+	UEK_KABI_FILL_HOLE(struct callback_head thread_dtor)
 } ____cacheline_internodealigned_in_smp;
 
 extern irqreturn_t no_action(int cpl, void *dev_id);
