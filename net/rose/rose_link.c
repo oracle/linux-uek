@@ -287,6 +287,20 @@ void rose_link_restart(struct rose_neigh *neigh)
 	rose_start_t0timer(neigh);
 }
 
+/*
+ * Start the restart procedure on a link that is down without waiting for
+ * a frame to send over it. Nothing is done while a restart is under way.
+ */
+void rose_link_bring_up(struct rose_neigh *neigh)
+{
+	if (neigh->loopback || neigh->restarted || rose_t0timer_running(neigh))
+		return;
+
+	rose_transmit_restart_request(neigh);
+	neigh->dce_mode = 0;
+	rose_start_t0timer(neigh);
+}
+
 void rose_transmit_link(struct sk_buff *skb, struct rose_neigh *neigh)
 {
 	unsigned char *dptr;

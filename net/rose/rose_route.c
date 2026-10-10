@@ -741,6 +741,7 @@ struct rose_neigh *rose_get_neigh(rose_address *addr, unsigned char *cause,
 	unsigned char *diagnostic, int route_frame)
 {
 	struct rose_neigh *res = NULL;
+	struct rose_neigh *down = NULL;
 	struct rose_node *node;
 	int failed = 0;
 	int i;
@@ -752,8 +753,21 @@ struct rose_neigh *rose_get_neigh(rose_address *addr, unsigned char *cause,
 				if (node->neighbour[i]->restarted) {
 					res = node->neighbour[i];
 					rose_neigh_hold(node->neighbour[i]);
+					/*
+					 * A neighbour of a more specific route
+					 * was passed over because its link is
+					 * down: this call does not wait for it,
+					 * but have the link brought up for the
+					 * next ones.
+					 */
+					if (down)
+						rose_link_bring_up(down);
 					goto out;
 				}
+				/* The first one is the preferred one. */
+				if (!route_frame && !down &&
+				    !rose_ftimer_running(node->neighbour[i]))
+					down = node->neighbour[i];
 			}
 		}
 	}
