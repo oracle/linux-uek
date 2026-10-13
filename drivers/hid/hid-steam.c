@@ -114,7 +114,7 @@ struct steam_device {
 	spinlock_t lock;
 	struct hid_device *hdev, *client_hdev;
 	struct mutex mutex;
-	bool client_opened;
+	unsigned long client_opened;
 	struct input_dev __rcu *input;
 	unsigned long quirks;
 	struct work_struct work_connect;
@@ -509,7 +509,7 @@ static void steam_battery_unregister(struct steam_device *steam)
 static int steam_register(struct steam_device *steam)
 {
 	int ret;
-	bool client_opened;
+	unsigned long client_opened;
 
 	/*
 	 * This function can be called several times in a row with the
@@ -634,7 +634,7 @@ static int steam_client_ll_open(struct hid_device *hdev)
 	struct steam_device *steam = hdev->driver_data;
 
 	mutex_lock(&steam->mutex);
-	steam->client_opened = true;
+	steam->client_opened++;
 	mutex_unlock(&steam->mutex);
 
 	steam_input_unregister(steam);
@@ -654,12 +654,12 @@ static void steam_client_ll_close(struct hid_device *hdev)
 	spin_unlock_irqrestore(&steam->lock, flags);
 
 	mutex_lock(&steam->mutex);
-	steam->client_opened = false;
-	if (connected)
+	steam->client_opened--;
+	if (connected && !steam->client_opened)
 		steam_set_lizard_mode(steam, lizard_mode);
 	mutex_unlock(&steam->mutex);
 
-	if (connected)
+	if (connected && !steam->client_opened)
 		steam_input_register(steam);
 }
 
@@ -824,7 +824,7 @@ static void steam_remove(struct hid_device *hdev)
 	}
 
 	hid_destroy_device(steam->client_hdev);
-	steam->client_opened = false;
+	steam->client_opened = 0;
 	cancel_work_sync(&steam->work_connect);
 	if (steam->quirks & STEAM_QUIRK_WIRELESS) {
 		hid_info(hdev, "Steam wireless receiver disconnected");
