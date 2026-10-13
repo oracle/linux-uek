@@ -4074,6 +4074,7 @@ static struct mount *mount_setattr_prepare(struct mount_kattr *kattr,
 {
 	struct mount *m = mnt, *last = NULL;
 
+	/* Checked under namespace_sem already if the propagation changes. */
 	if (!is_mounted(&m->mnt)) {
 		*err = -EINVAL;
 		goto out;
@@ -4183,6 +4184,13 @@ static int do_mount_setattr(struct path *path, struct mount_kattr *kattr)
 		 * propagation.
 		 */
 		namespace_lock();
+		/* invent_group_ids() walks the tree, only walk a mounted one */
+		if (!is_mounted(&mnt->mnt) ||
+		    !(mnt_has_parent(mnt) ? check_mnt(mnt) :
+		      is_anon_ns(mnt->mnt_ns))) {
+			namespace_unlock();
+			return -EINVAL;
+		}
 		if (kattr->propagation == MS_SHARED) {
 			err = invent_group_ids(mnt, kattr->recurse);
 			if (err) {
