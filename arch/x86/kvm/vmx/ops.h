@@ -97,7 +97,7 @@ static __always_inline unsigned long __vmcs_readl(unsigned long field)
 		     "jmp 2b\n\t"
 		     ".popsection\n\t"
 		     _ASM_EXTABLE(1b, 4b)
-		     : ASM_CALL_CONSTRAINT, "=r"(value) : "r"(field) : "cc");
+		     : ASM_CALL_CONSTRAINT, "=r"(value) : "r"(field) : "cc", "memory");
 	return value;
 }
 
@@ -143,7 +143,7 @@ do {									\
 			  ".byte 0x2e\n\t" /* branch not taken hint */	\
 			  "jna %l[error]\n\t"				\
 			  _ASM_EXTABLE(1b, %l[fault])			\
-			  : : op1 : "cc" : error, fault);		\
+			  : : op1 : "cc", "memory" : error, fault);	\
 	return;								\
 error:									\
 	insn##_error(error_args);					\
@@ -158,7 +158,7 @@ do {									\
 			  ".byte 0x2e\n\t" /* branch not taken hint */	\
 			  "jna %l[error]\n\t"				\
 			  _ASM_EXTABLE(1b, %l[fault])			\
-			  : : op1, op2 : "cc" : error, fault);		\
+			  : : op1, op2 : "cc", "memory" : error, fault);\
 	return;								\
 error:									\
 	insn##_error(error_args);					\
