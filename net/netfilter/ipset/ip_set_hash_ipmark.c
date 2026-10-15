@@ -144,7 +144,7 @@ hash_ipmark4_uadt(struct ip_set *set, struct nlattr *tb[],
 
 	if (retried)
 		ip = ntohl(h->next.ip);
-	for (; ip <= ip_to; ip++) {
+	for (; ip <= ip_to;) {
 		e.ip = htonl(ip);
 		ret = adtfn(set, &e, &ext, &ext, flags);
 
@@ -152,6 +152,10 @@ hash_ipmark4_uadt(struct ip_set *set, struct nlattr *tb[],
 			return ret;
 
 		ret = 0;
+
+		if (ip == ip_to)
+			break;
+		ip++;
 	}
 	return ret;
 }
