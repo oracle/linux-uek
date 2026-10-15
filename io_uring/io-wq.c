@@ -98,6 +98,7 @@ enum {
 struct io_wq {
 	unsigned long state;
 
+	put_work_fn *put_work;
 	free_work_fn *free_work;
 	io_wq_work_fn *do_work;
 
@@ -593,8 +594,9 @@ static void io_worker_handle_work(struct io_wq_acct *acct,
 		/* handle a whole dependent link */
 		do {
 			bool do_kill = test_bit(IO_WQ_BIT_EXIT, &wq->state);
-			struct io_wq_work *next_hashed, *linked;
+			struct io_wq_work *next_hashed, *linked, *done = work;
 			unsigned int hash = io_get_work_hash(work);
+			bool last;
 
 			next_hashed = wq_next_work(work);
 
@@ -611,7 +613,7 @@ static void io_worker_handle_work(struct io_wq_acct *acct,
 			wq->do_work(work);
 			io_assign_current_work(worker, NULL);
 
-			linked = wq->free_work(work);
+			last = wq->put_work(work, &linked);
 			work = next_hashed;
 			if (!work && linked && !io_wq_is_hashed(linked)) {
 				work = linked;
@@ -620,6 +622,13 @@ static void io_worker_handle_work(struct io_wq_acct *acct,
 			io_assign_current_work(worker, work);
 			if (linked)
 				io_wq_enqueue(wq, linked);
+			/*
+			 * Not before the link is current or pending work again.
+			 * This may be the last time that a task is woken up
+			 * which exits and looks for requests to cancel.
+			 */
+			if (last)
+				wq->free_work(done);
 
 			if (hash != -1U && !next_hashed) {
 				/* serialize hash clear with wake_up() */
@@ -920,9 +929,13 @@ static bool io_wq_worker_wake(struct io_worker *worker, void *data)
 static void io_run_cancel(struct io_wq_work *work, struct io_wq *wq)
 {
 	do {
+		struct io_wq_work *linked;
+
 		atomic_or(IO_WQ_WORK_CANCEL, &work->flags);
 		wq->do_work(work);
-		work = wq->free_work(work);
+		if (wq->put_work(work, &linked))
+			wq->free_work(work);
+		work = linked;
 	} while (work);
 }
 
@@ -1174,7 +1187,7 @@ struct io_wq *io_wq_create(unsigned bounded, struct io_wq_data *data)
 	int ret, i;
 	struct io_wq *wq;
 
-	if (WARN_ON_ONCE(!data->free_work || !data->do_work))
+	if (WARN_ON_ONCE(!data->put_work || !data->free_work || !data->do_work))
 		return ERR_PTR(-EINVAL);
 	if (WARN_ON_ONCE(!bounded))
 		return ERR_PTR(-EINVAL);
@@ -1185,6 +1198,7 @@ struct io_wq *io_wq_create(unsigned bounded, struct io_wq_data *data)
 
 	refcount_inc(&data->hash->refs);
 	wq->hash = data->hash;
+	wq->put_work = data->put_work;
 	wq->free_work = data->free_work;
 	wq->do_work = data->do_work;
 
