@@ -24,11 +24,12 @@ struct user_struct {
 	struct hlist_node uidhash_node;
 	kuid_t uid;
 
-#if defined(CONFIG_PERF_EVENTS) || defined(CONFIG_BPF_SYSCALL) || \
-	defined(CONFIG_NET) || defined(CONFIG_IO_URING) || \
+#if defined(CONFIG_NET) || defined(CONFIG_IO_URING) || \
 	defined(CONFIG_VFIO_PCI_ZDEV_KVM) || IS_ENABLED(CONFIG_IOMMUFD) || \
 	defined(CONFIG_SECRETMEM)
-	atomic_long_t locked_vm;
+	atomic_long_t locked_vm;	/* pinned pages charged to RLIMIT_MEMLOCK */
+#endif
+#ifdef CONFIG_PERF_EVENTS
 #endif
 #ifdef CONFIG_WATCH_QUEUE
 	atomic_t nr_watches;	/* The number of watches this user currently has */
@@ -37,7 +38,7 @@ struct user_struct {
 	/* Miscellaneous per-user rate limit */
 	struct ratelimit_state ratelimit;
 
-	UEK_KABI_RESERVE(1)
+	UEK_KABI_USE(1, atomic_long_t perf_mlock) /* perf buffer pages within perf_event_mlock_kb */
 	UEK_KABI_RESERVE(2)
 };
 
