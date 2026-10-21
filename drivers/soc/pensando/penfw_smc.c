@@ -48,6 +48,8 @@ static const char *_opcode_to_str(uint8_t opcode)
 		return "PENFW_OP_GET_CHIP_CERT";
 	case PENFW_OP_ATTEST_GET_TIME:
 		return "PENFW_OP_ATTEST_GET_TIME";
+	case PENFW_OP_GET_SECURE_INTERRUPTS:
+		return "PENFW_OP_GET_SECURE_INTERRUPTS";
 	default:
 		return "PENFW_OP_UNKNOWN";
 	}
@@ -161,6 +163,60 @@ static void penfw_smc_attest_get_time(struct penfw_call_args *args)
 	memset(penfwdata, 0, PAGE_SIZE);
 }
 
+/*
+ * a1 = smc op (PENFW_OP_GET_SECURE_INTERRUPTS)
+ * a2 = pointer to user provided interrupt structure.
+ */
+static void penfw_smc_get_secure_intrs(struct penfw_call_args *args)
+{
+	uint32_t len = 0;
+	struct arm_smccc_res res = {0};
+	struct penfw_secure_intrs u_intrs;
+	struct penfw_secure_intrs *intrs = penfwdata;
+	struct penfw_intrreg *intr_regs_phys;
+	struct penfw_intrreg *intr_regs = (struct penfw_intrreg *)((uint8_t *)penfwdata + sizeof(struct penfw_secure_intrs));
+	void __user *user_intrs_addr = (void  __user *)args->a2;
+
+	// copied struct from user space
+	if (copy_from_user(&u_intrs, user_intrs_addr, sizeof(struct penfw_secure_intrs))) {
+		args->a0 = -1;
+		return;
+	}
+
+	if (u_intrs.num_intr_regs >
+		(PAGE_SIZE - sizeof(*intrs)) / sizeof(struct penfw_intrreg)) {
+		args->a0 = -1;
+		return;
+	}
+	intrs->num_intr_regs = u_intrs.num_intr_regs;
+	len = sizeof(struct penfw_intrreg) * u_intrs.num_intr_regs;
+	if (copy_from_user(intr_regs, u_intrs.intr_regs, len)) {
+		args->a0 = -1;
+		return;
+	}
+
+	intr_regs_phys = (struct penfw_intrreg *)(penfwdata_phys + sizeof(struct penfw_secure_intrs));
+	intrs->intr_regs = intr_regs_phys;
+
+	arm_smccc_smc(PENFW_CALL_FID, PENFW_OP_GET_SECURE_INTERRUPTS,
+			(uint64_t)penfwdata_phys, 0, 0, 0, 0, 0, &res);
+
+	if (res.a0 == 0) {
+		if (copy_to_user(u_intrs.intr_regs, intr_regs, len)) {
+			args->a0 = -5;
+			return;
+		}
+	}
+
+	args->a0 = res.a0;
+	args->a1 = res.a1;
+	args->a2 = res.a2;
+	args->a3 = res.a3;
+
+	/* zero out interrupts data after copying to userspace */
+	memset(penfwdata, 0, PAGE_SIZE);
+}
+
 void penfw_smc(struct penfw_call_args *args)
 {
 	struct arm_smccc_res res = {0};
@@ -196,6 +252,9 @@ void penfw_smc(struct penfw_call_args *args)
 		break;
 	case PENFW_OP_ATTEST_GET_TIME:
 		penfw_smc_attest_get_time(args);
+		break;
+	case PENFW_OP_GET_SECURE_INTERRUPTS:
+		penfw_smc_get_secure_intrs(args);
 		break;
 	default:
 		break;

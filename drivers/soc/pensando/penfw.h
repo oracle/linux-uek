@@ -23,6 +23,9 @@ enum penfw_opcodes {
 	PENFW_OP_GET_RANDOM,
 	PENFW_OP_GET_CHIP_CERT,
 	PENFW_OP_ATTEST_GET_TIME,
+	// TODO: add support for sub-ops 16-23 and 25-36.
+	// Values should match SDK pal_fw.h and ATF sub-FIDs, these are common to Elba and Salina
+	PENFW_OP_GET_SECURE_INTERRUPTS = 24,
 	PENFW_OPCODE_MAX,
 };
 
@@ -50,6 +53,18 @@ struct penfw_time_attestation {
 	} signature;
 };
 
+struct penfw_intrreg {
+	// input
+	uint64_t addr;
+	// output
+	uint32_t value;
+	uint32_t valid;
+};
+
+struct penfw_secure_intrs {
+	uint32_t num_intr_regs;
+	struct penfw_intrreg *intr_regs;
+};
 
 #define PENFW_IOCTL_NUM  0xcd
 #define PENFW_FWCALL     _IOWR(PENFW_IOCTL_NUM, 1, struct penfw_call_args)
