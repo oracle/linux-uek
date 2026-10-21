@@ -964,7 +964,6 @@ struct mm_struct {
 		UEK_KABI_REPLACE(int mm_lock_seq, seqcount_t mm_lock_seq)
 #endif
 
-
 		unsigned long hiwater_rss; /* High-watermark of RSS usage */
 		unsigned long hiwater_vm;  /* High-water virtual memory usage */
 
@@ -1098,7 +1097,11 @@ struct mm_struct {
 #endif /* CONFIG_LRU_GEN_WALKS_MMU */
 	} __randomize_layout;
 
-	UEK_KABI_RESERVE(1)
+#ifdef CONFIG_FUTEX
+		UEK_KABI_USE(1, atomic64_t futex_unique_id)
+#else
+		UEK_KABI_RESERVE(1)
+#endif
 	UEK_KABI_RESERVE(2)
 	UEK_KABI_RESERVE(3)
 	UEK_KABI_RESERVE(4)
