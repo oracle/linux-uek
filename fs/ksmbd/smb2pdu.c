@@ -5196,6 +5196,7 @@ static int smb2_get_info_filesystem(struct ksmbd_work *work,
 		struct object_id_info *info;
 
 		info = (struct object_id_info *)(rsp->Buffer);
+		memset(info, 0, sizeof(*info));
 
 		if (!user_guest(sess->user))
 			memcpy(info->objid, user_passkey(sess->user), 16);
