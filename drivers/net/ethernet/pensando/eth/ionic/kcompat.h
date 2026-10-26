@@ -6791,6 +6791,10 @@ void _kc_ethtool_sprintf(u8 **data, const char *fmt, ...);
 #endif /* 5.13.0 */
 
 /*****************************************************************************/
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+#define IONIC_HAVE_DEVLINK_ALLOC_DEV
+#endif
+
 #if IS_ENABLED(CONFIG_NET_DEVLINK)
 #ifndef IONIC_HAVE_DEVLINK_ALLOC_DEV
 static inline struct devlink *_kc_devlink_alloc(const struct devlink_ops *ops,
@@ -6879,6 +6883,10 @@ static inline struct devlink *_kc_devlink_alloc(const struct devlink_ops *ops,
 #define devlink_info_driver_name_put(x, y)  0
 #endif
 
+#if (KERNEL_VERSION(5, 16, 0) <= LINUX_VERSION_CODE)
+#define IONIC_HAVE_VOID_DEVLINK_REGISTER
+#endif
+
 #if IS_ENABLED(CONFIG_NET_DEVLINK)
 #ifndef IONIC_HAVE_VOID_DEVLINK_REGISTER
 #ifndef IONIC_HAVE_DEVLINK_REGISTER_WITH_DEV
@@ -6909,6 +6917,11 @@ static inline int _kc_devlink_register(struct devlink *devlink, struct device *d
 #else
 #define HAVE_RXFN_EXTACK
 #endif /* 6.8.0 */
+
+/*****************************************************************************/
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+#define IONIC_HAVE_DEVLINK_EXT_ACK_PARAM
+#endif /* 6.10.0 */
 
 /* We don't support PTP on older RHEL kernels (needs more compat work) */
 #if (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,4))
