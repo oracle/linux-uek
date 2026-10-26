@@ -404,7 +404,6 @@ modules-core:
 - psample
 - pvpanic
 - pvpanic-mmio
-- qemu_fw_cfg
 - qla2xxx
 - qla4xxx
 - qrtr
