@@ -136,7 +136,6 @@ kernel/drivers/edac/sb_edac.ko
 kernel/drivers/edac/skx_edac_common.ko
 kernel/drivers/edac/skx_edac.ko
 kernel/drivers/firmware/iscsi_ibft.ko
-kernel/drivers/firmware/qemu_fw_cfg.ko
 kernel/drivers/fwctl/fwctl.ko
 kernel/drivers/fwctl/mlx5/mlx5_fwctl.ko
 kernel/drivers/gnss/gnss.ko
