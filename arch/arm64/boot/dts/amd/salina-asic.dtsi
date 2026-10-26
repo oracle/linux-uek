@@ -234,6 +234,7 @@
 			cdns,phy-input-delay-sd-uhs-sdr50 = <0x6>;
 			cdns,phy-input-delay-sd-uhs-ddr50 = <0x16>;
 			cdns,phy-dll-delay-sdclk = <0x2f>;
+			cdns,phy-dll-delay-strobe = <0x0c>;
 			status = "disabled";
 		};
 

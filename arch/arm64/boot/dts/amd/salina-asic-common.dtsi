@@ -22,6 +22,8 @@
 &emmc0 {
 	bus-width = <8>;
 	cap-mmc-hw-reset;
+	non-removable;
+	fixed-emmc-driver-type = <1>;
 	reset-names = "hw";
 	resets = <&rstc EMMC_HW_RESET>;
 	status = "ok";
