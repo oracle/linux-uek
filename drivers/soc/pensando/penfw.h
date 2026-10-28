@@ -66,11 +66,38 @@ struct penfw_secure_intrs {
 	struct penfw_intrreg *intr_regs;
 };
 
+/*
+ * penfw_svc_args - UAPI structure for PENFW_SVC ioctl
+ *
+ * This struct uses explicit padding (reserved1/reserved2) to ensure
+ * all fields are naturally aligned. The __attribute__((packed)) prevents
+ * any compiler from adding additional implicit padding, guaranteeing
+ * the layout is consistent across all toolchains and architectures.
+ */
+struct penfw_svc_args {
+	__u64 func_id;
+	__u64 sub_func_id;
+	__u16 length_in;
+	__u16 reserved1[3];	// explicit padding for natural alignment
+	__u64 value;		// pointer to input/output data
+	__u16 length_out;
+	__u16 reserved2[3];	// explicit padding for natural alignment
+	__s64 status;		// status of the smc operation
+} __attribute__((packed));
+
+/* Build-time layout verification */
+static_assert(sizeof(struct penfw_svc_args) == 48);
+static_assert(offsetof(struct penfw_svc_args, value) == 24);
+static_assert(offsetof(struct penfw_svc_args, status) == 40);
+
 #define PENFW_IOCTL_NUM  0xcd
 #define PENFW_FWCALL     _IOWR(PENFW_IOCTL_NUM, 1, struct penfw_call_args)
+#define PENFW_SVC        _IOWR(PENFW_IOCTL_NUM, 2, struct penfw_svc_args)
 
 void penfw_smc(struct penfw_call_args *args);
+long penfw_svc_smc(struct penfw_svc_args *args);
 
+extern struct device *penfw_dev;
 extern void *penfwdata;
 extern phys_addr_t penfwdata_phys;
 

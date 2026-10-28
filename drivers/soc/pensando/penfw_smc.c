@@ -3,6 +3,7 @@
  * Copyright (c) 2021, Pensando Systems Inc.
  */
 
+#include <linux/device.h>
 #include <linux/string.h>
 #include <linux/arm-smccc.h>
 #include <linux/printk.h>
@@ -262,4 +263,73 @@ void penfw_smc(struct penfw_call_args *args)
 
 	pr_debug("penfw: smc return a0: 0x%llx a1: 0x%llx a2: 0x%llx a3: 0x%llx\n",
 		 args->a0, args->a1, args->a2, args->a3);
+}
+
+long penfw_svc_smc(struct penfw_svc_args *args)
+{
+	struct arm_smccc_res res = { 0 };
+	void *cfg = NULL;
+	void *cfg_out = NULL;
+	phys_addr_t cfg_phys = 0;
+	phys_addr_t cfg_phys_out = 0;
+	long ret = 0;
+	size_t length_in = args->length_in;
+	size_t length_out = args->length_out;
+
+	if (length_in != 0) {
+		cfg = (void *)__get_free_pages(GFP_KERNEL | __GFP_ZERO,
+						get_order(length_in));
+		if (cfg == NULL) {
+			dev_err(penfw_dev, "penfw svc memory allocation failed\n");
+			ret = -ENOMEM;
+			goto err;
+		}
+		cfg_phys = virt_to_phys(cfg);
+		if (copy_from_user(cfg, (void __user *)args->value,
+				   length_in)) {
+			dev_err(penfw_dev, "Unable to copy argument %llx from user for smc cmd(%llx/%llx)\n",
+				args->value, args->func_id, args->sub_func_id);
+			ret = -EFAULT;
+			goto err;
+		}
+	}
+	if (length_out != 0) {
+		cfg_out = (void *)__get_free_pages(GFP_KERNEL | __GFP_ZERO,
+						get_order(length_out));
+		if (cfg_out == NULL) {
+			dev_err(penfw_dev,
+				"penfw svc out memory allocation failed\n");
+			ret = -ENOMEM;
+			goto err;
+		}
+		cfg_phys_out = virt_to_phys(cfg_out);
+	}
+	arm_smccc_smc(args->func_id, args->sub_func_id, cfg_phys,
+		      cfg_phys_out, length_in, length_out, 0, 0, &res);
+	// copy back to user only if SMC operation is successful
+	if ((res.a0 == 0) && args->length_out) {
+		if (res.a1 <= args->length_out) {
+			if (copy_to_user((void __user *)args->value, cfg_out,
+					 res.a1)) {
+				dev_err(penfw_dev, "copy to user failed\n");
+				ret = -EFAULT;
+				goto err;
+			}
+		} else {
+			dev_err(penfw_dev,
+				"penfw svc out memory allocation not enough\n");
+			ret = -EINVAL;
+			goto err;
+		}
+		args->length_out = res.a1;
+	}
+	args->status = res.a0;
+
+err:
+	if (cfg_out)
+		free_pages((unsigned long)cfg_out, get_order(length_out));
+	if (cfg)
+		free_pages((unsigned long)cfg, get_order(length_in));
+
+	return ret;
 }

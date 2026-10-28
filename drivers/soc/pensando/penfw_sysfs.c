@@ -8,8 +8,6 @@
 #include <linux/fs.h>
 #include <linux/types.h>
 #include <linux/device.h>
-#include <linux/device.h>
-#include <linux/types.h>
 #include <linux/string.h>
 #include <linux/module.h>
 
