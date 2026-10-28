@@ -41,7 +41,8 @@ struct microcode_amd {
 	unsigned int			mpb[0];
 };
 
-#define PATCH_MAX_SIZE (3 * PAGE_SIZE)
+/* Family 1Ah microcode patches require 14368 bytes. */
+#define PATCH_MAX_SIZE (4 * PAGE_SIZE)
 
 #ifdef CONFIG_MICROCODE_AMD
 extern void __init load_ucode_amd_bsp(unsigned int family);
