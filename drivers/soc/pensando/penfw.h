@@ -53,6 +53,60 @@ struct penfw_time_attestation {
 	} signature;
 };
 
+/* DICE SMC error codes (match ATF pen_dice_smc_err_codes) */
+#define PEN_DICE_ERR_NONE		 0
+#define PEN_DICE_ERR_UNSUPPORTED_FUNC	-1
+#define PEN_DICE_ERR_INVALID_PARAM	-2
+#define PEN_DICE_ERR_INVALID_ADDR	-3
+#define PEN_DICE_ERR_FAILED		-4
+#define PEN_DICE_ERR_NOMEM		-5
+#define PEN_DICE_ERR_UNSUPPORTED	-6
+
+/* DICE SMC sub-functions */
+#define PENFW_DICE_GET_CERTIFICATE	0x1
+#define PENFW_DICE_SIGN_DATA		0x2
+#define PENFW_DICE_GET_MEASUREMENT	0x3
+#define PENFW_DICE_SET_MEASUREMENT	0x4
+
+struct pen_dice_cert_req {
+	uint32_t chunk_size;
+	uint32_t offset;
+	uint64_t cert_buff;	/* userspace pointer */
+};
+
+struct pen_dice_sign_data_req {
+	uint64_t sign_ctx;	/* userspace pointer */
+	uint32_t sign_ctx_len;
+	uint64_t aux_data;	/* userspace pointer */
+	uint32_t aux_data_len;
+	uint64_t in_data;	/* userspace pointer */
+	uint32_t data_len;
+	uint64_t signature;	/* userspace pointer */
+	uint32_t out_len_max;
+};
+
+struct pen_dice_get_meas_req {
+	uint32_t meas_id;
+	uint32_t meas_buf_len;
+	uint64_t meas_buf;	/* userspace pointer */
+};
+
+struct pen_dice_set_meas_req {
+	uint32_t meas_id;
+	uint32_t algo;
+	uint32_t meas_buf_len;
+	uint64_t meas_buf;	/* userspace pointer */
+};
+
+struct penfw_dice_args {
+	int64_t  rc;		/* return code from SMC */
+	uint32_t func;		/* PENFW_DICE_GET_CERTIFICATE, etc. */
+	uint32_t pad;
+	uint64_t req;		/* userspace pointer to request struct */
+	uint64_t out1;		/* remaining_len (get_cert) or algo (get_meas) */
+	uint64_t out2;		/* out_buff_len (get_cert) */
+};
+
 struct penfw_intrreg {
 	// input
 	uint64_t addr;
@@ -93,9 +147,11 @@ static_assert(offsetof(struct penfw_svc_args, status) == 40);
 #define PENFW_IOCTL_NUM  0xcd
 #define PENFW_FWCALL     _IOWR(PENFW_IOCTL_NUM, 1, struct penfw_call_args)
 #define PENFW_SVC        _IOWR(PENFW_IOCTL_NUM, 2, struct penfw_svc_args)
+#define PENFW_DICECALL   _IOWR(PENFW_IOCTL_NUM, 3, struct penfw_dice_args)
 
 void penfw_smc(struct penfw_call_args *args);
 long penfw_svc_smc(struct penfw_svc_args *args);
+long penfw_dice_smc(struct penfw_dice_args *args);
 
 extern struct device *penfw_dev;
 extern void *penfwdata;

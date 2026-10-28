@@ -40,6 +40,7 @@ static long penfw_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	void __user *argp = (void __user *)arg;
 	struct penfw_call_args penfw_args_ob;
 	struct penfw_svc_args penfw_svc_args;
+	struct penfw_dice_args dice_args;
 	size_t ioctl_size;
 
 	ioctl_size = _IOC_SIZE(cmd);
@@ -92,6 +93,31 @@ static long penfw_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		// copy back data to user space struct
 		if (copy_to_user(argp, &penfw_svc_args,
 				 sizeof(penfw_svc_args))) {
+			dev_err(penfw_dev, "copy to user failed\n");
+			ret = -EFAULT;
+			goto err;
+		}
+		break;
+	case PENFW_DICECALL:
+		if (ioctl_size != sizeof(struct penfw_dice_args)) {
+			dev_err(penfw_dev, "PENFW_DICECALL size mismatch: expected %zu, got %zu\n",
+				sizeof(struct penfw_dice_args), ioctl_size);
+			ret = -EINVAL;
+			goto err;
+		}
+		if (copy_from_user(&dice_args, argp, sizeof(dice_args))) {
+			dev_err(penfw_dev, "copy from user failed\n");
+			ret = -EFAULT;
+			goto err;
+		}
+		// DICE handlers share the penfwdata page
+		mutex_lock(&penfw_mutex);
+		ret = penfw_dice_smc(&dice_args);
+		mutex_unlock(&penfw_mutex);
+		if (ret != 0)
+			goto err;
+		// copy back data to user space struct
+		if (copy_to_user(argp, &dice_args, sizeof(dice_args))) {
 			dev_err(penfw_dev, "copy to user failed\n");
 			ret = -EFAULT;
 			goto err;
