@@ -137,6 +137,8 @@ void inet_twsk_hashdance(struct inet_timewait_sock *tw, struct sock *sk,
 	 * Also note that after this point, we lost our implicit reference
 	 * so we are not allowed to use tw anymore.
 	 */
+	/* Publish initialized fields before a stale lookup can get a ref. */
+	smp_mb();
 	refcount_set(&tw->tw_refcnt, 3);
 }
 EXPORT_SYMBOL_GPL(inet_twsk_hashdance);
@@ -280,6 +282,7 @@ restart:
 
 			if (unlikely(!refcount_inc_not_zero(&sk->sk_refcnt)))
 				continue;
+			smp_acquire__after_ctrl_dep();
 
 			if (unlikely(sk->sk_family != family ||
 				     refcount_read(&sock_net(sk)->count))) {

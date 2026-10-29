@@ -73,6 +73,7 @@ begin:
 			continue;
 		if (unlikely(!refcount_inc_not_zero(&sk->sk_refcnt)))
 			goto out;
+		smp_acquire__after_ctrl_dep();
 
 		if (unlikely(hlist_nulls_unhashed_lockless(&sk->sk_nulls_node) ||
 			     !INET6_MATCH(sk, net, saddr, daddr, ports, dif,

@@ -374,6 +374,7 @@ begin:
 				      saddr, daddr, ports, dif, sdif))) {
 			if (unlikely(!refcount_inc_not_zero(&sk->sk_refcnt)))
 				goto out;
+			smp_acquire__after_ctrl_dep();
 			if (unlikely(hlist_nulls_unhashed_lockless(&sk->sk_nulls_node) ||
 				     !INET_MATCH(sk, net, acookie, saddr, daddr,
 						 ports, dif, sdif))) {
