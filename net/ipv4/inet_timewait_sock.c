@@ -137,7 +137,7 @@ void inet_twsk_hashdance(struct inet_timewait_sock *tw, struct sock *sk,
 	 * Also note that after this point, we lost our implicit reference
 	 * so we are not allowed to use tw anymore.
 	 */
-	refcount_set(&tw->tw_refcnt, 3);
+	refcount_set_release(&tw->tw_refcnt, 3);
 }
 EXPORT_SYMBOL_GPL(inet_twsk_hashdance);
 
@@ -277,7 +277,7 @@ restart:
 			    refcount_read(&sock_net(sk)->ns.count))
 				continue;
 
-			if (unlikely(!refcount_inc_not_zero(&sk->sk_refcnt)))
+			if (unlikely(!refcount_inc_not_zero_acquire(&sk->sk_refcnt)))
 				continue;
 
 			if (unlikely(sk->sk_family != family ||
