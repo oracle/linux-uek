@@ -1166,8 +1166,18 @@ static inline void ibdev_put_vector(struct rds_ib_device *rds_ibdev, int index, 
 	mutex_unlock(&rds_ibdev->vector_load_lock);
 }
 
+static void rds_ib_update_cq_vector(int *vector_p,
+				    struct rds_ib_device *rds_ibdev,
+				    u8 tos, int sibling_vector)
+{
+	if (*vector_p < 0)
+		*vector_p = ibdev_get_unused_vector(rds_ibdev, tos, sibling_vector);
+	else
+		ibdev_get_vector(rds_ibdev, *vector_p, tos);
+}
+
 static void rds_ib_check_cq(struct ib_device *dev, struct rds_ib_device *rds_ibdev,
-			    int *vector, int sibling_vector,
+			    int vector,
 			    struct ib_cq **cqp, unsigned int *cq_entriesp,
 			    ib_comp_handler comp_handler,
 			    void (*event_handler)(struct ib_event *, void *),
@@ -1195,14 +1205,10 @@ static void rds_ib_check_cq(struct ib_device *dev, struct rds_ib_device *rds_ibd
 
 
 	cq_attr.cqe = n;
-	if (*vector < 0)
-		*vector = ibdev_get_unused_vector(rds_ibdev, tos, sibling_vector);
-	else
-		ibdev_get_vector(rds_ibdev, *vector, tos);
-	cq_attr.comp_vector = *vector;
+	cq_attr.comp_vector = vector;
 	*cqp = ib_create_cq(dev, comp_handler, event_handler, ctx, &cq_attr);
 	if (IS_ERR(*cqp)) {
-		ibdev_put_vector(rds_ibdev, *vector, tos);
+		ibdev_put_vector(rds_ibdev, vector, tos);
 		rdsdebug("ib_create_cq %s failed: %ld\n", str, PTR_ERR(*cqp));
 	}
 	*cq_entriesp = n;
@@ -1530,8 +1536,25 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		WARN_ON(ic->i_scq);
 	}
 
+	ic->i_scq_isolate_warned = false;
+	ic->i_rcq_isolate_warned = false;
+
+	rds_ib_update_cq_vector(&ic->i_scq_vector, rds_ibdev, conn->c_tos, -1);
+	rds_ib_alloc_preferred_cpu(&ic->i_preferred_send_cpu,
+				   rds_ibdev, ic->i_scq_vector);
+
+	rds_ib_update_cq_vector(&ic->i_rcq_vector, rds_ibdev, conn->c_tos, ic->i_scq_vector);
+	rds_ib_alloc_preferred_cpu(&ic->i_preferred_recv_cpu,
+				   rds_ibdev, ic->i_rcq_vector);
+
+	ret = rds_ib_find_srq(rds_ibdev, ic, ic->i_preferred_recv_cpu);
+	if (ret) {
+		reason = "rds_ib_find_srq failed";
+		goto out;
+	}
+
 	rds_ib_check_cq(dev, rds_ibdev,
-			&ic->i_scq_vector, -1,
+			ic->i_scq_vector,
 			&ic->i_scq, &ic->i_scq_entries,
 			rds_ib_cq_comp_handler_send,
 			rds_ib_cq_event_handler, conn,
@@ -1546,11 +1569,11 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	ic->i_cq_last_seen_send_irqn = ib_get_vector_irqn(dev, ic->i_scq_vector);
 
 	rds_ib_check_cq(dev, rds_ibdev,
-			&ic->i_rcq_vector, ic->i_scq_vector,
+			ic->i_rcq_vector,
 			&ic->i_rcq, &ic->i_rcq_entries,
 			rds_ib_cq_comp_handler_recv,
 			rds_ib_cq_event_handler, conn,
-			ic->i_recv_ring.w_nr,
+			rds_ib_prq_mode(ic) ? ic->i_recv_ring.w_nr : ic->rds_srq->max_wr,
 			"recv", conn->c_tos);
 	if (IS_ERR(ic->i_rcq)) {
 		reason = "rds_ib_check_cq for recv failed";
@@ -1569,21 +1592,6 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	ret = ib_req_notify_cq(ic->i_rcq, IB_CQ_SOLICITED);
 	if (ret) {
 		reason = "ib_req_notify_cq recv failed";
-		goto out;
-	}
-
-	ic->i_scq_isolate_warned = false;
-	ic->i_rcq_isolate_warned = false;
-
-	rds_ib_alloc_preferred_cpu(&ic->i_preferred_send_cpu,
-				   rds_ibdev, ic->i_scq_vector);
-
-	rds_ib_alloc_preferred_cpu(&ic->i_preferred_recv_cpu,
-				   rds_ibdev, ic->i_rcq_vector);
-
-	ret = rds_ib_find_srq(rds_ibdev, ic, ic->i_preferred_recv_cpu);
-	if (ret) {
-		reason = "rds_ib_find_srq failed";
 		goto out;
 	}
 
