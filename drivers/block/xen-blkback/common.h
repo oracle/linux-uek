@@ -318,6 +318,7 @@ struct xen_blkif {
 	unsigned int 		nr_ring_pages;
 	bool			multi_ref;
 	/* All rings for this device. */
+	rwlock_t		rings_lock;
 	struct xen_blkif_ring	*rings;
 	unsigned int		nr_rings;
 };
