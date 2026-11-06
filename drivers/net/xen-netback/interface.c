@@ -801,8 +801,6 @@ void xenvif_disconnect_data(struct xenvif *vif)
 
 		xenvif_unmap_frontend_data_rings(queue);
 	}
-
-	xenvif_mcast_addr_list_free(vif);
 }
 
 void xenvif_disconnect_ctrl(struct xenvif *vif)
