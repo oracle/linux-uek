@@ -61,9 +61,17 @@ config PENSANDO_SOC_CAPMEM_HUGEPAGE
 	  at the cost of pulling in TRANSPARENT_HUGEPAGE. If unsure, say
 	  N.
 
+config PENSANDO_SOC_REBOOT
+	tristate
+	help
+	  Shared panic-reboot and boot-count helpers (cap_reboot), exposed
+	  under /sys/kernel/reboot_pensando. Selected by the drivers that
+	  use them.
+
 config PENSANDO_SOC_PCIE
 	tristate "PCIe driver for Pensando SoCs"
 	depends on OF
+	select PENSANDO_SOC_REBOOT
 	default y
 	help
 	  Provides the kernel-assist interface used by the userspace
@@ -85,7 +93,8 @@ config PENSANDO_SOC_RSTCAUSE
 
 config PENSANDO_SOC_CRASH
 	tristate "Pensando crash driver"
-	depends on OF
+	depends on OF && (ARCH_PENSANDO_ELBA_SOC || ARCH_PENSANDO_GIGLIO_SOC)
+	select PENSANDO_SOC_REBOOT
 	default y
 	help
 	  On panic this driver dumps the kernel log buffer into a
@@ -93,6 +102,20 @@ config PENSANDO_SOC_CRASH
 	  retrieved and decoded after the next boot. Provides post-mortem
 	  diagnostics for headless DPU deployments. Say Y, or M to build
 	  it as a module.
+
+config PENSANDO_SOC_SAL_CRASH
+	tristate "Pensando Salina QSPI panic dump driver"
+	depends on OF && ARCH_PENSANDO_SALINA_SOC
+	depends on MTD
+	select PENSANDO_SOC_REBOOT
+	default y
+	help
+	  On panic, dumps the kernel log buffer into the coredump_partition
+	  of the qspi1 NOR flash on Salina SoC via polled CQSPI indirect
+	  writes. DAC (direct access) mode is not available on Salina, so
+	  all flash writes use the controller's indirect SRAM FIFO path,
+	  which is driven entirely by register polling and is safe to use
+	  from a panic handler. Say Y, or M to build as a module.
 
 config PENSANDO_SOC_BSM
 	bool "Pensando SoC Boot State Machine"

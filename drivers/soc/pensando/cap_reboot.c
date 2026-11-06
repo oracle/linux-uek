@@ -28,11 +28,13 @@ bool cap_panic_reboot(void)
 		return true;
 	return false;
 }
+EXPORT_SYMBOL_GPL(cap_panic_reboot);
 
 unsigned long cap_boot_count(void)
 {
 	return boot_count;
 }
+EXPORT_SYMBOL_GPL(cap_boot_count);
 
 struct kobject *reboot_kobj;
 
@@ -108,3 +110,6 @@ static void __exit capri_reboot_exit(void)
 
 module_init(capri_reboot_init);
 module_exit(capri_reboot_exit);
+
+MODULE_DESCRIPTION("Pensando panic reboot and boot count control");
+MODULE_LICENSE("GPL");

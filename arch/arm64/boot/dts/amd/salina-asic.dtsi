@@ -386,9 +386,21 @@
 			read-only;
 		};
 
-		panic: panicdump@0 {
-			compatible = "pensando,capri-crash";
-			status = "disabled";
+		panic: panicdump@a0000 {
+			compatible = "pensando,salina-crash";
+			/*
+			 * reg[0]: qspi1 APB register block
+			 * reg[1]: qspi1 AHB FIFO window (indirect write data port)
+			 */
+			reg = <0x0 0xa0000 0x0 0x400>,
+			      <0x0 0x7fff0000 0x0 0x1000>;
+			pensando,qspi = <&qspi1>;
+			pensando,flash-offset = <0x0ffc0000>;
+			pensando,flash-size = <0x00020000>;
+			cdns,fifo-depth = <1024>;
+			cdns,fifo-width = <4>;
+			cdns,trigger-address = <0x07ff0000>;
+			status = "okay";
 		};
 	};
 };
