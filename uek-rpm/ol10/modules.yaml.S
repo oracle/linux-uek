@@ -2246,7 +2246,6 @@ modules:
 - s2io
 - samsung-laptop
 - samsung-q10
-- sata_inic162x
 - sata_nv
 - sata_promise
 - sata_qstor
