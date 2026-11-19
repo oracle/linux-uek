@@ -3046,21 +3046,19 @@ static int __vhost_add_used_n(struct vhost_virtqueue *vq,
 int vhost_add_used_n(struct vhost_virtqueue *vq, struct vring_used_elem *heads,
 		     unsigned count)
 {
-	int start, n, r;
+	unsigned int n;
+	int r;
 
-	start = vq->last_used_idx & (vq->num - 1);
-	n = vq->num - start;
-	if (n < count) {
+	do {
+		unsigned int start = vq->last_used_idx & (vq->num - 1);
+
+		n = min(vq->num - start, count);
 		r = __vhost_add_used_n(vq, heads, n);
 		if (r < 0)
 			return r;
 		heads += n;
 		count -= n;
-	}
-	r = __vhost_add_used_n(vq, heads, count);
-
-	if (r < 0)
-		return r;
+	} while (count);
 
 	/* Make sure buffer is written before we update index. */
 	smp_wmb();
